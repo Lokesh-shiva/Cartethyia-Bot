@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node -e \"const c=[];process.stdin.on('data',d=>c.push(d));process.stdin.on('end',()=>{const d=JSON.parse(Buffer.concat(c));const f=(d.tool_input&&d.tool_input.file_path)||'';if(!f.includes('CLAUDE.md'))return;const l=require('fs').readFileSync(f,'utf8').split('\\n').length;if(l>100){process.stderr.write('CLAUDE.md is '+l+' lines (max 100) — trim before saving.\\n');process.exit(1);}})\"",
+            "statusMessage": "Checking CLAUDE.md line count…"
+          }
+        ]
+      }
+    ]
+  }
+}

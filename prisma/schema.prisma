@@ -1,0 +1,341 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ─── Enums ───────────────────────────────────────────────────────────────────
+
+enum Element {
+  NONE
+  FUSION
+  GLACIO
+  ELECTRO
+  AERO
+  HAVOC
+  SPECTRO
+}
+
+enum WeaponType {
+  BROADBLADE
+  SWORD
+  PISTOLS
+  RECTIFIER
+}
+
+enum EchoRarity {
+  THREE_STAR
+  FOUR_STAR
+  FIVE_STAR
+}
+
+enum BondType {
+  FRIEND
+  PARTNER
+  ADOPTED_PARENT
+  ADOPTED_CHILD
+}
+
+enum DispatchStatus {
+  IDLE
+  ON_DISPATCH
+}
+
+// ─── Core User ───────────────────────────────────────────────────────────────
+
+model User {
+  id               String         @id
+  username         String
+  avatarUrl        String?
+  createdAt        DateTime       @default(now())
+  lastSeen         DateTime       @default(now())
+
+  // RPG Stats
+  level            Int            @default(1)
+  worldLevel       Int            @default(0)
+  resonanceExp     Int            @default(0)
+  lastExpGain      DateTime       @default(now())
+
+  // Element & Weapon
+  element          Element        @default(NONE)
+  weaponType       WeaponType?
+
+  // Base Combat Stats
+  baseHp           Int            @default(500)
+  baseAtk          Int            @default(50)
+  baseDef          Int            @default(30)
+  baseSpeed        Int            @default(100)
+  critRate         Float          @default(0.05)
+  critDmg          Float          @default(1.5)
+  energy           Int            @default(0)
+
+  // Economy
+  credits          Int            @default(0)
+  lunakite         Int            @default(0)
+  tuningModules    Int            @default(0)
+  sealingTubes     Int            @default(0)
+  forgingOres      Int            @default(0)
+  paradoxCores     Int            @default(0)
+  stasisLocks      Int            @default(0)
+  resonanceRecords Int            @default(0)
+
+  // Onboarding & personality
+  isOnboarded      Boolean        @default(false)
+  resonanceProfile Json?          // onboarding answers + playstyle tracking
+  uniqueAbilityName   String?
+  uniqueAbilityEffect String?
+  uniqueAbilityLore   String?
+  uniqueAbilityType   String?  // legacy single-effect type (migrated → effects)
+  uniqueAbilityValue  Float?   // legacy magnitude
+  uniqueAbilityEffects Json?   // composite: [{ type, value }, ...] — the real mechanic
+
+  // Playstyle tracking (updated silently throughout 1-20)
+  vibePhysicalCount  Int @default(0)
+  vibeExpressiveCount Int @default(0)
+  vibeEmotionalCount  Int @default(0)
+  uniqueTargetCount   Int @default(0) // how many different people interacted with
+
+  // Combat record
+  duelWins        Int @default(0)
+  duelLosses      Int @default(0)
+  dungeonClears   Int @default(0)
+  raidWins        Int @default(0)
+  ascensionWins   Int @default(0)
+  encountersWon   Int @default(0)
+
+  // Daily
+  lastDaily             DateTime?
+  dailyStreak           Int            @default(0)
+  streakShields         Int            @default(0)
+  dailyReminderEnabled  Boolean        @default(false)
+
+  // Dispatch
+  dispatchStatus   DispatchStatus @default(IDLE)
+  dispatchEndsAt   DateTime?
+  dispatchHours    Int?
+
+  // Relations
+  echoes           Echo[]
+  echoPresets      EchoPreset[]
+  weapons          Weapon[]
+  bondsInitiated   Bond[]         @relation("BondInitiator")
+  bondsReceived    Bond[]         @relation("BondReceiver")
+  affinitiesA      Affinity[]     @relation("AffinityUserA")
+  affinitiesB      Affinity[]     @relation("AffinityUserB")
+  combatSessions   CombatSession[]
+  dungeonCooldowns DungeonCooldown[]
+  bossCooldowns    BossCooldown[]
+
+  // Resonance Aura — shared stamina for dungeons & boss re-challenges
+  resonanceAura  Int      @default(5)   // current charges (max 5)
+  auraUpdatedAt  DateTime @default(now()) // last time aura was computed/stored
+
+  @@map("users")
+}
+
+// ─── Weapon ──────────────────────────────────────────────────────────────────
+
+model Weapon {
+  id          String     @id @default(cuid())
+  userId      String
+  user        User       @relation(fields: [userId], references: [id])
+
+  weaponType  WeaponType
+  name        String     @default("Rusted Blade")
+  level       Int        @default(1)
+  rarity      Int        @default(1)
+  isEquipped  Boolean    @default(false)
+
+  baseAtk     Int        @default(30)
+  subStatType String?
+  subStatVal  Float?
+
+  createdAt   DateTime   @default(now())
+
+  @@map("weapons")
+}
+
+// ─── Echo ────────────────────────────────────────────────────────────────────
+
+model Echo {
+  id          String     @id @default(cuid())
+  userId      String
+  user        User       @relation(fields: [userId], references: [id])
+
+  name        String
+  rarity      EchoRarity @default(THREE_STAR)
+  element     Element    @default(FUSION)
+  cost        Int        @default(1)   // 1, 3, or 4
+  isEquipped  Boolean    @default(false)
+  equippedSlot Int?                    // 0 = main, 1-4 = sub slots
+  level       Int        @default(0)
+
+  mainStatType  String   @default("HP_FLAT")
+  mainStatValue Float    @default(0)
+
+  substat1Type   String?
+  substat1Value  Float?
+  substat1Locked Boolean @default(false)
+  substat2Type   String?
+  substat2Value  Float?
+  substat2Locked Boolean @default(false)
+  substat3Type   String?
+  substat3Value  Float?
+  substat3Locked Boolean @default(false)
+  substat4Type   String?
+  substat4Value  Float?
+  substat4Locked Boolean @default(false)
+  substat5Type   String?
+  substat5Value  Float?
+  substat5Locked Boolean @default(false)
+
+  revealedSubstats Int   @default(0)
+  createdAt        DateTime @default(now())
+
+  @@map("echoes")
+}
+
+// ─── Bond ────────────────────────────────────────────────────────────────────
+
+model Bond {
+  id          String   @id @default(cuid())
+  initiatorId String
+  receiverId  String
+  bondType    BondType
+
+  initiator   User     @relation("BondInitiator", fields: [initiatorId], references: [id])
+  receiver    User     @relation("BondReceiver",  fields: [receiverId],  references: [id])
+
+  createdAt   DateTime @default(now())
+
+  @@unique([initiatorId, receiverId])
+  @@map("bonds")
+}
+
+// ─── Affinity ────────────────────────────────────────────────────────────────
+
+model Affinity {
+  id        String   @id @default(cuid())
+  userAId   String
+  userBId   String
+  score     Int      @default(0)
+
+  userA     User     @relation("AffinityUserA", fields: [userAId], references: [id])
+  userB     User     @relation("AffinityUserB", fields: [userBId], references: [id])
+
+  updatedAt DateTime @updatedAt
+
+  @@unique([userAId, userBId])
+  @@map("affinities")
+}
+
+// ─── Dungeon Cooldown ────────────────────────────────────────────────────────
+
+model DungeonCooldown {
+  userId    String
+  dungeonId String
+  lastRun   DateTime @default(now())
+
+  user      User     @relation(fields: [userId], references: [id])
+
+  @@id([userId, dungeonId])
+  @@map("dungeon_cooldowns")
+}
+
+// ─── Boss Cooldown ───────────────────────────────────────────────────────────
+
+model BossCooldown {
+  userId  String
+  bossId  String
+  lastRun DateTime @default(now())
+
+  user    User     @relation(fields: [userId], references: [id])
+
+  @@id([userId, bossId])
+  @@map("boss_cooldowns")
+}
+
+// ─── Active Fight ────────────────────────────────────────────────────────────
+// Tracks in-progress fights so the bot can clean them up gracefully on restart.
+
+model ActiveFight {
+  userId    String   @id
+  threadId  String
+  guildId   String
+  command   String   // "Ascension Trial" | "Boss Challenge" | "Dungeon" | "Field Boss"
+  startedAt DateTime @default(now())
+
+  @@map("active_fights")
+}
+
+// ─── Active Encounter ────────────────────────────────────────────────────────
+
+model ActiveEncounter {
+  messageId    String   @id
+  channelId    String
+  guildId      String
+  enemyName    String
+  enemyElement String
+  enemyCost    Int
+  enemyHp      Int
+  enemyAtk     Int
+  enemyDef     Int
+  fighterId    String?
+  expiresAt    DateTime
+
+  @@map("active_encounters")
+}
+
+// ─── Guild Settings ──────────────────────────────────────────────────────────
+
+model GuildSettings {
+  guildId             String   @id
+  exploreChannelIds   String[] @default([])
+  encounterChannelIds String[] @default([])  // empty = encounters everywhere; set = allowlist only
+  encountersEnabled   Boolean  @default(true) // master toggle for chat encounters
+  welcomeChannelId    String?                 // if set, auto-onboard new members here; else opt-in via /start
+  prefix              String?                 // optional prefix for text commands e.g. "c" or "cart"
+
+  @@map("guild_settings")
+}
+
+// ─── Echo Preset ─────────────────────────────────────────────────────────────
+
+model EchoPreset {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  name      String
+  slots     Json     // { "0": echoId|null, "1": echoId|null, ..., "4": echoId|null }
+  createdAt DateTime @default(now())
+
+  @@unique([userId, name])
+  @@map("echo_presets")
+}
+
+// ─── Combat Session ───────────────────────────────────────────────────────────
+
+model CombatSession {
+  id           String   @id @default(cuid())
+  userId       String
+  user         User     @relation(fields: [userId], references: [id])
+
+  bossName     String
+  bossHp       Int
+  bossMaxHp    Int
+  bossVibBar   Int      @default(100)
+  playerHp     Int
+  playerEnergy Int      @default(0)
+  turn         Int      @default(1)
+  isActive     Boolean  @default(true)
+
+  channelId    String
+  messageId    String?
+
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@map("combat_sessions")
+}

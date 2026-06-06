@@ -1,0 +1,29 @@
+node_modules/
+
+# Environment & secrets
+.env
+.env.*
+creds.txt
+
+# SSH & cloud keys
+*.key
+*.pem
+*.ppk
+
+# Build output
+dist/
+
+# Prisma generated
+/src/generated/prisma
+node_modules/.prisma/
+
+# PM2
+.pm2/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
