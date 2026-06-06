@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Cartethyia — Legal</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #0d0f14;
+      color: #e2e8f0;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 2rem;
+    }
+    .container {
+      max-width: 560px;
+      width: 100%;
+      text-align: center;
+    }
+    .logo {
+      font-size: 2.5rem;
+      font-weight: 700;
+      background: linear-gradient(135deg, #a78bfa, #60a5fa);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      margin-bottom: 0.5rem;
+      letter-spacing: -0.5px;
+    }
+    .tagline {
+      color: #94a3b8;
+      font-size: 1rem;
+      margin-bottom: 3rem;
+    }
+    .links {
+      display: flex;
+      gap: 1rem;
+      justify-content: center;
+      flex-wrap: wrap;
+    }
+    a.card {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 1.5rem 2.5rem;
+      background: #1a1d27;
+      border: 1px solid #2d3148;
+      border-radius: 12px;
+      text-decoration: none;
+      color: #e2e8f0;
+      transition: border-color 0.2s, background 0.2s;
+      flex: 1;
+      min-width: 180px;
+    }
+    a.card:hover {
+      border-color: #a78bfa;
+      background: #1e2136;
+    }
+    a.card .icon { font-size: 2rem; margin-bottom: 0.75rem; }
+    a.card .label { font-weight: 600; font-size: 1rem; }
+    a.card .sub { font-size: 0.8rem; color: #64748b; margin-top: 0.25rem; }
+    .footer {
+      margin-top: 3rem;
+      color: #475569;
+      font-size: 0.8rem;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="logo">Cartethyia</div>
+    <div class="tagline">Wuthering Waves RPG Discord Bot</div>
+    <div class="links">
+      <a class="card" href="./terms.html">
+        <span class="icon">📋</span>
+        <span class="label">Terms of Service</span>
+        <span class="sub">Rules & usage policy</span>
+      </a>
+      <a class="card" href="./privacy.html">
+        <span class="icon">🔒</span>
+        <span class="label">Privacy Policy</span>
+        <span class="sub">Data & privacy info</span>
+      </a>
+    </div>
+    <div class="footer">
+      Questions? Contact <a href="mailto:lokeshwara.rao2972005@gmail.com" style="color:#a78bfa;">lokeshwara.rao2972005@gmail.com</a>
+    </div>
+  </div>
+</body>
+</html>
