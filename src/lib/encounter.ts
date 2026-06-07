@@ -209,10 +209,6 @@ export async function spawnEncounter(
       .setCustomId("encounter_fight")
       .setLabel("⚔  Fight")
       .setStyle(ButtonStyle.Danger),
-    new ButtonBuilder()
-      .setCustomId("encounter_flee")
-      .setLabel("↩  Flee")
-      .setStyle(ButtonStyle.Secondary),
   );
 
   const msg = await channel.send({
@@ -578,30 +574,6 @@ export async function handleEncounterFight(
   };
 
   runTurn();
-}
-
-export async function handleEncounterFlee(
-  interaction: import("discord.js").ButtonInteraction,
-): Promise<void> {
-  const enc = activeEncounters.get(interaction.message.id);
-  if (!enc) {
-    await interaction.reply({ content: "This encounter is already over.", flags: 64 });
-    return;
-  }
-  if (enc.fighterId) {
-    await interaction.reply({ content: "Someone already engaged — you can't flee for them.", flags: 64 });
-    return;
-  }
-
-  // Any user can flee (dismisses the encounter for everyone)
-  removeEncounter(interaction.message.id);
-
-  const fleeEmbed = new EmbedBuilder()
-    .setColor(0x4A4A5A)
-    .setDescription(`*The ${enc.enemy.name} dissolves into the ether...*`)
-    .setFooter({ text: "CARTETHYIA  ·  Encounter" });
-
-  await interaction.update({ embeds: [fleeEmbed], components: [], files: [] }).catch(() => {});
 }
 
 // ── Util ─────────────────────────────────────────────────────────────────────

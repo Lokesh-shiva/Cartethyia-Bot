@@ -1,10 +1,19 @@
 import prisma from "./prisma";
 
-// guildId → prefix (null = disabled)
+// Default prefix for every guild — overridable per-guild via /setup prefix
+export const GLOBAL_PREFIX = process.env.BOT_PREFIX ?? "c!";
+
+// guildId → prefix (null = use GLOBAL_PREFIX)
 const prefixCache = new Map<string, string | null>();
 
-export function getPrefix(guildId: string): string | null {
-  return prefixCache.get(guildId) ?? null;
+/**
+ * Returns the effective prefix for a guild.
+ * Falls back to the global default (c!) if none has been set.
+ */
+export function getPrefix(guildId: string): string {
+  const cached = prefixCache.get(guildId);
+  // null means "explicitly cleared" or "never set" — both fall back to global
+  return cached ?? GLOBAL_PREFIX;
 }
 
 export function setPrefix(guildId: string, prefix: string | null): void {

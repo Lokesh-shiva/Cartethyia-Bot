@@ -183,23 +183,25 @@ const command: Command = {
     const fireAt = new Date(Date.now() + 20 * 60 * 60 * 1000);
     if (reminderEnabled) scheduleReminder(interaction.client, interaction.user.id, fireAt);
 
-    // Handle toggle (30s window)
+    // Handle toggle (60s window, multiple clicks allowed)
+    let currentEnabled = reminderEnabled;
+
     const collector = interaction.channel?.createMessageComponentCollector({
       componentType: ComponentType.Button,
       filter: (b: ButtonInteraction) => b.user.id === interaction.user.id && b.customId === "daily_reminder_toggle",
-      time:   30_000,
-      max:    1,
+      time:   60_000,
     });
 
     collector?.on("collect", async (btn: ButtonInteraction) => {
       await btn.deferUpdate();
-      const newEnabled = !(reminderEnabled);
+      currentEnabled = !currentEnabled;
+
       await prisma.user.update({
         where: { id: interaction.user.id },
-        data:  { dailyReminderEnabled: newEnabled } as any,
+        data:  { dailyReminderEnabled: currentEnabled } as any,
       });
 
-      if (newEnabled) {
+      if (currentEnabled) {
         scheduleReminder(btn.client, interaction.user.id, fireAt);
       } else {
         clearReminder(interaction.user.id);
@@ -209,8 +211,8 @@ const command: Command = {
         components: [new ActionRowBuilder<ButtonBuilder>().addComponents(
           new ButtonBuilder()
             .setCustomId("daily_reminder_toggle")
-            .setLabel(newEnabled ? "🔕  Disable Daily Reminder" : "🔔  Remind Me Tomorrow")
-            .setStyle(newEnabled ? ButtonStyle.Secondary : ButtonStyle.Primary),
+            .setLabel(currentEnabled ? "🔕  Disable Daily Reminder" : "🔔  Remind Me Tomorrow")
+            .setStyle(currentEnabled ? ButtonStyle.Secondary : ButtonStyle.Primary),
         )],
       });
     });

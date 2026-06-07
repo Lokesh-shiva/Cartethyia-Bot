@@ -1,6 +1,6 @@
 import { Events, Interaction, EmbedBuilder } from "discord.js";
 import { ExtendedClient } from "../types";
-import { handleEncounterFight, handleEncounterFlee } from "../lib/encounter";
+import { handleEncounterFight } from "../lib/encounter";
 import { logError } from "../lib/logger";
 
 export const name = Events.InteractionCreate;
@@ -44,10 +44,6 @@ export async function execute(interaction: Interaction) {
     const { customId } = interaction;
     if (customId === "encounter_fight") {
       await handleEncounterFight(interaction).catch(console.error);
-      return;
-    }
-    if (customId === "encounter_flee") {
-      await handleEncounterFlee(interaction).catch(console.error);
       return;
     }
     // All other buttons (vibe return, ascend, bond) handled by collectors in their commands

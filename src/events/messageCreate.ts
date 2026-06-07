@@ -1,6 +1,6 @@
 import { Events, Message, EmbedBuilder, AttachmentBuilder, TextChannel } from "discord.js";
 import { tryAwardChatExp, getOrCreateUser } from "../lib/economy";
-import { checkLevelUp, WORLD_LEVEL_CAPS, sendMilestoneNotifications } from "../lib/progression";
+import { checkLevelUp, sendMilestoneNotifications } from "../lib/progression";
 import { generateLevelUpCard } from "../lib/levelUpCard";
 import { sendElementSelection } from "../lib/elementSelect";
 import { shouldSpawnEncounter, spawnEncounter } from "../lib/encounter";
@@ -10,12 +10,6 @@ import prisma from "../lib/prisma";
 
 export const name = Events.MessageCreate;
 export const once = false;
-
-// Commands that work via prefix (no interactive components needed)
-const PREFIX_COMMANDS = new Set([
-  "ping", "profile", "level", "inventory", "echoes", "daily",
-  "ability", "weapon", "leaderboard", "guide",
-]);
 
 export async function execute(message: Message) {
   if (message.author.bot || !message.guild) return;
@@ -32,32 +26,28 @@ export async function execute(message: Message) {
   );
 
   // ── Prefix command handler ───────────────────────────────────────────────────
-  const prefix = getPrefix(message.guildId!);
-  if (prefix) {
-    const lower = message.content.trim().toLowerCase();
-    // Match: prefix followed by space+command or just prefix+command (e.g. "c ping" or "c!ping")
-    const prefixPattern = new RegExp(`^${escapeRegex(prefix)}[!\\s]+`);
-    if (prefixPattern.test(lower)) {
-      const withoutPrefix = message.content.trim().slice(prefix.length).trimStart().replace(/^!+\s*/, "");
-      const [cmdName, ...rest] = withoutPrefix.trim().split(/\s+/);
-      const cmd = cmdName?.toLowerCase();
+  const prefix = getPrefix(message.guildId!);   // always returns a string ("c!" default)
+  const content = message.content;
 
-      if (cmd && PREFIX_COMMANDS.has(cmd)) {
-        const client = message.client as ExtendedClient;
-        const command = client.commands.get(cmd);
-        if (command) {
-          // Build a fake ChatInputCommandInteraction shim for simple commands
-          const fakeInteraction = buildPrefixInteraction(message, cmd, rest);
-          try {
-            await command.execute(fakeInteraction as any);
-          } catch (err) {
-            console.error(`[Prefix] Error running ${cmd}:`, err);
-            await message.reply({ content: `◈ Something went wrong running \`${cmd}\`.` }).catch(() => {});
-          }
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          // Don't process EXP for command-trigger messages
-          return;
+  if (content.toLowerCase().startsWith(prefix.toLowerCase())) {
+    const withoutPrefix = content.slice(prefix.length).trim();
+    if (withoutPrefix.length > 0) {
+      const [cmdName, ...rest] = withoutPrefix.split(/\s+/);
+      const cmd = cmdName.toLowerCase();
+
+      const client  = message.client as ExtendedClient;
+      const command = client.commands.get(cmd);
+
+      if (command) {
+        const fakeInteraction = buildPrefixInteraction(message, cmd, rest);
+        try {
+          await command.execute(fakeInteraction as any);
+        } catch (err) {
+          console.error(`[Prefix] Error running ${cmd}:`, err);
+          await message.reply({ content: `◈ Something went wrong running \`${cmd}\`.` }).catch(() => {});
         }
+        // Don't award EXP for command messages
+        return;
       }
     }
   }
@@ -111,7 +101,7 @@ export async function execute(message: Message) {
 
   // If player just hit level 20 and hasn't chosen an element — trigger element selection
   if (result.newLevel === 20 && (!dbUser?.element || dbUser.element === "NONE")) {
-    await new Promise((r) => setTimeout(r, 1500)); // small pause after level-up card
+    await new Promise((r) => setTimeout(r, 1500));
     await sendElementSelection(
       message.author.id,
       displayName,
@@ -120,77 +110,200 @@ export async function execute(message: Message) {
   }
 }
 
-function escapeRegex(s: string): string {
-  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
+// ── Prefix interaction adapter ────────────────────────────────────────────────
+//
+// Wraps a Message so that any slash command's execute() can be called unchanged.
+// Positional args are consumed in the ORDER they are requested — which mirrors
+// how discord.js delivers slash command options sequentially.
+//
+// Usage syntax examples:
+//   c!profile                       ← no args
+//   c!guide echoes                  ← getString("topic") → "echoes"
+//   c!dispatch send                 ← getSubcommand() → "send"
+//   c!vibe hug @User                ← getString("action") → "hug", getUser("target") → @User
+//   c!dungeon type:echo-dungeon     ← named: getString("type") → "echo-dungeon"
+//   c!echo-equip slot:3 cost:3      ← named: getInteger("slot") → 3
+//
+function buildPrefixInteraction(message: Message, commandName: string, rawArgs: string[]) {
+  // Separate named args (key:value) from positional args
+  const named: Record<string, string> = {};
+  const positional: string[] = [];
 
-// Builds a minimal fake interaction that satisfies simple slash command execute() calls.
-// Only works for commands that call deferReply → editReply (no modals, no select menus).
-function buildPrefixInteraction(message: Message, commandName: string, args: string[]) {
-  let replied = false;
-  let deferred = false;
-  let replyContent: any = null;
-
-  const textChannel = message.channel as TextChannel;
-  const send = async (data: any) => {
-    if (!replied) {
-      replied = true;
-      replyContent = await message.reply(normalizeData(data)).catch(() => null);
+  for (const arg of rawArgs) {
+    const m = arg.match(/^([\w-]+):([\s\S]+)$/);
+    if (m) {
+      named[m[1].toLowerCase()] = m[2];
     } else {
-      replyContent = await textChannel.send(normalizeData(data)).catch(() => null);
+      positional.push(arg);
     }
-    return replyContent;
+  }
+
+  // Mentioned users in arrival order (for getUser calls)
+  const mentionedUsers = [...message.mentions.users.values()];
+  let mentionIdx = 0;
+
+  // Shared positional index — consumed in call order
+  let posIdx = 0;
+  const nextPos = (): string | null => positional[posIdx++] ?? null;
+
+  const getNamed = (name: string): string | null => named[name.toLowerCase()] ?? null;
+  const getNamedOrPos = (name: string): string | null => getNamed(name) ?? nextPos();
+
+  // Reply state
+  let replied  = false;
+  let deferred = false;
+  let replyMsg: Message | null = null;
+
+  const sendPayload = async (data: any): Promise<Message | null> => {
+    const payload = normalizeData(data);
+    if (!replied) {
+      replied  = true;
+      replyMsg = await message.reply(payload).catch(() => null);
+    } else {
+      replyMsg = await (message.channel as TextChannel).send(payload).catch(() => null);
+    }
+    return replyMsg;
   };
 
-  const edit = async (data: any) => {
-    if (replyContent && "edit" in replyContent) {
-      await (replyContent as Message).edit(normalizeData(data)).catch(() => {});
-    }
+  const editPayload = async (data: any) => {
+    if (replyMsg) await replyMsg.edit(normalizeData(data)).catch(() => {});
   };
 
   return {
-    user:    message.author,
-    member:  message.member,
-    guild:   message.guild,
-    channel: message.channel,
-    client:  message.client,
-    guildId: message.guildId,
+    // Core identity
+    user:       message.author,
+    member:     message.member,
+    guild:      message.guild,
+    channel:    message.channel,
+    client:     message.client,
+    guildId:    message.guildId,
+    channelId:  message.channelId,
     commandName,
 
+    // Type guards (some commands check these)
+    isCommand:           () => true,
+    isChatInputCommand:  () => true,
+    isRepliable:         () => true,
+
+    // ── Options ────────────────────────────────────────────────────────────────
     options: {
-      getUser: (_name: string) => {
-        // If a user was mentioned, return them
-        return message.mentions.users.first() ?? null;
+      // Subcommand: consumes the first positional word
+      getSubcommand: (_required?: boolean): string =>
+        getNamed("_sub") ?? nextPos()?.toLowerCase() ?? "",
+
+      // Subcommand group: not used in prefix context
+      getSubcommandGroup: (_required?: boolean): string | null => null,
+
+      getString: (name: string, _req?: boolean): string | null =>
+        getNamedOrPos(name),
+
+      getInteger: (name: string, _req?: boolean): number | null => {
+        const v = getNamedOrPos(name);
+        if (v === null) return null;
+        const n = parseInt(v, 10);
+        return isNaN(n) ? null : n;
       },
-      getString:  (_name: string) => args[0] ?? null,
-      getInteger: (_name: string) => (args[0] ? parseInt(args[0]) : null),
-      getBoolean: (_name: string) => null,
-      getNumber:  (_name: string) => null,
+
+      getNumber: (name: string, _req?: boolean): number | null => {
+        const v = getNamedOrPos(name);
+        if (v === null) return null;
+        const n = parseFloat(v);
+        return isNaN(n) ? null : n;
+      },
+
+      getBoolean: (name: string, _req?: boolean): boolean | null => {
+        const v = getNamedOrPos(name);
+        if (v === null) return null;
+        return v === "true" || v === "yes" || v === "1";
+      },
+
+      // User: named arg (as raw ID or <@id>) → next @mention in message
+      getUser: (_name: string, _req?: boolean) => {
+        const namedVal = getNamed(_name);
+        if (namedVal) {
+          const id = namedVal.replace(/[<@!>]/g, "");
+          return message.mentions.users.get(id) ?? null;
+        }
+        // Advance past any <@…> token in positional
+        while (posIdx < positional.length && positional[posIdx].startsWith("<@")) {
+          posIdx++;
+        }
+        return mentionedUsers[mentionIdx++] ?? null;
+      },
+
+      getMember: (_name: string, _req?: boolean) =>
+        message.mentions.members?.first() ?? null,
+
+      getChannel: (_name: string, _req?: boolean) =>
+        message.mentions.channels?.first() ?? null,
+
+      getRole: (_name: string, _req?: boolean) =>
+        message.mentions.roles?.first() ?? null,
+
+      getMentionable: (_name: string, _req?: boolean) =>
+        message.mentions.users.first() ?? message.mentions.roles.first() ?? null,
+
+      getAttachment: (_name: string, _req?: boolean) =>
+        message.attachments.first() ?? null,
+
+      // Autocomplete — not applicable for prefix commands
+      getFocused: () => ({ value: "" }),
+
+      resolved: null,
+      data:     {},
     },
 
-    deferReply: async (_opts?: any) => { deferred = true; },
-    reply:      async (data: any) => { await send(data); },
-    editReply:  async (data: any) => {
+    // ── Reply methods ──────────────────────────────────────────────────────────
+    deferReply: async (_opts?: any) => {
+      deferred = true;
+      // Return shape expected by commands that use withResponse: true
+      return { resource: { message: null } };
+    },
+
+    reply: async (data: any) => {
+      const msg = await sendPayload(data);
+      return { resource: { message: msg } };
+    },
+
+    editReply: async (data: any) => {
       if (deferred && !replied) {
-        replied = true;
-        replyContent = await message.reply(normalizeData(data)).catch(() => null);
+        // First real response after a deferReply
+        replied  = true;
+        replyMsg = await message.reply(normalizeData(data)).catch(() => null);
       } else {
-        await edit(data);
+        await editPayload(data);
       }
+      return replyMsg;
     },
+
     followUp: async (data: any) => {
-      await (message.channel as TextChannel).send(normalizeData(data)).catch(() => {});
+      return (message.channel as TextChannel).send(normalizeData(data)).catch(() => null);
     },
+
+    deleteReply: async () => {
+      await replyMsg?.delete().catch(() => {});
+    },
+
+    fetchReply: async () => replyMsg,
+
+    // Modals / select menus are not supported in prefix context (no-op)
+    showModal: async () => {},
+
+    // Needed by some internals
+    deferred,
+    replied,
   };
 }
 
+// Strip interaction-only flags and normalise to a plain sendable payload
 function normalizeData(data: any): any {
   if (typeof data === "string") return { content: data };
   const out: any = {};
-  if (data.content)    out.content   = data.content;
-  if (data.embeds)     out.embeds    = data.embeds;
-  if (data.files)      out.files     = data.files;
-  if (data.components) out.components = data.components;
-  // Strip ephemeral flag — text channels don't support it
+  if (data.content    !== undefined) out.content    = data.content;
+  if (data.embeds     !== undefined) out.embeds     = data.embeds;
+  if (data.files      !== undefined) out.files      = data.files;
+  if (data.components !== undefined) out.components = data.components;
+  if (data.attachments !== undefined) out.attachments = data.attachments;
+  // Strip ephemeral / flags — text channels don't support them
   return out;
 }
