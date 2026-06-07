@@ -138,6 +138,10 @@ const command: Command = {
     const action     = interaction.options.getString("action", true) as ActionType;
     const targetUser = interaction.options.getUser("target") ?? null;
     const meta       = ACTION_META[action];
+    if (!meta) {
+      await interaction.editReply({ content: "❌ Unknown action. Please use `/vibe` again — the command list may have just updated." });
+      return;
+    }
     const group      = meta.category;
 
     // Physical actions require a target
