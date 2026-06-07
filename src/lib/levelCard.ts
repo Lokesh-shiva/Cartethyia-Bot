@@ -281,7 +281,7 @@ export async function generateLevelCard(input: LevelCardInput): Promise<Buffer> 
     { label: "ATK",       value: input.atk.toLocaleString()             },
     { label: "DEF",       value: input.def.toLocaleString()             },
     { label: "CRIT RATE", value: `${(input.critRate * 100).toFixed(1)}%`},
-    { label: "CRIT DMG",  value: `${((input.critDmg - 1) * 100).toFixed(0)}%` },
+    { label: "CRIT DMG",  value: `${Math.round(input.critDmg * 100)}%` },
   ];
 
   const statStartX = textX;
