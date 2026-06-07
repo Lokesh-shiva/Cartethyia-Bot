@@ -2,7 +2,8 @@ import { createCanvas, loadImage, GlobalFonts, SKRSContext2D } from "@napi-rs/ca
 import path from "path";
 
 try {
-  GlobalFonts.registerFromPath(path.join(process.cwd(), "assets", "fonts", "Rajdhani-Bold.ttf"), "Rajdhani");
+  try { GlobalFonts.loadSystemFonts(); } catch {}
+GlobalFonts.registerFromPath(path.join(process.cwd(), "assets", "fonts", "Rajdhani-Bold.ttf"), "Rajdhani");
 } catch { /* fallback */ }
 
 const ELEMENT_HEX: Record<string, string> = {
@@ -81,14 +82,14 @@ export async function generateAbilityCard(d: AbilityCardData): Promise<Buffer> {
 
   // ── Eyebrow ───────────────────────────────────────────────────────────────
   ctx.textAlign = "center";
-  ctx.fillStyle = rgba(ec, 0.95); ctx.font = `bold 14px Rajdhani, Arial`;
+  ctx.fillStyle = rgba(ec, 0.95); ctx.font = `bold 14px Rajdhani, 'Noto Sans', 'Noto Sans CJK SC', 'Noto Sans JP', Arial, sans-serif`;
   ctx.letterSpacing = "6px";
   ctx.fillText("UNIQUE  PASSIVE  ·  FORGED  AT  ASCENSION", W / 2, 56);
   ctx.letterSpacing = "0px";
 
   // ── Ability name (big, glowing) ───────────────────────────────────────────
   ctx.shadowColor = ec; ctx.shadowBlur = 26;
-  ctx.fillStyle = "#FFFFFF"; ctx.font = `bold 50px Rajdhani, 'Arial Black', Arial`;
+  ctx.fillStyle = "#FFFFFF"; ctx.font = `bold 50px Rajdhani, 'Arial Black', 'Noto Sans', 'Noto Sans CJK SC', Arial, sans-serif`;
   ctx.fillText(d.abilityName.length > 26 ? d.abilityName.slice(0, 25) + "…" : d.abilityName, W / 2, 112);
   ctx.shadowBlur = 0;
 
@@ -107,7 +108,7 @@ export async function generateAbilityCard(d: AbilityCardData): Promise<Buffer> {
   ctx.fillStyle = "rgba(255,255,255,0.03)"; rrect(ctx, px, py, pw, ph, 12); ctx.fill();
   ctx.strokeStyle = rgba(ec, 0.4); ctx.lineWidth = 1; rrect(ctx, px, py, pw, ph, 12); ctx.stroke();
 
-  ctx.fillStyle = rgba(ec, 0.9); ctx.font = `bold 12px Rajdhani, Arial`;
+  ctx.fillStyle = rgba(ec, 0.9); ctx.font = `bold 12px Rajdhani, 'Noto Sans', 'Noto Sans CJK SC', 'Noto Sans JP', Arial, sans-serif`;
   ctx.letterSpacing = "3px"; ctx.fillText("RESONANT EFFECTS", px + 22, py + 30); ctx.letterSpacing = "0px";
 
   let ly = py + 60;
@@ -119,9 +120,9 @@ export async function generateAbilityCard(d: AbilityCardData): Promise<Buffer> {
     // bullet
     ctx.fillStyle = ec; ctx.save(); ctx.translate(px + 26, ly - 4); ctx.rotate(Math.PI / 4);
     ctx.fillRect(-3, -3, 6, 6); ctx.restore();
-    ctx.fillStyle = "#FFFFFF"; ctx.font = `bold 17px Rajdhani, Arial`;
+    ctx.fillStyle = "#FFFFFF"; ctx.font = `bold 17px Rajdhani, 'Noto Sans', 'Noto Sans CJK SC', 'Noto Sans JP', Arial, sans-serif`;
     ctx.fillText(name, px + 42, ly);
-    ctx.fillStyle = "rgba(255,255,255,0.62)"; ctx.font = `15px Rajdhani, Arial`;
+    ctx.fillStyle = "rgba(255,255,255,0.62)"; ctx.font = `15px Rajdhani, 'Noto Sans', 'Noto Sans CJK SC', 'Noto Sans JP', Arial, sans-serif`;
     const dlines = wrap(ctx, desc, pw - 80);
     let dyl = ly + 22;
     for (const dl of dlines.slice(0, 2)) { ctx.fillText(dl, px + 42, dyl); dyl += 20; }
@@ -130,7 +131,7 @@ export async function generateAbilityCard(d: AbilityCardData): Promise<Buffer> {
 
   // ── Lore ──────────────────────────────────────────────────────────────────
   ctx.textAlign = "center";
-  ctx.fillStyle = rgba(ec, 0.75); ctx.font = `italic 16px Rajdhani, Arial`;
+  ctx.fillStyle = rgba(ec, 0.75); ctx.font = `italic 16px Rajdhani, 'Noto Sans', 'Noto Sans CJK SC', 'Noto Sans JP', Arial, sans-serif`;
   const loreLines = wrap(ctx, `“${d.lore}”`, W - 160);
   let lly = 392;
   for (const l of loreLines.slice(0, 2)) { ctx.fillText(l, W / 2, lly); lly += 22; }
@@ -147,10 +148,10 @@ export async function generateAbilityCard(d: AbilityCardData): Promise<Buffer> {
       ctx.beginPath(); ctx.arc(avX + avR, avY, avR, 0, Math.PI * 2); ctx.stroke();
     } catch { /* skip */ }
   }
-  ctx.fillStyle = "rgba(255,255,255,0.7)"; ctx.font = `bold 14px Rajdhani, Arial`;
+  ctx.fillStyle = "rgba(255,255,255,0.7)"; ctx.font = `bold 14px Rajdhani, 'Noto Sans', 'Noto Sans CJK SC', 'Noto Sans JP', Arial, sans-serif`;
   ctx.fillText(`${d.displayName} · ${d.element}`, avX + avR * 2 + 12, avY + 5);
 
-  ctx.fillStyle = "rgba(255,255,255,0.4)"; ctx.font = `11px Rajdhani, Arial`;
+  ctx.fillStyle = "rgba(255,255,255,0.4)"; ctx.font = `11px Rajdhani, 'Noto Sans', 'Noto Sans CJK SC', 'Noto Sans JP', Arial, sans-serif`;
   ctx.textAlign = "right"; ctx.fillText("No other Drifter shares this ability.", W - 60, avY + 5); ctx.textAlign = "left";
 
   // ── Corner ticks + frame ──────────────────────────────────────────────────

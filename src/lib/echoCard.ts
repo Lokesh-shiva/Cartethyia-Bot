@@ -4,7 +4,8 @@ import fs   from "fs";
 import { MAIN_STAT_LABELS, SUBSTAT_LABELS, formatStatValue, substatCount, maxEchoLevel, FLAT_STATS, calcSubstatValue } from "./echoes";
 
 try {
-  GlobalFonts.registerFromPath(path.join(process.cwd(), "assets", "fonts", "Rajdhani-Bold.ttf"), "Rajdhani");
+  try { GlobalFonts.loadSystemFonts(); } catch {}
+GlobalFonts.registerFromPath(path.join(process.cwd(), "assets", "fonts", "Rajdhani-Bold.ttf"), "Rajdhani");
 } catch { /* fallback */ }
 
 const ELEMENT_HEX: Record<string, string> = {
@@ -131,7 +132,7 @@ export async function generateEchoCard(e: EchoCardData): Promise<Buffer> {
       ctx.drawImage(img, artX + (artW - sw) / 2, drawY, sw, sh);
     } catch { /* glyph fallback below */ }
   } else {
-    ctx.fillStyle = rgba(ec, 0.5); ctx.font = `bold 120px Rajdhani, Arial`;
+    ctx.fillStyle = rgba(ec, 0.5); ctx.font = `bold 120px Rajdhani, 'Noto Sans', 'Noto Sans CJK SC', 'Noto Sans JP', Arial, sans-serif`;
     ctx.textAlign = "center"; ctx.fillText("?", W / 2, artY + artH / 2 + 44); ctx.textAlign = "left";
   }
   // bottom fade into panel
@@ -154,21 +155,21 @@ export async function generateEchoCard(e: EchoCardData): Promise<Buffer> {
   const badgeR = 19, bx = W - 34, by = 28;
   ctx.fillStyle = rgba(ec, 0.9); ctx.beginPath(); ctx.arc(bx, by, badgeR, 0, Math.PI * 2); ctx.fill();
   ctx.strokeStyle = "rgba(255,255,255,0.8)"; ctx.lineWidth = 1.5; ctx.stroke();
-  ctx.fillStyle = "#FFFFFF"; ctx.font = `bold 18px Rajdhani, Arial`; ctx.textAlign = "center";
+  ctx.fillStyle = "#FFFFFF"; ctx.font = `bold 18px Rajdhani, 'Noto Sans', 'Noto Sans CJK SC', 'Noto Sans JP', Arial, sans-serif`; ctx.textAlign = "center";
   ctx.fillText(`${e.cost}`, bx, by + 6); ctx.textAlign = "left";
-  ctx.fillStyle = "rgba(255,255,255,0.5)"; ctx.font = `bold 8px Rajdhani, Arial`;
+  ctx.fillStyle = "rgba(255,255,255,0.5)"; ctx.font = `bold 8px Rajdhani, 'Noto Sans', 'Noto Sans CJK SC', 'Noto Sans JP', Arial, sans-serif`;
   ctx.textAlign = "center"; ctx.fillText("COST", bx, by + badgeR + 9); ctx.textAlign = "left";
 
   // ── Name + element + level (over art bottom) ──────────────────────────────
-  ctx.fillStyle = "#FFFFFF"; ctx.font = `bold 26px Rajdhani, 'Arial Black', Arial`;
+  ctx.fillStyle = "#FFFFFF"; ctx.font = `bold 26px Rajdhani, 'Arial Black', 'Noto Sans', 'Noto Sans CJK SC', Arial, sans-serif`;
   ctx.fillText(e.name.length > 18 ? e.name.slice(0, 17) + "…" : e.name, 22, artY + artH - 16);
   // element dot + label
   ctx.fillStyle = ec; ctx.beginPath(); ctx.arc(27, artY + artH + 2, 4, 0, Math.PI * 2); ctx.fill();
-  ctx.font = `bold 13px Rajdhani, Arial`;
+  ctx.font = `bold 13px Rajdhani, 'Noto Sans', 'Noto Sans CJK SC', 'Noto Sans JP', Arial, sans-serif`;
   ctx.fillText(e.element, 38, artY + artH + 6);
   // level pill (right)
   const lvText = `Lv ${e.level}/${maxEchoLevel(e.rarity)}`;
-  ctx.font = `bold 13px Rajdhani, Arial`;
+  ctx.font = `bold 13px Rajdhani, 'Noto Sans', 'Noto Sans CJK SC', 'Noto Sans JP', Arial, sans-serif`;
   const lvW = ctx.measureText(lvText).width + 18;
   ctx.fillStyle = rgba(ec, 0.18); rrect(ctx, W - 22 - lvW, artY + artH - 6, lvW, 20, 10); ctx.fill();
   ctx.strokeStyle = rgba(ec, 0.6); ctx.lineWidth = 1; rrect(ctx, W - 22 - lvW, artY + artH - 6, lvW, 20, 10); ctx.stroke();
@@ -177,12 +178,12 @@ export async function generateEchoCard(e: EchoCardData): Promise<Buffer> {
 
   // ── Main stat ─────────────────────────────────────────────────────────────
   const msY = artY + artH + 30;
-  ctx.fillStyle = "rgba(255,255,255,0.45)"; ctx.font = `bold 10px Rajdhani, Arial`;
+  ctx.fillStyle = "rgba(255,255,255,0.45)"; ctx.font = `bold 10px Rajdhani, 'Noto Sans', 'Noto Sans CJK SC', 'Noto Sans JP', Arial, sans-serif`;
   ctx.letterSpacing = "2px"; ctx.fillText("MAIN STAT", 22, msY); ctx.letterSpacing = "0px";
   const mainLabel = MAIN_STAT_LABELS[e.mainStatType] ?? e.mainStatType;
-  ctx.fillStyle = "#FFFFFF"; ctx.font = `bold 19px Rajdhani, Arial`;
+  ctx.fillStyle = "#FFFFFF"; ctx.font = `bold 19px Rajdhani, 'Noto Sans', 'Noto Sans CJK SC', 'Noto Sans JP', Arial, sans-serif`;
   ctx.fillText(mainLabel, 22, msY + 24);
-  ctx.fillStyle = ec; ctx.font = `bold 24px Rajdhani, 'Arial Black', Arial`;
+  ctx.fillStyle = ec; ctx.font = `bold 24px Rajdhani, 'Arial Black', 'Noto Sans', 'Noto Sans CJK SC', Arial, sans-serif`;
   ctx.textAlign = "right";
   const mainVal = FLAT_STATS.has(e.mainStatType) ? `${Math.round(e.mainStatValue)}` : `${e.mainStatValue.toFixed(1)}%`;
   ctx.fillText(mainVal, W - 22, msY + 24); ctx.textAlign = "left";
@@ -192,7 +193,7 @@ export async function generateEchoCard(e: EchoCardData): Promise<Buffer> {
   ctx.beginPath(); ctx.moveTo(22, msY + 38); ctx.lineTo(W - 22, msY + 38); ctx.stroke();
 
   // ── Substats ──────────────────────────────────────────────────────────────
-  ctx.fillStyle = "rgba(255,255,255,0.45)"; ctx.font = `bold 10px Rajdhani, Arial`;
+  ctx.fillStyle = "rgba(255,255,255,0.45)"; ctx.font = `bold 10px Rajdhani, 'Noto Sans', 'Noto Sans CJK SC', 'Noto Sans JP', Arial, sans-serif`;
   ctx.letterSpacing = "2px"; ctx.fillText("SUBSTATS", 22, msY + 58); ctx.letterSpacing = "0px";
 
   let sy = msY + 80;
@@ -204,13 +205,13 @@ export async function generateEchoCard(e: EchoCardData): Promise<Buffer> {
       if (sub.locked) { drawLock(ctx, 24, sy - 9, rc); }
       else { ctx.fillStyle = rgba(ec, 0.8); ctx.fillRect(25, sy - 6, 4, 4); }
       ctx.fillStyle = sub.locked ? rc : "rgba(255,255,255,0.88)";
-      ctx.font = `bold 14px Rajdhani, Arial`;
+      ctx.font = `bold 14px Rajdhani, 'Noto Sans', 'Noto Sans CJK SC', 'Noto Sans JP', Arial, sans-serif`;
       ctx.fillText(label, 40, sy);
       ctx.fillStyle = sub.locked ? rc : ec; ctx.textAlign = "right";
       ctx.fillText(`+${formatStatValue(sub.type, sub.value)}`, W - 24, sy); ctx.textAlign = "left";
     } else {
       ctx.fillStyle = "rgba(255,255,255,0.18)"; ctx.fillRect(25, sy - 6, 4, 4);
-      ctx.fillStyle = "rgba(255,255,255,0.22)"; ctx.font = `13px Rajdhani, Arial`;
+      ctx.fillStyle = "rgba(255,255,255,0.22)"; ctx.font = `13px Rajdhani, 'Noto Sans', 'Noto Sans CJK SC', 'Noto Sans JP', Arial, sans-serif`;
       ctx.fillText("— sealed —", 40, sy);
     }
     sy += 26;
@@ -221,7 +222,7 @@ export async function generateEchoCard(e: EchoCardData): Promise<Buffer> {
   ctx.strokeStyle = rgba(rc, 0.55); ctx.lineWidth = 2;
   rrect(ctx, 4, 4, W - 8, H - 8, 14); ctx.stroke();
   ctx.shadowBlur = 0;
-  ctx.fillStyle = "rgba(255,255,255,0.08)"; ctx.font = `bold 9px Rajdhani, Arial`;
+  ctx.fillStyle = "rgba(255,255,255,0.08)"; ctx.font = `bold 9px Rajdhani, 'Noto Sans', 'Noto Sans CJK SC', 'Noto Sans JP', Arial, sans-serif`;
   ctx.letterSpacing = "2px"; ctx.textAlign = "right";
   ctx.fillText("CARTETHYIA  ·  ECHO", W - 14, H - 12); ctx.textAlign = "left"; ctx.letterSpacing = "0px";
 

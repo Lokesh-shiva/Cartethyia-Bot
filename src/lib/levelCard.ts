@@ -1,10 +1,14 @@
 import { createCanvas, loadImage, GlobalFonts, SKRSContext2D } from "@napi-rs/canvas";
 import path from "path";
 
+try { GlobalFonts.loadSystemFonts(); } catch { /* not critical */ }
 try {
   GlobalFonts.registerFromPath(path.join(process.cwd(), "assets", "fonts", "Rajdhani-Bold.ttf"),    "Rajdhani");
   GlobalFonts.registerFromPath(path.join(process.cwd(), "assets", "fonts", "Rajdhani-SemiBold.ttf"),"RajdhaniSemi");
 } catch { /* fallback */ }
+
+const FONT_STACK = `Rajdhani, 'Noto Sans', 'Noto Sans CJK SC', 'Noto Sans JP', Arial, sans-serif`;
+const FONT_STACK_SEMI = `RajdhaniSemi, 'Noto Sans', 'Noto Sans CJK SC', 'Noto Sans JP', Arial, sans-serif`;
 
 const THEME: Record<string, { primary: string; glow: string; label: string }> = {
   FUSION:  { primary: "#FF6B35", glow: "#FF6B3555", label: "FUSION"   },
@@ -159,11 +163,17 @@ export async function generateLevelCard(input: LevelCardInput): Promise<Buffer> 
   // ── Name + title ────────────────────────────────────────────────────────────
   const textX = avX + avR + 24;
 
-  ctx.font      = "12px RajdhaniSemi";
+  ctx.font      = `12px ${FONT_STACK_SEMI}`;
   ctx.fillStyle = rgba(col, 0.8);
   ctx.fillText(RESONANCE_TITLE(input.level), textX, 48);
 
-  ctx.font      = "26px Rajdhani";
+  // Auto-shrink name to fit within available width (stops before the separator at ~460px)
+  let namePx = 26;
+  ctx.font = `${namePx}px ${FONT_STACK}`;
+  while (namePx > 10 && ctx.measureText(input.displayName).width > 300) {
+    namePx--;
+    ctx.font = `${namePx}px ${FONT_STACK}`;
+  }
   ctx.fillStyle = "#FFFFFF";
   ctx.fillText(input.displayName, textX, 78);
 
@@ -176,7 +186,7 @@ export async function generateLevelCard(input: LevelCardInput): Promise<Buffer> 
   ctx.strokeStyle = rgba(col, 0.45);
   ctx.lineWidth   = 1;
   ctx.stroke();
-  ctx.font      = "12px RajdhaniSemi";
+  ctx.font      = `12px ${FONT_STACK_SEMI}`;
   ctx.fillStyle = col;
   ctx.fillText(emojiLabel, textX + 8, 101);
 
@@ -187,24 +197,24 @@ export async function generateLevelCard(input: LevelCardInput): Promise<Buffer> 
   ctx.fill();
   ctx.strokeStyle = rgba("#FFFFFF", 0.12);
   ctx.stroke();
-  ctx.font      = "12px RajdhaniSemi";
+  ctx.font      = `12px ${FONT_STACK_SEMI}`;
   ctx.fillStyle = rgba("#FFFFFF", 0.55);
   ctx.fillText(wlText, textX + badgeW + 18, 101);
 
   // ── Level number (center-right) ──────────────────────────────────────────────
   const lvlX = 480;
 
-  ctx.font      = "11px RajdhaniSemi";
+  ctx.font      = `11px ${FONT_STACK_SEMI}`;
   ctx.fillStyle = rgba(col, 0.6);
   ctx.fillText("RESONANCE LEVEL", lvlX, 52);
 
   ctx.save();
-  ctx.font      = "96px Rajdhani";
+  ctx.font      = `96px ${FONT_STACK}`;
   ctx.fillStyle = "rgba(255,255,255,0.07)";
   ctx.fillText(`${input.level}`, lvlX - 2, 158);
   ctx.restore();
 
-  ctx.font      = "88px Rajdhani";
+  ctx.font      = `88px ${FONT_STACK}`;
   ctx.fillStyle = "#FFFFFF";
   ctx.shadowColor = col;
   ctx.shadowBlur  = 28;
@@ -214,9 +224,18 @@ export async function generateLevelCard(input: LevelCardInput): Promise<Buffer> 
   // ── EXP bar ─────────────────────────────────────────────────────────────────
   const barX = textX, barY = 128, barW = 310, barH = 14;
 
-  ctx.font      = "11px RajdhaniSemi";
+  ctx.font      = `11px ${FONT_STACK_SEMI}`;
   ctx.fillStyle = rgba("#FFFFFF", 0.4);
   ctx.fillText(input.isCapped ? "LEVEL CAP REACHED — ASCEND TO CONTINUE" : "RESONANCE EXP", barX, barY - 5);
+
+  // EXP count right-aligned to the bar end (stays left of the separator so it never overlaps the level number)
+  if (!input.isCapped) {
+    const expStr = `${input.resonanceExp.toLocaleString()} / ${input.expNeeded.toLocaleString()}`;
+    ctx.font      = `11px ${FONT_STACK_SEMI}`;
+    ctx.fillStyle = rgba("#FFFFFF", 0.35);
+    const expW = ctx.measureText(expStr).width;
+    ctx.fillText(expStr, barX + barW - expW, barY - 5);
+  }
 
   // Track
   rrect(ctx, barX, barY, barW, barH, 4);
@@ -249,13 +268,11 @@ export async function generateLevelCard(input: LevelCardInput): Promise<Buffer> 
     ctx.fill();
   }
 
-  // EXP label
-  ctx.font      = "11px RajdhaniSemi";
-  ctx.fillStyle = rgba("#FFFFFF", 0.45);
+  // EXP capped label (only needed when capped — non-capped count is in the label row above)
   if (input.isCapped) {
-    ctx.fillText("MAX", barX + barW + 8, barY + 11);
-  } else {
-    ctx.fillText(`${input.resonanceExp.toLocaleString()} / ${input.expNeeded.toLocaleString()}`, barX + barW + 8, barY + 11);
+    ctx.font      = `11px ${FONT_STACK_SEMI}`;
+    ctx.fillStyle = rgba("#FFFFFF", 0.45);
+    ctx.fillText("MAX", barX + barW - 28, barY + 11);
   }
 
   // ── Stats row ────────────────────────────────────────────────────────────────
@@ -281,11 +298,11 @@ export async function generateLevelCard(input: LevelCardInput): Promise<Buffer> 
     ctx.lineWidth   = 1;
     ctx.stroke();
 
-    ctx.font      = "10px RajdhaniSemi";
+    ctx.font      = `10px ${FONT_STACK_SEMI}`;
     ctx.fillStyle = rgba(col, 0.7);
     ctx.fillText(s.label, sx + 4, statY + 14);
 
-    ctx.font      = "15px Rajdhani";
+    ctx.font      = `15px ${FONT_STACK}`;
     ctx.fillStyle = "#FFFFFF";
     ctx.fillText(s.value, sx + 4, statY + 34);
   });
@@ -299,7 +316,7 @@ export async function generateLevelCard(input: LevelCardInput): Promise<Buffer> 
   ctx.stroke();
 
   // ── Watermark ────────────────────────────────────────────────────────────────
-  ctx.font      = "11px RajdhaniSemi";
+  ctx.font      = `11px ${FONT_STACK_SEMI}`;
   ctx.fillStyle = rgba("#FFFFFF", 0.12);
   ctx.fillText("CARTETHYIA  ◇  RESONANCE SYSTEM", W - 260, H - 14);
 

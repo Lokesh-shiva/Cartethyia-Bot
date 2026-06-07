@@ -2,7 +2,8 @@ import { createCanvas, loadImage, GlobalFonts, SKRSContext2D } from "@napi-rs/ca
 import path from "path";
 import { Boss } from "./bosses";
 
-try { GlobalFonts.registerFromPath(path.join(process.cwd(), "assets", "fonts", "Rajdhani-Bold.ttf"), "Rajdhani"); } catch { /* fallback */ }
+try { try { GlobalFonts.loadSystemFonts(); } catch {}
+GlobalFonts.registerFromPath(path.join(process.cwd(), "assets", "fonts", "Rajdhani-Bold.ttf"), "Rajdhani"); } catch { /* fallback */ }
 
 const ELEMENT_COLORS: Record<string, string> = {
   FUSION: "#FF6B35", GLACIO: "#38BDF8", ELECTRO: "#A855F7",
@@ -41,7 +42,7 @@ function drawBar(
   const lowHp = fill < 0.3 && !thin;
 
   ctx.fillStyle = thin ? "rgba(255,255,255,0.45)" : "rgba(255,255,255,0.7)";
-  ctx.font      = `bold ${thin ? 9 : 11}px Rajdhani, Arial`;
+  ctx.font      = `bold ${thin ? 9 : 11}px Rajdhani, 'Noto Sans', 'Noto Sans CJK SC', 'Noto Sans JP', Arial, sans-serif`;
   ctx.fillText(label, x, y + barH - 2);
 
   const bx = x + (thin ? 72 : 58);
@@ -66,7 +67,7 @@ function drawBar(
   }
 
   ctx.fillStyle = "rgba(255,255,255,0.55)";
-  ctx.font      = `bold ${thin ? 9 : 11}px Rajdhani, Arial`;
+  ctx.font      = `bold ${thin ? 9 : 11}px Rajdhani, 'Noto Sans', 'Noto Sans CJK SC', 'Noto Sans JP', Arial, sans-serif`;
   ctx.textAlign = "right";
   ctx.fillText(
     thin ? `${Math.round(fill * 100)}%` : `${current.toLocaleString()} / ${max.toLocaleString()}`,
@@ -172,18 +173,18 @@ export async function generateBattleCard(state: BattleCardState): Promise<Buffer
 
   // ── Boss name + shatter status ────────────────────────────
   ctx.fillStyle = "#FFFFFF";
-  ctx.font      = `bold 20px Rajdhani, 'Arial Black', Arial`;
+  ctx.font      = `bold 20px Rajdhani, 'Arial Black', 'Noto Sans', 'Noto Sans CJK SC', Arial, sans-serif`;
   ctx.fillText(state.boss.name, PAD, PY + 24);
 
   ctx.fillStyle = rgba(bossColor, 0.75);
-  ctx.font      = `bold 9px Rajdhani, Arial`;
+  ctx.font      = `bold 9px Rajdhani, 'Noto Sans', 'Noto Sans CJK SC', 'Noto Sans JP', Arial, sans-serif`;
   ctx.letterSpacing = "2px";
   ctx.fillText(state.boss.title.toUpperCase(), PAD, PY + 38);
   ctx.letterSpacing = "0px";
 
   if (state.isShattered) {
     ctx.fillStyle = "#FCD34D";
-    ctx.font      = `bold 10px Rajdhani, Arial`;
+    ctx.font      = `bold 10px Rajdhani, 'Noto Sans', 'Noto Sans CJK SC', 'Noto Sans JP', Arial, sans-serif`;
     ctx.textAlign = "right";
     ctx.fillText("⚡ SHATTERED  ·  DEF: 0  ·  ALL HITS CRITICAL", W - PAD, PY + 24);
     ctx.textAlign = "left";
@@ -199,13 +200,13 @@ export async function generateBattleCard(state: BattleCardState): Promise<Buffer
 
   // ── Player stats ──────────────────────────────────────────
   ctx.fillStyle = rgba(playerColor, 0.75);
-  ctx.font      = `bold 9px Rajdhani, Arial`;
+  ctx.font      = `bold 9px Rajdhani, 'Noto Sans', 'Noto Sans CJK SC', 'Noto Sans JP', Arial, sans-serif`;
   ctx.letterSpacing = "2px";
   ctx.fillText("RESONATOR", PAD, PY + 104);
   ctx.letterSpacing = "0px";
 
   ctx.fillStyle = "#FFFFFF";
-  ctx.font      = `bold 13px Rajdhani, 'Arial Black', Arial`;
+  ctx.font      = `bold 13px Rajdhani, 'Arial Black', 'Noto Sans', 'Noto Sans CJK SC', Arial, sans-serif`;
   ctx.fillText(state.playerName, PAD, PY + 119);
 
   drawBar(ctx, "HP", state.playerHp, state.playerHpMax, PAD, PY + 126, W - PAD * 2, playerColor);
@@ -213,7 +214,7 @@ export async function generateBattleCard(state: BattleCardState): Promise<Buffer
   // Energy + skill cooldown
   const energyReady = state.playerEnergy >= 100;
   ctx.fillStyle = energyReady ? "#FCD34D" : "rgba(255,255,255,0.3)";
-  ctx.font      = `bold 10px Rajdhani, Arial`;
+  ctx.font      = `bold 10px Rajdhani, 'Noto Sans', 'Noto Sans CJK SC', 'Noto Sans JP', Arial, sans-serif`;
   ctx.fillText(
     energyReady ? "⚡ ULTIMATE READY" : `ENERGY  ${state.playerEnergy} / 100`,
     PAD, PY + 156
@@ -229,7 +230,7 @@ export async function generateBattleCard(state: BattleCardState): Promise<Buffer
   // ── Last move log ─────────────────────────────────────────
   if (state.lastMove) {
     ctx.fillStyle = "rgba(255,255,255,0.25)";
-    ctx.font      = `11px Rajdhani, Arial`;
+    ctx.font      = `11px Rajdhani, 'Noto Sans', 'Noto Sans CJK SC', 'Noto Sans JP', Arial, sans-serif`;
     // Strip markdown bold for canvas
     const cleanMove = state.lastMove.replace(/\*\*/g, "").split("\n")[0].slice(0, 90);
     ctx.fillText(`Turn ${state.turn}  ·  ${cleanMove}`, PAD, PY + 175);
@@ -239,7 +240,7 @@ export async function generateBattleCard(state: BattleCardState): Promise<Buffer
   ctx.fillStyle = "rgba(0,0,0,0.55)";
   rrect(ctx, W - 80, 10, 66, 24, 6); ctx.fill();
   ctx.fillStyle = "rgba(255,255,255,0.6)";
-  ctx.font      = `bold 11px Rajdhani, Arial`;
+  ctx.font      = `bold 11px Rajdhani, 'Noto Sans', 'Noto Sans CJK SC', 'Noto Sans JP', Arial, sans-serif`;
   ctx.textAlign = "center";
   ctx.fillText(`TURN  ${state.turn}`, W - 47, 26);
   ctx.textAlign = "left";
@@ -252,7 +253,7 @@ export async function generateBattleCard(state: BattleCardState): Promise<Buffer
 
   // Watermark
   ctx.fillStyle = "rgba(255,255,255,0.06)";
-  ctx.font      = `bold 9px Rajdhani, Arial`;
+  ctx.font      = `bold 9px Rajdhani, 'Noto Sans', 'Noto Sans CJK SC', 'Noto Sans JP', Arial, sans-serif`;
   ctx.letterSpacing = "3px";
   ctx.textAlign = "right";
   ctx.fillText("CARTETHYIA  ·  ASCENSION TRIAL", W - 12, H - 8);

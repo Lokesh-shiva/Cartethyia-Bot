@@ -2,7 +2,8 @@ import { createCanvas, loadImage, GlobalFonts, SKRSContext2D } from "@napi-rs/ca
 import path from "path";
 import { LootResult } from "./loot";
 
-try { GlobalFonts.registerFromPath(path.join(process.cwd(), "assets", "fonts", "Rajdhani-Bold.ttf"), "Rajdhani"); } catch { /* fallback */ }
+try { try { GlobalFonts.loadSystemFonts(); } catch {}
+GlobalFonts.registerFromPath(path.join(process.cwd(), "assets", "fonts", "Rajdhani-Bold.ttf"), "Rajdhani"); } catch { /* fallback */ }
 
 const ICONS_DIR = path.join(process.cwd(), "assets", "icons");
 
@@ -126,7 +127,7 @@ export async function generateLootCard(opts: LootCardOptions): Promise<Buffer> {
 
   // ── Header ──────────────────────────────────────────────────────────────────
   ctx.fillStyle = rgba(P, 0.75);
-  ctx.font      = `bold 10px Rajdhani, Arial`;
+  ctx.font      = `bold 10px Rajdhani, 'Noto Sans', 'Noto Sans CJK SC', 'Noto Sans JP', Arial, sans-serif`;
   ctx.letterSpacing = "2px";
   const header  = opts.isReturn ? "◈  RESONANCE YIELD  ·  ⚡ 2× BONUS" : "◈  RESONANCE YIELD";
   ctx.fillText(header, PAD, TOP_H - 10);
@@ -146,7 +147,7 @@ export async function generateLootCard(opts: LootCardOptions): Promise<Buffer> {
   // ── Items ────────────────────────────────────────────────────────────────────
   if (items.length === 0) {
     ctx.fillStyle = "rgba(255,255,255,0.25)";
-    ctx.font      = `13px Rajdhani, Arial`;
+    ctx.font      = `13px Rajdhani, 'Noto Sans', 'Noto Sans CJK SC', 'Noto Sans JP', Arial, sans-serif`;
     ctx.textAlign = "center";
     ctx.fillText("No drop this time.", W / 2, TOP_H + PAD + ICON_SIZE / 2 + 6);
     ctx.textAlign = "left";
@@ -181,7 +182,7 @@ export async function generateLootCard(opts: LootCardOptions): Promise<Buffer> {
       } catch {
         // fallback: colored circle with first letter
         ctx.fillStyle = color;
-        ctx.font      = `bold 20px Rajdhani, Arial`;
+        ctx.font      = `bold 20px Rajdhani, 'Noto Sans', 'Noto Sans CJK SC', 'Noto Sans JP', Arial, sans-serif`;
         ctx.textAlign = "center";
         ctx.fillText(ITEM_LABELS[key][0], ix + ITEM_W / 2, iy + ICON_SIZE / 2 + 7);
         ctx.textAlign = "left";
@@ -194,14 +195,14 @@ export async function generateLootCard(opts: LootCardOptions): Promise<Buffer> {
       rrect(ctx, badgeX, badgeY, 22, 16, 8);
       ctx.fill();
       ctx.fillStyle = "#000000";
-      ctx.font      = `bold 10px Rajdhani, Arial`;
+      ctx.font      = `bold 10px Rajdhani, 'Noto Sans', 'Noto Sans CJK SC', 'Noto Sans JP', Arial, sans-serif`;
       ctx.textAlign = "center";
       ctx.fillText(String(val), badgeX + 11, badgeY + 11);
       ctx.textAlign = "left";
 
       // Item label below icon
       ctx.fillStyle = rgba(color, 0.8);
-      ctx.font      = `bold 9px Rajdhani, Arial`;
+      ctx.font      = `bold 9px Rajdhani, 'Noto Sans', 'Noto Sans CJK SC', 'Noto Sans JP', Arial, sans-serif`;
       ctx.textAlign = "center";
       ctx.fillText(ITEM_LABELS[key], ix + ITEM_W / 2, iy + ICON_SIZE + 16);
       ctx.textAlign = "left";
@@ -220,7 +221,7 @@ export async function generateLootCard(opts: LootCardOptions): Promise<Buffer> {
     ctx.stroke();
 
     ctx.fillStyle = "rgba(255,255,255,0.35)";
-    ctx.font      = `bold 10px Rajdhani, Arial`;
+    ctx.font      = `bold 10px Rajdhani, 'Noto Sans', 'Noto Sans CJK SC', 'Noto Sans JP', Arial, sans-serif`;
     ctx.textAlign = "center";
     ctx.fillText(
       `◇  Synchrony  +10  ·  Total  ${opts.affinity}`,
@@ -231,7 +232,7 @@ export async function generateLootCard(opts: LootCardOptions): Promise<Buffer> {
 
   // ── Watermark ────────────────────────────────────────────────────────────────
   ctx.fillStyle = "rgba(255,255,255,0.06)";
-  ctx.font      = `bold 8px Rajdhani, Arial`;
+  ctx.font      = `bold 8px Rajdhani, 'Noto Sans', 'Noto Sans CJK SC', 'Noto Sans JP', Arial, sans-serif`;
   ctx.letterSpacing = "2px";
   ctx.textAlign = "right";
   ctx.fillText("CARTETHYIA", W - PAD, H - 6);

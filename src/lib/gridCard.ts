@@ -3,7 +3,8 @@ import path from "path";
 import fs   from "fs";
 
 try {
-  GlobalFonts.registerFromPath(path.join(process.cwd(), "assets", "fonts", "Rajdhani-Bold.ttf"), "Rajdhani");
+  try { GlobalFonts.loadSystemFonts(); } catch {}
+GlobalFonts.registerFromPath(path.join(process.cwd(), "assets", "fonts", "Rajdhani-Bold.ttf"), "Rajdhani");
 } catch { /* fallback */ }
 
 const ELEMENT_HEX: Record<string, string> = {
@@ -113,11 +114,11 @@ async function drawSlot(
     // cost badge
     ctx.fillStyle = rgba(ec, 0.92);
     ctx.beginPath(); ctx.arc(x + size - 15, y + 15, 12, 0, Math.PI * 2); ctx.fill();
-    ctx.fillStyle = "#FFF"; ctx.font = `bold 13px Rajdhani, Arial`; ctx.textAlign = "center";
+    ctx.fillStyle = "#FFF"; ctx.font = `bold 13px Rajdhani, 'Noto Sans', 'Noto Sans CJK SC', 'Noto Sans JP', Arial, sans-serif`; ctx.textAlign = "center";
     ctx.fillText(`${slot.cost}`, x + size - 15, y + 20); ctx.textAlign = "left";
 
     // name + level
-    ctx.fillStyle = "#FFF"; ctx.font = `bold ${slot.slot === 0 ? 13 : 11}px Rajdhani, Arial`;
+    ctx.fillStyle = "#FFF"; ctx.font = `bold ${slot.slot === 0 ? 13 : 11}px Rajdhani, 'Noto Sans', 'Noto Sans CJK SC', 'Noto Sans JP', Arial, sans-serif`;
     const nm = slot.name.length > (slot.slot === 0 ? 16 : 12) ? slot.name.split(" ")[0] : slot.name;
     ctx.fillText(nm, x + 8, y + size - 20);
     // rarity dots
@@ -127,14 +128,14 @@ async function drawSlot(
       ctx.arc(x + 10 + d * 9, y + size - 9, 2.5, 0, Math.PI * 2); ctx.fill();
     }
     // level
-    ctx.fillStyle = "rgba(255,255,255,0.55)"; ctx.font = `bold 10px Rajdhani, Arial`;
+    ctx.fillStyle = "rgba(255,255,255,0.55)"; ctx.font = `bold 10px Rajdhani, 'Noto Sans', 'Noto Sans CJK SC', 'Noto Sans JP', Arial, sans-serif`;
     ctx.textAlign = "right"; ctx.fillText(`Lv${slot.level}`, x + size - 8, y + size - 8); ctx.textAlign = "left";
   } else {
     // empty
     ctx.fillStyle = "rgba(255,255,255,0.03)"; rrect(ctx, x, y, size, size, 12); ctx.fill();
     ctx.strokeStyle = "rgba(255,255,255,0.12)"; ctx.lineWidth = 1; ctx.setLineDash([5, 5]);
     rrect(ctx, x, y, size, size, 12); ctx.stroke(); ctx.setLineDash([]);
-    ctx.fillStyle = "rgba(255,255,255,0.25)"; ctx.font = `bold 13px Rajdhani, Arial`;
+    ctx.fillStyle = "rgba(255,255,255,0.25)"; ctx.font = `bold 13px Rajdhani, 'Noto Sans', 'Noto Sans CJK SC', 'Noto Sans JP', Arial, sans-serif`;
     ctx.textAlign = "center"; ctx.fillText(label, x + size / 2, y + size / 2 + 5); ctx.textAlign = "left";
   }
 }
@@ -152,15 +153,15 @@ export async function generateGridCard(d: GridCardData): Promise<Buffer> {
   ctx.fillStyle = bloom; ctx.fillRect(0, 0, W, H);
 
   // header
-  ctx.fillStyle = "#FFF"; ctx.font = `bold 26px Rajdhani, 'Arial Black', Arial`;
+  ctx.fillStyle = "#FFF"; ctx.font = `bold 26px Rajdhani, 'Arial Black', 'Noto Sans', 'Noto Sans CJK SC', Arial, sans-serif`;
   ctx.fillText("RESONANCE GRID", 32, 46);
-  ctx.fillStyle = rgba(pe, 0.9); ctx.font = `bold 15px Rajdhani, Arial`;
+  ctx.fillStyle = rgba(pe, 0.9); ctx.font = `bold 15px Rajdhani, 'Noto Sans', 'Noto Sans CJK SC', 'Noto Sans JP', Arial, sans-serif`;
   ctx.fillText(`${d.displayName}`, 32, 68);
   // points
-  ctx.font = `bold 22px Rajdhani, Arial`; ctx.textAlign = "right";
+  ctx.font = `bold 22px Rajdhani, 'Noto Sans', 'Noto Sans CJK SC', 'Noto Sans JP', Arial, sans-serif`; ctx.textAlign = "right";
   ctx.fillStyle = d.gridPoints > 12 ? "#FF4F6D" : pe;
   ctx.fillText(`${d.gridPoints} / 12`, W - 32, 46);
-  ctx.fillStyle = "rgba(255,255,255,0.4)"; ctx.font = `bold 11px Rajdhani, Arial`;
+  ctx.fillStyle = "rgba(255,255,255,0.4)"; ctx.font = `bold 11px Rajdhani, 'Noto Sans', 'Noto Sans CJK SC', 'Noto Sans JP', Arial, sans-serif`;
   ctx.fillText("GRID POINTS", W - 32, 64); ctx.textAlign = "left";
 
   // ── Slots: Main (big) + 4 subs (2x2) ──────────────────────────────────────
@@ -178,13 +179,13 @@ export async function generateGridCard(d: GridCardData): Promise<Buffer> {
   ctx.fillStyle = "rgba(255,255,255,0.03)"; rrect(ctx, px, py, pw, 316, 12); ctx.fill();
   ctx.strokeStyle = rgba(pe, 0.3); ctx.lineWidth = 1; rrect(ctx, px, py, pw, 316, 12); ctx.stroke();
 
-  ctx.fillStyle = rgba(pe, 0.9); ctx.font = `bold 12px Rajdhani, Arial`;
+  ctx.fillStyle = rgba(pe, 0.9); ctx.font = `bold 12px Rajdhani, 'Noto Sans', 'Noto Sans CJK SC', 'Noto Sans JP', Arial, sans-serif`;
   ctx.letterSpacing = "2px"; ctx.fillText("ACTIVE BONUSES", px + 16, py + 26); ctx.letterSpacing = "0px";
 
   // wrap a single label across two canvas lines if it exceeds the panel width
   const wrapLabel = (text: string): string[] => {
     const maxW = pw - 44;
-    ctx.font = `12px Rajdhani, Arial`;
+    ctx.font = `12px Rajdhani, 'Noto Sans', 'Noto Sans CJK SC', 'Noto Sans JP', Arial, sans-serif`;
     if (ctx.measureText(text).width <= maxW) return [text];
     // split at last space before overflow
     let line = "";
@@ -198,9 +199,9 @@ export async function generateGridCard(d: GridCardData): Promise<Buffer> {
 
   let ly = py + 46;
   if (d.bonusLabels.length === 0) {
-    ctx.fillStyle = "rgba(255,255,255,0.3)"; ctx.font = `13px Rajdhani, Arial`;
+    ctx.fillStyle = "rgba(255,255,255,0.3)"; ctx.font = `13px Rajdhani, 'Noto Sans', 'Noto Sans CJK SC', 'Noto Sans JP', Arial, sans-serif`;
     ctx.fillText("No active bonuses.", px + 16, ly);
-    ctx.fillStyle = "rgba(255,255,255,0.2)"; ctx.font = `12px Rajdhani, Arial`;
+    ctx.fillStyle = "rgba(255,255,255,0.2)"; ctx.font = `12px Rajdhani, 'Noto Sans', 'Noto Sans CJK SC', 'Noto Sans JP', Arial, sans-serif`;
     ctx.fillText("Equip echoes to unlock set bonuses.", px + 16, ly + 18);
   } else {
     for (const label of d.bonusLabels) {
@@ -208,7 +209,7 @@ export async function generateGridCard(d: GridCardData): Promise<Buffer> {
       if (!clean) continue;
       const lines = wrapLabel(clean);
       ctx.fillStyle = pe; ctx.fillRect(px + 16, ly - 6, 3, 3);
-      ctx.fillStyle = "rgba(255,255,255,0.85)"; ctx.font = `12px Rajdhani, Arial`;
+      ctx.fillStyle = "rgba(255,255,255,0.85)"; ctx.font = `12px Rajdhani, 'Noto Sans', 'Noto Sans CJK SC', 'Noto Sans JP', Arial, sans-serif`;
       ctx.fillText(lines[0], px + 26, ly);
       if (lines[1]) {
         ly += 15;
@@ -222,7 +223,7 @@ export async function generateGridCard(d: GridCardData): Promise<Buffer> {
 
   // frame + watermark
   ctx.strokeStyle = rgba(pe, 0.35); ctx.lineWidth = 1.5; rrect(ctx, 3, 3, W - 6, H - 6, 0); ctx.stroke();
-  ctx.fillStyle = "rgba(255,255,255,0.08)"; ctx.font = `bold 9px Rajdhani, Arial`;
+  ctx.fillStyle = "rgba(255,255,255,0.08)"; ctx.font = `bold 9px Rajdhani, 'Noto Sans', 'Noto Sans CJK SC', 'Noto Sans JP', Arial, sans-serif`;
   ctx.letterSpacing = "3px"; ctx.textAlign = "right";
   ctx.fillText("CARTETHYIA", W - 14, H - 12); ctx.textAlign = "left"; ctx.letterSpacing = "0px";
 

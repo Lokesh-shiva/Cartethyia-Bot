@@ -1,7 +1,8 @@
 import { createCanvas, loadImage, GlobalFonts, SKRSContext2D } from "@napi-rs/canvas";
 import path from "path";
 
-try { GlobalFonts.registerFromPath(path.join(process.cwd(), "assets", "fonts", "Rajdhani-Bold.ttf"), "Rajdhani"); } catch { /* fallback */ }
+try { try { GlobalFonts.loadSystemFonts(); } catch {}
+GlobalFonts.registerFromPath(path.join(process.cwd(), "assets", "fonts", "Rajdhani-Bold.ttf"), "Rajdhani"); } catch { /* fallback */ }
 
 const ELEMENT_COLORS: Record<string, { primary: string; secondary: string }> = {
   FUSION:   { primary: "#FF6B35", secondary: "#FFB38A" },
@@ -180,14 +181,14 @@ export async function generateLevelUpCard(opts: LevelUpCardOptions): Promise<Buf
 
   // Header label
   ctx.fillStyle = rgba(P, 0.75);
-  ctx.font      = `bold 10px Rajdhani, Arial`;
+  ctx.font      = `bold 10px Rajdhani, 'Noto Sans', 'Noto Sans CJK SC', 'Noto Sans JP', Arial, sans-serif`;
   ctx.letterSpacing = "3px";
   ctx.fillText(opts.isCapped ? "LEVEL CAP REACHED" : "RESONANCE AMPLIFIED", TX, 44);
   ctx.letterSpacing = "0px";
 
   // Display name
   ctx.fillStyle = "#FFFFFF";
-  ctx.font      = `bold 18px Rajdhani, 'Arial Black', Arial`;
+  ctx.font      = `bold 18px Rajdhani, 'Arial Black', 'Noto Sans', 'Noto Sans CJK SC', Arial, sans-serif`;
   ctx.fillText(opts.displayName, TX, 68);
 
   // ── Level transition: OLD → NEW ───────────────────────────────────────────
@@ -196,16 +197,16 @@ export async function generateLevelUpCard(opts: LevelUpCardOptions): Promise<Buf
   if (opts.isCapped) {
     // Capped — single large level number
     ctx.fillStyle = S;
-    ctx.font      = `bold 52px Rajdhani, 'Arial Black', Arial`;
+    ctx.font      = `bold 52px Rajdhani, 'Arial Black', 'Noto Sans', 'Noto Sans CJK SC', Arial, sans-serif`;
     ctx.fillText(`${opts.newLevel}`, TX, centerY + 18);
 
     ctx.fillStyle = "rgba(255,255,255,0.4)";
-    ctx.font      = `bold 13px Rajdhani, Arial`;
+    ctx.font      = `bold 13px Rajdhani, 'Noto Sans', 'Noto Sans CJK SC', 'Noto Sans JP', Arial, sans-serif`;
     ctx.fillText("WORLD LEVEL CAP", TX, centerY + 40);
   } else {
     // Old level (dimmed)
     ctx.fillStyle = "rgba(255,255,255,0.25)";
-    ctx.font      = `bold 48px Rajdhani, 'Arial Black', Arial`;
+    ctx.font      = `bold 48px Rajdhani, 'Arial Black', 'Noto Sans', 'Noto Sans CJK SC', Arial, sans-serif`;
     ctx.fillText(`${opts.oldLevel}`, TX, centerY + 16);
 
     // Measure old level width for arrow placement
@@ -214,7 +215,7 @@ export async function generateLevelUpCard(opts: LevelUpCardOptions): Promise<Buf
     // Arrow
     const arrowX = TX + oldW + 14;
     ctx.fillStyle = rgba(P, 0.9);
-    ctx.font      = `bold 28px Rajdhani, Arial`;
+    ctx.font      = `bold 28px Rajdhani, 'Noto Sans', 'Noto Sans CJK SC', 'Noto Sans JP', Arial, sans-serif`;
     ctx.fillText("→", arrowX, centerY + 8);
     const arrowW = ctx.measureText("→").width;
 
@@ -223,7 +224,7 @@ export async function generateLevelUpCard(opts: LevelUpCardOptions): Promise<Buf
     ctx.shadowColor = P;
     ctx.shadowBlur  = 18;
     ctx.fillStyle   = S;
-    ctx.font        = `bold 64px Rajdhani, 'Arial Black', Arial`;
+    ctx.font        = `bold 64px Rajdhani, 'Arial Black', 'Noto Sans', 'Noto Sans CJK SC', Arial, sans-serif`;
     ctx.fillText(`${opts.newLevel}`, newX, centerY + 22);
     ctx.shadowBlur  = 0;
   }
@@ -240,12 +241,12 @@ export async function generateLevelUpCard(opts: LevelUpCardOptions): Promise<Buf
   ctx.stroke();
 
   ctx.fillStyle = "rgba(255,255,255,0.2)";
-  ctx.font      = `bold 10px Rajdhani, Arial`;
+  ctx.font      = `bold 10px Rajdhani, 'Noto Sans', 'Noto Sans CJK SC', 'Noto Sans JP', Arial, sans-serif`;
   ctx.fillText("Chat to earn Resonance EXP  ·  Ascension breaks the cap", TX, sepY + 16);
 
   // Watermark
   ctx.fillStyle     = "rgba(255,255,255,0.07)";
-  ctx.font          = `bold 9px Rajdhani, Arial`;
+  ctx.font          = `bold 9px Rajdhani, 'Noto Sans', 'Noto Sans CJK SC', 'Noto Sans JP', Arial, sans-serif`;
   ctx.letterSpacing = "3px";
   ctx.textAlign     = "right";
   ctx.fillText("CARTETHYIA", W - 14, H - 10);

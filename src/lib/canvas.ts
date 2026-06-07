@@ -3,11 +3,38 @@ import path from "path";
 import fs   from "fs";
 import { isOwner } from "./owner";
 
-// ── Font ──────────────────────────────────────────────────────────────────────
+// ── Fonts ─────────────────────────────────────────────────────────────────────
+// Load all system fonts first — this makes Noto CJK, emoji, etc. available as
+// fallbacks so Unicode/CJK usernames render as real glyphs instead of □ boxes.
+try { GlobalFonts.loadSystemFonts(); } catch { /* not critical */ }
+
+// Register custom Rajdhani if present (Latin headers / UI labels)
 try {
   GlobalFonts.registerFromPath(path.join(process.cwd(), "assets", "fonts", "Rajdhani-Bold.ttf"), "Rajdhani");
   GlobalFonts.registerFromPath(path.join(process.cwd(), "assets", "fonts", "Rajdhani-SemiBold.ttf"), "RajdhaniSemi");
-} catch { /* fallback to Arial */ }
+} catch { /* Rajdhani missing — falls through to system fonts */ }
+
+// Universal fallback font stack (Latin + CJK + emoji)
+const FONT_FALLBACK = `'Noto Sans', 'Noto Sans CJK SC', 'Noto Sans JP', 'Arial Unicode MS', Arial, sans-serif`;
+
+/** Render text, shrinking the base px size until it fits within maxWidth. */
+function fitText(
+  ctx: SKRSContext2D,
+  text: string,
+  basePx: number,
+  maxWidth: number,
+  fontFamily: string,
+  bold = true,
+): string {
+  let px = basePx;
+  const weight = bold ? "bold " : "";
+  while (px > 8) {
+    ctx.font = `${weight}${px}px ${fontFamily}`;
+    if (ctx.measureText(text).width <= maxWidth) break;
+    px -= 1;
+  }
+  return ctx.font;
+}
 
 // ── Element theming ───────────────────────────────────────────────────────────
 const THEME: Record<string, { primary: string; secondary: string; label: string }> = {
@@ -113,7 +140,7 @@ function statBar(
   const barH = 7;
 
   ctx.fillStyle = "rgba(255,255,255,0.45)";
-  ctx.font = `bold 10px Rajdhani, Arial`;
+  ctx.font = `bold 10px Rajdhani, 'Noto Sans', 'Noto Sans CJK SC', 'Noto Sans JP', Arial, sans-serif`;
   ctx.fillText(label, x, y + 7);
 
   const tx = x + 40;
@@ -136,7 +163,7 @@ function statBar(
   }
 
   ctx.fillStyle = "rgba(255,255,255,0.7)";
-  ctx.font = `bold 10px Rajdhani, Arial`;
+  ctx.font = `bold 10px Rajdhani, 'Noto Sans', 'Noto Sans CJK SC', 'Noto Sans JP', Arial, sans-serif`;
   const str = (label === "CRIT" || label === "CRIT DMG" || label === "C.DMG") ? `${val}%` : val.toLocaleString();
   ctx.fillText(str, tx + barW + 6, y + 7);
 }
@@ -281,13 +308,13 @@ export async function generateProfileCard(input: ProfileCardInput): Promise<Buff
   const NX = 180;
 
   ctx.fillStyle = "#FFFFFF";
-  ctx.font = `bold 28px Rajdhani, 'Arial Black', Arial`;
-  ctx.fillText(truncate(input.displayName, 20), NX, 56);
+  fitText(ctx, input.displayName, 28, 260, `Rajdhani, ${FONT_FALLBACK}`);
+  ctx.fillText(input.displayName, NX, 56);
 
   // Creator crown badge
   if (isOwner(input.id)) {
     const nameW = ctx.measureText(truncate(input.displayName, 20)).width;
-    ctx.font = `bold 12px Rajdhani, Arial`;
+    ctx.font = `bold 12px Rajdhani, 'Noto Sans', 'Noto Sans CJK SC', 'Noto Sans JP', Arial, sans-serif`;
     ctx.fillStyle = "#FCD34D";
     ctx.shadowColor = "#FCD34D"; ctx.shadowBlur = 8;
     ctx.fillText("* CREATOR", NX + nameW + 10, 52);
@@ -300,7 +327,7 @@ export async function generateProfileCard(input: ProfileCardInput): Promise<Buff
   rrect(ctx, pillX, pillY, pillW, pillH, 10); ctx.fill();
   ctx.strokeStyle = rgba(t.primary, 0.85); ctx.lineWidth = 1.5;
   rrect(ctx, pillX, pillY, pillW, pillH, 10); ctx.stroke();
-  ctx.fillStyle = t.secondary; ctx.font = `bold 10px Rajdhani, Arial`;
+  ctx.fillStyle = t.secondary; ctx.font = `bold 10px Rajdhani, 'Noto Sans', 'Noto Sans CJK SC', 'Noto Sans JP', Arial, sans-serif`;
   ctx.textAlign = "center";
   ctx.fillText(t.label, pillX + pillW / 2, pillY + 13.5);
   ctx.textAlign = "left";
@@ -315,11 +342,11 @@ export async function generateProfileCard(input: ProfileCardInput): Promise<Buff
       })()
     : "";
   ctx.fillStyle = "rgba(255,255,255,0.40)";
-  ctx.font = `bold 11px Rajdhani, Arial`;
+  ctx.font = `bold 11px Rajdhani, 'Noto Sans', 'Noto Sans CJK SC', 'Noto Sans JP', Arial, sans-serif`;
   ctx.fillText(`LVL ${input.level}   ·   WL ${input.worldLevel}`, pillX + pillW + 10, pillY + 14);
   // Aura on its own line below, with regen hint
   ctx.fillStyle = "rgba(255,255,255,0.55)";
-  ctx.font = `bold 10px Rajdhani, Arial`;
+  ctx.font = `bold 10px Rajdhani, 'Noto Sans', 'Noto Sans CJK SC', 'Noto Sans JP', Arial, sans-serif`;
   ctx.fillText(`${auraBar}  ${auraFilled}/5 Aura${regenStr}`, pillX + pillW + 10, pillY + 27);
 
   // ── EXP bar ───────────────────────────────────────────────────────────────
@@ -337,7 +364,7 @@ export async function generateProfileCard(input: ProfileCardInput): Promise<Buff
     rrect(ctx, expBarX, expBarY, expBarW * expFill, expBarH, 2); ctx.fill();
   }
   ctx.fillStyle = "rgba(255,255,255,0.30)";
-  ctx.font = `bold 9px Rajdhani, Arial`;
+  ctx.font = `bold 9px Rajdhani, 'Noto Sans', 'Noto Sans CJK SC', 'Noto Sans JP', Arial, sans-serif`;
   ctx.fillText(`${input.resonanceExp.toLocaleString()} / ${expNeeded.toLocaleString()} EXP`, expBarX, expBarY + 16);
 
   // Accent line
@@ -369,19 +396,19 @@ export async function generateProfileCard(input: ProfileCardInput): Promise<Buff
   if (input.weapon) {
     const stars = "★".repeat(input.weapon.rarity) + "☆".repeat(3 - input.weapon.rarity);
     ctx.fillStyle = "#FBBF24";
-    ctx.font = `bold 10px Rajdhani, Arial`;
+    ctx.font = `bold 10px Rajdhani, 'Noto Sans', 'Noto Sans CJK SC', 'Noto Sans JP', Arial, sans-serif`;
     ctx.fillText(stars, NX, weapY + 12);
 
     ctx.fillStyle = "#FFFFFF";
-    ctx.font = `bold 13px Rajdhani, Arial`;
+    ctx.font = `bold 13px Rajdhani, 'Noto Sans', 'Noto Sans CJK SC', 'Noto Sans JP', Arial, sans-serif`;
     ctx.fillText(truncate(input.weapon.name, 22), NX + 42, weapY + 12);
 
     ctx.fillStyle = "rgba(255,255,255,0.35)";
-    ctx.font = `bold 10px Rajdhani, Arial`;
+    ctx.font = `bold 10px Rajdhani, 'Noto Sans', 'Noto Sans CJK SC', 'Noto Sans JP', Arial, sans-serif`;
     ctx.fillText(`${input.weapon.weaponType}  ·  ${input.weapon.baseAtk} ATK`, NX + 42, weapY + 24);
   } else {
     ctx.fillStyle = "rgba(255,255,255,0.2)";
-    ctx.font = `11px Rajdhani, Arial`;
+    ctx.font = `11px Rajdhani, 'Noto Sans', 'Noto Sans CJK SC', 'Noto Sans JP', Arial, sans-serif`;
     ctx.fillText("No weapon equipped  ·  /forge to craft one", NX, weapY + 14);
   }
 
@@ -396,11 +423,11 @@ export async function generateProfileCard(input: ProfileCardInput): Promise<Buff
     rrect(ctx, NX, abY, 320, 20, 4); ctx.stroke();
 
     ctx.fillStyle = "rgba(255,255,255,0.35)";
-    ctx.font = `bold 9px Rajdhani, Arial`;
+    ctx.font = `bold 9px Rajdhani, 'Noto Sans', 'Noto Sans CJK SC', 'Noto Sans JP', Arial, sans-serif`;
     ctx.fillText("PASSIVE", NX + 6, abY + 13);
 
     ctx.fillStyle = t.secondary;
-    ctx.font = `bold 11px Rajdhani, Arial`;
+    ctx.font = `bold 11px Rajdhani, 'Noto Sans', 'Noto Sans CJK SC', 'Noto Sans JP', Arial, sans-serif`;
     ctx.fillText(truncate(input.uniqueAbilityName, 28), NX + 54, abY + 13);
   }
 
@@ -419,7 +446,7 @@ export async function generateProfileCard(input: ProfileCardInput): Promise<Buff
   eco.forEach((e, i) => {
     const ex = NX + i * 116;
     ctx.fillStyle = "rgba(255,255,255,0.40)";
-    ctx.font = `bold 9px Rajdhani, Arial`;
+    ctx.font = `bold 9px Rajdhani, 'Noto Sans', 'Noto Sans CJK SC', 'Noto Sans JP', Arial, sans-serif`;
     ctx.fillText(e.label, ex, ecoY + 8);
     ctx.fillStyle = "#FFFFFF";
     ctx.font = `bold 15px Rajdhani, 'Arial Black', Arial`;
@@ -438,7 +465,7 @@ export async function generateProfileCard(input: ProfileCardInput): Promise<Buff
 
   // ── Echo Grid ─────────────────────────────────────────────────────────────
   ctx.fillStyle = rgba(t.secondary, 0.60);
-  ctx.font = `bold 9px Rajdhani, Arial`;
+  ctx.font = `bold 9px Rajdhani, 'Noto Sans', 'Noto Sans CJK SC', 'Noto Sans JP', Arial, sans-serif`;
   ctx.letterSpacing = "2px";
   ctx.fillText("RESONANCE GRID", RPX, 26);
   ctx.letterSpacing = "0px";
@@ -446,7 +473,7 @@ export async function generateProfileCard(input: ProfileCardInput): Promise<Buff
   // Grid points
   const gridPts = input.echoes.reduce((sum, e) => sum + e.cost, 0);
   ctx.fillStyle = "rgba(255,255,255,0.30)";
-  ctx.font = `bold 9px Rajdhani, Arial`;
+  ctx.font = `bold 9px Rajdhani, 'Noto Sans', 'Noto Sans CJK SC', 'Noto Sans JP', Arial, sans-serif`;
   ctx.textAlign = "right";
   ctx.fillText(`${gridPts}/12 pts`, RPX + 218, 26);
   ctx.textAlign = "left";
@@ -497,14 +524,14 @@ export async function generateProfileCard(input: ProfileCardInput): Promise<Buff
         // Cost badge (top-right)
         ctx.fillStyle = rgba(eColor, 0.85);
         rrect(ctx, ex + SS - 14, ey + 2, 12, 12, 3); ctx.fill();
-        ctx.fillStyle = "#FFFFFF"; ctx.font = `bold 8px Rajdhani, Arial`;
+        ctx.fillStyle = "#FFFFFF"; ctx.font = `bold 8px Rajdhani, 'Noto Sans', 'Noto Sans CJK SC', 'Noto Sans JP', Arial, sans-serif`;
         ctx.textAlign = "center";
         ctx.fillText(`${echo.cost}`, ex + SS - 8, ey + 11);
         ctx.textAlign = "left";
 
         // Echo name — only shown when no art
         if (!imgPath) {
-          ctx.fillStyle = "#FFFFFF"; ctx.font = `bold 8px Rajdhani, Arial`;
+          ctx.fillStyle = "#FFFFFF"; ctx.font = `bold 8px Rajdhani, 'Noto Sans', 'Noto Sans CJK SC', 'Noto Sans JP', Arial, sans-serif`;
           ctx.textAlign = "center";
           ctx.fillText(truncate(echo.name.split(" ")[0], 7), ex + SS / 2, ey + SS / 2 + 2);
           ctx.textAlign = "left";
@@ -525,7 +552,7 @@ export async function generateProfileCard(input: ProfileCardInput): Promise<Buff
         // Level badge (bottom-left)
         if (echo.level > 0) {
           ctx.fillStyle = "rgba(0,0,0,0.60)";
-          ctx.font = `bold 7px Rajdhani, Arial`;
+          ctx.font = `bold 7px Rajdhani, 'Noto Sans', 'Noto Sans CJK SC', 'Noto Sans JP', Arial, sans-serif`;
           ctx.fillText(`Lv${echo.level}`, ex + 3, ey + SS - 3);
         }
 
@@ -537,7 +564,7 @@ export async function generateProfileCard(input: ProfileCardInput): Promise<Buff
         ctx.lineWidth = 1;
         rrect(ctx, ex, ey, SS, SS, 9); ctx.stroke();
         ctx.fillStyle = isMain ? rgba(t.secondary, 0.50) : "rgba(255,255,255,0.18)";
-        ctx.font = `bold ${isMain ? 9 : 8}px Rajdhani, Arial`;
+        ctx.font = `bold ${isMain ? 9 : 8}px Rajdhani, 'Noto Sans', 'Noto Sans CJK SC', 'Noto Sans JP', Arial, sans-serif`;
         ctx.textAlign = "center";
         ctx.fillText(slotLabels[slotIdx], ex + SS / 2, ey + SS / 2 + 4);
         ctx.textAlign = "left";
@@ -551,17 +578,17 @@ export async function generateProfileCard(input: ProfileCardInput): Promise<Buff
   ctx.beginPath(); ctx.moveTo(RPX, bondY - 6); ctx.lineTo(RPX + 220, bondY - 6); ctx.stroke();
 
   ctx.fillStyle = rgba(t.secondary, 0.60);
-  ctx.font = `bold 9px Rajdhani, Arial`;
+  ctx.font = `bold 9px Rajdhani, 'Noto Sans', 'Noto Sans CJK SC', 'Noto Sans JP', Arial, sans-serif`;
   ctx.letterSpacing = "2px";
   ctx.fillText("SYNCHRONY BONDS", RPX, bondY + 4);
   ctx.letterSpacing = "0px";
 
   if (input.bonds.length === 0) {
     ctx.fillStyle = "rgba(255,255,255,0.18)";
-    ctx.font = `11px Rajdhani, Arial`;
+    ctx.font = `11px Rajdhani, 'Noto Sans', 'Noto Sans CJK SC', 'Noto Sans JP', Arial, sans-serif`;
     ctx.fillText("No bonds yet.", RPX, bondY + 22);
     ctx.fillStyle = "rgba(255,255,255,0.10)";
-    ctx.font = `10px Rajdhani, Arial`;
+    ctx.font = `10px Rajdhani, 'Noto Sans', 'Noto Sans CJK SC', 'Noto Sans JP', Arial, sans-serif`;
     ctx.fillText("Use /bond to connect.", RPX, bondY + 36);
   } else {
     for (let i = 0; i < Math.min(3, input.bonds.length); i++) {
@@ -582,10 +609,10 @@ export async function generateProfileCard(input: ProfileCardInput): Promise<Buff
       ctx.strokeStyle = rgba(t.primary, 0.55); ctx.lineWidth = 1.5;
       ctx.beginPath(); ctx.arc(bx + br, by + br, br, 0, Math.PI * 2); ctx.stroke();
 
-      ctx.fillStyle = "#FFFFFF"; ctx.font = `bold 11px Rajdhani, Arial`;
+      ctx.fillStyle = "#FFFFFF"; ctx.font = `bold 11px Rajdhani, 'Noto Sans', 'Noto Sans CJK SC', 'Noto Sans JP', Arial, sans-serif`;
       ctx.fillText(truncate(bp.displayName, 14), bx + br * 2 + 8, by + 11);
 
-      ctx.fillStyle = rgba(t.secondary, 0.70); ctx.font = `bold 9px Rajdhani, Arial`;
+      ctx.fillStyle = rgba(t.secondary, 0.70); ctx.font = `bold 9px Rajdhani, 'Noto Sans', 'Noto Sans CJK SC', 'Noto Sans JP', Arial, sans-serif`;
       ctx.fillText(bondTypeLabel(bp.bondType), bx + br * 2 + 8, by + 23);
     }
   }
@@ -597,7 +624,7 @@ export async function generateProfileCard(input: ProfileCardInput): Promise<Buff
   ctx.shadowBlur = 0;
 
   ctx.fillStyle = "rgba(255,255,255,0.07)";
-  ctx.font = `bold 9px Rajdhani, Arial`;
+  ctx.font = `bold 9px Rajdhani, 'Noto Sans', 'Noto Sans CJK SC', 'Noto Sans JP', Arial, sans-serif`;
   ctx.letterSpacing = "3px";
   ctx.textAlign = "right";
   ctx.fillText("CARTETHYIA", W - 12, H - 10);

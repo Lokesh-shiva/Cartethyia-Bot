@@ -3,7 +3,8 @@ import path from "path";
 import fs   from "fs";
 
 try {
-  GlobalFonts.registerFromPath(path.join(process.cwd(), "assets", "fonts", "Rajdhani-Bold.ttf"), "Rajdhani");
+  try { GlobalFonts.loadSystemFonts(); } catch {}
+GlobalFonts.registerFromPath(path.join(process.cwd(), "assets", "fonts", "Rajdhani-Bold.ttf"), "Rajdhani");
 } catch { /* fallback */ }
 
 function rrect(ctx: SKRSContext2D, x: number, y: number, w: number, h: number, r: number) {
@@ -99,19 +100,19 @@ export async function generateWelcomeCard(
   const TX = 290;
 
   // Eyebrow
-  ctx.fillStyle = accent2; ctx.font = `bold 13px Rajdhani, Arial`;
+  ctx.fillStyle = accent2; ctx.font = `bold 13px Rajdhani, 'Noto Sans', 'Noto Sans CJK SC', 'Noto Sans JP', Arial, sans-serif`;
   ctx.letterSpacing = "5px";
   ctx.fillText("RESONANCE  DETECTED", TX, 74);
   ctx.letterSpacing = "0px";
 
   // Big title
   ctx.fillStyle = "#FFFFFF";
-  ctx.font = `bold 50px Rajdhani, 'Arial Black', Arial`;
+  ctx.font = `bold 50px Rajdhani, 'Arial Black', 'Noto Sans', 'Noto Sans CJK SC', Arial, sans-serif`;
   ctx.fillText("You are a Drifter", TX, 124);
 
   // Name line
   ctx.fillStyle = accent2;
-  ctx.font = `bold 26px Rajdhani, Arial`;
+  ctx.font = `bold 26px Rajdhani, 'Noto Sans', 'Noto Sans CJK SC', 'Noto Sans JP', Arial, sans-serif`;
   const nm = displayName.length > 22 ? displayName.slice(0, 21) + "…" : displayName;
   ctx.fillText(`Welcome, ${nm}`, TX, 160);
 
@@ -123,10 +124,10 @@ export async function generateWelcomeCard(
 
   // Tagline
   ctx.fillStyle = "rgba(255,255,255,0.62)";
-  ctx.font = `500 16px Rajdhani, Arial`;
+  ctx.font = `500 16px Rajdhani, 'Noto Sans', 'Noto Sans CJK SC', 'Noto Sans JP', Arial, sans-serif`;
   ctx.fillText("Socialize. Resonate. Ascend.", TX, 206);
   ctx.fillStyle = "rgba(255,255,255,0.40)";
-  ctx.font = `500 14px Rajdhani, Arial`;
+  ctx.font = `500 14px Rajdhani, 'Noto Sans', 'Noto Sans CJK SC', 'Noto Sans JP', Arial, sans-serif`;
   ctx.fillText("Interaction is power — you cannot reach endgame alone.", TX, 228);
 
   // Starter pack chip (first-timers)
@@ -136,9 +137,9 @@ export async function generateWelcomeCard(
     rrect(ctx, TX, chipY, chipW, chipH, 8); ctx.fill();
     ctx.strokeStyle = "rgba(139,127,245,0.5)"; ctx.lineWidth = 1;
     rrect(ctx, TX, chipY, chipW, chipH, 8); ctx.stroke();
-    ctx.fillStyle = accent2; ctx.font = `bold 11px Rajdhani, Arial`;
+    ctx.fillStyle = accent2; ctx.font = `bold 11px Rajdhani, 'Noto Sans', 'Noto Sans CJK SC', 'Noto Sans JP', Arial, sans-serif`;
     ctx.fillText("STARTER PACK", TX + 12, chipY + 15);
-    ctx.fillStyle = "#FFFFFF"; ctx.font = `bold 14px Rajdhani, Arial`;
+    ctx.fillStyle = "#FFFFFF"; ctx.font = `bold 14px Rajdhani, 'Noto Sans', 'Noto Sans CJK SC', 'Noto Sans JP', Arial, sans-serif`;
     ctx.fillText("500 Credits   ·   3 Tuning Modules   ·   5 Resonance Records", TX + 12, chipY + 29);
   }
 
@@ -157,7 +158,7 @@ export async function generateWelcomeCard(
 
   // Watermark
   ctx.fillStyle = "rgba(255,255,255,0.10)";
-  ctx.font = `bold 11px Rajdhani, Arial`;
+  ctx.font = `bold 11px Rajdhani, 'Noto Sans', 'Noto Sans CJK SC', 'Noto Sans JP', Arial, sans-serif`;
   ctx.letterSpacing = "4px"; ctx.textAlign = "right";
   ctx.fillText("CARTETHYIA", W - 16, H - 14);
   ctx.textAlign = "left"; ctx.letterSpacing = "0px";

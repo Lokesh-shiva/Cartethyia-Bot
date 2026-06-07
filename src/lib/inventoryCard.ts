@@ -2,7 +2,8 @@ import { createCanvas, loadImage, GlobalFonts, SKRSContext2D } from "@napi-rs/ca
 import path from "path";
 import { User } from "@prisma/client";
 
-try { GlobalFonts.registerFromPath(path.join(process.cwd(), "assets", "fonts", "Rajdhani-Bold.ttf"), "Rajdhani"); } catch { /* fallback */ }
+try { try { GlobalFonts.loadSystemFonts(); } catch {}
+GlobalFonts.registerFromPath(path.join(process.cwd(), "assets", "fonts", "Rajdhani-Bold.ttf"), "Rajdhani"); } catch { /* fallback */ }
 
 const ICONS_DIR = path.join(process.cwd(), "assets", "icons");
 
@@ -99,11 +100,11 @@ export async function generateInventoryCard(user: User, displayName: string, ava
 
   const TX = PAD + avR * 2 + 14;
   ctx.fillStyle = "#FFFFFF";
-  ctx.font = `bold 18px Rajdhani, 'Arial Black', Arial`;
+  ctx.font = `bold 18px Rajdhani, 'Arial Black', 'Noto Sans', 'Noto Sans CJK SC', Arial, sans-serif`;
   ctx.fillText(displayName, TX, avCY - 4);
 
   ctx.fillStyle = rgba(P, 0.75);
-  ctx.font = `bold 9px Rajdhani, Arial`;
+  ctx.font = `bold 9px Rajdhani, 'Noto Sans', 'Noto Sans CJK SC', 'Noto Sans JP', Arial, sans-serif`;
   ctx.letterSpacing = "2px";
   ctx.fillText("MATERIAL INVENTORY", TX, avCY + 14);
   ctx.letterSpacing = "0px";
@@ -139,33 +140,33 @@ export async function generateInventoryCard(user: User, displayName: string, ava
         ctx.drawImage(img, cx + 12, cy + (CELL_H - iconSize) / 2, iconSize, iconSize);
       } catch {
         ctx.fillStyle = curr.color;
-        ctx.font = `bold 14px Rajdhani, Arial`;
+        ctx.font = `bold 14px Rajdhani, 'Noto Sans', 'Noto Sans CJK SC', 'Noto Sans JP', Arial, sans-serif`;
         ctx.fillText(curr.label[0], cx + 18, cy + CELL_H / 2 + 5);
       }
     } else {
       ctx.fillStyle = curr.color;
-      ctx.font = `bold 14px Rajdhani, Arial`;
+      ctx.font = `bold 14px Rajdhani, 'Noto Sans', 'Noto Sans CJK SC', 'Noto Sans JP', Arial, sans-serif`;
       ctx.fillText(curr.label[0], cx + 18, cy + CELL_H / 2 + 5);
     }
 
     // Text
     const textX = cx + 12 + iconSize + 8;
     ctx.fillStyle = rgba(curr.color, 0.8);
-    ctx.font = `bold 9px Rajdhani, Arial`;
+    ctx.font = `bold 9px Rajdhani, 'Noto Sans', 'Noto Sans CJK SC', 'Noto Sans JP', Arial, sans-serif`;
     ctx.fillText(curr.label.toUpperCase(), textX, cy + 22);
 
     ctx.fillStyle = val > 0 ? "#F1F5F9" : "#334155";
-    ctx.font = `bold 20px Rajdhani, 'Arial Black', Arial`;
+    ctx.font = `bold 20px Rajdhani, 'Arial Black', 'Noto Sans', 'Noto Sans CJK SC', Arial, sans-serif`;
     ctx.fillText(val.toLocaleString(), textX, cy + 46);
 
     ctx.fillStyle = "rgba(255,255,255,0.2)";
-    ctx.font = `9px Rajdhani, Arial`;
+    ctx.font = `9px Rajdhani, 'Noto Sans', 'Noto Sans CJK SC', 'Noto Sans JP', Arial, sans-serif`;
     ctx.fillText(curr.desc, textX, cy + 62);
   }
 
   // Watermark
   ctx.fillStyle = "rgba(255,255,255,0.06)";
-  ctx.font = `bold 9px Rajdhani, Arial`;
+  ctx.font = `bold 9px Rajdhani, 'Noto Sans', 'Noto Sans CJK SC', 'Noto Sans JP', Arial, sans-serif`;
   ctx.letterSpacing = "3px";
   ctx.textAlign = "right";
   ctx.fillText("CARTETHYIA", W - PAD, H - 8);
