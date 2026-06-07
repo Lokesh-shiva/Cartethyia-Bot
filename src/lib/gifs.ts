@@ -6,6 +6,7 @@
 export type ActionType =
   // Physical (target required)
   | "pat" | "hug" | "kiss" | "slap" | "bite" | "poke" | "cuddle" | "handhold" | "bonk" | "highfive"
+  | "lick" | "kick" | "punch"
   // Expressive (self)
   | "dance" | "cry" | "blush" | "sleep" | "smug" | "wave" | "thumbsup" | "nom" | "wink" | "shrug"
   // Emotional (react)
@@ -31,6 +32,9 @@ export const ACTION_META: Record<ActionType, {
   handhold: { category: "physical",   verb: "holds hands with", selfVerb: "holds hands back", returnLabel: "🤝 Hold Back",    nekoEndpoint: "handhold" },
   bonk:     { category: "physical",   verb: "bonks",            selfVerb: "bonks back",       returnLabel: "🔨 Bonk Back",   nekoEndpoint: "bonk"     },
   highfive: { category: "physical",   verb: "high-fives",       selfVerb: "high-fives back",  returnLabel: "🙌 High Five!",  nekoEndpoint: "highfive" },
+  lick:     { category: "physical",   verb: "licks",            selfVerb: "licks back",       returnLabel: "😛 Lick Back",   nekoEndpoint: "lick"     },
+  kick:     { category: "physical",   verb: "kicks",            selfVerb: "kicks back",       returnLabel: "🦵 Kick Back",   nekoEndpoint: "kick"     },
+  punch:    { category: "physical",   verb: "punches",          selfVerb: "punches back",     returnLabel: "👊 Punch Back",  nekoEndpoint: "punch"    },
   // ── Expressive ───────────────────────────────────────────
   dance:    { category: "expressive", verb: "dances",                               nekoEndpoint: "dance"    },
   cry:      { category: "expressive", verb: "cries",                                nekoEndpoint: "cry"      },

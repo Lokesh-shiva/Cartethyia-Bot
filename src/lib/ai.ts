@@ -45,6 +45,42 @@ export async function askAI(options: AIPromptOptions): Promise<string | null> {
  * Generate a one-sentence interaction narration.
  * recentMessages: last few things the actor said in chat, used for context.
  */
+// Per-action tone hints so the AI doesn't default to "soft and shy" for everything
+const ACTION_TONE: Record<string, string> = {
+  // Aggressive / impactful
+  slap:     "sharp and satisfying — like a decisive smack, not gentle",
+  kick:     "powerful and dynamic, legs flying",
+  punch:    "hard-hitting and direct, no hesitation",
+  bonk:     "comedic and exaggerated — cartoon-style head bonk",
+  // Playful / chaotic
+  bite:     "sharp and mischievous, with a hint of feral energy",
+  poke:     "persistently annoying, playful and teasing",
+  lick:     "weird, chaotic, and unhinged — why are they doing this",
+  nom:      "goblin energy — chomp first, think later",
+  // Warm / tender
+  hug:      "warm and enveloping, genuinely comforting",
+  cuddle:   "cozy and soft, utterly comfortable",
+  pat:      "gentle and affectionate, like a reassuring gesture",
+  // Romantic
+  kiss:     "tender and intimate, a beat of held breath",
+  handhold: "quietly romantic — the small gesture that means everything",
+  // Casual / friendly
+  highfive: "energetic and triumphant",
+  wave:     "casual and cheerful",
+  wink:     "sly and confident",
+  shrug:    "unbothered and effortlessly cool",
+  // Expressive
+  dance:    "uninhibited, full of rhythm and joy",
+  cry:      "heavy and genuine — tears falling freely",
+  blush:    "flustered and embarrassed, cheeks pink",
+  smug:     "insufferably self-satisfied",
+  angry:    "visibly fuming, a storm behind the eyes",
+  happy:    "beaming with uncontained joy",
+  cringe:   "physically recoiling in secondhand embarrassment",
+  bored:    "completely and thoroughly done with everything",
+  nervous:  "fidgeting, pulse quickening",
+};
+
 export async function generateInteractionFlavor(
   action: string,
   actorName: string,
@@ -52,20 +88,17 @@ export async function generateInteractionFlavor(
   affinityScore: number,
   recentMessages: string[] = []
 ): Promise<string> {
-  const tone =
-    affinityScore > 500 ? "playful and close"
-    : affinityScore > 100 ? "friendly"
-    : "a little shy";
+  const bonusTone = ACTION_TONE[action] ?? "expressive and in-character";
 
-  // Summarise recent chat so the AI can reflect it in the narration
+  // Only include recent chat context if it's meaningful (ignore command spam)
   const contextLine = recentMessages.length > 0
-    ? `Recently ${actorName} said: "${recentMessages.slice(0, 3).join(" / ")}". Subtly reflect their mood if it fits.`
+    ? `Context — ${actorName} recently said: "${recentMessages.slice(0, 2).join(" / ")}". Reflect their vibe only if it naturally fits.`
     : "";
 
   const who = targetName ? `${actorName} ${action}s ${targetName}` : `${actorName} ${action}s`;
 
   const result = await askAI({
-    systemPrompt: `You write ONE short sentence of anime-style narration for a Discord RPG. Tone: ${tone}. No quotes. No emojis. Under 15 words.`,
+    systemPrompt: `You write ONE short sentence of anime-style narration for a Discord RPG action. Tone for this action: ${bonusTone}. Match the energy — don't soften aggressive actions or exaggerate gentle ones. No quotes. No emojis. Under 15 words.`,
     userPrompt: `${who}. ${contextLine}`.trim(),
     maxTokens: 40,
   });
@@ -82,6 +115,9 @@ export async function generateInteractionFlavor(
     handhold: [`${actorName} quietly reaches for ${targetName ?? "someone's"} hand.`],
     bonk:     [`${actorName} delivers a decisive bonk to ${targetName ?? "thin air"}.`, `A legendary bonk lands squarely on ${targetName ?? "an unsuspecting head"}.`],
     highfive: [`${actorName} throws out a hand for a high five with ${targetName ?? "the void"}.`],
+    lick:     [`${actorName} licks ${targetName ?? "something questionable"} without warning.`],
+    kick:     [`${actorName} lands a powerful kick on ${targetName ?? "thin air"}.`],
+    punch:    [`${actorName} lands a clean punch on ${targetName ?? "the open air"}.`],
     dance:    [`${actorName} breaks into an impromptu dance.`],
     cry:      [`${actorName} lets out a quiet sob.`],
     wink:     [`${actorName} flashes a sly wink.`],
