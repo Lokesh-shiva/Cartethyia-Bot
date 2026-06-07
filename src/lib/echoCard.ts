@@ -241,7 +241,7 @@ export function echoRowToCard(echo: any): EchoCardData {
   }
   return {
     name: echo.name, element: echo.element, rarity: echo.rarity, cost: echo.cost,
-    level: echo.level, mainStatType: echo.mainStatType, mainStatValue: echo.mainStatValue,
+    level: echo.level ?? 0, mainStatType: echo.mainStatType, mainStatValue: echo.mainStatValue,
     revealedSubstats: echo.revealedSubstats, substats: subs,
   };
 }
