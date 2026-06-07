@@ -27,7 +27,7 @@ export async function execute(message: Message) {
   const content = message.content;
 
   if (content.toLowerCase().startsWith(prefix.toLowerCase())) {
-    const withoutPrefix = content.slice(prefix.length).trim();
+    const withoutPrefix = content.slice(prefix.length).trim().replace(/^!+/, "");
     if (withoutPrefix.length > 0) {
       const [cmdName, ...rest] = withoutPrefix.split(/\s+/);
       const cmd = cmdName.toLowerCase();

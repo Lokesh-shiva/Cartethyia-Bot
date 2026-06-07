@@ -1,7 +1,9 @@
 import prisma from "./prisma";
 
-// Default prefix for every guild — overridable per-guild via /setup prefix
-export const GLOBAL_PREFIX = process.env.BOT_PREFIX ?? "c!";
+// Default prefix for every guild — overridable per-guild via /setup prefix.
+// Stored as "c" in DB (setup strips trailing !); the messageCreate handler
+// always strips a leading ! from the remainder, so "c" matches "c!ping" → "ping".
+export const GLOBAL_PREFIX = process.env.BOT_PREFIX ?? "c";
 
 // guildId → prefix (null = use GLOBAL_PREFIX)
 const prefixCache = new Map<string, string | null>();
