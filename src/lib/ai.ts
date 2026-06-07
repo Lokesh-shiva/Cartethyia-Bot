@@ -80,8 +80,12 @@ export async function generateInteractionFlavor(
     poke:     [`${actorName} pokes ${targetName ?? "the void"} persistently.`],
     cuddle:   [`${actorName} cuddles up close to ${targetName ?? "a pillow"}.`],
     handhold: [`${actorName} quietly reaches for ${targetName ?? "someone's"} hand.`],
+    bonk:     [`${actorName} delivers a decisive bonk to ${targetName ?? "thin air"}.`, `A legendary bonk lands squarely on ${targetName ?? "an unsuspecting head"}.`],
+    highfive: [`${actorName} throws out a hand for a high five with ${targetName ?? "the void"}.`],
     dance:    [`${actorName} breaks into an impromptu dance.`],
     cry:      [`${actorName} lets out a quiet sob.`],
+    wink:     [`${actorName} flashes a sly wink.`],
+    shrug:    [`${actorName} shrugs with absolute indifference.`],
     default:  [`${actorName} ${action}s with full commitment.`],
   };
 

@@ -5,9 +5,9 @@
 
 export type ActionType =
   // Physical (target required)
-  | "pat" | "hug" | "kiss" | "slap" | "bite" | "poke" | "cuddle" | "handhold"
+  | "pat" | "hug" | "kiss" | "slap" | "bite" | "poke" | "cuddle" | "handhold" | "bonk" | "highfive"
   // Expressive (self)
-  | "dance" | "cry" | "blush" | "sleep" | "smug" | "wave" | "thumbsup" | "nom"
+  | "dance" | "cry" | "blush" | "sleep" | "smug" | "wave" | "thumbsup" | "nom" | "wink" | "shrug"
   // Emotional (react)
   | "angry" | "happy" | "cringe" | "bored" | "nervous";
 
@@ -28,7 +28,9 @@ export const ACTION_META: Record<ActionType, {
   bite:     { category: "physical",   verb: "bites",    selfVerb: "bites back",     returnLabel: "😤 Bite Back",     nekoEndpoint: "bite"     },
   poke:     { category: "physical",   verb: "pokes",    selfVerb: "pokes back",     returnLabel: "👉 Poke Back",     nekoEndpoint: "poke"     },
   cuddle:   { category: "physical",   verb: "cuddles",  selfVerb: "cuddles back",   returnLabel: "🥰 Cuddle Back",   nekoEndpoint: "cuddle"   },
-  handhold: { category: "physical",   verb: "holds hands with", selfVerb: "holds hands back", returnLabel: "🤝 Hold Back", nekoEndpoint: "handhold" },
+  handhold: { category: "physical",   verb: "holds hands with", selfVerb: "holds hands back", returnLabel: "🤝 Hold Back",    nekoEndpoint: "handhold" },
+  bonk:     { category: "physical",   verb: "bonks",            selfVerb: "bonks back",       returnLabel: "🔨 Bonk Back",   nekoEndpoint: "bonk"     },
+  highfive: { category: "physical",   verb: "high-fives",       selfVerb: "high-fives back",  returnLabel: "🙌 High Five!",  nekoEndpoint: "highfive" },
   // ── Expressive ───────────────────────────────────────────
   dance:    { category: "expressive", verb: "dances",                               nekoEndpoint: "dance"    },
   cry:      { category: "expressive", verb: "cries",                                nekoEndpoint: "cry"      },
@@ -38,6 +40,8 @@ export const ACTION_META: Record<ActionType, {
   wave:     { category: "expressive", verb: "waves",                                nekoEndpoint: "wave"     },
   thumbsup: { category: "expressive", verb: "gives a thumbs up",                   nekoEndpoint: "thumbsup" },
   nom:      { category: "expressive", verb: "noms",                                 nekoEndpoint: "nom"      },
+  wink:     { category: "expressive", verb: "winks",                                nekoEndpoint: "wink"     },
+  shrug:    { category: "expressive", verb: "shrugs",                               nekoEndpoint: "shrug"    },
   // ── Emotional ────────────────────────────────────────────
   angry:    { category: "emotional",  verb: "is angry",                             nekoEndpoint: "angry"    },
   happy:    { category: "emotional",  verb: "is happy",                             nekoEndpoint: "happy"    },

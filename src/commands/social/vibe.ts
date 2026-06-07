@@ -28,6 +28,8 @@ const PHYSICAL_CHOICES = [
   { name: "👉 Poke",      value: "poke"     },
   { name: "🥰 Cuddle",    value: "cuddle"   },
   { name: "🤝 Handhold",  value: "handhold" },
+  { name: "🔨 Bonk",      value: "bonk"     },
+  { name: "🙌 High Five", value: "highfive" },
 ];
 const EXPRESSIVE_CHOICES = [
   { name: "💃 Dance",     value: "dance"    },
@@ -38,6 +40,8 @@ const EXPRESSIVE_CHOICES = [
   { name: "👋 Wave",      value: "wave"     },
   { name: "👍 Thumbs Up", value: "thumbsup" },
   { name: "😋 Nom",       value: "nom"      },
+  { name: "😉 Wink",      value: "wink"     },
+  { name: "🤷 Shrug",     value: "shrug"    },
 ];
 const EMOTIONAL_CHOICES = [
   { name: "😠 Angry",     value: "angry"    },
@@ -168,7 +172,12 @@ const command: Command = {
       if (interaction.channel && interaction.channel.isTextBased()) {
         const msgs = await interaction.channel.messages.fetch({ limit: 30 });
         msgs
-          .filter((m) => m.author.id === interaction.user.id && m.content.length > 2)
+          .filter((m) =>
+            m.author.id === interaction.user.id &&
+            m.content.length > 8 &&
+            !m.content.startsWith("/") &&           // slash commands
+            !/^[a-z]{1,4}[!?\s]/i.test(m.content)  // prefix triggers like "c!vibe", "c "
+          )
           .first(4)
           .forEach((m) => recentMessages.push(m.content.slice(0, 80)));
       }
