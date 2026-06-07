@@ -23,28 +23,46 @@ import {
 import { compositeHasSecondWind } from "./abilityEffects";
 import { generateEchoCard, echoRowToCard } from "./echoCard";
 
-// ── In-memory state ──────────────────────────────────────────────────────────
+// ── In-memory guild settings cache ───────────────────────────────────────────
 
-// guildId → config (refreshed from DB on change)
-const exploreChannels   = new Map<string, Set<string>>();
-const encounterChannels = new Map<string, Set<string>>();   // empty set = everywhere
-const encountersEnabled = new Map<string, boolean>();
+const exploreChannels    = new Map<string, Set<string>>();
+const encounterChannels  = new Map<string, Set<string>>();   // empty = everywhere
+const encounterBlacklist = new Map<string, Set<string>>();   // always blocked
+const encountersEnabled  = new Map<string, boolean>();
+const levelUpChannelIds  = new Map<string, string | null>();
+const notifChannelIds    = new Map<string, string | null>();
+const levelUpEnabledMap  = new Map<string, boolean>();
+
+// Getters used by messageCreate.ts for channel routing
+export function getLevelUpChannelId(guildId: string): string | null {
+  return levelUpChannelIds.get(guildId) ?? null;
+}
+export function getNotifChannelId(guildId: string): string | null {
+  return notifChannelIds.get(guildId) ?? null;
+}
+export function isLevelUpEnabled(guildId: string): boolean {
+  return levelUpEnabledMap.get(guildId) ?? true;
+}
+
+function cacheSettings(s: any): void {
+  exploreChannels.set(s.guildId,    new Set(s.exploreChannelIds));
+  encounterChannels.set(s.guildId,  new Set(s.encounterChannelIds));
+  encounterBlacklist.set(s.guildId, new Set(s.encounterBlacklist ?? []));
+  encountersEnabled.set(s.guildId,  s.encountersEnabled);
+  levelUpChannelIds.set(s.guildId,  s.levelUpChannelId  ?? null);
+  notifChannelIds.set(s.guildId,    s.notifChannelId    ?? null);
+  levelUpEnabledMap.set(s.guildId,  s.levelUpEnabled    ?? true);
+}
 
 export async function loadExploreChannels(guildId: string): Promise<void> {
-  const settings = await prisma.guildSettings.findUnique({ where: { guildId } });
-  exploreChannels.set(guildId,   new Set(settings?.exploreChannelIds   ?? []));
-  encounterChannels.set(guildId, new Set(settings?.encounterChannelIds ?? []));
-  encountersEnabled.set(guildId, settings?.encountersEnabled ?? true);
+  const s = await prisma.guildSettings.findUnique({ where: { guildId } });
+  if (s) cacheSettings(s);
 }
 
 // Load config for ALL guilds the bot is in (called on ready for multi-server)
 export async function loadAllGuildSettings(): Promise<void> {
   const all = await prisma.guildSettings.findMany();
-  for (const s of all) {
-    exploreChannels.set(s.guildId,   new Set(s.exploreChannelIds));
-    encounterChannels.set(s.guildId, new Set(s.encounterChannelIds));
-    encountersEnabled.set(s.guildId, s.encountersEnabled);
-  }
+  for (const s of all) cacheSettings(s);
 }
 
 // Restore persisted encounters into memory on startup + clear expired ones
@@ -145,6 +163,9 @@ const ENCOUNTER_TTL_MS    = 3 * 60 * 1000;   // encounter expires after 3 min
 export function shouldSpawnEncounter(guildId: string, channelId: string): boolean {
   // Master toggle — admins can disable chat encounters entirely
   if (encountersEnabled.get(guildId) === false) return false;
+
+  // Blacklist overrides everything — channel is always silent
+  if (encounterBlacklist.get(guildId)?.has(channelId)) return false;
 
   const explore = isExploreChannel(guildId, channelId);
 

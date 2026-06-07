@@ -294,8 +294,12 @@ model GuildSettings {
   guildId             String   @id
   exploreChannelIds   String[] @default([])
   encounterChannelIds String[] @default([])  // empty = encounters everywhere; set = allowlist only
+  encounterBlacklist  String[] @default([])  // always blocked, overrides allowlist
   encountersEnabled   Boolean  @default(true) // master toggle for chat encounters
   welcomeChannelId    String?                 // if set, auto-onboard new members here; else opt-in via /start
+  levelUpChannelId    String?                 // where level-up cards post (null = same channel as message)
+  notifChannelId      String?                 // where milestone/cap notifications post (null = same as levelUp)
+  levelUpEnabled      Boolean  @default(true) // toggle level-up cards on/off server-wide
   prefix              String?                 // optional prefix for text commands e.g. "c" or "cart"
 
   @@map("guild_settings")

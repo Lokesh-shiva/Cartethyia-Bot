@@ -3,7 +3,7 @@ import { tryAwardChatExp, getOrCreateUser } from "../lib/economy";
 import { checkLevelUp, sendMilestoneNotifications } from "../lib/progression";
 import { generateLevelUpCard } from "../lib/levelUpCard";
 import { sendElementSelection } from "../lib/elementSelect";
-import { shouldSpawnEncounter, spawnEncounter } from "../lib/encounter";
+import { shouldSpawnEncounter, spawnEncounter, getLevelUpChannelId, getNotifChannelId, isLevelUpEnabled } from "../lib/encounter";
 import { getPrefix } from "../lib/prefixManager";
 import { ExtendedClient } from "../types";
 import prisma from "../lib/prisma";
@@ -79,29 +79,36 @@ export async function execute(message: Message) {
     select: { element: true },
   });
 
-  const avatarUrl  = message.author.displayAvatarURL({ size: 256, extension: "png" });
-  const isCapped   = result.hitCapAt !== null;
+  const avatarUrl = message.author.displayAvatarURL({ size: 256, extension: "png" });
+  const isCapped  = result.hitCapAt !== null;
+  const guildId   = message.guildId!;
 
-  const cardBuffer = await generateLevelUpCard({
-    displayName,
-    avatarUrl,
-    oldLevel:  result.oldLevel,
-    newLevel:  result.newLevel,
-    element:   dbUser?.element ?? "NONE",
-    isCapped,
-  });
+  // Resolve target channels from guild settings (falls back to current channel)
+  const lvUpId  = getLevelUpChannelId(guildId);
+  const notifId = getNotifChannelId(guildId);
+  const lvUpCh  = (lvUpId  && message.client.channels.cache.get(lvUpId)  as TextChannel | undefined) || channel;
+  const notifCh = (notifId && message.client.channels.cache.get(notifId) as TextChannel | undefined) || lvUpCh;
 
-  const attachment = new AttachmentBuilder(cardBuffer, { name: "levelup.png" });
+  // Level-up card (respects the levelUpEnabled toggle)
+  if (isLevelUpEnabled(guildId)) {
+    const cardBuffer = await generateLevelUpCard({
+      displayName,
+      avatarUrl,
+      oldLevel:  result.oldLevel,
+      newLevel:  result.newLevel,
+      element:   dbUser?.element ?? "NONE",
+      isCapped,
+    });
+    const attachment = new AttachmentBuilder(cardBuffer, { name: "levelup.png" });
+    const embed = new EmbedBuilder()
+      .setColor(0x6366F1)
+      .setImage("attachment://levelup.png")
+      .setFooter({ text: "CARTETHYIA  ·  Resonance System" });
+    await lvUpCh.send({ embeds: [embed], files: [attachment] }).catch(() => {});
+  }
 
-  const embed = new EmbedBuilder()
-    .setColor(0x6366F1)
-    .setImage("attachment://levelup.png")
-    .setFooter({ text: "CARTETHYIA  ·  Resonance System" });
-
-  await channel.send({ embeds: [embed], files: [attachment] }).catch(() => {});
-
-  // Milestone unlocks + level cap notification (shared with /use record)
-  await sendMilestoneNotifications(channel, result.oldLevel, result.newLevel, result.hitCapAt);
+  // Milestone unlocks + level cap notification
+  await sendMilestoneNotifications(notifCh, result.oldLevel, result.newLevel, result.hitCapAt);
 
   // If player just hit level 20 and hasn't chosen an element — trigger element selection
   if (result.newLevel === 20 && (!dbUser?.element || dbUser.element === "NONE")) {

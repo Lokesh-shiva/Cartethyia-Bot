@@ -6,11 +6,14 @@ import {
   ModalBuilder, TextInputBuilder, TextInputStyle,
   ChannelType, PermissionFlagsBits,
   ButtonInteraction, Interaction, Events, ModalSubmitInteraction,
+  TextChannel,
 } from "discord.js";
 import { Command } from "../../types";
 import prisma from "../../lib/prisma";
 import { loadExploreChannels } from "../../lib/encounter";
 import { savePrefixToDb, getPrefix } from "../../lib/prefixManager";
+
+// ── DB helpers ────────────────────────────────────────────────────────────────
 
 async function getSettings(guildId: string) {
   return prisma.guildSettings.upsert({
@@ -20,130 +23,246 @@ async function getSettings(guildId: string) {
   });
 }
 
-// ── Embed ─────────────────────────────────────────────────────────────────────
+// ── Panel page definitions ────────────────────────────────────────────────────
 
-function buildPanel(s: any, prefix: string, guildName: string, done = false): EmbedBuilder {
-  const encLine = s.encounterChannelIds.length
-    ? s.encounterChannelIds.map((id: string) => `<#${id}>`).join("  ")
-    : "All channels";
-  const expLine = s.exploreChannelIds.length
-    ? s.exploreChannelIds.map((id: string) => `<#${id}>`).join("  ")
-    : "None";
-  const welLine = s.welcomeChannelId ? `<#${s.welcomeChannelId}>` : "Disabled";
-  const pfx     = prefix || "c";
+type Page = "main" | "encounters" | "output" | "general";
+
+// ── MAIN PAGE ─────────────────────────────────────────────────────────────────
+
+function mainEmbed(s: any, prefix: string, guildName: string, saved = false) {
+  const pfx        = prefix || "c";
+  const encChs     = s.encounterChannelIds.length ? s.encounterChannelIds.map((id: string) => `<#${id}>`).join(" ") : "All channels";
+  const blkChs     = s.encounterBlacklist?.length ? s.encounterBlacklist.map((id: string) => `<#${id}>`).join(" ") : "None";
+  const expChs     = s.exploreChannelIds.length   ? s.exploreChannelIds.map((id: string) => `<#${id}>`).join(" ")   : "None";
+  const welCh      = s.welcomeChannelId    ? `<#${s.welcomeChannelId}>`    : "Disabled";
+  const lvUpCh     = s.levelUpChannelId    ? `<#${s.levelUpChannelId}>`    : "Same channel as message";
+  const notifCh    = s.notifChannelId      ? `<#${s.notifChannelId}>`      : "Same as level-up";
+  const lvUpStatus = s.levelUpEnabled !== false ? "✅ On" : "⛔ Off";
 
   return new EmbedBuilder()
     .setColor(0x6366F1)
     .setAuthor({ name: `⚙️  ${guildName}  ·  CARTETHYIA Setup` })
     .setDescription(
-      `**Server Configuration** — all changes apply instantly.\n` +
-      `Use the menus and button below. Only members with **Manage Server** can interact.\n​`
+      `Full server configuration. Open a section below to make changes.\n` +
+      `All saves are **instant**. Only **Manage Server** admins can interact.\n​`
     )
     .addFields(
       {
-        name:  s.encountersEnabled ? "⚔️  Chat Encounters — ✅ ENABLED" : "⚔️  Chat Encounters — ⛔ DISABLED",
-        value: s.encountersEnabled
-          ? "Enemies spawn while members chat. Press **Disable Encounters** to turn off."
-          : "No enemies will spawn in any channel. Press **Enable Encounters** to turn on.",
-        inline: false,
-      },
-      {
-        name:  "📍  Encounter Channels",
-        value: `${encLine}\n-# No channels set = spawns everywhere · Set channels = only those channels`,
-        inline: false,
-      },
-      {
-        name:  "🗺️  Explore Channel",
-        value: `${expLine}\n-# 38% spawn rate & 30 s cooldown — vs 13% / 2 min in normal channels`,
+        name:  "⚔️  Encounters",
+        value: [
+          `${s.encountersEnabled ? "✅ Enabled" : "⛔ Disabled"}`,
+          `📍 Allowlist: ${encChs}`,
+          `🚫 Blacklist: ${blkChs}`,
+          `🗺️ Explore:   ${expChs}`,
+        ].join("\n"),
         inline: true,
       },
       {
-        name:  "👋  Welcome Channel",
-        value: `${welLine}\n-# New members are automatically onboarded here`,
+        name:  "📢  Output Channels",
+        value: [
+          `👋 Welcome:       ${welCh}`,
+          `🎴 Level-Up Cards: ${lvUpStatus} → ${lvUpCh}`,
+          `🔔 Notifications:  ${notifCh}`,
+        ].join("\n"),
         inline: true,
       },
       {
-        name:  "⌨️  Text Prefix",
-        value: `\`${pfx}!\`  —  e.g. \`${pfx}!profile\`  \`${pfx}!daily\`  \`${pfx}!guide\`\n-# Pick a preset or choose "Custom…" to type your own`,
+        name:  "⚙️  General",
+        value: `⌨️ Prefix: \`${pfx}!\`  —  e.g. \`${pfx}!profile\`  \`${pfx}!daily\``,
         inline: false,
       },
     )
-    .setFooter({ text: done
+    .setFooter({ text: saved
       ? "CARTETHYIA  ·  Configuration saved ✅"
-      : "CARTETHYIA  ·  /setup  ·  Panel closes after 5 min of inactivity" });
+      : "CARTETHYIA  ·  Select a section below  ·  Closes after 5 min inactivity" });
 }
 
-// ── Component builders ────────────────────────────────────────────────────────
+function mainComponents(s: any) {
+  return [
+    new ActionRowBuilder<ButtonBuilder>().addComponents(
+      new ButtonBuilder().setCustomId("setup_nav_enc").setLabel("⚔️  Encounter Settings").setStyle(ButtonStyle.Primary),
+      new ButtonBuilder().setCustomId("setup_nav_out").setLabel("📢  Output Channels").setStyle(ButtonStyle.Primary),
+      new ButtonBuilder().setCustomId("setup_nav_gen").setLabel("⚙️  General").setStyle(ButtonStyle.Primary),
+    ),
+    new ActionRowBuilder<ButtonBuilder>().addComponents(
+      new ButtonBuilder()
+        .setCustomId("setup_toggle_enc")
+        .setLabel(s.encountersEnabled ? "⚔️  Disable Encounters" : "⚔️  Enable Encounters")
+        .setStyle(s.encountersEnabled ? ButtonStyle.Danger : ButtonStyle.Success),
+      new ButtonBuilder().setCustomId("setup_done").setLabel("✅  Done").setStyle(ButtonStyle.Secondary),
+    ),
+  ];
+}
 
-function rowEncounterChannels(ids: string[]) {
-  const m = new ChannelSelectMenuBuilder()
-    .setCustomId("setup_enc_ch")
-    .setPlaceholder("📍  Encounter Channels — select where enemies can spawn (clear = everywhere)")
+// ── ENCOUNTERS PAGE ───────────────────────────────────────────────────────────
+
+function encounterEmbed(s: any, guildName: string) {
+  const enc = s.encounterChannelIds.length ? s.encounterChannelIds.map((id: string) => `<#${id}>`).join(" ") : "All channels (no allowlist set)";
+  const blk = s.encounterBlacklist?.length ? s.encounterBlacklist.map((id: string) => `<#${id}>`).join(" ")  : "None";
+  const exp = s.exploreChannelIds.length   ? s.exploreChannelIds.map((id: string) => `<#${id}>`).join(" ")   : "None";
+
+  return new EmbedBuilder()
+    .setColor(0xEF4444)
+    .setAuthor({ name: `⚙️  ${guildName}  ·  Encounter Settings` })
+    .addFields(
+      {
+        name: "📍  Encounter Allowlist",
+        value: `${enc}\n-# **Empty = enemies spawn everywhere.** Set channels = only those channels get encounters.`,
+        inline: false,
+      },
+      {
+        name: "🚫  Encounter Blacklist",
+        value: `${blk}\n-# These channels are **always silent** — no enemies, no matter the allowlist. Perfect for announcement, rules, or off-topic channels.`,
+        inline: false,
+      },
+      {
+        name: "🗺️  Explore Channels",
+        value: `${exp}\n-# High-rate grind zones — **38% spawn rate** & **30s cooldown** vs 13% / 2min in normal channels.`,
+        inline: false,
+      },
+    )
+    .setFooter({ text: "CARTETHYIA  ·  Encounter Settings  ·  Clear a menu to reset that setting" });
+}
+
+function encounterComponents(s: any) {
+  const allowMenu = new ChannelSelectMenuBuilder()
+    .setCustomId("setup_enc_allow")
+    .setPlaceholder("📍  Encounter Allowlist — where enemies can spawn (clear = everywhere)")
     .setChannelTypes(ChannelType.GuildText)
-    .setMinValues(0)
-    .setMaxValues(15);
-  if (ids.length) m.setDefaultChannels(ids);
-  return new ActionRowBuilder<ChannelSelectMenuBuilder>().addComponents(m);
-}
+    .setMinValues(0).setMaxValues(15);
+  if (s.encounterChannelIds.length) allowMenu.setDefaultChannels(s.encounterChannelIds);
 
-function rowExplore(ids: string[]) {
-  const m = new ChannelSelectMenuBuilder()
-    .setCustomId("setup_explore_ch")
-    .setPlaceholder("🗺️  Explore Channel — high-rate grind zone (clear = none)")
+  const blackMenu = new ChannelSelectMenuBuilder()
+    .setCustomId("setup_enc_block")
+    .setPlaceholder("🚫  Encounter Blacklist — enemies NEVER spawn here (overrides allowlist)")
     .setChannelTypes(ChannelType.GuildText)
-    .setMinValues(0)
-    .setMaxValues(3);
-  if (ids.length) m.setDefaultChannels(ids);
-  return new ActionRowBuilder<ChannelSelectMenuBuilder>().addComponents(m);
+    .setMinValues(0).setMaxValues(15);
+  if (s.encounterBlacklist?.length) blackMenu.setDefaultChannels(s.encounterBlacklist);
+
+  const exploreMenu = new ChannelSelectMenuBuilder()
+    .setCustomId("setup_enc_explore")
+    .setPlaceholder("🗺️  Explore Channels — high-rate grind zones (38% spawn, 30s cooldown)")
+    .setChannelTypes(ChannelType.GuildText)
+    .setMinValues(0).setMaxValues(5);
+  if (s.exploreChannelIds.length) exploreMenu.setDefaultChannels(s.exploreChannelIds);
+
+  return [
+    new ActionRowBuilder<ChannelSelectMenuBuilder>().addComponents(allowMenu),
+    new ActionRowBuilder<ChannelSelectMenuBuilder>().addComponents(blackMenu),
+    new ActionRowBuilder<ChannelSelectMenuBuilder>().addComponents(exploreMenu),
+    new ActionRowBuilder<ButtonBuilder>().addComponents(
+      new ButtonBuilder().setCustomId("setup_back").setLabel("← Back to Overview").setStyle(ButtonStyle.Secondary),
+    ),
+  ];
 }
 
-function rowWelcome(id: string | null) {
-  const m = new ChannelSelectMenuBuilder()
-    .setCustomId("setup_welcome_ch")
+// ── OUTPUT CHANNELS PAGE ──────────────────────────────────────────────────────
+
+function outputEmbed(s: any, guildName: string) {
+  const welCh  = s.welcomeChannelId ? `<#${s.welcomeChannelId}>` : "Disabled";
+  const lvUpCh = s.levelUpChannelId ? `<#${s.levelUpChannelId}>` : "Same channel as the message";
+  const notifCh = s.notifChannelId  ? `<#${s.notifChannelId}>`   : "Same as level-up";
+  const lvUpStatus = s.levelUpEnabled !== false ? "✅ Enabled" : "⛔ Disabled";
+
+  return new EmbedBuilder()
+    .setColor(0x6366F1)
+    .setAuthor({ name: `⚙️  ${guildName}  ·  Output Channels` })
+    .addFields(
+      {
+        name: "👋  Welcome Channel",
+        value: `${welCh}\n-# New members are automatically sent a welcome card and prompted to \`/start\` here. Clear = members opt in manually.`,
+        inline: false,
+      },
+      {
+        name: `🎴  Level-Up Cards — ${lvUpStatus}`,
+        value: `${lvUpCh}\n-# Where level-up cards are posted when a player levels up. Clear = posts in the channel where the message was sent. Toggle on/off with the button below.`,
+        inline: false,
+      },
+      {
+        name: "🔔  Notification Channel",
+        value: `${notifCh}\n-# Where milestone unlocks and level cap alerts go (e.g. "Dungeons unlocked!", "Level cap reached — use /ascend"). Clear = same as level-up channel.`,
+        inline: false,
+      },
+    )
+    .setFooter({ text: "CARTETHYIA  ·  Output Channels  ·  Clear a menu to reset to default" });
+}
+
+function outputComponents(s: any) {
+  const welMenu = new ChannelSelectMenuBuilder()
+    .setCustomId("setup_out_welcome")
     .setPlaceholder("👋  Welcome Channel — auto-onboard new members (clear = disabled)")
     .setChannelTypes(ChannelType.GuildText)
-    .setMinValues(0)
-    .setMaxValues(1);
-  if (id) m.setDefaultChannels([id]);
-  return new ActionRowBuilder<ChannelSelectMenuBuilder>().addComponents(m);
-}
+    .setMinValues(0).setMaxValues(1);
+  if (s.welcomeChannelId) welMenu.setDefaultChannels([s.welcomeChannelId]);
 
-function rowPrefix(current: string) {
-  return new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(
-    new StringSelectMenuBuilder()
-      .setCustomId("setup_prefix")
-      .setPlaceholder(`⌨️  Text Prefix — currently: ${current || "c"}!`)
-      .addOptions([
-        { label: "c!  →  c!profile, c!daily",  value: "c",         description: "Recommended — short and clean",              emoji: "⌨️"  },
-        { label: "cart!  →  cart!profile",      value: "cart",      description: "Uses the full bot name as prefix",           emoji: "🤖"  },
-        { label: "!  →  !profile, !daily",      value: "!",         description: "Classic — may conflict with other bots",     emoji: "❗"  },
-        { label: "bot!  →  bot!profile",        value: "bot",       description: "Generic bot prefix",                         emoji: "🔧"  },
-        { label: "✍️  Custom prefix…",           value: "__custom__", description: "Type your own (opens a quick text input)",  emoji: "✏️"  },
-        { label: "↩️  Reset to default (c!)",   value: "__reset__", description: "Restore the global default",                 emoji: "↩️"  },
-      ])
-  );
-}
+  const lvUpMenu = new ChannelSelectMenuBuilder()
+    .setCustomId("setup_out_levelup")
+    .setPlaceholder("🎴  Level-Up Cards Channel — where level-up cards post (clear = same channel)")
+    .setChannelTypes(ChannelType.GuildText)
+    .setMinValues(0).setMaxValues(1);
+  if (s.levelUpChannelId) lvUpMenu.setDefaultChannels([s.levelUpChannelId]);
 
-function rowButtons(encountersEnabled: boolean) {
-  return new ActionRowBuilder<ButtonBuilder>().addComponents(
-    new ButtonBuilder()
-      .setCustomId("setup_toggle_enc")
-      .setLabel(encountersEnabled ? "⚔️  Disable Encounters" : "⚔️  Enable Encounters")
-      .setStyle(encountersEnabled ? ButtonStyle.Danger : ButtonStyle.Success),
-    new ButtonBuilder()
-      .setCustomId("setup_done")
-      .setLabel("✅  Done")
-      .setStyle(ButtonStyle.Secondary),
-  );
-}
+  const notifMenu = new ChannelSelectMenuBuilder()
+    .setCustomId("setup_out_notif")
+    .setPlaceholder("🔔  Notification Channel — milestones & cap alerts (clear = same as level-up)")
+    .setChannelTypes(ChannelType.GuildText)
+    .setMinValues(0).setMaxValues(1);
+  if (s.notifChannelId) notifMenu.setDefaultChannels([s.notifChannelId]);
 
-function allComponents(s: any, prefix: string) {
   return [
-    rowEncounterChannels(s.encounterChannelIds),
-    rowExplore(s.exploreChannelIds),
-    rowWelcome(s.welcomeChannelId),
-    rowPrefix(prefix),
-    rowButtons(s.encountersEnabled),
+    new ActionRowBuilder<ChannelSelectMenuBuilder>().addComponents(welMenu),
+    new ActionRowBuilder<ChannelSelectMenuBuilder>().addComponents(lvUpMenu),
+    new ActionRowBuilder<ChannelSelectMenuBuilder>().addComponents(notifMenu),
+    new ActionRowBuilder<ButtonBuilder>().addComponents(
+      new ButtonBuilder()
+        .setCustomId("setup_toggle_levelup")
+        .setLabel(s.levelUpEnabled !== false ? "🎴  Disable Level-Up Cards" : "🎴  Enable Level-Up Cards")
+        .setStyle(s.levelUpEnabled !== false ? ButtonStyle.Danger : ButtonStyle.Success),
+      new ButtonBuilder().setCustomId("setup_back").setLabel("← Back to Overview").setStyle(ButtonStyle.Secondary),
+    ),
+  ];
+}
+
+// ── GENERAL PAGE ──────────────────────────────────────────────────────────────
+
+function generalEmbed(prefix: string, guildName: string) {
+  const pfx = prefix || "c";
+  return new EmbedBuilder()
+    .setColor(0x10B981)
+    .setAuthor({ name: `⚙️  ${guildName}  ·  General Settings` })
+    .addFields(
+      {
+        name: "⌨️  Text Prefix",
+        value: [
+          `Current: \`${pfx}!\``,
+          `Players can use \`${pfx}!profile\`, \`${pfx}!daily\`, \`${pfx}!echoes\`, etc. as an alternative to slash commands.`,
+          `Pick a preset from the menu below, or choose **Custom…** to type your own.`,
+        ].join("\n"),
+        inline: false,
+      },
+    )
+    .setFooter({ text: "CARTETHYIA  ·  General Settings" });
+}
+
+function generalComponents(prefix: string) {
+  const pfx = prefix || "c";
+  return [
+    new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(
+      new StringSelectMenuBuilder()
+        .setCustomId("setup_prefix")
+        .setPlaceholder(`⌨️  Text Prefix — currently: ${pfx}!`)
+        .addOptions([
+          { label: "c!  →  c!profile, c!daily",  value: "c",          description: "Recommended — short and clean",             emoji: "⌨️"  },
+          { label: "cart!  →  cart!profile",      value: "cart",       description: "Uses the full bot name",                    emoji: "🤖"  },
+          { label: "!  →  !profile, !daily",      value: "!",          description: "Classic — may conflict with other bots",    emoji: "❗"  },
+          { label: "bot!  →  bot!profile",        value: "bot",        description: "Generic bot prefix",                        emoji: "🔧"  },
+          { label: "✍️  Custom prefix…",           value: "__custom__", description: "Type your own (opens a text input)",        emoji: "✏️"  },
+          { label: "↩️  Reset to default (c!)",   value: "__reset__",  description: "Restore the global default",                emoji: "↩️"  },
+        ])
+    ),
+    new ActionRowBuilder<ButtonBuilder>().addComponents(
+      new ButtonBuilder().setCustomId("setup_back").setLabel("← Back to Overview").setStyle(ButtonStyle.Secondary),
+    ),
   ];
 }
 
@@ -152,13 +271,13 @@ function allComponents(s: any, prefix: string) {
 const command: Command = {
   data: new SlashCommandBuilder()
     .setName("setup")
-    .setDescription("Interactive server configuration panel — configure everything in one place.")
+    .setDescription("Interactive server configuration — encounters, channels, prefix and more.")
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
     .setDMPermission(false) as SlashCommandBuilder,
 
   async execute(interaction: ChatInputCommandInteraction) {
     if (!interaction.guildId) {
-      await interaction.reply({ content: "This command can only be used in a server.", flags: 64 });
+      await interaction.reply({ content: "Server only.", flags: 64 });
       return;
     }
     await interaction.deferReply({ flags: 64 });
@@ -167,23 +286,39 @@ const command: Command = {
     const guildName = interaction.guild?.name ?? "This Server";
     let s           = await getSettings(guildId);
     let prefix      = getPrefix(guildId);
+    let page: Page  = "main";
 
-    await interaction.editReply({
-      embeds:     [buildPanel(s, prefix, guildName)],
-      components: allComponents(s, prefix),
-    });
-
-    // Refresh helper — re-fetches settings + rebuilds the whole panel
-    const refresh = async () => {
+    // ── Render helper ──────────────────────────────────────────────────────────
+    const render = async (done = false) => {
       s      = await getSettings(guildId);
       prefix = getPrefix(guildId);
-      await interaction.editReply({
-        embeds:     [buildPanel(s, prefix, guildName)],
-        components: allComponents(s, prefix),
-      }).catch(() => {});
+
+      let embed:      EmbedBuilder;
+      let components: ActionRowBuilder<any>[];
+
+      switch (page) {
+        case "encounters":
+          embed      = encounterEmbed(s, guildName);
+          components = encounterComponents(s);
+          break;
+        case "output":
+          embed      = outputEmbed(s, guildName);
+          components = outputComponents(s);
+          break;
+        case "general":
+          embed      = generalEmbed(prefix, guildName);
+          components = generalComponents(prefix);
+          break;
+        default:
+          embed      = mainEmbed(s, prefix, guildName, done);
+          components = done ? [] : mainComponents(s);
+      }
+      await interaction.editReply({ embeds: [embed], components }).catch(() => {});
     };
 
-    // ── Collector ─────────────────────────────────────────────────────────────
+    await render();
+
+    // ── Collector ──────────────────────────────────────────────────────────────
     const collector = interaction.channel?.createMessageComponentCollector({
       filter: async (i) => {
         if (i.user.id !== interaction.user.id) {
@@ -196,73 +331,100 @@ const command: Command = {
     });
 
     collector?.on("collect", async (i) => {
+      const id = i.customId;
+
+      // ── Navigation ───────────────────────────────────────────────────────────
+      if (id === "setup_nav_enc")   { page = "encounters"; await i.deferUpdate(); await render(); return; }
+      if (id === "setup_nav_out")   { page = "output";     await i.deferUpdate(); await render(); return; }
+      if (id === "setup_nav_gen")   { page = "general";    await i.deferUpdate(); await render(); return; }
+      if (id === "setup_back")      { page = "main";       await i.deferUpdate(); await render(); return; }
 
       // ── Done ─────────────────────────────────────────────────────────────────
-      if (i.customId === "setup_done") {
+      if (id === "setup_done") {
         await i.deferUpdate();
+        page = "main";
         collector.stop("done");
-        s      = await getSettings(guildId);
-        prefix = getPrefix(guildId);
-        await interaction.editReply({
-          embeds:     [buildPanel(s, prefix, guildName, true)],
-          components: [],
-        }).catch(() => {});
+        await render(true);
         return;
       }
 
       // ── Toggle encounters ─────────────────────────────────────────────────────
-      if (i.customId === "setup_toggle_enc") {
+      if (id === "setup_toggle_enc") {
         await (i as ButtonInteraction).deferUpdate();
         s = await getSettings(guildId);
         await prisma.guildSettings.update({ where: { guildId }, data: { encountersEnabled: !s.encountersEnabled } });
         await loadExploreChannels(guildId);
-        await refresh();
-        return;
+        await render(); return;
       }
 
-      // ── Encounter channels ─────────────────────────────────────────────────────
-      if (i.customId === "setup_enc_ch") {
-        const sel = i as ChannelSelectMenuInteraction;
-        await sel.deferUpdate();
-        await prisma.guildSettings.update({ where: { guildId }, data: { encounterChannelIds: sel.values } });
+      // ── Toggle level-up cards ─────────────────────────────────────────────────
+      if (id === "setup_toggle_levelup") {
+        await (i as ButtonInteraction).deferUpdate();
+        s = await getSettings(guildId);
+        await prisma.guildSettings.update({ where: { guildId }, data: { levelUpEnabled: s.levelUpEnabled === false } });
         await loadExploreChannels(guildId);
-        await refresh();
-        return;
+        await render(); return;
       }
 
-      // ── Explore channels ───────────────────────────────────────────────────────
-      if (i.customId === "setup_explore_ch") {
-        const sel = i as ChannelSelectMenuInteraction;
-        await sel.deferUpdate();
-        await prisma.guildSettings.update({ where: { guildId }, data: { exploreChannelIds: sel.values } });
+      // ── Encounter allowlist ────────────────────────────────────────────────────
+      if (id === "setup_enc_allow") {
+        await (i as ChannelSelectMenuInteraction).deferUpdate();
+        await prisma.guildSettings.update({ where: { guildId }, data: { encounterChannelIds: (i as ChannelSelectMenuInteraction).values } });
         await loadExploreChannels(guildId);
-        await refresh();
-        return;
+        await render(); return;
       }
 
-      // ── Welcome channel ────────────────────────────────────────────────────────
-      if (i.customId === "setup_welcome_ch") {
-        const sel = i as ChannelSelectMenuInteraction;
-        await sel.deferUpdate();
-        await prisma.guildSettings.update({ where: { guildId }, data: { welcomeChannelId: sel.values[0] ?? null } });
-        await refresh();
-        return;
+      // ── Encounter blacklist ────────────────────────────────────────────────────
+      if (id === "setup_enc_block") {
+        await (i as ChannelSelectMenuInteraction).deferUpdate();
+        await prisma.guildSettings.update({ where: { guildId }, data: { encounterBlacklist: (i as ChannelSelectMenuInteraction).values } });
+        await loadExploreChannels(guildId);
+        await render(); return;
       }
 
-      // ── Prefix ─────────────────────────────────────────────────────────────────
-      if (i.customId === "setup_prefix") {
-        const sel   = i as StringSelectMenuInteraction;
-        const value = sel.values[0];
+      // ── Explore channels ──────────────────────────────────────────────────────
+      if (id === "setup_enc_explore") {
+        await (i as ChannelSelectMenuInteraction).deferUpdate();
+        await prisma.guildSettings.update({ where: { guildId }, data: { exploreChannelIds: (i as ChannelSelectMenuInteraction).values } });
+        await loadExploreChannels(guildId);
+        await render(); return;
+      }
+
+      // ── Welcome channel ───────────────────────────────────────────────────────
+      if (id === "setup_out_welcome") {
+        await (i as ChannelSelectMenuInteraction).deferUpdate();
+        await prisma.guildSettings.update({ where: { guildId }, data: { welcomeChannelId: (i as ChannelSelectMenuInteraction).values[0] ?? null } });
+        await loadExploreChannels(guildId);
+        await render(); return;
+      }
+
+      // ── Level-up channel ──────────────────────────────────────────────────────
+      if (id === "setup_out_levelup") {
+        await (i as ChannelSelectMenuInteraction).deferUpdate();
+        await prisma.guildSettings.update({ where: { guildId }, data: { levelUpChannelId: (i as ChannelSelectMenuInteraction).values[0] ?? null } });
+        await loadExploreChannels(guildId);
+        await render(); return;
+      }
+
+      // ── Notification channel ──────────────────────────────────────────────────
+      if (id === "setup_out_notif") {
+        await (i as ChannelSelectMenuInteraction).deferUpdate();
+        await prisma.guildSettings.update({ where: { guildId }, data: { notifChannelId: (i as ChannelSelectMenuInteraction).values[0] ?? null } });
+        await loadExploreChannels(guildId);
+        await render(); return;
+      }
+
+      // ── Prefix ────────────────────────────────────────────────────────────────
+      if (id === "setup_prefix") {
+        const value = (i as StringSelectMenuInteraction).values[0];
 
         if (value === "__reset__") {
-          await sel.deferUpdate();
+          await (i as StringSelectMenuInteraction).deferUpdate();
           await savePrefixToDb(guildId, null);
-          await refresh();
-          return;
+          await render(); return;
         }
 
         if (value === "__custom__") {
-          // Show a modal — no deferUpdate before showModal
           const modal = new ModalBuilder()
             .setCustomId("setup_pfx_modal")
             .setTitle("Set Custom Prefix")
@@ -270,28 +432,18 @@ const command: Command = {
               new ActionRowBuilder<TextInputBuilder>().addComponents(
                 new TextInputBuilder()
                   .setCustomId("pfx_value")
-                  .setLabel("Prefix (without ! — e.g. type 'c' for c!)")
+                  .setLabel("Prefix without ! — e.g. type 'c' to get c!")
                   .setStyle(TextInputStyle.Short)
                   .setPlaceholder("e.g.  c  or  mybot  or  !")
-                  .setMinLength(1)
-                  .setMaxLength(5)
-                  .setRequired(true)
+                  .setMinLength(1).setMaxLength(5).setRequired(true)
               )
             );
-          await sel.showModal(modal);
+          await (i as StringSelectMenuInteraction).showModal(modal);
 
-          // Temporarily listen for the modal submit
           const submitted = await new Promise<ModalSubmitInteraction | null>((resolve) => {
-            const tid = setTimeout(() => {
-              interaction.client.off(Events.InteractionCreate, handler);
-              resolve(null);
-            }, 60_000);
+            const tid = setTimeout(() => { interaction.client.off(Events.InteractionCreate, handler); resolve(null); }, 60_000);
             const handler = (intr: Interaction) => {
-              if (
-                intr.isModalSubmit() &&
-                intr.customId === "setup_pfx_modal" &&
-                intr.user.id  === interaction.user.id
-              ) {
+              if (intr.isModalSubmit() && intr.customId === "setup_pfx_modal" && intr.user.id === interaction.user.id) {
                 clearTimeout(tid);
                 interaction.client.off(Events.InteractionCreate, handler);
                 resolve(intr as ModalSubmitInteraction);
@@ -302,19 +454,15 @@ const command: Command = {
 
           if (submitted) {
             await submitted.deferUpdate();
-            const raw     = submitted.fields.getTextInputValue("pfx_value").trim().toLowerCase();
-            const cleaned = raw.replace(/!+$/, "") || null;
+            const cleaned = submitted.fields.getTextInputValue("pfx_value").trim().toLowerCase().replace(/!+$/, "") || null;
             if (cleaned) await savePrefixToDb(guildId, cleaned);
           }
-          await refresh();
-          return;
+          await render(); return;
         }
 
-        // Preset value selected
-        await sel.deferUpdate();
+        await (i as StringSelectMenuInteraction).deferUpdate();
         await savePrefixToDb(guildId, value);
-        await refresh();
-        return;
+        await render(); return;
       }
     });
 
