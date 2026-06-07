@@ -19,14 +19,11 @@ export async function execute(message: Message) {
     ?? message.author.displayName
     ?? message.author.username;
 
-  await getOrCreateUser(
-    message.author.id,
-    displayName,
-    message.author.displayAvatarURL({ size: 128, extension: "png" })
-  );
-
   // ── Prefix command handler ───────────────────────────────────────────────────
-  const prefix = getPrefix(message.guildId!);   // always returns a string ("c!" default)
+  // Runs FIRST — before any DB call — so a slow database can never delay or block
+  // a command. Each command calls getOrCreateUser() itself, so the user is still
+  // ensured to exist. EXP/encounter handling below does its own getOrCreateUser.
+  const prefix  = getPrefix(message.guildId!);   // always returns a string ("c!" default)
   const content = message.content;
 
   if (content.toLowerCase().startsWith(prefix.toLowerCase())) {
@@ -51,6 +48,13 @@ export async function execute(message: Message) {
       }
     }
   }
+
+  // ── Ensure user exists (for EXP + encounters) ────────────────────────────────
+  await getOrCreateUser(
+    message.author.id,
+    displayName,
+    message.author.displayAvatarURL({ size: 128, extension: "png" })
+  );
 
   // ── Chat EXP ─────────────────────────────────────────────────────────────────
   const expGained = await tryAwardChatExp(message.author.id);
