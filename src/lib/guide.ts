@@ -25,6 +25,59 @@ export interface GuideSection {
 // ── All guide sections ────────────────────────────────────────────────────────
 export const GUIDE_SECTIONS: Record<string, GuideSection> = {
 
+  getting_started: {
+    label: "Getting Started",
+    description: "New here? Start with this — your first 10 minutes explained",
+    emoji: "🚀",
+    embed: () => new EmbedBuilder()
+      .setColor(C.primary)
+      .setTitle("🚀  Getting Started — Your First 10 Minutes")
+      .setDescription("Everything you need to go from zero to your first echo drop.")
+      .addFields(
+        {
+          name:  "1️⃣  Create your character — `/start`",
+          value: "Run `/start` to register. You'll answer a few onboarding questions — your answers shape your AI-generated unique ability later.",
+          inline: false,
+        },
+        {
+          name:  "2️⃣  Chat to level up",
+          value: "Every message earns **3–8 Resonance EXP** (3s cooldown). Just talk. You'll level up automatically and see a level-up card in chat.",
+          inline: false,
+        },
+        {
+          name:  "3️⃣  Claim your daily — `/daily`",
+          value: "Free Credits + EXP every 20 hours. Streak multipliers up to **3×** the longer you keep it going. Enable the DM reminder so you never miss it.",
+          inline: false,
+        },
+        {
+          name:  "4️⃣  Fight your first Echo",
+          value: "Enemies spawn randomly while you chat. When one appears, click **⚔️ Fight** — it's **first-come, first-served** and the combat is private to you. Win to claim the echo.",
+          inline: false,
+        },
+        {
+          name:  "5️⃣  At Level 5 — run your first dungeon — `/dungeon`",
+          value: "Echo Dungeons drop multiple echoes in one run. Start with an element that matches your playstyle. Costs **1 ◈ Resonance Aura** (5 max, 1 regens every 3h).",
+          inline: false,
+        },
+        {
+          name:  "6️⃣  At Level 20 — choose your Element",
+          value: "A selection screen will appear automatically. **Permanent choice** — cannot be changed. Each element gives innate stat bonuses + a unique combat hook.",
+          inline: false,
+        },
+        {
+          name:  "7️⃣  At your level cap — `/ascend`",
+          value: "Fight the World Level boss to break your cap and unlock the next tier. Your **first ascension win** generates your AI unique passive ability — real combat effects, no two players the same.",
+          inline: false,
+        },
+        {
+          name:  "📋  Key commands to know early",
+          value: "`/profile` · `/inventory` · `/echoes` · `/daily` · `/dungeon` · `/guide`",
+          inline: false,
+        },
+      )
+      .setFooter({ text: "CARTETHYIA  ·  Use /guide to explore every system in detail" }),
+  },
+
   progression: {
     label: "Progression & Leveling",
     description: "EXP, levels, World Levels, stat scaling",
@@ -457,24 +510,48 @@ export const GUIDE_SECTIONS: Record<string, GuideSection> = {
 
   admin: {
     label: "Admin & Setup",
-    description: "For server admins — configure the bot (Manage Server)",
+    description: "For server admins — the interactive /setup panel (Manage Server)",
     emoji: "🛠️",
     embed: () => new EmbedBuilder()
       .setColor(C.primary)
       .setTitle("🛠️  Admin & Setup")
       .setDescription(
-        `Server admins (with **Manage Server**) configure CARTETHYIA with \`/setup\`:`
+        `Run \`/setup\` — a single interactive panel covering every server setting.\n` +
+        `Requires **Manage Server**. All changes apply instantly.\n​`
       )
       .addFields(
-        { name: "/setup view", value: "Show the current server configuration.", inline: false },
-        { name: "/setup encounters enabled:true/false", value: "Master toggle for chat encounters server-wide.", inline: false },
-        { name: "/setup encounter-channel #ch", value: "Toggle a channel in the encounter allowlist. **Empty list = encounters everywhere; set = only those channels.** Use this to keep encounters out of serious channels.", inline: false },
-        { name: "/setup explore-channel #ch", value: "Mark a high-rate grind channel (38% spawn vs 13%, 30s cooldown).", inline: false },
-        { name: "/setup welcome-channel #ch", value: "Auto-onboard new members in that channel. Leave empty = members opt in with `/start` (no auto-posting).", inline: false },
-        { name: "/setup prefix [value]", value: "Set a text prefix so players can use `<prefix> <command>` (e.g. `c profile`). Max 5 chars. Omit value to clear it.", inline: false },
-        { name: "Raids", value: "`/raid start` requires Manage Server. Players join with `/raid join`.", inline: false },
+        {
+          name:  "⚔️  Chat Encounters toggle",
+          value: "Enable or disable enemy spawns server-wide with one button click.",
+          inline: false,
+        },
+        {
+          name:  "📍  Encounter Channels",
+          value: "Channel select menu — pick which channels enemies can spawn in. **Leave empty = spawns everywhere.** Use this to keep encounters out of serious channels.",
+          inline: false,
+        },
+        {
+          name:  "🗺️  Explore Channel",
+          value: "Channel select — marks a channel as a high-rate grind zone (**38% spawn rate**, 30s cooldown vs 13% / 2min everywhere else).",
+          inline: false,
+        },
+        {
+          name:  "👋  Welcome Channel",
+          value: "Channel select — new members are auto-onboarded here with a welcome card and prompt to `/start`. Clear to disable (members opt in manually).",
+          inline: false,
+        },
+        {
+          name:  "⌨️  Text Prefix",
+          value: "Pick from preset options (`c!`, `cart!`, `!`, `bot!`) or choose **Custom…** to type your own. The global default is `c!` — no setup needed.",
+          inline: false,
+        },
+        {
+          name:  "Other",
+          value: "`/raid start [world_level]` — launches a co-op Calamity Raid (Manage Server only). Players join via `/raid join`.",
+          inline: false,
+        },
       )
-      .setFooter({ text: "CARTETHYIA  ·  /setup (Manage Server)" }),
+      .setFooter({ text: "CARTETHYIA  ·  /setup — one command, everything in one place" }),
   },
 
   pvp: {
