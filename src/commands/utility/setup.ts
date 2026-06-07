@@ -32,12 +32,12 @@ type Page = "main" | "encounters" | "output" | "general";
 function mainEmbed(s: any, prefix: string, guildName: string, saved = false) {
   const pfx        = prefix || "c";
   const encChs     = s.encounterChannelIds.length ? s.encounterChannelIds.map((id: string) => `<#${id}>`).join(" ") : "All channels";
-  const blkChs     = s.encounterBlacklist?.length ? s.encounterBlacklist.map((id: string) => `<#${id}>`).join(" ") : "None";
+  const blkChs     = (s as any).encounterBlacklist?.length ? (s as any).encounterBlacklist.map((id: string) => `<#${id}>`).join(" ") : "None";
   const expChs     = s.exploreChannelIds.length   ? s.exploreChannelIds.map((id: string) => `<#${id}>`).join(" ")   : "None";
   const welCh      = s.welcomeChannelId    ? `<#${s.welcomeChannelId}>`    : "Disabled";
-  const lvUpCh     = s.levelUpChannelId    ? `<#${s.levelUpChannelId}>`    : "Same channel as message";
-  const notifCh    = s.notifChannelId      ? `<#${s.notifChannelId}>`      : "Same as level-up";
-  const lvUpStatus = s.levelUpEnabled !== false ? "✅ On" : "⛔ Off";
+  const lvUpCh     = (s as any).levelUpChannelId    ? `<#${(s as any).levelUpChannelId}>`    : "Same channel as message";
+  const notifCh    = (s as any).notifChannelId      ? `<#${(s as any).notifChannelId}>`      : "Same as level-up";
+  const lvUpStatus = (s as any).levelUpEnabled !== false ? "✅ On" : "⛔ Off";
 
   return new EmbedBuilder()
     .setColor(0x6366F1)
@@ -98,7 +98,7 @@ function mainComponents(s: any) {
 
 function encounterEmbed(s: any, guildName: string) {
   const enc = s.encounterChannelIds.length ? s.encounterChannelIds.map((id: string) => `<#${id}>`).join(" ") : "All channels (no allowlist set)";
-  const blk = s.encounterBlacklist?.length ? s.encounterBlacklist.map((id: string) => `<#${id}>`).join(" ")  : "None";
+  const blk = (s as any).encounterBlacklist?.length ? (s as any).encounterBlacklist.map((id: string) => `<#${id}>`).join(" ")  : "None";
   const exp = s.exploreChannelIds.length   ? s.exploreChannelIds.map((id: string) => `<#${id}>`).join(" ")   : "None";
 
   return new EmbedBuilder()
@@ -137,7 +137,7 @@ function encounterComponents(s: any) {
     .setPlaceholder("🚫  Encounter Blacklist — enemies NEVER spawn here (overrides allowlist)")
     .setChannelTypes(ChannelType.GuildText)
     .setMinValues(0).setMaxValues(15);
-  if (s.encounterBlacklist?.length) blackMenu.setDefaultChannels(s.encounterBlacklist);
+  if ((s as any).encounterBlacklist?.length) blackMenu.setDefaultChannels((s as any).encounterBlacklist);
 
   const exploreMenu = new ChannelSelectMenuBuilder()
     .setCustomId("setup_enc_explore")
@@ -160,9 +160,9 @@ function encounterComponents(s: any) {
 
 function outputEmbed(s: any, guildName: string) {
   const welCh  = s.welcomeChannelId ? `<#${s.welcomeChannelId}>` : "Disabled";
-  const lvUpCh = s.levelUpChannelId ? `<#${s.levelUpChannelId}>` : "Same channel as the message";
-  const notifCh = s.notifChannelId  ? `<#${s.notifChannelId}>`   : "Same as level-up";
-  const lvUpStatus = s.levelUpEnabled !== false ? "✅ Enabled" : "⛔ Disabled";
+  const lvUpCh = (s as any).levelUpChannelId ? `<#${(s as any).levelUpChannelId}>` : "Same channel as the message";
+  const notifCh = (s as any).notifChannelId  ? `<#${(s as any).notifChannelId}>`   : "Same as level-up";
+  const lvUpStatus = (s as any).levelUpEnabled !== false ? "✅ Enabled" : "⛔ Disabled";
 
   return new EmbedBuilder()
     .setColor(0x6366F1)
@@ -200,14 +200,14 @@ function outputComponents(s: any) {
     .setPlaceholder("🎴  Level-Up Cards Channel — where level-up cards post (clear = same channel)")
     .setChannelTypes(ChannelType.GuildText)
     .setMinValues(0).setMaxValues(1);
-  if (s.levelUpChannelId) lvUpMenu.setDefaultChannels([s.levelUpChannelId]);
+  if ((s as any).levelUpChannelId) lvUpMenu.setDefaultChannels([(s as any).levelUpChannelId]);
 
   const notifMenu = new ChannelSelectMenuBuilder()
     .setCustomId("setup_out_notif")
     .setPlaceholder("🔔  Notification Channel — milestones & cap alerts (clear = same as level-up)")
     .setChannelTypes(ChannelType.GuildText)
     .setMinValues(0).setMaxValues(1);
-  if (s.notifChannelId) notifMenu.setDefaultChannels([s.notifChannelId]);
+  if ((s as any).notifChannelId) notifMenu.setDefaultChannels([(s as any).notifChannelId]);
 
   return [
     new ActionRowBuilder<ChannelSelectMenuBuilder>().addComponents(welMenu),
@@ -216,8 +216,8 @@ function outputComponents(s: any) {
     new ActionRowBuilder<ButtonBuilder>().addComponents(
       new ButtonBuilder()
         .setCustomId("setup_toggle_levelup")
-        .setLabel(s.levelUpEnabled !== false ? "🎴  Disable Level-Up Cards" : "🎴  Enable Level-Up Cards")
-        .setStyle(s.levelUpEnabled !== false ? ButtonStyle.Danger : ButtonStyle.Success),
+        .setLabel((s as any).levelUpEnabled !== false ? "🎴  Disable Level-Up Cards" : "🎴  Enable Level-Up Cards")
+        .setStyle((s as any).levelUpEnabled !== false ? ButtonStyle.Danger : ButtonStyle.Success),
       new ButtonBuilder().setCustomId("setup_back").setLabel("← Back to Overview").setStyle(ButtonStyle.Secondary),
     ),
   ];
@@ -361,7 +361,7 @@ const command: Command = {
       if (id === "setup_toggle_levelup") {
         await (i as ButtonInteraction).deferUpdate();
         s = await getSettings(guildId);
-        await prisma.guildSettings.update({ where: { guildId }, data: { levelUpEnabled: s.levelUpEnabled === false } });
+        await prisma.guildSettings.update({ where: { guildId }, data: { levelUpEnabled: (s as any).levelUpEnabled === false } });
         await loadExploreChannels(guildId);
         await render(); return;
       }

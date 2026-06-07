@@ -6,7 +6,7 @@ import { isOwner } from "./owner";
 // ── Fonts ─────────────────────────────────────────────────────────────────────
 // Load all system fonts first — this makes Noto CJK, emoji, etc. available as
 // fallbacks so Unicode/CJK usernames render as real glyphs instead of □ boxes.
-try { GlobalFonts.loadSystemFonts(); } catch { /* not critical */ }
+try { (GlobalFonts as any).loadSystemFonts(); } catch { /* not critical */ }
 
 // Register custom Rajdhani if present (Latin headers / UI labels)
 try {

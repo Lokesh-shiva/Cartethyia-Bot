@@ -2,7 +2,7 @@ import { createCanvas, loadImage, GlobalFonts, SKRSContext2D } from "@napi-rs/ca
 import path from "path";
 import { Boss } from "./bosses";
 
-try { try { GlobalFonts.loadSystemFonts(); } catch {}
+try { try { (GlobalFonts as any).loadSystemFonts(); } catch {}
 GlobalFonts.registerFromPath(path.join(process.cwd(), "assets", "fonts", "Rajdhani-Bold.ttf"), "Rajdhani"); } catch { /* fallback */ }
 
 const ELEMENT_COLORS: Record<string, string> = {

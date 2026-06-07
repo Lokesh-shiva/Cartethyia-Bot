@@ -1,7 +1,7 @@
 import { createCanvas, loadImage, GlobalFonts, SKRSContext2D } from "@napi-rs/canvas";
 import path from "path";
 
-try { GlobalFonts.loadSystemFonts(); } catch { /* not critical */ }
+try { (GlobalFonts as any).loadSystemFonts(); } catch { /* not critical */ }
 try {
   GlobalFonts.registerFromPath(path.join(process.cwd(), "assets", "fonts", "Rajdhani-Bold.ttf"),    "Rajdhani");
   GlobalFonts.registerFromPath(path.join(process.cwd(), "assets", "fonts", "Rajdhani-SemiBold.ttf"),"RajdhaniSemi");

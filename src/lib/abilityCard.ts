@@ -2,7 +2,7 @@ import { createCanvas, loadImage, GlobalFonts, SKRSContext2D } from "@napi-rs/ca
 import path from "path";
 
 try {
-  try { GlobalFonts.loadSystemFonts(); } catch {}
+  try { (GlobalFonts as any).loadSystemFonts(); } catch {}
 GlobalFonts.registerFromPath(path.join(process.cwd(), "assets", "fonts", "Rajdhani-Bold.ttf"), "Rajdhani");
 } catch { /* fallback */ }
 

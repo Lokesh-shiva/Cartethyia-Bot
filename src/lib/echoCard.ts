@@ -4,7 +4,7 @@ import fs   from "fs";
 import { MAIN_STAT_LABELS, SUBSTAT_LABELS, formatStatValue, substatCount, maxEchoLevel, FLAT_STATS, calcSubstatValue } from "./echoes";
 
 try {
-  try { GlobalFonts.loadSystemFonts(); } catch {}
+  try { (GlobalFonts as any).loadSystemFonts(); } catch {}
 GlobalFonts.registerFromPath(path.join(process.cwd(), "assets", "fonts", "Rajdhani-Bold.ttf"), "Rajdhani");
 } catch { /* fallback */ }
 

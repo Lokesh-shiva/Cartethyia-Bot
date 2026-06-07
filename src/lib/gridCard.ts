@@ -3,7 +3,7 @@ import path from "path";
 import fs   from "fs";
 
 try {
-  try { GlobalFonts.loadSystemFonts(); } catch {}
+  try { (GlobalFonts as any).loadSystemFonts(); } catch {}
 GlobalFonts.registerFromPath(path.join(process.cwd(), "assets", "fonts", "Rajdhani-Bold.ttf"), "Rajdhani");
 } catch { /* fallback */ }
 
