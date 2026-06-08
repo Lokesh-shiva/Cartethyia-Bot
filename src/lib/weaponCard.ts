@@ -12,238 +12,234 @@ const ELEMENT_HEX: Record<string, string> = {
   FUSION: "#FF6B35", GLACIO: "#4FC3F7", ELECTRO: "#B39DDB",
   AERO: "#80CBC4", HAVOC: "#C355E0", SPECTRO: "#FFD54F", NONE: "#8B7FF5",
 };
-
 const RARITY_COLOR: Record<number, string> = {
   1: "#9CA3AF", 2: "#34D399", 3: "#818CF8", 4: "#F59E0B", 5: "#F43F5E",
 };
 
 function rgba(hex: string, a: number) {
-  const r = parseInt(hex.slice(1, 3), 16), g = parseInt(hex.slice(3, 5), 16), b = parseInt(hex.slice(5, 7), 16);
+  const r = parseInt(hex.slice(1,3),16), g = parseInt(hex.slice(3,5),16), b = parseInt(hex.slice(5,7),16);
   return `rgba(${r},${g},${b},${a})`;
 }
-
 function rrect(ctx: SKRSContext2D, x: number, y: number, w: number, h: number, r: number) {
   ctx.beginPath();
-  ctx.moveTo(x + r, y); ctx.lineTo(x + w - r, y);
-  ctx.quadraticCurveTo(x + w, y, x + w, y + r); ctx.lineTo(x + w, y + h - r);
-  ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h); ctx.lineTo(x + r, y + h);
-  ctx.quadraticCurveTo(x, y + h, x, y + h - r); ctx.lineTo(x, y + r);
-  ctx.quadraticCurveTo(x, y, x + r, y); ctx.closePath();
+  ctx.moveTo(x+r,y); ctx.lineTo(x+w-r,y); ctx.quadraticCurveTo(x+w,y,x+w,y+r);
+  ctx.lineTo(x+w,y+h-r); ctx.quadraticCurveTo(x+w,y+h,x+w-r,y+h);
+  ctx.lineTo(x+r,y+h); ctx.quadraticCurveTo(x,y+h,x,y+h-r);
+  ctx.lineTo(x,y+r); ctx.quadraticCurveTo(x,y,x+r,y); ctx.closePath();
 }
-
 function drawStar(ctx: SKRSContext2D, cx: number, cy: number, r: number) {
   ctx.beginPath();
   for (let i = 0; i < 5; i++) {
-    const outer = (i * 4 * Math.PI) / 5 - Math.PI / 2;
-    const inner = outer + (2 * Math.PI) / 5;
-    ctx.lineTo(cx + Math.cos(outer) * r, cy + Math.sin(outer) * r);
-    ctx.lineTo(cx + Math.cos(inner) * r * 0.42, cy + Math.sin(inner) * r * 0.42);
+    const o = (i*4*Math.PI)/5 - Math.PI/2, ii = o + (2*Math.PI)/5;
+    ctx.lineTo(cx+Math.cos(o)*r, cy+Math.sin(o)*r);
+    ctx.lineTo(cx+Math.cos(ii)*r*0.42, cy+Math.sin(ii)*r*0.42);
   }
   ctx.closePath(); ctx.fill();
 }
+function sep(ctx: SKRSContext2D, x: number, y: number, w: number, ec: string) {
+  ctx.strokeStyle = rgba(ec, 0.25); ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x+w, y); ctx.stroke();
+}
 
 export interface WeaponCardInput {
-  name:        string;
-  weaponType:  string;
-  rarity:      number;
-  level:       number;
-  baseAtk:     number;
+  name:         string;
+  weaponType:   string;
+  rarity:       number;
+  level:        number;
+  baseAtk:      number;
   effectiveAtk: number;
-  subStatType: string | null;
-  subStatVal:  number | null;
+  subStatType:  string | null;
+  subStatVal:   number | null;
   effectiveSub: number | null;
-  passive:     string;
-  element:     string;       // owner's element for theming
-  ownerName:   string;
-  ownerAvatar: string;
-  isUnique?:   boolean;
-  userId?:     string;
+  passive:      string;
+  element:      string;
+  ownerName:    string;
+  ownerAvatar:  string;
+  isUnique?:    boolean;
+  userId?:      string;
 }
 
 export async function generateWeaponCard(input: WeaponCardInput): Promise<Buffer> {
-  const W = 700, H = 280;
+  const W = 700, H = 310;
   const canvas = createCanvas(W, H);
   const ctx    = canvas.getContext("2d");
 
   const ec = ELEMENT_HEX[input.element.toUpperCase()] ?? ELEMENT_HEX.NONE;
   const rc = RARITY_COLOR[input.rarity] ?? RARITY_COLOR[3];
+  const font = (sz: number, w = "bold") => `${w} ${sz}px Rajdhani, 'Noto Sans', Arial, sans-serif`;
 
   // ── Background ──────────────────────────────────────────────────────────────
-  ctx.fillStyle = "#080B12";
-  ctx.fillRect(0, 0, W, H);
+  ctx.fillStyle = "#080B12"; ctx.fillRect(0,0,W,H);
 
-  // Element bloom — radiates from the art side
-  const bloom = ctx.createRadialGradient(200, H / 2, 0, 200, H / 2, 320);
-  bloom.addColorStop(0, rgba(ec, 0.28));
-  bloom.addColorStop(0.5, rgba(ec, 0.10));
-  bloom.addColorStop(1, "rgba(0,0,0,0)");
-  ctx.fillStyle = bloom;
-  ctx.fillRect(0, 0, W, H);
+  // Element bloom from art side
+  const bloom = ctx.createRadialGradient(210,H/2,0,210,H/2,340);
+  bloom.addColorStop(0, rgba(ec,0.30)); bloom.addColorStop(0.6,rgba(ec,0.08)); bloom.addColorStop(1,"rgba(0,0,0,0)");
+  ctx.fillStyle = bloom; ctx.fillRect(0,0,W,H);
 
-  // Rarity bloom — subtle glow behind art
-  const rarBloom = ctx.createRadialGradient(200, H / 2, 0, 200, H / 2, 180);
-  rarBloom.addColorStop(0, rgba(rc, 0.18));
-  rarBloom.addColorStop(1, "rgba(0,0,0,0)");
-  ctx.fillStyle = rarBloom;
-  ctx.fillRect(0, 0, W, H);
+  // Rarity bloom behind art
+  const rb = ctx.createRadialGradient(210,H/2,0,210,H/2,190);
+  rb.addColorStop(0,rgba(rc,0.20)); rb.addColorStop(1,"rgba(0,0,0,0)");
+  ctx.fillStyle = rb; ctx.fillRect(0,0,W,H);
 
-  // ── Art panel (left side) ───────────────────────────────────────────────────
-  const AX = 18, AY = 18, AW = 260, AH = H - 36;
+  // ── Art panel ───────────────────────────────────────────────────────────────
+  const AX=16, AY=16, AW=262, AH=H-32;
   ctx.save();
-  rrect(ctx, AX, AY, AW, AH, 14);
-  ctx.clip();
+  rrect(ctx,AX,AY,AW,AH,14); ctx.clip();
 
-  // Art background tint
-  ctx.fillStyle = rgba(ec, 0.08);
-  ctx.fillRect(AX, AY, AW, AH);
+  ctx.fillStyle = rgba(ec,0.07); ctx.fillRect(AX,AY,AW,AH);
 
-  // Load & draw weapon art — centred, cover-fill
   const imgPath = getWeaponImagePath(input.weaponType, input.name, {
-    isUnique: input.isUnique,
-    userId:   input.userId,
+    isUnique: input.isUnique, userId: input.userId,
   });
   if (imgPath) {
     try {
-      const img   = await loadImage(imgPath);
-      const scale = Math.max(AW / img.width, AH / img.height);
-      const sw    = img.width * scale, sh = img.height * scale;
-      ctx.drawImage(img, AX + (AW - sw) / 2, AY + (AH - sh) / 2, sw, sh);
+      const img  = await loadImage(imgPath);
+      const pad  = 16;
+      // contain — fit entire image within panel with padding
+      const scale = Math.min((AW - pad*2) / img.width, (AH - pad*2) / img.height);
+      const sw = img.width * scale, sh = img.height * scale;
+      ctx.drawImage(img, AX + (AW-sw)/2, AY + (AH-sh)/2, sw, sh);
     } catch { /* fallback */ }
   }
 
-  // Subtle dark vignette over art so UI stays readable
-  const vig = ctx.createLinearGradient(AX, AY, AX + AW, AY);
-  vig.addColorStop(0, "rgba(0,0,0,0)");
-  vig.addColorStop(1, "rgba(8,11,18,0.55)");
-  ctx.fillStyle = vig;
-  ctx.fillRect(AX, AY, AW, AH);
+  // Right-side fade so the divider area blends smoothly
+  const fade = ctx.createLinearGradient(AX+AW-60, AY, AX+AW, AY);
+  fade.addColorStop(0,"rgba(0,0,0,0)"); fade.addColorStop(1,"rgba(8,11,18,0.7)");
+  ctx.fillStyle = fade; ctx.fillRect(AX,AY,AW,AH);
 
   ctx.restore();
 
-  // Rarity border glow on art panel
+  // Rarity border glow
   ctx.save();
-  ctx.shadowColor = rc; ctx.shadowBlur = 18;
-  ctx.strokeStyle = rgba(rc, 0.9); ctx.lineWidth = 1.5;
-  rrect(ctx, AX, AY, AW, AH, 14); ctx.stroke();
+  ctx.shadowColor = rc; ctx.shadowBlur = 16;
+  ctx.strokeStyle = rgba(rc,0.85); ctx.lineWidth = 1.5;
+  rrect(ctx,AX,AY,AW,AH,14); ctx.stroke();
   ctx.shadowBlur = 0;
   ctx.restore();
 
-  // ── Vertical divider ────────────────────────────────────────────────────────
-  const grad = ctx.createLinearGradient(296, 0, 296, H);
-  grad.addColorStop(0,   "rgba(0,0,0,0)");
-  grad.addColorStop(0.3, rgba(ec, 0.5));
-  grad.addColorStop(0.7, rgba(ec, 0.5));
-  grad.addColorStop(1,   "rgba(0,0,0,0)");
-  ctx.strokeStyle = grad; ctx.lineWidth = 1;
-  ctx.beginPath(); ctx.moveTo(296, 20); ctx.lineTo(296, H - 20); ctx.stroke();
+  // ── Divider ─────────────────────────────────────────────────────────────────
+  const DX = AX+AW+14;
+  const dvGrad = ctx.createLinearGradient(DX,0,DX,H);
+  dvGrad.addColorStop(0,"rgba(0,0,0,0)"); dvGrad.addColorStop(0.25,rgba(ec,0.45));
+  dvGrad.addColorStop(0.75,rgba(ec,0.45)); dvGrad.addColorStop(1,"rgba(0,0,0,0)");
+  ctx.strokeStyle = dvGrad; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(DX,18); ctx.lineTo(DX,H-18); ctx.stroke();
 
-  // ── Stats panel (right side) ────────────────────────────────────────────────
-  const SX = 314;
-  const font = (size: number, weight = "bold") =>
-    `${weight} ${size}px Rajdhani, 'Noto Sans', Arial, sans-serif`;
+  // ── Stats panel ─────────────────────────────────────────────────────────────
+  const SX = DX + 14;   // left edge of text
+  const RX = W - 18;    // right edge for right-aligned values
+  let cy = 0;           // current y cursor
 
-  // Weapon name
+  // ── Weapon name ─────────────────────────────────────────────────────────────
+  cy = 46;
   ctx.fillStyle = input.isUnique ? ec : "#FFFFFF";
-  ctx.font = font(26);
-  ctx.fillText(input.name, SX, 52);
+  ctx.font = font(24);
+  // truncate if too long
+  let nameText = input.name;
+  while (ctx.measureText(nameText).width > RX - SX - 4 && nameText.length > 1)
+    nameText = nameText.slice(0, -1);
+  if (nameText !== input.name) nameText += "…";
+  ctx.fillText(nameText, SX, cy);
 
-  // Type label + unique badge
-  ctx.fillStyle = rgba("#FFFFFF", 0.45);
-  ctx.font = font(12);
-  const typeLine = input.weaponType.charAt(0).toUpperCase() + input.weaponType.slice(1).toLowerCase();
-  ctx.fillText(typeLine.toUpperCase(), SX, 70);
+  // ── Type + unique badge ──────────────────────────────────────────────────────
+  cy = 64;
+  const typeFull = input.weaponType.charAt(0).toUpperCase() + input.weaponType.slice(1).toLowerCase();
+  ctx.fillStyle = rgba("#FFFFFF", 0.4);
+  ctx.font = font(11);
+  ctx.fillText(typeFull.toUpperCase(), SX, cy);
 
   if (input.isUnique) {
-    const badgeX = SX + ctx.measureText(typeLine.toUpperCase()).width + 10;
-    ctx.fillStyle = rgba(ec, 0.2);
-    rrect(ctx, badgeX, 58, 58, 14, 3); ctx.fill();
-    ctx.strokeStyle = rgba(ec, 0.6); ctx.lineWidth = 1;
-    rrect(ctx, badgeX, 58, 58, 14, 3); ctx.stroke();
-    ctx.fillStyle = ec;
-    ctx.font = font(9);
-    ctx.fillText("◈ FORGED", badgeX + 5, 69);
+    const tw = ctx.measureText(typeFull.toUpperCase()).width;
+    const bx = SX + tw + 8, bw = 62, bh = 14;
+    ctx.fillStyle = rgba(ec,0.2); rrect(ctx,bx,cy-11,bw,bh,3); ctx.fill();
+    ctx.strokeStyle = rgba(ec,0.5); ctx.lineWidth=1; rrect(ctx,bx,cy-11,bw,bh,3); ctx.stroke();
+    ctx.fillStyle = ec; ctx.font = font(8);
+    ctx.fillText("◈ FORGED", bx+6, cy-1);
   }
 
-  // Stars
-  const starY = 86;
+  // ── Stars + level pill ───────────────────────────────────────────────────────
+  cy = 82;
   for (let i = 0; i < 5; i++) {
-    ctx.fillStyle = i < input.rarity ? rc : rgba("#FFFFFF", 0.15);
-    drawStar(ctx, SX + 8 + i * 20, starY, 7);
+    ctx.fillStyle = i < input.rarity ? rc : rgba("#FFFFFF",0.12);
+    drawStar(ctx, SX + 8 + i*18, cy, 6);
   }
 
-  // Level pill
-  const lvText = `LV ${input.level} / 90`;
-  const lvW    = ctx.measureText(lvText).width + 20;
-  ctx.fillStyle = rgba(ec, 0.15);
-  rrect(ctx, SX + 108, starY - 8, lvW, 18, 4); ctx.fill();
-  ctx.strokeStyle = rgba(ec, 0.4); ctx.lineWidth = 1;
-  rrect(ctx, SX + 108, starY - 8, lvW, 18, 4); ctx.stroke();
-  ctx.fillStyle = rgba("#FFFFFF", 0.7);
+  // Level pill — right-aligned
+  const lvTxt = `LV ${input.level} / 90`;
   ctx.font = font(10);
-  ctx.fillText(lvText, SX + 118, starY + 4);
+  const lvW = ctx.measureText(lvTxt).width + 16;
+  const lvX = RX - lvW;
+  ctx.fillStyle = rgba(ec,0.15); rrect(ctx,lvX,cy-9,lvW,18,4); ctx.fill();
+  ctx.strokeStyle = rgba(ec,0.35); ctx.lineWidth=1; rrect(ctx,lvX,cy-9,lvW,18,4); ctx.stroke();
+  ctx.fillStyle = rgba("#FFFFFF",0.7); ctx.font = font(10);
+  ctx.fillText(lvTxt, lvX+8, cy+3);
 
-  // Separator
-  ctx.strokeStyle = rgba(ec, 0.25); ctx.lineWidth = 1;
-  ctx.beginPath(); ctx.moveTo(SX, 100); ctx.lineTo(W - 20, 100); ctx.stroke();
+  // ── Separator ────────────────────────────────────────────────────────────────
+  cy = 96;
+  sep(ctx, SX, cy, RX-SX, ec);
 
-  // Stat rows
-  const statRows: { label: string; value: string; highlight?: boolean }[] = [
+  // ── Stat rows (label left, value right — single line each) ──────────────────
+  cy = 96;
+  const stats: { label: string; value: string; hi?: boolean }[] = [
     { label: "BASE ATK",  value: `${input.baseAtk}` },
-    { label: "EFF. ATK",  value: `${input.effectiveAtk}`, highlight: true },
+    { label: "ATK @ LV "+input.level, value: `${input.effectiveAtk}`, hi: true },
   ];
   if (input.subStatType && input.effectiveSub !== null) {
-    statRows.push({
-      label: input.subStatType.replace(/_/g, " "),
-      value: `+${input.effectiveSub}%`,
-      highlight: true,
-    });
+    stats.push({ label: input.subStatType.replace(/_/g," "), value: `+${input.effectiveSub}%`, hi: true });
   }
 
-  let sy = 122;
-  for (const row of statRows) {
-    ctx.fillStyle = rgba("#FFFFFF", 0.35);
-    ctx.font = font(10);
-    ctx.fillText(row.label, SX, sy);
-
-    ctx.fillStyle = row.highlight ? ec : rgba("#FFFFFF", 0.85);
-    ctx.font = font(16);
-    ctx.fillText(row.value, SX, sy + 16);
-    sy += 36;
+  const ROW_H = 28;
+  for (const row of stats) {
+    cy += ROW_H;
+    // label
+    ctx.fillStyle = rgba("#FFFFFF",0.38); ctx.font = font(10);
+    ctx.fillText(row.label.toUpperCase(), SX, cy);
+    // value — right-aligned
+    ctx.fillStyle = row.hi ? ec : rgba("#FFFFFF",0.85); ctx.font = font(17);
+    const vw = ctx.measureText(row.value).width;
+    ctx.fillText(row.value, RX - vw, cy);
+    // thin rule under each row
+    ctx.strokeStyle = rgba("#FFFFFF",0.06); ctx.lineWidth=1;
+    ctx.beginPath(); ctx.moveTo(SX,cy+6); ctx.lineTo(RX,cy+6); ctx.stroke();
   }
 
-  // Separator
-  ctx.strokeStyle = rgba(ec, 0.25); ctx.lineWidth = 1;
-  ctx.beginPath(); ctx.moveTo(SX, sy + 2); ctx.lineTo(W - 20, sy + 2); ctx.stroke();
-  sy += 14;
+  cy += 10;
+  sep(ctx, SX, cy, RX-SX, ec);
 
-  // Passive block
-  ctx.fillStyle = rgba(ec, 0.12);
-  rrect(ctx, SX, sy, W - SX - 20, H - sy - 18, 6); ctx.fill();
-  ctx.strokeStyle = rgba(ec, 0.3); ctx.lineWidth = 1;
-  rrect(ctx, SX, sy, W - SX - 20, H - sy - 18, 6); ctx.stroke();
+  // ── Passive block ────────────────────────────────────────────────────────────
+  cy += 8;
+  const passH = H - cy - 14;
+  if (passH > 20) {
+    // Left accent bar
+    ctx.fillStyle = rgba(ec,0.7);
+    ctx.fillRect(SX, cy, 3, passH);
 
-  ctx.fillStyle = rgba(ec, 0.9);
-  ctx.font = font(9);
-  ctx.fillText("PASSIVE", SX + 8, sy + 13);
+    // Background
+    ctx.fillStyle = rgba(ec,0.06);
+    ctx.fillRect(SX+3, cy, RX-SX-3, passH);
 
-  // Wrap passive text
-  ctx.fillStyle = rgba("#FFFFFF", 0.75);
-  ctx.font = font(11, "normal");
-  const passiveWords = input.passive.split(" ");
-  let line = "", px = SX + 8, py = sy + 27, lineH = 14, maxW = W - SX - 36;
-  for (const word of passiveWords) {
-    const test = line ? `${line} ${word}` : word;
-    if (ctx.measureText(test).width > maxW && line) {
-      ctx.fillText(line, px, py); py += lineH; line = word;
-    } else { line = test; }
+    // PASSIVE label
+    ctx.fillStyle = rgba(ec,0.85); ctx.font = font(9);
+    ctx.fillText("PASSIVE", SX+10, cy+13);
+
+    // Passive text — wrapped
+    ctx.fillStyle = rgba("#FFFFFF",0.72); ctx.font = font(11,"normal");
+    const words = input.passive.split(" ");
+    let line="", lx=SX+10, ly=cy+27, lh=15, mw=RX-SX-16;
+    for (const w of words) {
+      const t = line ? `${line} ${w}` : w;
+      if (ctx.measureText(t).width > mw && line) {
+        if (ly + lh > cy + passH - 4) { ctx.fillText(line+"…", lx, ly); break; }
+        ctx.fillText(line, lx, ly); ly += lh; line = w;
+      } else { line = t; }
+    }
+    if (line && ly <= cy + passH - 4) ctx.fillText(line, lx, ly);
   }
-  if (line) ctx.fillText(line, px, py);
 
-  // ── Footer ──────────────────────────────────────────────────────────────────
-  ctx.fillStyle = rgba("#FFFFFF", 0.15);
-  ctx.font = font(9);
+  // ── Footer ───────────────────────────────────────────────────────────────────
+  ctx.fillStyle = rgba("#FFFFFF",0.12); ctx.font = font(9);
   ctx.textAlign = "right";
-  ctx.fillText("CARTETHYIA  ·  ARSENAL", W - 14, H - 8);
+  ctx.fillText("CARTETHYIA  ·  ARSENAL", W-12, H-6);
   ctx.textAlign = "left";
 
   return canvas.toBuffer("image/png");
