@@ -48,8 +48,11 @@ export function logError(err: unknown, ctx: ErrorContext): void {
   ].filter(Boolean) as string[];
 
   write(lines);
-  // Mirror to terminal so the console still shows it during dev
-  console.error(`[ERROR] ${ctx.source} — ${msg}`);
+  // Mirror to terminal — include first 3 stack lines so pm2 logs shows the location
+  const stackPreview = (err instanceof Error && err.stack)
+    ? "\n" + err.stack.split("\n").slice(1, 4).join("\n")
+    : "";
+  console.error(`[ERROR] ${ctx.source} — ${msg}${stackPreview}`);
 }
 
 export function logInfo(message: string): void {
