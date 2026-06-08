@@ -32,7 +32,7 @@ export const ACTION_META: Record<ActionType, {
   handhold: { category: "physical",   verb: "holds hands with", selfVerb: "holds hands back", returnLabel: "🤝 Hold Back",    nekoEndpoint: "handhold" },
   bonk:     { category: "physical",   verb: "bonks",            selfVerb: "bonks back",       returnLabel: "🔨 Bonk Back",   nekoEndpoint: "bonk"     },
   highfive: { category: "physical",   verb: "high-fives",       selfVerb: "high-fives back",  returnLabel: "🙌 High Five!",  nekoEndpoint: "highfive" },
-  lick:     { category: "physical",   verb: "licks",            selfVerb: "licks back",       returnLabel: "😛 Lick Back",   nekoEndpoint: "lick"     },
+  lick:     { category: "physical",   verb: "licks",            selfVerb: "licks back",       returnLabel: "😛 Lick Back",   nekoEndpoint: "bleh"     },
   kick:     { category: "physical",   verb: "kicks",            selfVerb: "kicks back",       returnLabel: "🦵 Kick Back",   nekoEndpoint: "kick"     },
   punch:    { category: "physical",   verb: "punches",          selfVerb: "punches back",     returnLabel: "👊 Punch Back",  nekoEndpoint: "punch"    },
   // ── Expressive ───────────────────────────────────────────
