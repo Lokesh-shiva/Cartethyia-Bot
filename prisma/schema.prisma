@@ -300,6 +300,8 @@ model GuildSettings {
   levelUpChannelId    String?                 // where level-up cards post (null = same channel as message)
   notifChannelId      String?                 // where milestone/cap notifications post (null = same as levelUp)
   levelUpEnabled      Boolean  @default(true) // toggle level-up cards on/off server-wide
+  expEnabled          Boolean  @default(true) // toggle chat EXP gain on/off server-wide
+  botChannelIds       String[] @default([])   // if set, commands only respond in these channels
   prefix              String?                 // optional prefix for text commands e.g. "c" or "cart"
 
   @@map("guild_settings")

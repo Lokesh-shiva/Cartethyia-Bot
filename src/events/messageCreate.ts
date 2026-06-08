@@ -3,7 +3,7 @@ import { tryAwardChatExp, getOrCreateUser } from "../lib/economy";
 import { checkLevelUp, sendMilestoneNotifications } from "../lib/progression";
 import { generateLevelUpCard } from "../lib/levelUpCard";
 import { sendElementSelection } from "../lib/elementSelect";
-import { shouldSpawnEncounter, spawnEncounter, getLevelUpChannelId, getNotifChannelId, isLevelUpEnabled } from "../lib/encounter";
+import { shouldSpawnEncounter, spawnEncounter, getLevelUpChannelId, getNotifChannelId, isLevelUpEnabled, isExpEnabled, getBotChannelIds } from "../lib/encounter";
 import { getPrefix } from "../lib/prefixManager";
 import { ExtendedClient } from "../types";
 import prisma from "../lib/prisma";
@@ -36,6 +36,12 @@ export async function execute(message: Message) {
       const command = client.commands.get(cmd);
 
       if (command) {
+        // Bot channel restriction — setup command always allowed for admins
+        if (cmd !== "setup") {
+          const allowed = getBotChannelIds(message.guildId!);
+          if (allowed.size > 0 && !allowed.has(message.channelId)) return;
+        }
+
         const fakeInteraction = buildPrefixInteraction(message, cmd, rest);
         try {
           await command.execute(fakeInteraction as any);
@@ -57,7 +63,7 @@ export async function execute(message: Message) {
   );
 
   // ── Chat EXP ─────────────────────────────────────────────────────────────────
-  const expGained = await tryAwardChatExp(message.author.id);
+  const expGained = isExpEnabled(message.guildId!) && await tryAwardChatExp(message.author.id);
 
   // Encounter check — runs regardless of exp cooldown
   if (shouldSpawnEncounter(message.guildId!, message.channelId)) {

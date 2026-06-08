@@ -1,6 +1,6 @@
 import { Events, Interaction, EmbedBuilder } from "discord.js";
 import { ExtendedClient } from "../types";
-import { handleEncounterFight } from "../lib/encounter";
+import { handleEncounterFight, getBotChannelIds } from "../lib/encounter";
 import { logError } from "../lib/logger";
 
 export const name = Events.InteractionCreate;
@@ -60,6 +60,18 @@ export async function execute(interaction: Interaction) {
   if (!command) {
     console.warn(`[CMD] Unknown command: ${interaction.commandName}`);
     return;
+  }
+
+  // ── Bot channel restriction (skip for /setup so admins can always reach it) ──
+  if (interaction.commandName !== "setup" && interaction.guildId) {
+    const allowed = getBotChannelIds(interaction.guildId);
+    if (allowed.size > 0 && !allowed.has(interaction.channelId)) {
+      await interaction.reply({
+        content: `◈ Commands only work in designated bot channels here. Check <#${[...allowed][0]}> or ask an admin.`,
+        flags: 64,
+      });
+      return;
+    }
   }
 
   // ── Cooldown check ─────────────────────────────────────────────────────────

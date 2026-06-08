@@ -32,8 +32,10 @@ const encountersEnabled  = new Map<string, boolean>();
 const levelUpChannelIds  = new Map<string, string | null>();
 const notifChannelIds    = new Map<string, string | null>();
 const levelUpEnabledMap  = new Map<string, boolean>();
+const expEnabledMap      = new Map<string, boolean>();
+const botChannelIdsMap   = new Map<string, Set<string>>();   // empty = all channels
 
-// Getters used by messageCreate.ts for channel routing
+// Getters used by messageCreate.ts / interactionCreate.ts
 export function getLevelUpChannelId(guildId: string): string | null {
   return levelUpChannelIds.get(guildId) ?? null;
 }
@@ -42,6 +44,13 @@ export function getNotifChannelId(guildId: string): string | null {
 }
 export function isLevelUpEnabled(guildId: string): boolean {
   return levelUpEnabledMap.get(guildId) ?? true;
+}
+export function isExpEnabled(guildId: string): boolean {
+  return expEnabledMap.get(guildId) ?? true;
+}
+/** Returns the set of allowed command channels, or empty set (= allow everywhere). */
+export function getBotChannelIds(guildId: string): Set<string> {
+  return botChannelIdsMap.get(guildId) ?? new Set();
 }
 
 function cacheSettings(s: any): void {
@@ -52,6 +61,8 @@ function cacheSettings(s: any): void {
   levelUpChannelIds.set(s.guildId,  s.levelUpChannelId  ?? null);
   notifChannelIds.set(s.guildId,    s.notifChannelId    ?? null);
   levelUpEnabledMap.set(s.guildId,  s.levelUpEnabled    ?? true);
+  expEnabledMap.set(s.guildId,      s.expEnabled        ?? true);
+  botChannelIdsMap.set(s.guildId,   new Set(s.botChannelIds ?? []));
 }
 
 export async function loadExploreChannels(guildId: string): Promise<void> {
