@@ -576,17 +576,22 @@ async function grantRewards(
   const gained: Record<string, any> = {};
   const lines:  string[] = [];
 
-  // Materials
-  if (r.credits)          { gained.credits          = r.credits;          lines.push(`${CE.cr} ${r.credits} Credits`); }
-  if (r.tuningModules)    { gained.tuningModules    = r.tuningModules;    lines.push(`${CE.tm} ${r.tuningModules} Tuning Modules`); }
-  if (r.sealingTubes)     { gained.sealingTubes     = r.sealingTubes;     lines.push(`${CE.st} ${r.sealingTubes} Sealing Tubes`); }
-  if (r.forgingOres)      { gained.forgingOres      = r.forgingOres;      lines.push(`${CE.fo} ${r.forgingOres} Forging Ores`); }
-  if (r.paradoxCores)     { gained.paradoxCores     = r.paradoxCores;     lines.push(`${CE.pc} ${r.paradoxCores} Paradox Cores`); }
-  if (r.resonanceRecords) { gained.resonanceRecords = r.resonanceRecords; lines.push(`${CE.rr} ${r.resonanceRecords} Resonance Records`); }
+  // WL reward multiplier: WL0=1.0×  WL1=1.4×  WL2=1.8×  WL4=2.6×  WL8=4.2×
+  const wlMult = 1 + worldLevel * 0.4;
+  const scale  = (n: number) => Math.floor(n * wlMult);
 
-  // EXP (with multiplier)
-  const totalExp = r.resonanceExp * r.resonanceExpMult;
-  if (totalExp > 0) { gained.resonanceExp = totalExp; lines.push(`✨ ${totalExp} Resonance EXP${r.resonanceExpMult > 1 ? ` (${r.resonanceExpMult}×)` : ""}`); }
+  // Materials — all scaled with WL
+  const credits = scale(r.credits ?? (dungeon.type === "ECHO" ? 300 : 0));
+  if (credits > 0)          { gained.credits          = credits;              lines.push(`${CE.cr} ${credits} Credits`); }
+  if (r.tuningModules)    { gained.tuningModules    = scale(r.tuningModules);    lines.push(`${CE.tm} ${scale(r.tuningModules)} Tuning Modules`); }
+  if (r.sealingTubes)     { gained.sealingTubes     = scale(r.sealingTubes);     lines.push(`${CE.st} ${scale(r.sealingTubes)} Sealing Tubes`); }
+  if (r.forgingOres)      { gained.forgingOres      = scale(r.forgingOres);      lines.push(`${CE.fo} ${scale(r.forgingOres)} Forging Ores`); }
+  if (r.paradoxCores)     { gained.paradoxCores     = scale(r.paradoxCores);     lines.push(`${CE.pc} ${scale(r.paradoxCores)} Paradox Cores`); }
+  if (r.resonanceRecords) { gained.resonanceRecords = scale(r.resonanceRecords); lines.push(`${CE.rr} ${scale(r.resonanceRecords)} Resonance Records`); }
+
+  // EXP (with dungeon multiplier AND WL multiplier)
+  const totalExp = Math.floor(r.resonanceExp * r.resonanceExpMult * wlMult);
+  if (totalExp > 0) { gained.resonanceExp = totalExp; lines.push(`✨ ${totalExp} Resonance EXP${r.resonanceExpMult > 1 ? ` (${r.resonanceExpMult}×)` : ""}${worldLevel > 0 ? ` (+${Math.round((wlMult - 1) * 100)}% WL bonus)` : ""}`); }
 
   await awardUser(userId, gained);
 
@@ -594,11 +599,21 @@ async function grantRewards(
   const echoLines: string[] = [];
   if (dungeon.type === "ECHO" && r.echoElement && r.echoWeights) {
     const isBossTrial = dungeon.id.startsWith("boss_");
-    // Boss trials: always 1 (4-cost). Regular echo dungeons: 5–8 scaling with WL
-    const dropCount   = isBossTrial ? 1 : 5 + Math.floor(worldLevel / 2);
+    // Boss trials: always 1 (4-cost). Regular echo dungeons: 2–6 scaling with WL
+    const dropCount   = isBossTrial ? 1 : 2 + Math.floor(worldLevel * 0.5);
+
+    // At higher WL shift rarity weights toward 4★/5★
+    // WL0: base weights  WL4: +20% 4★ bonus  WL8: +40% 4★ bonus
+    const baseWeights = r.echoWeights as [number, number, number];
+    const wlRarityShift = Math.floor(worldLevel * 5);   // 0–40 shift from 3★ → 4★/5★
+    const scaledWeights: [number, number, number] = [
+      Math.max(0, baseWeights[0] - wlRarityShift * 1.5),
+      Math.min(95, baseWeights[1] + wlRarityShift),
+      Math.min(95, baseWeights[2] + wlRarityShift * 0.5),
+    ];
 
     for (let i = 0; i < dropCount; i++) {
-      const rarity  = rollRarity(r.echoWeights as [number, number, number]);
+      const rarity  = rollRarity(scaledWeights);
       const element = r.echoElement;
 
       // Boss trials always drop 4-cost echoes; regular echo dungeons use enemy cost

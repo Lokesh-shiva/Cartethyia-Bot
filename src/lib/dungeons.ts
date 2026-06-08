@@ -72,7 +72,7 @@ export const DUNGEONS: DungeonDefinition[] = [
     ],
     rewards: {
       echoElement: "FUSION", echoWeights: [70, 25, 5],
-      resonanceExp: 120, resonanceExpMult: 3,
+      credits: 300, resonanceExp: 120, resonanceExpMult: 3,
     },
   },
 
@@ -427,7 +427,10 @@ export function getScaledWaveEnemy(
 ): { def: EchoDefinition; hp: number; atk: number; def_: number } {
   const waveDef = dungeon.waves[waveIdx];
   const base    = getEnemy(waveDef.enemyName);
-  const wlScale = 1 + worldLevel * 0.15;
+  // Exponential WL scaling so enemies stay threatening at higher world levels:
+  // WL0=1.0×  WL1=1.45×  WL2=2.1×  WL3=3.0×  WL4=4.4×
+  // WL5=6.4×  WL6=9.2×   WL7=13.4× WL8=19.4×
+  const wlScale = Math.pow(1.45, worldLevel);
 
   return {
     def:  base,
