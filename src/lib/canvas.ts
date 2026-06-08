@@ -79,6 +79,8 @@ export interface WeaponData {
   weaponType: string;
   rarity:     number;
   baseAtk:    number;
+  userId?:    string;   // for unique forged weapons → assets/weapons/unique/{userId}.png
+  isUnique?:  boolean;
 }
 
 export interface ProfileCardInput {
@@ -394,18 +396,72 @@ export async function generateProfileCard(input: ProfileCardInput): Promise<Buff
   ctx.beginPath(); ctx.moveTo(NX, weapY - 2); ctx.lineTo(NX + 320, weapY - 2); ctx.stroke();
 
   if (input.weapon) {
-    const stars = "★".repeat(input.weapon.rarity) + "☆".repeat(3 - input.weapon.rarity);
-    ctx.fillStyle = "#FBBF24";
-    ctx.font = `bold 10px Rajdhani, 'Noto Sans', 'Noto Sans CJK SC', 'Noto Sans JP', Arial, sans-serif`;
-    ctx.fillText(stars, NX, weapY + 12);
+    const WS = 36; // thumbnail size
 
-    ctx.fillStyle = "#FFFFFF";
+    // Resolve art path: unique → assets/weapons/unique/{userId}.png
+    //                   normal  → assets/weapons/{TypeFolder}/{Name}.png
+    const typeFolder = input.weapon.weaponType.charAt(0).toUpperCase()
+      + input.weapon.weaponType.slice(1).toLowerCase();   // BROADBLADE → Broadblade
+    const weapImgPath = input.weapon.isUnique && input.weapon.userId
+      ? path.join(process.cwd(), "assets", "weapons", "unique", `${input.weapon.userId}.png`)
+      : path.join(process.cwd(), "assets", "weapons", typeFolder, `${input.weapon.name}.png`);
+
+    // Thumbnail box
+    ctx.save();
+    rrect(ctx, NX, weapY - 2, WS, WS, 6);
+    ctx.clip();
+    let weapImgLoaded = false;
+    if (fs.existsSync(weapImgPath)) {
+      try {
+        const wImg = await loadImage(weapImgPath);
+        ctx.drawImage(wImg, NX, weapY - 2, WS, WS);
+        weapImgLoaded = true;
+      } catch { /* fall through */ }
+    }
+    if (!weapImgLoaded) {
+      // Fallback: element-tinted box with weapon type initial
+      ctx.fillStyle = rgba(t.primary, 0.25);
+      ctx.fillRect(NX, weapY - 2, WS, WS);
+      ctx.fillStyle = rgba(t.primary, 0.8);
+      ctx.font = `bold 18px Rajdhani, Arial, sans-serif`;
+      ctx.textAlign = "center";
+      ctx.fillText(input.weapon.weaponType.charAt(0), NX + WS / 2, weapY + WS / 2 - 2 + 6);
+      ctx.textAlign = "left";
+    }
+    ctx.restore();
+
+    // Rarity border glow around thumbnail
+    const rarityColors: Record<number, string> = { 1: "#9CA3AF", 2: "#34D399", 3: "#818CF8", 4: "#F59E0B", 5: "#F43F5E" };
+    ctx.strokeStyle = rarityColors[input.weapon.rarity] ?? "#818CF8";
+    ctx.lineWidth   = 1.5;
+    rrect(ctx, NX, weapY - 2, WS, WS, 6); ctx.stroke();
+
+    // Stars — filled only, small, below thumbnail right edge
+    const filledStars = "★".repeat(input.weapon.rarity);
+    ctx.fillStyle = rarityColors[input.weapon.rarity] ?? "#818CF8";
+    ctx.font = `bold 8px Rajdhani, Arial, sans-serif`;
+    ctx.fillText(filledStars, NX, weapY + WS + 6);
+
+    // Weapon name
+    ctx.fillStyle = input.weapon.isUnique ? t.secondary : "#FFFFFF";
     ctx.font = `bold 13px Rajdhani, 'Noto Sans', 'Noto Sans CJK SC', 'Noto Sans JP', Arial, sans-serif`;
-    ctx.fillText(truncate(input.weapon.name, 22), NX + 42, weapY + 12);
+    ctx.fillText(truncate(input.weapon.name, 22), NX + WS + 6, weapY + 12);
 
+    // Type · ATK
     ctx.fillStyle = "rgba(255,255,255,0.35)";
     ctx.font = `bold 10px Rajdhani, 'Noto Sans', 'Noto Sans CJK SC', 'Noto Sans JP', Arial, sans-serif`;
-    ctx.fillText(`${input.weapon.weaponType}  ·  ${input.weapon.baseAtk} ATK`, NX + 42, weapY + 24);
+    ctx.fillText(`${typeFolder}  ·  ${input.weapon.baseAtk} ATK`, NX + WS + 6, weapY + 24);
+
+    // Unique badge
+    if (input.weapon.isUnique) {
+      ctx.fillStyle = rgba(t.primary, 0.15);
+      rrect(ctx, NX + WS + 6, weapY + 27, 46, 12, 3); ctx.fill();
+      ctx.strokeStyle = rgba(t.primary, 0.5); ctx.lineWidth = 1;
+      rrect(ctx, NX + WS + 6, weapY + 27, 46, 12, 3); ctx.stroke();
+      ctx.fillStyle = t.secondary;
+      ctx.font = `bold 8px Rajdhani, Arial, sans-serif`;
+      ctx.fillText("◈ FORGED", NX + WS + 10, weapY + 36);
+    }
   } else {
     ctx.fillStyle = "rgba(255,255,255,0.2)";
     ctx.font = `11px Rajdhani, 'Noto Sans', 'Noto Sans CJK SC', 'Noto Sans JP', Arial, sans-serif`;
