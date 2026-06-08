@@ -1,9 +1,19 @@
 import { SlashCommandBuilder, ChatInputCommandInteraction, EmbedBuilder, AttachmentBuilder } from "discord.js";
 import { Command } from "../../types";
 import { getOrCreateUser } from "../../lib/economy";
-import { RARITY_STARS, WEAPON_TYPE_EMOJI, WEAPON_TYPE_LABEL, getWeaponImagePath } from "../../lib/weapons";
+import { WEAPON_TYPE_LABEL, FORGED_WEAPONS } from "../../lib/weapons";
+import { generateWeaponCard } from "../../lib/weaponCard";
 import { WeaponType } from "@prisma/client";
 import prisma from "../../lib/prisma";
+
+function effectiveAtk(baseAtk: number, rarity: number, level: number): number {
+  const maxMult: Record<number, number> = { 1: 2.5, 2: 3.0, 3: 3.5, 4: 4.2, 5: 5.0 };
+  const mult = maxMult[rarity] ?? 2.5;
+  return Math.round(baseAtk * (1 + (level - 1) * (mult - 1) / 89));
+}
+function effectiveSub(base: number, level: number): number {
+  return Math.round((base * (1 + (level - 1) * 0.8 / 89)) * 10) / 10;
+}
 
 const ELEMENT_HEX: Record<string, number> = {
   FUSION: 0xFF6B35, GLACIO: 0x38BDF8, ELECTRO: 0xA855F7,
@@ -47,35 +57,33 @@ const command: Command = {
       return;
     }
 
-    const stars   = RARITY_STARS[weapon.rarity] ?? "★☆☆☆☆";
-    const emoji   = WEAPON_TYPE_EMOJI[weapon.weaponType as WeaponType] ?? "⚔️";
-    const imgPath = getWeaponImagePath(weapon.weaponType, weapon.name);
+    const weaponDef = FORGED_WEAPONS.find(w => w.name === weapon.name);
 
+    // Generate weapon card
+    const cardBuffer = await generateWeaponCard({
+      name:         weapon.name,
+      weaponType:   weapon.weaponType,
+      rarity:       weapon.rarity,
+      level:        weapon.level,
+      baseAtk:      weapon.baseAtk,
+      effectiveAtk: effectiveAtk(weapon.baseAtk, weapon.rarity, weapon.level),
+      subStatType:  weapon.subStatType ?? null,
+      subStatVal:   weapon.subStatVal  ?? null,
+      effectiveSub: weapon.subStatVal  != null ? effectiveSub(weapon.subStatVal, weapon.level) : null,
+      passive:      weaponDef?.passive ?? WEAPON_TYPE_LABEL[weapon.weaponType as WeaponType] ?? "",
+      element:      user.element,
+      ownerName:    displayName,
+      ownerAvatar:  avatarUrl,
+    });
+
+    const attachment = new AttachmentBuilder(cardBuffer, { name: "weapon.png" });
     const embed = new EmbedBuilder()
       .setColor(color)
       .setAuthor({ name: `${displayName}  ·  Equipped Weapon`, iconURL: avatarUrl })
-      .setDescription([
-        `## ${emoji}  ${weapon.name}`,
-        `${stars}  ·  ${weapon.weaponType}`,
-        ``,
-        `◈  Base ATK  **${weapon.baseAtk}**`,
-        weapon.subStatType
-          ? `◈  ${weapon.subStatType.replace(/_/g, " ")}  **+${weapon.subStatVal}%**`
-          : "",
-        ``,
-        `*${WEAPON_TYPE_LABEL[weapon.weaponType as WeaponType]}*`,
-        ``,
-        `Level **${weapon.level}** / 90`,
-      ].filter(Boolean).join("\n"))
-      .setFooter({ text: "CARTETHYIA  ·  Arsenal  ·  /forge to change weapons" });
+      .setImage("attachment://weapon.png")
+      .setFooter({ text: "CARTETHYIA  ·  Arsenal  ·  /forge to change  ·  /weapon-upgrade to level up" });
 
-    const files: AttachmentBuilder[] = [];
-    if (imgPath) {
-      files.push(new AttachmentBuilder(imgPath, { name: "weapon.png" }));
-      embed.setThumbnail("attachment://weapon.png");
-    }
-
-    await interaction.editReply({ embeds: [embed], files });
+    await interaction.editReply({ embeds: [embed], files: [attachment] });
   },
 };
 
