@@ -414,6 +414,7 @@ const command: Command = {
     };
 
     collector?.on("collect", async (i) => {
+      try {
       const id = i.customId;
 
       // ── Navigation ───────────────────────────────────────────────────────────
@@ -464,7 +465,7 @@ const command: Command = {
             new ActionRowBuilder<TextInputBuilder>().addComponents(
               new TextInputBuilder()
                 .setCustomId("channel_ids")
-                .setLabel("Channel / Thread IDs (space or comma separated)")
+                .setLabel("Channel / Thread IDs (comma separated)")
                 .setStyle(TextInputStyle.Paragraph)
                 .setPlaceholder("e.g.  1234567890  or  1234567890, 9876543210\n\nRight-click a channel/thread → Copy Channel ID")
                 .setMinLength(1).setMaxLength(1000).setRequired(true)
@@ -584,6 +585,10 @@ const command: Command = {
         await i.deferUpdate();
         await savePrefixToDb(guildId, value);
         await render(); return;
+      }
+      } catch (err: any) {
+        console.error("[Setup] collector error:", err?.message ?? err);
+        await i.reply({ content: "◈ Something went wrong in setup. Please try again.", flags: 64 }).catch(() => {});
       }
     });
 
