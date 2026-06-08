@@ -482,9 +482,11 @@ const command: Command = {
             ) {
               clearTimeout(tid);
               interaction.client.off(Events.InteractionCreate, mHandler);
-              // Acknowledge immediately — must be within 3s
-              await (intr as ModalSubmitInteraction).deferUpdate().catch(() => {});
-              resolve({ intr: intr as ModalSubmitInteraction, raw: (intr as ModalSubmitInteraction).fields.getTextInputValue("channel_ids") });
+              const raw = (intr as ModalSubmitInteraction).fields.getTextInputValue("channel_ids");
+              // Acknowledge the modal — try deferUpdate (works if modal came from component), fall back to deferReply
+              try { await (intr as any).deferUpdate(); }
+              catch { try { await (intr as any).deferReply({ flags: 64 }); } catch { /* ignore */ } }
+              resolve({ intr: intr as ModalSubmitInteraction, raw });
             }
           };
           interaction.client.on(Events.InteractionCreate, mHandler);
@@ -551,8 +553,10 @@ const command: Command = {
               if (intr.isModalSubmit() && intr.customId === "setup_pfx_modal" && intr.user.id === interaction.user.id) {
                 clearTimeout(tid);
                 interaction.client.off(Events.InteractionCreate, handler);
-                await (intr as ModalSubmitInteraction).deferUpdate().catch(() => {});
-                resolve((intr as ModalSubmitInteraction).fields.getTextInputValue("pfx_value").trim().toLowerCase().replace(/!+$/, "") || null);
+                const val = (intr as ModalSubmitInteraction).fields.getTextInputValue("pfx_value").trim().toLowerCase().replace(/!+$/, "") || null;
+                try { await (intr as any).deferUpdate(); }
+                catch { try { await (intr as any).deferReply({ flags: 64 }); } catch { /* ignore */ } }
+                resolve(val);
               }
             };
             interaction.client.on(Events.InteractionCreate, handler);
