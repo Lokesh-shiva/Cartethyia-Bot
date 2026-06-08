@@ -25,7 +25,7 @@ export function hpBar(current: number, max: number, width = 18): string {
 }
 
 export function energyBar(energy: number, width = 10): string {
-  const fill = Math.round((energy / 100) * width);
+  const fill = Math.max(0, Math.min(width, Math.round((energy / 100) * width)));
   return "▰".repeat(fill) + "▱".repeat(width - fill);
 }
 
