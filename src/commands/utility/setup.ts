@@ -483,9 +483,17 @@ const command: Command = {
               clearTimeout(tid);
               interaction.client.off(Events.InteractionCreate, mHandler);
               const raw = (intr as ModalSubmitInteraction).fields.getTextInputValue("channel_ids");
-              // Acknowledge the modal — try deferUpdate (works if modal came from component), fall back to deferReply
-              try { await (intr as any).deferUpdate(); }
-              catch { try { await (intr as any).deferReply({ flags: 64 }); } catch { /* ignore */ } }
+              // Acknowledge the modal — deferUpdate for component-triggered modals, fall back to reply
+              try {
+                await (intr as any).deferUpdate();
+              } catch (e1: any) {
+                console.error("[Setup] deferUpdate failed on modal:", e1?.message ?? e1);
+                try {
+                  await (intr as any).reply({ content: "◈ Updating...", flags: 64 });
+                } catch (e2: any) {
+                  console.error("[Setup] reply fallback also failed:", e2?.message ?? e2);
+                }
+              }
               resolve({ intr: intr as ModalSubmitInteraction, raw });
             }
           };
@@ -554,8 +562,13 @@ const command: Command = {
                 clearTimeout(tid);
                 interaction.client.off(Events.InteractionCreate, handler);
                 const val = (intr as ModalSubmitInteraction).fields.getTextInputValue("pfx_value").trim().toLowerCase().replace(/!+$/, "") || null;
-                try { await (intr as any).deferUpdate(); }
-                catch { try { await (intr as any).deferReply({ flags: 64 }); } catch { /* ignore */ } }
+                try {
+                  await (intr as any).deferUpdate();
+                } catch (e1: any) {
+                  console.error("[Setup] deferUpdate failed on pfx modal:", e1?.message ?? e1);
+                  try { await (intr as any).reply({ content: "◈ Updating...", flags: 64 }); }
+                  catch (e2: any) { console.error("[Setup] pfx reply fallback failed:", e2?.message ?? e2); }
+                }
                 resolve(val);
               }
             };
