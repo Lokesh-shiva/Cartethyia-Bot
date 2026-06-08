@@ -151,7 +151,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
   });
 
   collector?.on("collect", async (sel: StringSelectMenuInteraction) => {
-    await sel.deferUpdate();  // acknowledge immediately before any DB work
+    try { await sel.deferUpdate(); } catch (err: any) { if (err?.code === 10062) return; throw err; }
     const echoId = sel.values[0];
     const echo   = await prisma.echo.findUnique({ where: { id: echoId } });
     if (!echo || echo.userId !== interaction.user.id) {

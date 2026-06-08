@@ -297,7 +297,12 @@ export async function handleEncounterFight(
   }
 
   enc.fighterId = interaction.user.id;
-  await interaction.deferUpdate();
+  try {
+    await interaction.deferUpdate();
+  } catch (err: any) {
+    if (err?.code === 10062) { enc.fighterId = null; return; } // interaction expired
+    throw err;
+  }
 
   const dbUser = await prisma.user.findUnique({
     where:  { id: interaction.user.id },

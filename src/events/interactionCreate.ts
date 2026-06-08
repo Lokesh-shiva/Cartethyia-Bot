@@ -43,7 +43,9 @@ export async function execute(interaction: Interaction) {
   if (interaction.isButton()) {
     const { customId } = interaction;
     if (customId === "encounter_fight") {
-      await handleEncounterFight(interaction).catch(console.error);
+      await handleEncounterFight(interaction).catch((e: any) => {
+        if (e?.code !== 10062) console.error(e);
+      });
       return;
     }
     // All other buttons (vibe return, ascend, bond) handled by collectors in their commands
@@ -76,7 +78,10 @@ export async function execute(interaction: Interaction) {
   // ── Execute ────────────────────────────────────────────────────────────────
   try {
     await command.execute(interaction);
-  } catch (error) {
+  } catch (error: any) {
+    // 10062 = Unknown Interaction — Discord's 3s ack window expired. Silently drop.
+    if (error?.code === 10062) return;
+
     logError(error, {
       source:  `command /${interaction.commandName}`,
       userId:  interaction.user.id,
