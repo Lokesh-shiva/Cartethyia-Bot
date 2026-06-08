@@ -472,9 +472,9 @@ const command: Command = {
           );
         await (i as ButtonInteraction).showModal(modal);
 
-        const submitted = await new Promise<ModalSubmitInteraction | null>((resolve) => {
+        const submitted = await new Promise<{ intr: ModalSubmitInteraction; raw: string } | null>((resolve) => {
           const tid = setTimeout(() => { interaction.client.off(Events.InteractionCreate, mHandler); resolve(null); }, 60_000);
-          const mHandler = (intr: Interaction) => {
+          const mHandler = async (intr: Interaction) => {
             if (
               intr.isModalSubmit() &&
               intr.customId === `setup_blk_id_modal_${isAdd ? "add" : "remove"}` &&
@@ -482,17 +482,17 @@ const command: Command = {
             ) {
               clearTimeout(tid);
               interaction.client.off(Events.InteractionCreate, mHandler);
-              resolve(intr as ModalSubmitInteraction);
+              // Acknowledge immediately — must be within 3s
+              await (intr as ModalSubmitInteraction).deferUpdate().catch(() => {});
+              resolve({ intr: intr as ModalSubmitInteraction, raw: (intr as ModalSubmitInteraction).fields.getTextInputValue("channel_ids") });
             }
           };
           interaction.client.on(Events.InteractionCreate, mHandler);
         });
 
         if (submitted) {
-          await submitted.deferUpdate();
-          const raw    = submitted.fields.getTextInputValue("channel_ids");
-          const ids    = raw.split(/[\s,]+/).map(x => x.trim()).filter(x => /^\d{17,20}$/.test(x));
-          const fresh  = await getSettings(guildId);
+          const ids     = submitted.raw.split(/[\s,]+/).map(x => x.trim()).filter(x => /^\d{17,20}$/.test(x));
+          const fresh   = await getSettings(guildId);
           const current: string[] = (fresh as any).encounterBlacklist ?? [];
           const updated = isAdd
             ? [...new Set([...current, ...ids])]
@@ -545,22 +545,21 @@ const command: Command = {
             );
           await (i as StringSelectMenuInteraction).showModal(modal);
 
-          const submitted = await new Promise<ModalSubmitInteraction | null>((resolve) => {
+          const submitted = await new Promise<string | null>((resolve) => {
             const tid = setTimeout(() => { interaction.client.off(Events.InteractionCreate, handler); resolve(null); }, 60_000);
-            const handler = (intr: Interaction) => {
+            const handler = async (intr: Interaction) => {
               if (intr.isModalSubmit() && intr.customId === "setup_pfx_modal" && intr.user.id === interaction.user.id) {
                 clearTimeout(tid);
                 interaction.client.off(Events.InteractionCreate, handler);
-                resolve(intr as ModalSubmitInteraction);
+                await (intr as ModalSubmitInteraction).deferUpdate().catch(() => {});
+                resolve((intr as ModalSubmitInteraction).fields.getTextInputValue("pfx_value").trim().toLowerCase().replace(/!+$/, "") || null);
               }
             };
             interaction.client.on(Events.InteractionCreate, handler);
           });
 
           if (submitted) {
-            await submitted.deferUpdate();
-            const cleaned = submitted.fields.getTextInputValue("pfx_value").trim().toLowerCase().replace(/!+$/, "") || null;
-            if (cleaned) await savePrefixToDb(guildId, cleaned);
+            await savePrefixToDb(guildId, submitted);
           }
           await render(); return;
         }
