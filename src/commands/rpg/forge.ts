@@ -1,13 +1,13 @@
 import {
   SlashCommandBuilder, ChatInputCommandInteraction,
   EmbedBuilder, StringSelectMenuBuilder, StringSelectMenuOptionBuilder,
-  ActionRowBuilder, ComponentType, ButtonBuilder, ButtonStyle,
+  ActionRowBuilder, ComponentType, ButtonBuilder, ButtonStyle, AttachmentBuilder,
 } from "discord.js";
 import { Command } from "../../types";
 import { getOrCreateUser } from "../../lib/economy";
 import {
   FORGED_WEAPONS, RARITY_STARS, WEAPON_TYPE_LABEL,
-  WEAPON_TYPE_EMOJI, WeaponDefinition,
+  WEAPON_TYPE_EMOJI, WeaponDefinition, getWeaponImagePath,
 } from "../../lib/weapons";
 import { WeaponType } from "@prisma/client";
 import prisma from "../../lib/prisma";
@@ -138,12 +138,19 @@ const command: Command = {
         ].filter(Boolean).join("\n"))
         .setFooter({ text: "CARTETHYIA  ·  Forge  ·  This cannot be undone" });
 
+      const confirmFiles: AttachmentBuilder[] = [];
+      const confirmImgPath = getWeaponImagePath(chosen.type, chosen.name);
+      if (confirmImgPath) {
+        confirmFiles.push(new AttachmentBuilder(confirmImgPath, { name: "weapon.png" }));
+        confirmEmbed.setThumbnail("attachment://weapon.png");
+      }
+
       const confirmRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
         new ButtonBuilder().setCustomId("forge_confirm").setLabel("⚒️  Forge it").setStyle(ButtonStyle.Success),
         new ButtonBuilder().setCustomId("forge_cancel").setLabel("Cancel").setStyle(ButtonStyle.Secondary),
       );
 
-      await sel.editReply({ embeds: [confirmEmbed], components: [confirmRow] });
+      await sel.editReply({ embeds: [confirmEmbed], components: [confirmRow], files: confirmFiles });
 
       // Confirm/cancel
       const btnCollector = msg.createMessageComponentCollector({
@@ -206,23 +213,27 @@ const command: Command = {
           data:  { weaponType: chosen.type },
         });
 
-        await btn.editReply({
-          embeds: [
-            new EmbedBuilder()
-              .setColor(color)
-              .setTitle(`✦ ${chosen.name} Forged`)
-              .setDescription([
-                `${RARITY_STARS[chosen.rarity]}  ${WEAPON_TYPE_EMOJI[chosen.type]}  ${chosen.type}`,
-                ``,
-                `ATK  **${chosen.baseAtk}**  ·  ${chosen.subStatType.replace(/_/g, " ")}  +${chosen.subStatVal}%`,
-                `*${chosen.passive}*`,
-                ``,
-                `Your weapon has been equipped. Check **/profile** to see it.`,
-              ].join("\n"))
-              .setFooter({ text: "CARTETHYIA  ·  Forge" }),
-          ],
-          components: [],
-        });
+        const successEmbed = new EmbedBuilder()
+          .setColor(color)
+          .setTitle(`✦ ${chosen.name} Forged`)
+          .setDescription([
+            `${RARITY_STARS[chosen.rarity]}  ${WEAPON_TYPE_EMOJI[chosen.type]}  ${chosen.type}`,
+            ``,
+            `ATK  **${chosen.baseAtk}**  ·  ${chosen.subStatType.replace(/_/g, " ")}  +${chosen.subStatVal}%`,
+            `*${chosen.passive}*`,
+            ``,
+            `Your weapon has been equipped. Check **/profile** to see it.`,
+          ].join("\n"))
+          .setFooter({ text: "CARTETHYIA  ·  Forge" });
+
+        const successFiles: AttachmentBuilder[] = [];
+        const successImgPath = getWeaponImagePath(chosen.type, chosen.name);
+        if (successImgPath) {
+          successFiles.push(new AttachmentBuilder(successImgPath, { name: "weapon.png" }));
+          successEmbed.setImage("attachment://weapon.png");
+        }
+
+        await btn.editReply({ embeds: [successEmbed], components: [], files: successFiles });
       });
     });
 

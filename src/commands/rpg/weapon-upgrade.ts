@@ -2,11 +2,11 @@ import {
   SlashCommandBuilder, ChatInputCommandInteraction,
   EmbedBuilder, ActionRowBuilder, StringSelectMenuBuilder,
   StringSelectMenuInteraction, ButtonBuilder, ButtonStyle,
-  ComponentType, ButtonInteraction,
+  ComponentType, ButtonInteraction, AttachmentBuilder,
 } from "discord.js";
 import prisma from "../../lib/prisma";
 import { replyNotStarted } from "../../lib/economy";
-import { WEAPON_TYPE_EMOJI, RARITY_STARS } from "../../lib/weapons";
+import { WEAPON_TYPE_EMOJI, RARITY_STARS, getWeaponImagePath } from "../../lib/weapons";
 import { CE } from "../../lib/emojiManager";
 import { WeaponType } from "@prisma/client";
 
@@ -139,30 +139,37 @@ export async function execute(interaction: ChatInputCommandInteraction) {
       where:  { id: interaction.user.id },
       select: { forgingOres: true },
     });
-    const ores  = freshUser?.forgingOres ?? 0;
-    const emoji = WEAPON_TYPE_EMOJI[weapon.weaponType as WeaponType] ?? "🗡️";
-    const curAtk = effectiveAtk(weapon.baseAtk, weapon.rarity, weapon.level);
-    const curSub = weapon.subStatVal != null ? effectiveSubStat(weapon.subStatVal, weapon.level) : null;
+    const ores     = freshUser?.forgingOres ?? 0;
+    const emoji    = WEAPON_TYPE_EMOJI[weapon.weaponType as WeaponType] ?? "🗡️";
+    const curAtk   = effectiveAtk(weapon.baseAtk, weapon.rarity, weapon.level);
+    const curSub   = weapon.subStatVal != null ? effectiveSubStat(weapon.subStatVal, weapon.level) : null;
+    const imgPath  = getWeaponImagePath(weapon.weaponType, weapon.name);
+    const weapFile = imgPath ? [new AttachmentBuilder(imgPath, { name: "weapon.png" })] : [];
 
-    function infoEmbed() {
-      let statLine = `**ATK:** ${curAtk}`;
-      if (weapon!.subStatType && curSub != null) {
-        statLine += `  ·  **${weapon!.subStatType.replace(/_/g, " ")}:** ${curSub}`;
+    function infoEmbed(latestLevel = weapon!.level, latestOres = ores) {
+      const latestAtk = effectiveAtk(weapon!.baseAtk, weapon!.rarity, latestLevel);
+      const latestSub = weapon!.subStatVal != null ? effectiveSubStat(weapon!.subStatVal, latestLevel) : null;
+      let statLine = `**ATK:** ${latestAtk}`;
+      if (weapon!.subStatType && latestSub != null) {
+        statLine += `  ·  **${weapon!.subStatType.replace(/_/g, " ")}:** ${latestSub}`;
       }
-      return new EmbedBuilder()
+      const embed = new EmbedBuilder()
         .setColor(0xF5A623)
         .setTitle(`${emoji}  ${weapon!.name}  ${RARITY_STARS[weapon!.rarity] ?? ""}`)
         .setDescription(
-          `Level **${weapon!.level}** / **${MAX_WEAPON_LEVEL}**\n` +
+          `Level **${latestLevel}** / **${MAX_WEAPON_LEVEL}**\n` +
           `${statLine}\n\n` +
-          `${CE.fo} **${ores}** Forging Ores  ·  next level costs **${upgradeCost(weapon!.level)}**`
+          `${CE.fo} **${latestOres}** Forging Ores  ·  next level costs **${upgradeCost(latestLevel)}**`
         )
         .setFooter({ text: "CARTETHYIA  ·  Weapon Upgrade  ·  Expires in 2min" });
+      if (imgPath) embed.setThumbnail("attachment://weapon.png");
+      return embed;
     }
 
     await sel.editReply({
       embeds:     [infoEmbed()],
       components: [modeButtons(weapon.id)],
+      files:      weapFile,
     });
 
     const btnCollector = interaction.channel?.createMessageComponentCollector({
@@ -228,13 +235,17 @@ export async function execute(interaction: ChatInputCommandInteraction) {
         desc += `\n**${latest.subStatType.replace(/_/g, " ")}:** ${oldSub} → **${newSub}**`;
       }
 
+      const upgradeEmbed = new EmbedBuilder()
+        .setColor(0xF5A623)
+        .setTitle(`${emoji}  Weapon Upgraded`)
+        .setDescription(desc)
+        .setFooter({ text: `CARTETHYIA  ·  Weapon Upgrade  ·  ${availOres - totalCost} ${CE.fo} remaining` });
+      if (imgPath) upgradeEmbed.setThumbnail("attachment://weapon.png");
+
       await btn.editReply({
-        embeds: [new EmbedBuilder()
-          .setColor(0xF5A623)
-          .setTitle(`${emoji}  Weapon Upgraded`)
-          .setDescription(desc)
-          .setFooter({ text: `CARTETHYIA  ·  Weapon Upgrade  ·  ${availOres - totalCost} ${CE.fo} remaining` })],
+        embeds:     [upgradeEmbed],
         components: [],
+        files:      weapFile,
       });
     });
 

@@ -1,4 +1,6 @@
 import { WeaponType } from "@prisma/client";
+import path from "path";
+import fs   from "fs";
 
 export interface WeaponDefinition {
   id:          string;
@@ -120,6 +122,24 @@ export const WEAPON_TYPE_EMOJI: Record<WeaponType, string> = {
 
 export function getForgedWeaponsByType(type: WeaponType): WeaponDefinition[] {
   return FORGED_WEAPONS.filter((w) => w.type === type);
+}
+
+// Returns the local path to a weapon's art image, or null if it doesn't exist.
+// unique weapons: assets/weapons/unique/{userId}.png
+// normal weapons: assets/weapons/{TypeFolder}/{Name}.png
+export function getWeaponImagePath(
+  weaponType: string,
+  weaponName: string,
+  opts?: { isUnique?: boolean; userId?: string }
+): string | null {
+  const imgPath = opts?.isUnique && opts.userId
+    ? path.join(process.cwd(), "assets", "weapons", "unique", `${opts.userId}.png`)
+    : path.join(
+        process.cwd(), "assets", "weapons",
+        weaponType.charAt(0).toUpperCase() + weaponType.slice(1).toLowerCase(),
+        `${weaponName}.png`
+      );
+  return fs.existsSync(imgPath) ? imgPath : null;
 }
 
 // Passive effects injected into combat at equip-time.

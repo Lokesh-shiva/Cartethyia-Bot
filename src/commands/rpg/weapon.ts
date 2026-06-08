@@ -1,7 +1,7 @@
-import { SlashCommandBuilder, ChatInputCommandInteraction, EmbedBuilder } from "discord.js";
+import { SlashCommandBuilder, ChatInputCommandInteraction, EmbedBuilder, AttachmentBuilder } from "discord.js";
 import { Command } from "../../types";
 import { getOrCreateUser } from "../../lib/economy";
-import { RARITY_STARS, WEAPON_TYPE_EMOJI, WEAPON_TYPE_LABEL } from "../../lib/weapons";
+import { RARITY_STARS, WEAPON_TYPE_EMOJI, WEAPON_TYPE_LABEL, getWeaponImagePath } from "../../lib/weapons";
 import { WeaponType } from "@prisma/client";
 import prisma from "../../lib/prisma";
 
@@ -47,30 +47,35 @@ const command: Command = {
       return;
     }
 
-    const stars = RARITY_STARS[weapon.rarity] ?? "★☆☆☆☆";
-    const emoji = WEAPON_TYPE_EMOJI[weapon.weaponType as WeaponType] ?? "⚔️";
+    const stars   = RARITY_STARS[weapon.rarity] ?? "★☆☆☆☆";
+    const emoji   = WEAPON_TYPE_EMOJI[weapon.weaponType as WeaponType] ?? "⚔️";
+    const imgPath = getWeaponImagePath(weapon.weaponType, weapon.name);
 
-    await interaction.editReply({
-      embeds: [
-        new EmbedBuilder()
-          .setColor(color)
-          .setAuthor({ name: `${displayName}  ·  Equipped Weapon`, iconURL: avatarUrl })
-          .setDescription([
-            `## ${emoji}  ${weapon.name}`,
-            `${stars}  ·  ${weapon.weaponType}`,
-            ``,
-            `◈  Base ATK  **${weapon.baseAtk}**`,
-            weapon.subStatType
-              ? `◈  ${weapon.subStatType.replace(/_/g, " ")}  **+${weapon.subStatVal}%**`
-              : "",
-            ``,
-            `*${WEAPON_TYPE_LABEL[weapon.weaponType as WeaponType]}*`,
-            ``,
-            `Level **${weapon.level}** / 90`,
-          ].filter(Boolean).join("\n"))
-          .setFooter({ text: "CARTETHYIA  ·  Arsenal  ·  /forge to change weapons" }),
-      ],
-    });
+    const embed = new EmbedBuilder()
+      .setColor(color)
+      .setAuthor({ name: `${displayName}  ·  Equipped Weapon`, iconURL: avatarUrl })
+      .setDescription([
+        `## ${emoji}  ${weapon.name}`,
+        `${stars}  ·  ${weapon.weaponType}`,
+        ``,
+        `◈  Base ATK  **${weapon.baseAtk}**`,
+        weapon.subStatType
+          ? `◈  ${weapon.subStatType.replace(/_/g, " ")}  **+${weapon.subStatVal}%**`
+          : "",
+        ``,
+        `*${WEAPON_TYPE_LABEL[weapon.weaponType as WeaponType]}*`,
+        ``,
+        `Level **${weapon.level}** / 90`,
+      ].filter(Boolean).join("\n"))
+      .setFooter({ text: "CARTETHYIA  ·  Arsenal  ·  /forge to change weapons" });
+
+    const files: AttachmentBuilder[] = [];
+    if (imgPath) {
+      files.push(new AttachmentBuilder(imgPath, { name: "weapon.png" }));
+      embed.setThumbnail("attachment://weapon.png");
+    }
+
+    await interaction.editReply({ embeds: [embed], files });
   },
 };
 
