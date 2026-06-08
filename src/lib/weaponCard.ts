@@ -94,18 +94,12 @@ export async function generateWeaponCard(input: WeaponCardInput): Promise<Buffer
   if (imgPath) {
     try {
       const img  = await loadImage(imgPath);
-      const pad  = 16;
-      // contain — fit entire image within panel with padding
+      const pad  = 12;
       const scale = Math.min((AW - pad*2) / img.width, (AH - pad*2) / img.height);
       const sw = img.width * scale, sh = img.height * scale;
       ctx.drawImage(img, AX + (AW-sw)/2, AY + (AH-sh)/2, sw, sh);
     } catch { /* fallback */ }
   }
-
-  // Right-side fade so the divider area blends smoothly
-  const fade = ctx.createLinearGradient(AX+AW-60, AY, AX+AW, AY);
-  fade.addColorStop(0,"rgba(0,0,0,0)"); fade.addColorStop(1,"rgba(8,11,18,0.7)");
-  ctx.fillStyle = fade; ctx.fillRect(AX,AY,AW,AH);
 
   ctx.restore();
 
@@ -207,33 +201,37 @@ export async function generateWeaponCard(input: WeaponCardInput): Promise<Buffer
   sep(ctx, SX, cy, RX-SX, ec);
 
   // ── Passive block ────────────────────────────────────────────────────────────
-  cy += 8;
-  const passH = H - cy - 14;
-  if (passH > 20) {
-    // Left accent bar
-    ctx.fillStyle = rgba(ec,0.7);
-    ctx.fillRect(SX, cy, 3, passH);
+  cy += 10;
+  const passMaxY = H - 12;
+  if (passMaxY - cy > 16) {
+    // Thin top rule
+    ctx.strokeStyle = rgba(ec, 0.18); ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(SX, cy); ctx.lineTo(RX, cy); ctx.stroke();
+    cy += 12;
 
-    // Background
-    ctx.fillStyle = rgba(ec,0.06);
-    ctx.fillRect(SX+3, cy, RX-SX-3, passH);
+    // "PASSIVE" chip inline on same line as first text line
+    const chipW = 52, chipH = 14;
+    ctx.fillStyle = rgba(ec,0.18); rrect(ctx, SX, cy-11, chipW, chipH, 3); ctx.fill();
+    ctx.fillStyle = rgba(ec,0.9); ctx.font = font(9);
+    ctx.fillText("PASSIVE", SX+6, cy-1);
 
-    // PASSIVE label
-    ctx.fillStyle = rgba(ec,0.85); ctx.font = font(9);
-    ctx.fillText("PASSIVE", SX+10, cy+13);
-
-    // Passive text — wrapped
-    ctx.fillStyle = rgba("#FFFFFF",0.72); ctx.font = font(11,"normal");
+    // Passive text starting after the chip on the same baseline
+    ctx.fillStyle = rgba("#FFFFFF",0.70); ctx.font = font(11,"normal");
     const words = input.passive.split(" ");
-    let line="", lx=SX+10, ly=cy+27, lh=15, mw=RX-SX-16;
+    let line="", lx=SX+chipW+8, ly=cy, lh=16, mw=RX-SX-chipW-12;
+    // First line has reduced width (starts after chip)
+    let firstLine = true;
     for (const w of words) {
       const t = line ? `${line} ${w}` : w;
-      if (ctx.measureText(t).width > mw && line) {
-        if (ly + lh > cy + passH - 4) { ctx.fillText(line+"…", lx, ly); break; }
-        ctx.fillText(line, lx, ly); ly += lh; line = w;
+      const curMw = firstLine ? mw : RX - SX;
+      if (ctx.measureText(t).width > curMw && line) {
+        ctx.fillText(line, lx, ly);
+        ly += lh; line = w;
+        if (ly > passMaxY) { break; }
+        if (firstLine) { lx = SX; firstLine = false; }
       } else { line = t; }
     }
-    if (line && ly <= cy + passH - 4) ctx.fillText(line, lx, ly);
+    if (line && ly <= passMaxY) ctx.fillText(line, lx, ly);
   }
 
   // ── Footer ───────────────────────────────────────────────────────────────────
