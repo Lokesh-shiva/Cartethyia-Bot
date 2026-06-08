@@ -132,12 +132,12 @@ function encounterEmbed(s: any, guildName: string) {
     .addFields(
       {
         name: "📍  Encounter Allowlist",
-        value: `${enc}\n-# **Empty = enemies spawn everywhere.** Set channels = only those channels get encounters. Supports threads.`,
+        value: `${enc}\n-# **Empty = enemies spawn everywhere.** Set channels = only those channels get encounters.`,
         inline: false,
       },
       {
         name: "🚫  Encounter Blacklist",
-        value: `${blk}\n-# These channels/threads are **always silent** — no enemies, no matter the allowlist. Perfect for announcement, rules, threads, or off-topic channels.`,
+        value: `${blk}\n-# Always silent — no enemies regardless of allowlist. Use the picker **or** ➕ Add by ID for threads the bot can't see.`,
         inline: false,
       },
       {
@@ -146,7 +146,7 @@ function encounterEmbed(s: any, guildName: string) {
         inline: false,
       },
     )
-    .setFooter({ text: "CARTETHYIA  ·  Encounter Settings  ·  All channel types including threads are supported" });
+    .setFooter({ text: "CARTETHYIA  ·  Threads not visible in picker? Use ➕ Add by ID  ·  Right-click channel → Copy ID" });
 }
 
 function encounterComponents(s: any) {
@@ -176,7 +176,9 @@ function encounterComponents(s: any) {
     new ActionRowBuilder<ChannelSelectMenuBuilder>().addComponents(blackMenu),
     new ActionRowBuilder<ChannelSelectMenuBuilder>().addComponents(exploreMenu),
     new ActionRowBuilder<ButtonBuilder>().addComponents(
-      new ButtonBuilder().setCustomId("setup_back").setLabel("← Back to Overview").setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder().setCustomId("setup_blk_add_id").setLabel("➕ Add to Blacklist by ID").setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder().setCustomId("setup_blk_clear_id").setLabel("🗑️ Remove from Blacklist by ID").setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder().setCustomId("setup_back").setLabel("← Back").setStyle(ButtonStyle.Secondary),
     ),
   ];
 }
@@ -450,6 +452,55 @@ const command: Command = {
       }
       if (id === "setup_enc_explore") {
         await save(i, { exploreChannelIds: (i as ChannelSelectMenuInteraction).values }); return;
+      }
+
+      // ── Blacklist add/remove by ID (for threads the picker can't see) ─────────
+      if (id === "setup_blk_add_id" || id === "setup_blk_clear_id") {
+        const isAdd = id === "setup_blk_add_id";
+        const modal = new ModalBuilder()
+          .setCustomId(`setup_blk_id_modal_${isAdd ? "add" : "remove"}`)
+          .setTitle(isAdd ? "Add Channels/Threads by ID" : "Remove Channels/Threads by ID")
+          .addComponents(
+            new ActionRowBuilder<TextInputBuilder>().addComponents(
+              new TextInputBuilder()
+                .setCustomId("channel_ids")
+                .setLabel("Channel / Thread IDs (space or comma separated)")
+                .setStyle(TextInputStyle.Paragraph)
+                .setPlaceholder("e.g.  1234567890  or  1234567890, 9876543210\n\nRight-click a channel/thread → Copy Channel ID")
+                .setMinLength(1).setMaxLength(1000).setRequired(true)
+            )
+          );
+        await (i as ButtonInteraction).showModal(modal);
+
+        const submitted = await new Promise<ModalSubmitInteraction | null>((resolve) => {
+          const tid = setTimeout(() => { interaction.client.off(Events.InteractionCreate, mHandler); resolve(null); }, 60_000);
+          const mHandler = (intr: Interaction) => {
+            if (
+              intr.isModalSubmit() &&
+              intr.customId === `setup_blk_id_modal_${isAdd ? "add" : "remove"}` &&
+              intr.user.id === interaction.user.id
+            ) {
+              clearTimeout(tid);
+              interaction.client.off(Events.InteractionCreate, mHandler);
+              resolve(intr as ModalSubmitInteraction);
+            }
+          };
+          interaction.client.on(Events.InteractionCreate, mHandler);
+        });
+
+        if (submitted) {
+          await submitted.deferUpdate();
+          const raw    = submitted.fields.getTextInputValue("channel_ids");
+          const ids    = raw.split(/[\s,]+/).map(x => x.trim()).filter(x => /^\d{17,20}$/.test(x));
+          const fresh  = await getSettings(guildId);
+          const current: string[] = (fresh as any).encounterBlacklist ?? [];
+          const updated = isAdd
+            ? [...new Set([...current, ...ids])]
+            : current.filter(x => !ids.includes(x));
+          await prisma.guildSettings.update({ where: { guildId }, data: { encounterBlacklist: updated } });
+          await loadExploreChannels(guildId);
+        }
+        await render(); return;
       }
 
       // ── Output channels ───────────────────────────────────────────────────────
