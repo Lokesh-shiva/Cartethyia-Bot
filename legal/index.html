@@ -698,33 +698,97 @@
     .elem-bonus-grid {
       display: grid;
       grid-template-columns: repeat(3, 1fr);
-      gap: 0.75rem;
+      gap: 1rem;
       margin-top: 2rem;
     }
     .elem-bonus-card {
-      border-radius: 10px;
-      padding: 1.2rem;
-      border: 1px solid;
+      border-radius: 14px;
+      overflow: hidden;
+      border: 1px solid rgba(255,255,255,0.08);
+      position: relative;
+      min-height: 200px;
+      display: flex;
+      flex-direction: column;
+      justify-content: flex-end;
+      cursor: default;
+      transition: transform 0.3s, box-shadow 0.3s;
     }
-    .elem-bonus-card.fusion  { background: rgba(255,107,53,0.06);  border-color: rgba(255,107,53,0.18);  }
-    .elem-bonus-card.glacio  { background: rgba(79,195,247,0.06);  border-color: rgba(79,195,247,0.18);  }
-    .elem-bonus-card.electro { background: rgba(179,157,219,0.06); border-color: rgba(179,157,219,0.18); }
-    .elem-bonus-card.aero    { background: rgba(128,203,196,0.06); border-color: rgba(128,203,196,0.18); }
-    .elem-bonus-card.havoc   { background: rgba(195,85,224,0.06);  border-color: rgba(195,85,224,0.18);  }
-    .elem-bonus-card.spectro { background: rgba(255,213,79,0.06);  border-color: rgba(255,213,79,0.18);  }
+    .elem-bonus-card:hover { transform: translateY(-5px) scale(1.02); }
+    .elem-bonus-card.fusion:hover  { box-shadow: 0 20px 50px rgba(255,107,53,0.35); }
+    .elem-bonus-card.glacio:hover  { box-shadow: 0 20px 50px rgba(79,195,247,0.35); }
+    .elem-bonus-card.electro:hover { box-shadow: 0 20px 50px rgba(179,157,219,0.35); }
+    .elem-bonus-card.aero:hover    { box-shadow: 0 20px 50px rgba(128,203,196,0.35); }
+    .elem-bonus-card.havoc:hover   { box-shadow: 0 20px 50px rgba(195,85,224,0.35); }
+    .elem-bonus-card.spectro:hover { box-shadow: 0 20px 50px rgba(255,213,79,0.35); }
+    /* Background image fills the card */
+    .elem-bg {
+      position: absolute;
+      inset: 0;
+      background-size: cover;
+      background-position: center top;
+      transition: transform 0.5s ease;
+    }
+    .elem-bonus-card:hover .elem-bg { transform: scale(1.06); }
+    /* Per-element gradient overlay — dark at bottom for text legibility */
+    .elem-bonus-card.fusion  .elem-bg { background-image: url('./bg-fusion.png'); }
+    .elem-bonus-card.glacio  .elem-bg { background-image: url('./bg-glacio.png'); }
+    .elem-bonus-card.electro .elem-bg { background-image: url('./bg-electro.png'); }
+    .elem-bonus-card.aero    .elem-bg { background-image: url('./bg-aero.png'); }
+    .elem-bonus-card.havoc   .elem-bg { background-image: url('./bg-havoc.png'); }
+    .elem-bonus-card.spectro .elem-bg { background-image: url('./bg-spectro.png'); }
+    .elem-overlay {
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(to bottom, rgba(8,11,18,0.1) 0%, rgba(8,11,18,0.65) 55%, rgba(8,11,18,0.92) 100%);
+    }
+    /* Top-left element badge */
+    .elem-badge {
+      position: absolute;
+      top: 0.8rem;
+      left: 0.8rem;
+      font-family: 'Rajdhani', sans-serif;
+      font-weight: 700;
+      font-size: 0.72rem;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      padding: 0.25rem 0.7rem;
+      border-radius: 100px;
+      border: 1px solid;
+      backdrop-filter: blur(8px);
+    }
+    .elem-bonus-card.fusion  .elem-badge { color: var(--fusion);  border-color: rgba(255,107,53,0.5);  background: rgba(255,107,53,0.15); }
+    .elem-bonus-card.glacio  .elem-badge { color: var(--glacio);  border-color: rgba(79,195,247,0.5);  background: rgba(79,195,247,0.15); }
+    .elem-bonus-card.electro .elem-badge { color: var(--electro); border-color: rgba(179,157,219,0.5); background: rgba(179,157,219,0.15); }
+    .elem-bonus-card.aero    .elem-badge { color: var(--aero);    border-color: rgba(128,203,196,0.5); background: rgba(128,203,196,0.15); }
+    .elem-bonus-card.havoc   .elem-badge { color: var(--havoc);   border-color: rgba(195,85,224,0.5);  background: rgba(195,85,224,0.15); }
+    .elem-bonus-card.spectro .elem-badge { color: var(--spectro); border-color: rgba(255,213,79,0.5);  background: rgba(255,213,79,0.15); }
+    /* Text content at bottom */
+    .elem-content {
+      position: relative;
+      z-index: 2;
+      padding: 1.1rem 1.1rem 1rem;
+    }
     .elem-bonus-name {
       font-family: 'Rajdhani', sans-serif;
       font-weight: 700;
-      font-size: 0.95rem;
-      margin-bottom: 0.5rem;
+      font-size: 1.15rem;
+      margin-bottom: 0.35rem;
+      color: #fff;
+      text-shadow: 0 1px 8px rgba(0,0,0,0.8);
     }
-    .elem-bonus-card.fusion  .elem-bonus-name { color: var(--fusion);  }
-    .elem-bonus-card.glacio  .elem-bonus-name { color: var(--glacio);  }
-    .elem-bonus-card.electro .elem-bonus-name { color: var(--electro); }
-    .elem-bonus-card.aero    .elem-bonus-name { color: var(--aero);    }
-    .elem-bonus-card.havoc   .elem-bonus-name { color: var(--havoc);   }
-    .elem-bonus-card.spectro .elem-bonus-name { color: var(--spectro); }
-    .elem-bonus-stat { font-size: 0.78rem; color: var(--dim); line-height: 1.7; font-weight: 300; }
+    .elem-bonus-stat {
+      font-size: 0.78rem;
+      color: rgba(255,255,255,0.7);
+      line-height: 1.65;
+      font-weight: 300;
+      text-shadow: 0 1px 4px rgba(0,0,0,0.9);
+    }
+    .elem-bonus-stat em {
+      display: block;
+      margin-top: 0.2rem;
+      font-style: italic;
+      opacity: 0.85;
+    }
 
     /* ── CTA banner ─────────────────────────────────────────────────────── */
     .cta-section {
@@ -997,28 +1061,58 @@
 
   <div class="elem-bonus-grid">
     <div class="elem-bonus-card fusion">
-      <div class="elem-bonus-name">🔥 Fusion</div>
-      <div class="elem-bonus-stat">+15% ATK &nbsp;·&nbsp; +15% Crit &nbsp;·&nbsp; +20% Elem DMG<br><em>IGNITE: 35% → +25% ATK hit</em></div>
+      <div class="elem-bg"></div>
+      <div class="elem-overlay"></div>
+      <div class="elem-badge">🔥 Fusion</div>
+      <div class="elem-content">
+        <div class="elem-bonus-name">Fusion</div>
+        <div class="elem-bonus-stat">+15% ATK · +15% Crit · +20% Elem DMG<em>IGNITE: 35% → +25% ATK hit</em></div>
+      </div>
     </div>
     <div class="elem-bonus-card glacio">
-      <div class="elem-bonus-name">❄️ Glacio</div>
-      <div class="elem-bonus-stat">+30% DEF &nbsp;·&nbsp; +15% HP &nbsp;·&nbsp; +20% Elem DMG<br><em>FROST SHIELD: 25% → absorb 40%</em></div>
+      <div class="elem-bg"></div>
+      <div class="elem-overlay"></div>
+      <div class="elem-badge">❄️ Glacio</div>
+      <div class="elem-content">
+        <div class="elem-bonus-name">Glacio</div>
+        <div class="elem-bonus-stat">+30% DEF · +15% HP · +20% Elem DMG<em>FROST SHIELD: 25% → absorb 40%</em></div>
+      </div>
     </div>
     <div class="elem-bonus-card electro">
-      <div class="elem-bonus-name">⚡ Electro</div>
-      <div class="elem-bonus-stat">+5% Crit &nbsp;·&nbsp; +20% Crit DMG &nbsp;·&nbsp; +25 Energy/turn<br><em>DISCHARGE: crit → +20 energy</em></div>
+      <div class="elem-bg"></div>
+      <div class="elem-overlay"></div>
+      <div class="elem-badge">⚡ Electro</div>
+      <div class="elem-content">
+        <div class="elem-bonus-name">Electro</div>
+        <div class="elem-bonus-stat">+5% Crit · +20% Crit DMG · +25 Energy/turn<em>DISCHARGE: crit → +20 energy</em></div>
+      </div>
     </div>
     <div class="elem-bonus-card aero">
-      <div class="elem-bonus-name">🌪️ Aero</div>
-      <div class="elem-bonus-stat">+15% ATK &nbsp;·&nbsp; +40% Crit DMG &nbsp;·&nbsp; +20% Elem DMG<br><em>WINDSTRIDE: +8% DMG/turn ×5</em></div>
+      <div class="elem-bg"></div>
+      <div class="elem-overlay"></div>
+      <div class="elem-badge">🌪️ Aero</div>
+      <div class="elem-content">
+        <div class="elem-bonus-name">Aero</div>
+        <div class="elem-bonus-stat">+15% ATK · +40% Crit DMG · +20% Elem DMG<em>WINDSTRIDE: +8% DMG/turn ×5</em></div>
+      </div>
     </div>
     <div class="elem-bonus-card havoc">
-      <div class="elem-bonus-name">🌑 Havoc</div>
-      <div class="elem-bonus-stat">+15% ATK &nbsp;·&nbsp; +20% Lifesteal &nbsp;·&nbsp; +20% Elem DMG<br><em>VOID SURGE: shatter → +25% HP</em></div>
+      <div class="elem-bg"></div>
+      <div class="elem-overlay"></div>
+      <div class="elem-badge">🌑 Havoc</div>
+      <div class="elem-content">
+        <div class="elem-bonus-name">Havoc</div>
+        <div class="elem-bonus-stat">+15% ATK · +20% Lifesteal · +20% Elem DMG<em>VOID SURGE: shatter → +25% HP</em></div>
+      </div>
     </div>
     <div class="elem-bonus-card spectro">
-      <div class="elem-bonus-name">✨ Spectro</div>
-      <div class="elem-bonus-stat">+30% HP &nbsp;·&nbsp; +20% Elem DMG<br><em>RADIANCE: 2% regen &amp; &lt;40% HP → +25% Crit</em></div>
+      <div class="elem-bg"></div>
+      <div class="elem-overlay"></div>
+      <div class="elem-badge">✨ Spectro</div>
+      <div class="elem-content">
+        <div class="elem-bonus-name">Spectro</div>
+        <div class="elem-bonus-stat">+30% HP · +20% Elem DMG<em>RADIANCE: 2% regen &amp; &lt;40% HP → +25% Crit</em></div>
+      </div>
     </div>
   </div>
 </section>
