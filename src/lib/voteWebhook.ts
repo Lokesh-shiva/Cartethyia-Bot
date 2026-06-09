@@ -1,70 +1,79 @@
 import express from "express";
-import { Webhook, WebhookPayload } from "@top-gg/sdk";
 import { Client } from "discord.js";
 import { awardUser } from "./economy";
 import { CE } from "./emojiManager";
 import prisma from "./prisma";
 
-const TOPGG_WEBHOOK_AUTH = process.env.TOPGG_WEBHOOK_AUTH ?? "";
-const WEBHOOK_PORT       = parseInt(process.env.WEBHOOK_PORT ?? "3000", 10);
+const DBL_WEBHOOK_AUTH = process.env.DBL_WEBHOOK_AUTH ?? "";
+const WEBHOOK_PORT     = parseInt(process.env.WEBHOOK_PORT ?? "3000", 10);
+const VOTE_URL         = "https://discordbotlist.com/bots/cartethyia/upvote";
 
-// Weekend = Saturday (6) or Sunday (0)
 function isWeekend(): boolean {
   const day = new Date().getDay();
   return day === 0 || day === 6;
 }
 
 export function startVoteWebhook(client: Client) {
-  if (!TOPGG_WEBHOOK_AUTH) {
-    console.log("⚠️  TOPGG_WEBHOOK_AUTH not set — vote webhook disabled.");
+  if (!DBL_WEBHOOK_AUTH) {
+    console.log("⚠️  DBL_WEBHOOK_AUTH not set — vote webhook disabled.");
     return;
   }
 
-  const app     = express();
-  const webhook = new Webhook(TOPGG_WEBHOOK_AUTH);
+  const app = express();
+  app.use(express.json());
 
-  app.post("/topgg-vote", webhook.listener(async (vote: WebhookPayload) => {
-    const userId  = vote.user;
+  app.post("/dbl-vote", (req, res) => {
+    // Verify DBL authorization header
+    if (req.headers.authorization !== DBL_WEBHOOK_AUTH) {
+      res.sendStatus(401);
+      return;
+    }
+
+    // DBL sends { id, username, avatar }
+    const userId = req.body?.id as string | undefined;
+    if (!userId) { res.sendStatus(400); return; }
+
+    res.sendStatus(200); // ack immediately
+
     const weekend = isWeekend();
-
     const rewards = {
-      credits:     weekend ? 2000 : 1000,
-      fractureKeys: weekend ? 2 : 1,
+      credits:      weekend ? 2000 : 1000,
+      fractureKeys: weekend ? 2    : 1,
     };
 
-    // Record the vote time & grant rewards
-    try {
-      await Promise.all([
-        awardUser(userId, rewards),
-        prisma.user.update({
-          where: { id: userId },
-          data:  { lastVoted: new Date() },
-        }).catch(() => {}), // user might not be registered yet
-      ]);
+    (async () => {
+      try {
+        await Promise.all([
+          awardUser(userId, rewards),
+          prisma.user.update({
+            where: { id: userId },
+            data:  { lastVoted: new Date() },
+          }).catch(() => {}),
+        ]);
 
-      // Try to DM the user
-      const weekendTag = weekend ? "  *(Weekend ×2!)*" : "";
-      const dmMsg =
-        `## ✅  Vote received — thank you!\n` +
-        `Your support helps Cartethyia grow.\n\n` +
-        `**Rewards${weekendTag}:**\n` +
-        `${CE.cr} **${rewards.credits}** Credits\n` +
-        `${CE.fk} **${rewards.fractureKeys}** Fracture Key${rewards.fractureKeys !== 1 ? "s" : ""}\n\n` +
-        `Vote again in **12 hours** at <https://top.gg/bot/1510163339177623642/vote>`;
+        const weekendTag = weekend ? "  *(Weekend ×2!)*" : "";
+        const dmMsg =
+          `## ✅  Upvote received — thank you!\n` +
+          `Your support helps Cartethyia grow and reach more players.\n\n` +
+          `**Rewards${weekendTag}:**\n` +
+          `${CE.cr} **${rewards.credits}** Credits\n` +
+          `${CE.fk} **${rewards.fractureKeys}** Fracture Key${rewards.fractureKeys !== 1 ? "s" : ""}\n\n` +
+          `You can upvote again in **12 hours** — [click here](${VOTE_URL})`;
 
-      const user = await client.users.fetch(userId).catch(() => null);
-      if (user) {
-        const dm = await user.createDM().catch(() => null);
-        if (dm) await dm.send(dmMsg).catch(() => {});
+        const user = await client.users.fetch(userId).catch(() => null);
+        if (user) {
+          const dm = await user.createDM().catch(() => null);
+          if (dm) await dm.send(dmMsg).catch(() => {});
+        }
+
+        console.log(`[vote] ${userId} upvoted — ${rewards.credits}cr + ${rewards.fractureKeys}fk (weekend=${weekend})`);
+      } catch (e) {
+        console.error("[vote] Failed to process upvote for", userId, e);
       }
-
-      console.log(`[vote] ${userId} voted — awarded ${rewards.credits}cr + ${rewards.fractureKeys}fk (weekend=${weekend})`);
-    } catch (e) {
-      console.error("[vote] Failed to process vote for", userId, e);
-    }
-  }));
+    })();
+  });
 
   app.listen(WEBHOOK_PORT, () => {
-    console.log(`🗳️  Vote webhook listening on port ${WEBHOOK_PORT}`);
+    console.log(`🗳️  DBL vote webhook listening on port ${WEBHOOK_PORT}`);
   });
 }
