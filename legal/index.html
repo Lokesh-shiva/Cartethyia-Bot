@@ -3,93 +3,1183 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Cartethyia — Legal</title>
+
+  <!-- Primary SEO -->
+  <title>Cartethyia — Wuthering Waves RPG Discord Bot</title>
+  <meta name="description" content="Cartethyia is a free Wuthering Waves-inspired RPG Discord bot. Battle bosses, collect echoes, pull gacha weapons, and climb 9 World Levels — all inside Discord." />
+  <meta name="keywords" content="Discord bot, RPG bot, Wuthering Waves bot, gacha Discord, echo system, combat bot, free Discord RPG, Cartethyia" />
+  <meta name="author" content="Cartethyia" />
+  <meta name="robots" content="index, follow" />
+  <link rel="canonical" href="https://lokesh-shiva.github.io/Cartethyia-Bot/legal/" />
+
+  <!-- Open Graph -->
+  <meta property="og:type" content="website" />
+  <meta property="og:title" content="Cartethyia — Wuthering Waves RPG Discord Bot" />
+  <meta property="og:description" content="Turn-based RPG inside Discord. 6 elements, boss battles, echo gacha, 9 World Levels. Free to play." />
+  <meta property="og:url" content="https://lokesh-shiva.github.io/Cartethyia-Bot/legal/" />
+  <meta property="og:image" content="https://lokesh-shiva.github.io/Cartethyia-Bot/legal/og-image.png" />
+  <meta property="og:site_name" content="Cartethyia" />
+
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="Cartethyia — Wuthering Waves RPG Discord Bot" />
+  <meta name="twitter:description" content="Turn-based RPG inside Discord. 6 elements, boss battles, echo gacha, 9 World Levels. Free to play." />
+  <meta name="twitter:image" content="https://lokesh-shiva.github.io/Cartethyia-Bot/legal/og-image.png" />
+
+  <!-- JSON-LD Structured Data -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "SoftwareApplication",
+    "name": "Cartethyia",
+    "applicationCategory": "GameApplication",
+    "operatingSystem": "Discord",
+    "description": "A Wuthering Waves-inspired RPG Discord bot with turn-based combat, echo collection, gacha weapons, and 9 World Levels of progression.",
+    "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
+    "url": "https://lokesh-shiva.github.io/Cartethyia-Bot/legal/",
+    "author": { "@type": "Person", "name": "Lokesh-shiva" }
+  }
+  </script>
+
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;600;700&family=Crimson+Pro:ital,wght@0,300;0,400;1,300&display=swap" rel="stylesheet" />
+
   <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
+    /* ── Reset & Root ───────────────────────────────────────────────────── */
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+    :root {
+      --bg:       #080B12;
+      --bg2:      #0d1018;
+      --surface:  #111520;
+      --border:   rgba(255,255,255,0.06);
+      --text:     #e2e8f0;
+      --muted:    #64748b;
+      --dim:      #94a3b8;
+      --purple:   #a78bfa;
+      --blue:     #60a5fa;
+      --fusion:   #FF6B35;
+      --glacio:   #4FC3F7;
+      --electro:  #B39DDB;
+      --aero:     #80CBC4;
+      --havoc:    #C355E0;
+      --spectro:  #FFD54F;
+      --gold:     #F59E0B;
+      --pink:     #F43F5E;
+    }
+    html { scroll-behavior: smooth; }
     body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-      background: #0d0f14;
-      color: #e2e8f0;
+      font-family: 'Crimson Pro', Georgia, serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      overflow-x: hidden;
+      font-size: 17px;
+      line-height: 1.6;
+    }
+
+    /* ── Star field background ──────────────────────────────────────────── */
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background-image:
+        radial-gradient(1px 1px at 12% 18%, rgba(255,255,255,0.55) 0%, transparent 100%),
+        radial-gradient(1px 1px at 28% 67%, rgba(255,255,255,0.4) 0%, transparent 100%),
+        radial-gradient(1.5px 1.5px at 44% 9%, rgba(255,255,255,0.6) 0%, transparent 100%),
+        radial-gradient(1px 1px at 67% 33%, rgba(255,255,255,0.35) 0%, transparent 100%),
+        radial-gradient(1px 1px at 71% 78%, rgba(255,255,255,0.45) 0%, transparent 100%),
+        radial-gradient(1.5px 1.5px at 83% 12%, rgba(255,255,255,0.5) 0%, transparent 100%),
+        radial-gradient(1px 1px at 91% 54%, rgba(255,255,255,0.3) 0%, transparent 100%),
+        radial-gradient(1px 1px at 5%  88%, rgba(255,255,255,0.4) 0%, transparent 100%),
+        radial-gradient(1px 1px at 38% 44%, rgba(255,255,255,0.25) 0%, transparent 100%),
+        radial-gradient(1px 1px at 56% 91%, rgba(255,255,255,0.35) 0%, transparent 100%),
+        radial-gradient(1px 1px at 17% 53%, rgba(255,255,255,0.3) 0%, transparent 100%),
+        radial-gradient(1.5px 1.5px at 79% 42%, rgba(255,255,255,0.5) 0%, transparent 100%),
+        radial-gradient(1px 1px at 95% 29%, rgba(255,255,255,0.4) 0%, transparent 100%),
+        radial-gradient(1px 1px at 33% 81%, rgba(255,255,255,0.3) 0%, transparent 100%),
+        radial-gradient(1px 1px at 61% 17%, rgba(255,255,255,0.45) 0%, transparent 100%);
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    /* ── Nav ────────────────────────────────────────────────────────────── */
+    nav {
+      position: fixed;
+      top: 0; left: 0; right: 0;
+      z-index: 100;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 1rem 2.5rem;
+      background: rgba(8,11,18,0.75);
+      backdrop-filter: blur(16px);
+      border-bottom: 1px solid var(--border);
+    }
+    .nav-logo {
+      font-family: 'Rajdhani', sans-serif;
+      font-weight: 700;
+      font-size: 1.3rem;
+      letter-spacing: 0.12em;
+      background: linear-gradient(120deg, var(--purple), var(--blue));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+    .nav-links {
+      display: flex;
+      gap: 2rem;
+      list-style: none;
+    }
+    .nav-links a {
+      color: var(--dim);
+      text-decoration: none;
+      font-size: 0.85rem;
+      font-family: 'Rajdhani', sans-serif;
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      transition: color 0.2s;
+    }
+    .nav-links a:hover { color: var(--purple); }
+    .nav-cta {
+      background: linear-gradient(135deg, var(--purple), #7c3aed);
+      color: #fff !important;
+      padding: 0.45rem 1.2rem;
+      border-radius: 6px;
+      transition: opacity 0.2s !important;
+    }
+    .nav-cta:hover { opacity: 0.85; color: #fff !important; }
+
+    /* ── Hero ───────────────────────────────────────────────────────────── */
+    .hero {
+      position: relative;
       min-height: 100vh;
       display: flex;
       flex-direction: column;
       align-items: center;
       justify-content: center;
-      padding: 2rem;
-    }
-    .container {
-      max-width: 560px;
-      width: 100%;
       text-align: center;
+      padding: 8rem 2rem 5rem;
+      overflow: hidden;
+      z-index: 1;
     }
-    .logo {
-      font-size: 2.5rem;
+
+    /* Aurora — cycles through all 6 element colors */
+    .hero::before {
+      content: '';
+      position: absolute;
+      inset: -60% -40%;
+      background: conic-gradient(
+        from 0deg at 50% 60%,
+        rgba(167,139,250,0.18) 0deg,
+        rgba(79,195,247,0.14) 60deg,
+        rgba(128,203,196,0.12) 120deg,
+        rgba(195,85,224,0.15) 180deg,
+        rgba(255,107,53,0.12) 240deg,
+        rgba(255,213,79,0.10) 300deg,
+        rgba(167,139,250,0.18) 360deg
+      );
+      animation: aurora 18s linear infinite;
+      pointer-events: none;
+      z-index: 0;
+    }
+    .hero::after {
+      content: '';
+      position: absolute;
+      bottom: 0; left: 0; right: 0;
+      height: 260px;
+      background: linear-gradient(to top, var(--bg), transparent);
+      pointer-events: none;
+      z-index: 1;
+    }
+    @keyframes aurora {
+      from { transform: rotate(0deg); }
+      to   { transform: rotate(360deg); }
+    }
+
+    .hero-inner { position: relative; z-index: 2; max-width: 820px; }
+
+    .hero-eyebrow {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      font-family: 'Rajdhani', sans-serif;
+      font-size: 0.75rem;
+      font-weight: 600;
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+      color: var(--purple);
+      border: 1px solid rgba(167,139,250,0.3);
+      padding: 0.35rem 1rem;
+      border-radius: 100px;
+      margin-bottom: 2rem;
+      background: rgba(167,139,250,0.07);
+      animation: fadein 0.8s ease both;
+    }
+    .hero-eyebrow::before { content: '◈'; }
+
+    .hero-title {
+      font-family: 'Rajdhani', sans-serif;
       font-weight: 700;
-      background: linear-gradient(135deg, #a78bfa, #60a5fa);
+      font-size: clamp(3.5rem, 10vw, 7rem);
+      letter-spacing: -0.01em;
+      line-height: 0.95;
+      background: linear-gradient(160deg,
+        #ffffff 0%,
+        var(--purple) 40%,
+        var(--blue) 70%,
+        #ffffff 100%);
+      background-size: 300% 300%;
       -webkit-background-clip: text;
       -webkit-text-fill-color: transparent;
       background-clip: text;
-      margin-bottom: 0.5rem;
-      letter-spacing: -0.5px;
+      animation: gradshift 6s ease infinite, fadein 0.9s ease both 0.1s;
     }
-    .tagline {
-      color: #94a3b8;
-      font-size: 1rem;
-      margin-bottom: 3rem;
+    @keyframes gradshift {
+      0%,100% { background-position: 0% 50%; }
+      50%      { background-position: 100% 50%; }
     }
-    .links {
+
+    .hero-tagline {
+      font-size: clamp(1rem, 2.5vw, 1.25rem);
+      font-weight: 300;
+      color: var(--dim);
+      margin: 1.25rem 0 2.5rem;
+      letter-spacing: 0.03em;
+      font-style: italic;
+      animation: fadein 1s ease both 0.2s;
+    }
+    .hero-tagline strong { color: var(--text); font-style: normal; font-weight: 400; }
+
+    .hero-buttons {
       display: flex;
       gap: 1rem;
       justify-content: center;
       flex-wrap: wrap;
+      animation: fadein 1s ease both 0.35s;
     }
-    a.card {
+    .btn {
+      font-family: 'Rajdhani', sans-serif;
+      font-weight: 700;
+      font-size: 0.95rem;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      text-decoration: none;
+      padding: 0.85rem 2.2rem;
+      border-radius: 8px;
+      transition: transform 0.2s, box-shadow 0.2s, opacity 0.2s;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    .btn:hover { transform: translateY(-2px); }
+    .btn-primary {
+      background: linear-gradient(135deg, var(--purple) 0%, #5b21b6 100%);
+      color: #fff;
+      box-shadow: 0 0 28px rgba(167,139,250,0.35);
+    }
+    .btn-primary:hover { box-shadow: 0 0 40px rgba(167,139,250,0.55); }
+    .btn-outline {
+      border: 1px solid rgba(255,255,255,0.15);
+      color: var(--text);
+      background: rgba(255,255,255,0.04);
+    }
+    .btn-outline:hover { border-color: var(--purple); background: rgba(167,139,250,0.08); }
+
+    /* scroll indicator */
+    .scroll-hint {
+      position: absolute;
+      bottom: 3rem;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 2;
       display: flex;
       flex-direction: column;
       align-items: center;
-      padding: 1.5rem 2.5rem;
-      background: #1a1d27;
-      border: 1px solid #2d3148;
-      border-radius: 12px;
-      text-decoration: none;
-      color: #e2e8f0;
-      transition: border-color 0.2s, background 0.2s;
-      flex: 1;
-      min-width: 180px;
+      gap: 0.4rem;
+      color: var(--muted);
+      font-family: 'Rajdhani', sans-serif;
+      font-size: 0.7rem;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      animation: fadein 1.2s ease both 0.8s;
     }
-    a.card:hover {
-      border-color: #a78bfa;
-      background: #1e2136;
+    .scroll-arrow {
+      width: 20px; height: 20px;
+      border-right: 1.5px solid var(--muted);
+      border-bottom: 1.5px solid var(--muted);
+      transform: rotate(45deg);
+      animation: bounce 1.6s ease-in-out infinite;
     }
-    a.card .icon { font-size: 2rem; margin-bottom: 0.75rem; }
-    a.card .label { font-weight: 600; font-size: 1rem; }
-    a.card .sub { font-size: 0.8rem; color: #64748b; margin-top: 0.25rem; }
-    .footer {
-      margin-top: 3rem;
-      color: #475569;
+    @keyframes bounce { 0%,100% { transform: rotate(45deg) translateY(0); } 50% { transform: rotate(45deg) translateY(4px); } }
+
+    /* ── Shared section wrapper ─────────────────────────────────────────── */
+    section {
+      position: relative;
+      z-index: 1;
+      padding: 6rem 2rem;
+      max-width: 1160px;
+      margin: 0 auto;
+    }
+    .section-label {
+      font-family: 'Rajdhani', sans-serif;
+      font-size: 0.72rem;
+      font-weight: 600;
+      letter-spacing: 0.25em;
+      text-transform: uppercase;
+      color: var(--purple);
+      margin-bottom: 0.75rem;
+    }
+    .section-title {
+      font-family: 'Rajdhani', sans-serif;
+      font-weight: 700;
+      font-size: clamp(1.9rem, 4vw, 2.8rem);
+      line-height: 1.1;
+      color: var(--text);
+      margin-bottom: 1.25rem;
+    }
+    .section-sub {
+      color: var(--dim);
+      max-width: 560px;
+      font-size: 1.05rem;
+      font-weight: 300;
+    }
+
+    @keyframes fadein {
+      from { opacity: 0; transform: translateY(12px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    /* ── Stats bar ──────────────────────────────────────────────────────── */
+    .stats-bar {
+      max-width: 1160px;
+      margin: 0 auto;
+      padding: 0 2rem;
+      position: relative;
+      z-index: 1;
+    }
+    .stats-inner {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 1px;
+      background: var(--border);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      overflow: hidden;
+    }
+    .stat-item {
+      background: var(--surface);
+      padding: 2.2rem 2rem;
+      text-align: center;
+      transition: background 0.2s;
+    }
+    .stat-item:hover { background: #161b28; }
+    .stat-num {
+      font-family: 'Rajdhani', sans-serif;
+      font-size: 2.8rem;
+      font-weight: 700;
+      background: linear-gradient(135deg, var(--purple), var(--blue));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      line-height: 1;
+    }
+    .stat-label {
+      font-size: 0.85rem;
+      color: var(--muted);
+      font-family: 'Rajdhani', sans-serif;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      margin-top: 0.4rem;
+    }
+
+    /* ── Feature grid ───────────────────────────────────────────────────── */
+    .features-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 1.25rem;
+      margin-top: 3.5rem;
+    }
+    .feat-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 1.8rem;
+      position: relative;
+      overflow: hidden;
+      transition: transform 0.25s, border-color 0.25s, box-shadow 0.25s;
+      cursor: default;
+    }
+    .feat-card::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      height: 2px;
+      background: var(--accent, linear-gradient(90deg, var(--purple), var(--blue)));
+      opacity: 0;
+      transition: opacity 0.25s;
+    }
+    .feat-card:hover { transform: translateY(-4px); border-color: rgba(167,139,250,0.25); box-shadow: 0 16px 48px rgba(0,0,0,0.4); }
+    .feat-card:hover::before { opacity: 1; }
+    .feat-icon { font-size: 2.2rem; margin-bottom: 1rem; display: block; }
+    .feat-name {
+      font-family: 'Rajdhani', sans-serif;
+      font-weight: 700;
+      font-size: 1.1rem;
+      letter-spacing: 0.04em;
+      color: var(--text);
+      margin-bottom: 0.6rem;
+    }
+    .feat-desc { color: var(--dim); font-size: 0.92rem; line-height: 1.55; font-weight: 300; }
+
+    /* per-card accent colors */
+    .feat-combat  { --accent: linear-gradient(90deg, var(--fusion), var(--havoc)); }
+    .feat-echo    { --accent: linear-gradient(90deg, var(--electro), var(--glacio)); }
+    .feat-wish    { --accent: linear-gradient(90deg, var(--gold), var(--purple)); }
+    .feat-dungeon { --accent: linear-gradient(90deg, var(--blue), var(--purple)); }
+    .feat-element { --accent: linear-gradient(90deg, var(--spectro), var(--aero)); }
+    .feat-prog    { --accent: linear-gradient(90deg, var(--aero), var(--blue)); }
+
+    /* ── Discord card mockups ───────────────────────────────────────────── */
+    .previews-wrap {
+      display: flex;
+      flex-direction: column;
+      gap: 3rem;
+      margin-top: 3.5rem;
+    }
+    .preview-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 2.5rem;
+      align-items: center;
+    }
+    .preview-row.reverse { direction: rtl; }
+    .preview-row.reverse > * { direction: ltr; }
+    .preview-label {
+      position: relative;
+    }
+    .preview-cmd {
+      font-family: 'Rajdhani', sans-serif;
+      font-size: 0.75rem;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 0.6rem;
+    }
+    .preview-cmd span {
+      background: rgba(167,139,250,0.12);
+      border: 1px solid rgba(167,139,250,0.2);
+      color: var(--purple);
+      padding: 0.2rem 0.6rem;
+      border-radius: 4px;
+      font-family: monospace;
+      letter-spacing: 0;
+      font-size: 0.85rem;
+    }
+    .preview-title {
+      font-family: 'Rajdhani', sans-serif;
+      font-weight: 700;
+      font-size: 1.5rem;
+      margin-bottom: 0.8rem;
+    }
+    .preview-desc { color: var(--dim); font-size: 0.95rem; line-height: 1.6; font-weight: 300; }
+
+    /* Discord window chrome */
+    .discord-window {
+      background: #313338;
+      border-radius: 10px;
+      overflow: hidden;
+      box-shadow: 0 24px 64px rgba(0,0,0,0.6);
+      border: 1px solid rgba(255,255,255,0.06);
+    }
+    .discord-bar {
+      background: #2b2d31;
+      padding: 0.6rem 1rem;
+      display: flex;
+      align-items: center;
+      gap: 0.6rem;
+      border-bottom: 1px solid rgba(0,0,0,0.3);
+    }
+    .discord-dot { width: 10px; height: 10px; border-radius: 50%; }
+    .discord-channel { font-size: 0.8rem; color: #949BA4; font-family: monospace; margin-left: 0.3rem; }
+    .discord-body { padding: 1rem; }
+
+    /* Embed component */
+    .d-embed {
+      background: #2b2d31;
+      border-radius: 4px;
+      overflow: hidden;
+      border-left: 4px solid var(--embed-color, var(--purple));
+      padding: 0.8rem 1rem;
+      font-family: -apple-system, BlinkMacSystemFont, 'Whitney', sans-serif;
+    }
+    .d-embed-author {
+      font-size: 0.78rem;
+      color: #dbdee1;
+      font-weight: 600;
+      margin-bottom: 0.5rem;
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+    }
+    .d-embed-title {
+      color: #dbdee1;
+      font-weight: 700;
+      font-size: 0.9rem;
+      margin-bottom: 0.4rem;
+    }
+    .d-embed-desc {
+      color: #b5bac1;
       font-size: 0.8rem;
+      line-height: 1.5;
+      margin-bottom: 0.7rem;
+    }
+    .d-embed-fields {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 0.4rem;
+      font-size: 0.75rem;
+    }
+    .d-field-name { color: #dbdee1; font-weight: 700; font-size: 0.72rem; margin-bottom: 0.15rem; }
+    .d-field-val  { color: #b5bac1; }
+    .d-tag {
+      display: inline-block;
+      font-size: 0.68rem;
+      padding: 0.1rem 0.4rem;
+      border-radius: 3px;
+      font-weight: 700;
+    }
+
+    /* Combat mockup */
+    .hp-bar-wrap { margin: 0.4rem 0; }
+    .hp-bar-label { font-size: 0.68rem; color: #949BA4; margin-bottom: 0.2rem; display: flex; justify-content: space-between; }
+    .hp-bar { height: 6px; background: rgba(255,255,255,0.1); border-radius: 3px; overflow: hidden; }
+    .hp-bar-fill { height: 100%; border-radius: 3px; transition: width 0.5s; }
+    .vib-bar-fill { background: linear-gradient(90deg, var(--blue), var(--purple)); }
+    .action-row { display: flex; gap: 0.4rem; flex-wrap: wrap; margin-top: 0.5rem; }
+    .d-btn {
+      background: #5865F2;
+      color: #fff;
+      font-size: 0.7rem;
+      font-weight: 600;
+      padding: 0.3rem 0.7rem;
+      border-radius: 3px;
+      font-family: monospace;
+    }
+    .d-btn.gray { background: #4e5058; }
+
+    /* Weapon mockup */
+    .weapon-mockup {
+      background: linear-gradient(160deg, #0d0f1a, #151824);
+      border-radius: 8px;
+      padding: 0.8rem;
+      display: grid;
+      grid-template-columns: 80px 1fr;
+      gap: 0.8rem;
+      align-items: start;
+    }
+    .weapon-art {
+      aspect-ratio: 1;
+      border-radius: 6px;
+      background: linear-gradient(135deg, rgba(167,139,250,0.2), rgba(96,165,250,0.1));
+      border: 1px solid rgba(167,139,250,0.25);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 2rem;
+    }
+    .weapon-info { font-size: 0.75rem; }
+    .weapon-name { color: #dbdee1; font-weight: 700; margin-bottom: 0.2rem; font-size: 0.85rem; }
+    .weapon-type { color: #949Ba4; font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 0.5rem; }
+    .weapon-stat { display: flex; justify-content: space-between; padding: 0.2rem 0; border-bottom: 1px solid rgba(255,255,255,0.04); color: #b5bac1; }
+    .weapon-stat span:last-child { color: var(--purple); font-weight: 600; }
+    .weapon-locked { color: rgba(255,255,255,0.2); font-style: italic; font-size: 0.68rem; }
+
+    /* Echo grid mockup */
+    .echo-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.5rem; }
+    .echo-card {
+      background: #1e2029;
+      border-radius: 5px;
+      padding: 0.5rem;
+      border: 1px solid rgba(255,255,255,0.07);
+      text-align: center;
+      font-size: 0.68rem;
+    }
+    .echo-icon { font-size: 1.4rem; margin-bottom: 0.2rem; display: block; }
+    .echo-name { color: #dbdee1; font-weight: 600; margin-bottom: 0.15rem; line-height: 1.2; font-size: 0.65rem; }
+    .echo-level { color: var(--gold); font-size: 0.6rem; }
+    .echo-rarity { font-size: 0.55rem; letter-spacing: 0.05em; margin-bottom: 0.15rem; }
+
+    /* ── Commands table ─────────────────────────────────────────────────── */
+    .commands-section { padding-top: 0; }
+    .cmd-grid {
+      margin-top: 3rem;
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 0.75rem;
+    }
+    .cmd-row {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 1rem 1.25rem;
+      display: flex;
+      align-items: baseline;
+      gap: 1rem;
+      transition: border-color 0.2s, background 0.2s;
+    }
+    .cmd-row:hover { border-color: rgba(167,139,250,0.25); background: #161b28; }
+    .cmd-name {
+      font-family: monospace;
+      font-size: 0.88rem;
+      color: var(--purple);
+      background: rgba(167,139,250,0.08);
+      padding: 0.15rem 0.5rem;
+      border-radius: 4px;
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+    .cmd-desc { font-size: 0.88rem; color: var(--dim); }
+
+    /* ── Element pills ──────────────────────────────────────────────────── */
+    .elements-section { padding-top: 0; }
+    .elem-row {
+      display: flex;
+      gap: 1rem;
+      flex-wrap: wrap;
+      margin-top: 2.5rem;
+    }
+    .elem-pill {
+      display: flex;
+      align-items: center;
+      gap: 0.6rem;
+      padding: 0.6rem 1.2rem;
+      border-radius: 100px;
+      border: 1px solid;
+      font-family: 'Rajdhani', sans-serif;
+      font-weight: 600;
+      font-size: 0.9rem;
+      letter-spacing: 0.06em;
+      transition: transform 0.2s, box-shadow 0.2s;
+    }
+    .elem-pill:hover { transform: translateY(-2px); }
+    .elem-pill.fusion   { color: var(--fusion);  border-color: rgba(255,107,53,0.35);  background: rgba(255,107,53,0.08);  }
+    .elem-pill.glacio   { color: var(--glacio);  border-color: rgba(79,195,247,0.35);  background: rgba(79,195,247,0.08);  }
+    .elem-pill.electro  { color: var(--electro); border-color: rgba(179,157,219,0.35); background: rgba(179,157,219,0.08); }
+    .elem-pill.aero     { color: var(--aero);    border-color: rgba(128,203,196,0.35); background: rgba(128,203,196,0.08); }
+    .elem-pill.havoc    { color: var(--havoc);   border-color: rgba(195,85,224,0.35);  background: rgba(195,85,224,0.08);  }
+    .elem-pill.spectro  { color: var(--spectro); border-color: rgba(255,213,79,0.35);  background: rgba(255,213,79,0.08);  }
+    .elem-pill:hover.fusion  { box-shadow: 0 6px 24px rgba(255,107,53,0.3); }
+    .elem-pill:hover.glacio  { box-shadow: 0 6px 24px rgba(79,195,247,0.3); }
+    .elem-pill:hover.electro { box-shadow: 0 6px 24px rgba(179,157,219,0.3); }
+    .elem-pill:hover.aero    { box-shadow: 0 6px 24px rgba(128,203,196,0.3); }
+    .elem-pill:hover.havoc   { box-shadow: 0 6px 24px rgba(195,85,224,0.3); }
+    .elem-pill:hover.spectro { box-shadow: 0 6px 24px rgba(255,213,79,0.3); }
+
+    .elem-bonus-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 0.75rem;
+      margin-top: 2rem;
+    }
+    .elem-bonus-card {
+      border-radius: 10px;
+      padding: 1.2rem;
+      border: 1px solid;
+    }
+    .elem-bonus-card.fusion  { background: rgba(255,107,53,0.06);  border-color: rgba(255,107,53,0.18);  }
+    .elem-bonus-card.glacio  { background: rgba(79,195,247,0.06);  border-color: rgba(79,195,247,0.18);  }
+    .elem-bonus-card.electro { background: rgba(179,157,219,0.06); border-color: rgba(179,157,219,0.18); }
+    .elem-bonus-card.aero    { background: rgba(128,203,196,0.06); border-color: rgba(128,203,196,0.18); }
+    .elem-bonus-card.havoc   { background: rgba(195,85,224,0.06);  border-color: rgba(195,85,224,0.18);  }
+    .elem-bonus-card.spectro { background: rgba(255,213,79,0.06);  border-color: rgba(255,213,79,0.18);  }
+    .elem-bonus-name {
+      font-family: 'Rajdhani', sans-serif;
+      font-weight: 700;
+      font-size: 0.95rem;
+      margin-bottom: 0.5rem;
+    }
+    .elem-bonus-card.fusion  .elem-bonus-name { color: var(--fusion);  }
+    .elem-bonus-card.glacio  .elem-bonus-name { color: var(--glacio);  }
+    .elem-bonus-card.electro .elem-bonus-name { color: var(--electro); }
+    .elem-bonus-card.aero    .elem-bonus-name { color: var(--aero);    }
+    .elem-bonus-card.havoc   .elem-bonus-name { color: var(--havoc);   }
+    .elem-bonus-card.spectro .elem-bonus-name { color: var(--spectro); }
+    .elem-bonus-stat { font-size: 0.78rem; color: var(--dim); line-height: 1.7; font-weight: 300; }
+
+    /* ── CTA banner ─────────────────────────────────────────────────────── */
+    .cta-section {
+      max-width: 1160px;
+      margin: 0 auto 4rem;
+      padding: 0 2rem;
+      position: relative;
+      z-index: 1;
+    }
+    .cta-inner {
+      background: linear-gradient(135deg, rgba(167,139,250,0.12) 0%, rgba(96,165,250,0.08) 100%);
+      border: 1px solid rgba(167,139,250,0.25);
+      border-radius: 20px;
+      padding: 4rem 3rem;
+      text-align: center;
+      position: relative;
+      overflow: hidden;
+    }
+    .cta-inner::before {
+      content: '◈';
+      position: absolute;
+      font-size: 18rem;
+      color: rgba(167,139,250,0.03);
+      top: 50%; left: 50%;
+      transform: translate(-50%, -50%);
+      font-family: sans-serif;
+      pointer-events: none;
+    }
+    .cta-title {
+      font-family: 'Rajdhani', sans-serif;
+      font-weight: 700;
+      font-size: 2.4rem;
+      margin-bottom: 0.75rem;
+    }
+    .cta-sub { color: var(--dim); margin-bottom: 2rem; font-size: 1.05rem; font-weight: 300; }
+
+    /* ── Footer ─────────────────────────────────────────────────────────── */
+    footer {
+      border-top: 1px solid var(--border);
+      padding: 2.5rem 2rem;
+      position: relative;
+      z-index: 1;
+    }
+    .footer-inner {
+      max-width: 1160px;
+      margin: 0 auto;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 1.5rem;
+    }
+    .footer-logo {
+      font-family: 'Rajdhani', sans-serif;
+      font-weight: 700;
+      font-size: 1.1rem;
+      letter-spacing: 0.12em;
+      background: linear-gradient(120deg, var(--purple), var(--blue));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+    .footer-copy { font-size: 0.8rem; color: var(--muted); margin-top: 0.25rem; }
+    .footer-links { display: flex; gap: 2rem; align-items: center; flex-wrap: wrap; }
+    .footer-links a {
+      color: var(--muted);
+      text-decoration: none;
+      font-size: 0.85rem;
+      font-family: 'Rajdhani', sans-serif;
+      font-weight: 600;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      transition: color 0.2s;
+    }
+    .footer-links a:hover { color: var(--purple); }
+
+    /* Horizontal rule between sections */
+    .section-rule {
+      max-width: 1160px;
+      margin: 0 auto;
+      padding: 0 2rem;
+      border: none;
+      border-top: 1px solid var(--border);
+      position: relative;
+      z-index: 1;
+    }
+
+    /* ── Responsive ─────────────────────────────────────────────────────── */
+    @media (max-width: 900px) {
+      .features-grid { grid-template-columns: repeat(2, 1fr); }
+      .preview-row { grid-template-columns: 1fr; }
+      .preview-row.reverse { direction: ltr; }
+      .cmd-grid { grid-template-columns: 1fr; }
+      .elem-bonus-grid { grid-template-columns: repeat(2, 1fr); }
+      .stats-inner { grid-template-columns: 1fr; gap: 1px; }
+    }
+    @media (max-width: 600px) {
+      nav { padding: 0.75rem 1.25rem; }
+      .nav-links { display: none; }
+      .features-grid { grid-template-columns: 1fr; }
+      .elem-bonus-grid { grid-template-columns: 1fr; }
+      .d-embed-fields { grid-template-columns: repeat(2,1fr); }
+      .echo-grid { grid-template-columns: repeat(3,1fr); }
+      .cta-inner { padding: 2.5rem 1.5rem; }
+      .footer-inner { flex-direction: column; align-items: flex-start; }
     }
   </style>
 </head>
 <body>
-  <div class="container">
-    <div class="logo">Cartethyia</div>
-    <div class="tagline">Wuthering Waves RPG Discord Bot</div>
-    <div class="links">
-      <a class="card" href="./terms.html">
-        <span class="icon">📋</span>
-        <span class="label">Terms of Service</span>
-        <span class="sub">Rules & usage policy</span>
+
+<!-- ── Navigation ──────────────────────────────────────────────────────── -->
+<nav>
+  <span class="nav-logo">CARTETHYIA</span>
+  <ul class="nav-links">
+    <li><a href="#features">Features</a></li>
+    <li><a href="#preview">Preview</a></li>
+    <li><a href="#commands">Commands</a></li>
+    <li><a href="#elements">Elements</a></li>
+    <li><a href="https://discord.com/oauth2/authorize?client_id=1510163339177623642" class="nav-cta">Add Bot</a></li>
+  </ul>
+</nav>
+
+<!-- ── Hero ────────────────────────────────────────────────────────────── -->
+<div class="hero">
+  <div class="hero-inner">
+    <div class="hero-eyebrow">Wuthering Waves RPG · Discord Bot</div>
+    <h1 class="hero-title">CARTETHYIA</h1>
+    <p class="hero-tagline">
+      <strong>A Wuthering Waves-inspired RPG</strong> · Forged in Discord.<br>
+      Battle bosses, collect echoes, pull weapons — all without leaving your server.
+    </p>
+    <div class="hero-buttons">
+      <a class="btn btn-primary" href="https://discord.com/oauth2/authorize?client_id=1510163339177623642">
+        <svg width="18" height="14" viewBox="0 0 71 55" fill="currentColor" xmlns="http://www.w3.org/2000/svg"><path d="M60.1 4.9A58.5 58.5 0 0 0 45.5.6a40.7 40.7 0 0 0-1.8 3.7 54.1 54.1 0 0 0-16.3 0A40.5 40.5 0 0 0 25.6.6 58.3 58.3 0 0 0 11 4.9C1.6 19-.9 32.7.3 46.2a58.9 58.9 0 0 0 17.9 9.1 44.2 44.2 0 0 0 3.8-6.2 38.3 38.3 0 0 1-6-2.9l1.5-1.2a41.9 41.9 0 0 0 35.9 0l1.5 1.2a38.5 38.5 0 0 1-6 2.9 44.1 44.1 0 0 0 3.8 6.2 58.7 58.7 0 0 0 17.9-9.1C72.2 30.6 68.3 17 60.1 4.9ZM23.7 38c-3.5 0-6.4-3.2-6.4-7.2s2.8-7.2 6.4-7.2 6.5 3.3 6.4 7.2c0 4-2.8 7.2-6.4 7.2Zm23.6 0c-3.5 0-6.4-3.2-6.4-7.2s2.8-7.2 6.4-7.2 6.5 3.3 6.4 7.2c0 4-2.8 7.2-6.4 7.2Z"/></svg>
+        Add to Discord
       </a>
-      <a class="card" href="./privacy.html">
-        <span class="icon">🔒</span>
-        <span class="label">Privacy Policy</span>
-        <span class="sub">Data & privacy info</span>
+      <a class="btn btn-outline" href="#">
+        Join Community
       </a>
-    </div>
-    <div class="footer">
-      Questions? Contact <a href="mailto:lokeshwara.rao2972005@gmail.com" style="color:#a78bfa;">lokeshwara.rao2972005@gmail.com</a>
     </div>
   </div>
+  <div class="scroll-hint">
+    <span>Explore</span>
+    <div class="scroll-arrow"></div>
+  </div>
+</div>
+
+<!-- ── Stats bar ───────────────────────────────────────────────────────── -->
+<div class="stats-bar">
+  <div class="stats-inner">
+    <div class="stat-item">
+      <div class="stat-num">9</div>
+      <div class="stat-label">World Levels</div>
+    </div>
+    <div class="stat-item">
+      <div class="stat-num">50+</div>
+      <div class="stat-label">Commands</div>
+    </div>
+    <div class="stat-item">
+      <div class="stat-num">Free</div>
+      <div class="stat-label">To Play</div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Features ────────────────────────────────────────────────────────── -->
+<section id="features">
+  <div class="section-label">What awaits you</div>
+  <h2 class="section-title">Everything you need for a full RPG experience</h2>
+  <p class="section-sub">From your first battle to the final boss — Cartethyia delivers a complete progression loop, all inside Discord.</p>
+  <div class="features-grid">
+    <div class="feat-card feat-combat">
+      <span class="feat-icon">⚔️</span>
+      <div class="feat-name">Real-Time Combat</div>
+      <div class="feat-desc">Turn-based battles with elements, vibration bars, crits, and enrage phases. Every fight has stakes.</div>
+    </div>
+    <div class="feat-card feat-echo">
+      <span class="feat-icon">🌀</span>
+      <div class="feat-name">Echo System</div>
+      <div class="feat-desc">Hunt bosses to collect echoes with scaling substats and set bonuses. Farm, upgrade, optimise.</div>
+    </div>
+    <div class="feat-card feat-wish">
+      <span class="feat-icon">✨</span>
+      <div class="feat-name">Resonance Wish</div>
+      <div class="feat-desc">Gacha banner with 5★ weapons, soft/hard pity, and hidden substats revealed as you level up.</div>
+    </div>
+    <div class="feat-card feat-dungeon">
+      <span class="feat-icon">🏰</span>
+      <div class="feat-name">Dungeons &amp; Bosses</div>
+      <div class="feat-desc">9 world levels of escalating boss trials and aura-gated dungeons. Clear them to advance.</div>
+    </div>
+    <div class="feat-card feat-element">
+      <span class="feat-icon">🎭</span>
+      <div class="feat-name">6 Elements</div>
+      <div class="feat-desc">Fusion · Glacio · Electro · Aero · Havoc · Spectro — each with unique passives and combat hooks.</div>
+    </div>
+    <div class="feat-card feat-prog">
+      <span class="feat-icon">📈</span>
+      <div class="feat-name">Deep Progression</div>
+      <div class="feat-desc">Level up, ascend, forge weapons, upgrade echoes, and unlock unique abilities on your path to WL9.</div>
+    </div>
+  </div>
+</section>
+
+<hr class="section-rule" />
+
+<!-- ── Previews ────────────────────────────────────────────────────────── -->
+<section id="preview">
+  <div class="section-label">See it in action</div>
+  <h2 class="section-title">Rich embed cards, straight in Discord</h2>
+  <p class="section-sub">Every command returns a beautifully rendered card — no external apps, no browser tabs.</p>
+
+  <div class="previews-wrap">
+
+    <!-- Boss Combat -->
+    <div class="preview-row">
+      <div class="preview-label">
+        <div class="preview-cmd"><span>/boss</span></div>
+        <div class="preview-title">Boss Battles</div>
+        <div class="preview-desc">Challenge one of 9 world-tier bosses in turn-based combat. Watch the vibration bar shatter as you land crits. Defeat them before they enrage at 40% HP — when they hit back harder and shatter recovery drops to 60%.</div>
+      </div>
+      <div class="discord-window">
+        <div class="discord-bar">
+          <div class="discord-dot" style="background:#ed4245"></div>
+          <div class="discord-dot" style="background:#fee75c"></div>
+          <div class="discord-dot" style="background:#57f287"></div>
+          <span class="discord-channel"># cartethyia-rpg</span>
+        </div>
+        <div class="discord-body">
+          <div class="d-embed" style="--embed-color:#C355E0">
+            <div class="d-embed-author">⚔️  WL5 Boss Trial  ·  Auric Colossus</div>
+            <div class="d-embed-title">SPECTRO BOSS  ·  Weakness: HAVOC</div>
+            <div class="d-embed-desc">
+              <div class="hp-bar-wrap">
+                <div class="hp-bar-label"><span>🌑 Shiva  HP</span><span style="color:#57f287">3,840 / 5,200</span></div>
+                <div class="hp-bar"><div class="hp-bar-fill" style="width:73%;background:linear-gradient(90deg,#57f287,#3ba55d)"></div></div>
+              </div>
+              <div class="hp-bar-wrap" style="margin-top:0.5rem">
+                <div class="hp-bar-label"><span>✨ Auric Colossus  HP</span><span style="color:#ed4245">4,120 / 12,000</span></div>
+                <div class="hp-bar"><div class="hp-bar-fill" style="width:34%;background:linear-gradient(90deg,#ed4245,#a12d2f)"></div></div>
+              </div>
+              <div class="hp-bar-wrap" style="margin-top:0.5rem">
+                <div class="hp-bar-label"><span>💠 Vibration Bar</span><span style="color:#60a5fa">6 / 10</span></div>
+                <div class="hp-bar"><div class="hp-bar-fill vib-bar-fill" style="width:60%"></div></div>
+              </div>
+              <div style="margin-top:0.5rem;font-size:0.7rem;color:#fee75c">⚠️ ENRAGE — Boss ATK ×1.6 · Turn 14</div>
+            </div>
+            <div class="d-embed-fields">
+              <div><div class="d-field-name">TURN DMG</div><div class="d-field-val" style="color:#a78bfa">−1,840</div></div>
+              <div><div class="d-field-name">CRIT</div><div class="d-field-val" style="color:#fee75c">✦ 2.4×</div></div>
+              <div><div class="d-field-name">ELEMENT</div><div class="d-field-val">HAVOC</div></div>
+            </div>
+            <div class="action-row">
+              <div class="d-btn">⚔ Attack</div>
+              <div class="d-btn">🌀 Skill</div>
+              <div class="d-btn">✨ Ultimate</div>
+              <div class="d-btn gray">Flee</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Weapon -->
+    <div class="preview-row reverse">
+      <div class="preview-label">
+        <div class="preview-cmd"><span>/weapon</span></div>
+        <div class="preview-title">Weapon Cards</div>
+        <div class="preview-desc">View your equipped weapon with a full canvas card. Hidden substats unlock at Lv 20 and Lv 50 — wish for 4★ and 5★ weapons via Resonance Wish to access them.</div>
+      </div>
+      <div class="discord-window">
+        <div class="discord-bar">
+          <div class="discord-dot" style="background:#ed4245"></div>
+          <div class="discord-dot" style="background:#fee75c"></div>
+          <div class="discord-dot" style="background:#57f287"></div>
+          <span class="discord-channel"># cartethyia-rpg</span>
+        </div>
+        <div class="discord-body">
+          <div class="d-embed" style="--embed-color:#a78bfa">
+            <div class="d-embed-author">🗡️  Shiva  ·  Equipped Weapon</div>
+            <div class="weapon-mockup">
+              <div class="weapon-art">🗡️</div>
+              <div class="weapon-info">
+                <div class="weapon-name">Oathbreaker's Edge</div>
+                <div class="weapon-type">⭐⭐⭐⭐⭐  Sword  ·  Lv 67 / 90</div>
+                <div class="weapon-stat"><span>BASE ATK</span><span>48</span></div>
+                <div class="weapon-stat"><span>ATK @ LV 67</span><span style="color:#a78bfa">216</span></div>
+                <div class="weapon-stat"><span>CRIT RATE</span><span style="color:#a78bfa">+18.4%</span></div>
+                <div class="weapon-stat"><span>CRIT DMG  ✦</span><span style="color:#a78bfa">+31.2%</span></div>
+                <div class="weapon-stat weapon-locked"><span>HIDDEN  · unlocks Lv 50 ✦✦</span><span>? ? ?</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Echo grid -->
+    <div class="preview-row">
+      <div class="preview-label">
+        <div class="preview-cmd"><span>/echo</span></div>
+        <div class="preview-title">Echo Collection</div>
+        <div class="preview-desc">Browse your full echo inventory as a canvas grid card. Each echo has a rarity, element type, main stat, and up to four substats that scale with level. Build set bonuses to unlock powerful passive effects.</div>
+      </div>
+      <div class="discord-window">
+        <div class="discord-bar">
+          <div class="discord-dot" style="background:#ed4245"></div>
+          <div class="discord-dot" style="background:#fee75c"></div>
+          <div class="discord-dot" style="background:#57f287"></div>
+          <span class="discord-channel"># cartethyia-rpg</span>
+        </div>
+        <div class="discord-body">
+          <div class="d-embed" style="--embed-color:#FFD54F">
+            <div class="d-embed-author">🌀  Shiva  ·  Echo Inventory</div>
+            <div class="d-embed-desc" style="margin-bottom:0.5rem">4 echoes equipped  ·  Set: <span style="color:#FFD54F">Spectro ×2 · Havoc ×2</span></div>
+            <div class="echo-grid">
+              <div class="echo-card">
+                <span class="echo-icon">👁️</span>
+                <div class="echo-rarity" style="color:#F43F5E">★★★★★</div>
+                <div class="echo-name">Resonant Wraith</div>
+                <div class="echo-level">Lv 25</div>
+              </div>
+              <div class="echo-card">
+                <span class="echo-icon">🌊</span>
+                <div class="echo-rarity" style="color:#F43F5E">★★★★★</div>
+                <div class="echo-name">Tidecaller</div>
+                <div class="echo-level">Lv 20</div>
+              </div>
+              <div class="echo-card">
+                <span class="echo-icon">⚡</span>
+                <div class="echo-rarity" style="color:#F59E0B">★★★★</div>
+                <div class="echo-name">Void Fracture</div>
+                <div class="echo-level">Lv 15</div>
+              </div>
+              <div class="echo-card">
+                <span class="echo-icon">🌀</span>
+                <div class="echo-rarity" style="color:#818CF8">★★★</div>
+                <div class="echo-name">Null Shade</div>
+                <div class="echo-level">Lv 10</div>
+              </div>
+              <div class="echo-card" style="border-style:dashed;opacity:0.4">
+                <span class="echo-icon" style="opacity:0.3">＋</span>
+                <div class="echo-name" style="color:#475569">Empty slot</div>
+              </div>
+              <div class="echo-card" style="border-style:dashed;opacity:0.4">
+                <span class="echo-icon" style="opacity:0.3">＋</span>
+                <div class="echo-name" style="color:#475569">Empty slot</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</section>
+
+<hr class="section-rule" />
+
+<!-- ── Elements ────────────────────────────────────────────────────────── -->
+<section id="elements" class="elements-section">
+  <div class="section-label">Resonance system</div>
+  <h2 class="section-title">Choose your element at Level 20</h2>
+  <p class="section-sub">Your element shapes your entire playstyle — innate stat bonuses, a unique combat hook, and weakness interactions against bosses.</p>
+
+  <div class="elem-row">
+    <div class="elem-pill fusion">🔥 Fusion</div>
+    <div class="elem-pill glacio">❄️ Glacio</div>
+    <div class="elem-pill electro">⚡ Electro</div>
+    <div class="elem-pill aero">🌪️ Aero</div>
+    <div class="elem-pill havoc">🌑 Havoc</div>
+    <div class="elem-pill spectro">✨ Spectro</div>
+  </div>
+
+  <div class="elem-bonus-grid">
+    <div class="elem-bonus-card fusion">
+      <div class="elem-bonus-name">🔥 Fusion</div>
+      <div class="elem-bonus-stat">+15% ATK &nbsp;·&nbsp; +15% Crit &nbsp;·&nbsp; +20% Elem DMG<br><em>IGNITE: 35% → +25% ATK hit</em></div>
+    </div>
+    <div class="elem-bonus-card glacio">
+      <div class="elem-bonus-name">❄️ Glacio</div>
+      <div class="elem-bonus-stat">+30% DEF &nbsp;·&nbsp; +15% HP &nbsp;·&nbsp; +20% Elem DMG<br><em>FROST SHIELD: 25% → absorb 40%</em></div>
+    </div>
+    <div class="elem-bonus-card electro">
+      <div class="elem-bonus-name">⚡ Electro</div>
+      <div class="elem-bonus-stat">+5% Crit &nbsp;·&nbsp; +20% Crit DMG &nbsp;·&nbsp; +25 Energy/turn<br><em>DISCHARGE: crit → +20 energy</em></div>
+    </div>
+    <div class="elem-bonus-card aero">
+      <div class="elem-bonus-name">🌪️ Aero</div>
+      <div class="elem-bonus-stat">+15% ATK &nbsp;·&nbsp; +40% Crit DMG &nbsp;·&nbsp; +20% Elem DMG<br><em>WINDSTRIDE: +8% DMG/turn ×5</em></div>
+    </div>
+    <div class="elem-bonus-card havoc">
+      <div class="elem-bonus-name">🌑 Havoc</div>
+      <div class="elem-bonus-stat">+15% ATK &nbsp;·&nbsp; +20% Lifesteal &nbsp;·&nbsp; +20% Elem DMG<br><em>VOID SURGE: shatter → +25% HP</em></div>
+    </div>
+    <div class="elem-bonus-card spectro">
+      <div class="elem-bonus-name">✨ Spectro</div>
+      <div class="elem-bonus-stat">+30% HP &nbsp;·&nbsp; +20% Elem DMG<br><em>RADIANCE: 2% regen &amp; &lt;40% HP → +25% Crit</em></div>
+    </div>
+  </div>
+</section>
+
+<hr class="section-rule" />
+
+<!-- ── Commands ────────────────────────────────────────────────────────── -->
+<section id="commands" class="commands-section">
+  <div class="section-label">Quick reference</div>
+  <h2 class="section-title">Key commands</h2>
+  <p class="section-sub">All interactions happen through slash commands — no prefixes, no memorisation required. Type <code style="background:rgba(167,139,250,0.1);color:var(--purple);padding:0.1rem 0.4rem;border-radius:3px;font-size:0.9em;">/</code> to get started.</p>
+
+  <div class="cmd-grid">
+    <div class="cmd-row"><span class="cmd-name">/profile</span><span class="cmd-desc">View your character stats, element, and progression</span></div>
+    <div class="cmd-row"><span class="cmd-name">/boss</span><span class="cmd-desc">Challenge the world-level boss for echoes and keys</span></div>
+    <div class="cmd-row"><span class="cmd-name">/dungeon</span><span class="cmd-desc">Run an aura-gated dungeon for drops and EXP</span></div>
+    <div class="cmd-row"><span class="cmd-name">/wish</span><span class="cmd-desc">Pull on the Resonance gacha banner with Fracture Keys</span></div>
+    <div class="cmd-row"><span class="cmd-name">/echo</span><span class="cmd-desc">Browse and equip your echo collection</span></div>
+    <div class="cmd-row"><span class="cmd-name">/echo-upgrade</span><span class="cmd-desc">Level up echoes with +1, +5, or Auto mode</span></div>
+    <div class="cmd-row"><span class="cmd-name">/weapon</span><span class="cmd-desc">Inspect your equipped weapon card with hidden substats</span></div>
+    <div class="cmd-row"><span class="cmd-name">/weapon-upgrade</span><span class="cmd-desc">Level up weapons with +1, +10, or Auto mode</span></div>
+    <div class="cmd-row"><span class="cmd-name">/forge</span><span class="cmd-desc">Craft weapons using Forging Ores from dungeons</span></div>
+    <div class="cmd-row"><span class="cmd-name">/duel</span><span class="cmd-desc">Challenge another player — public or private match</span></div>
+    <div class="cmd-row"><span class="cmd-name">/inventory</span><span class="cmd-desc">Check your currencies: Credits, Lunakite, Fracture Keys…</span></div>
+    <div class="cmd-row"><span class="cmd-name">/guide</span><span class="cmd-desc">In-Discord guide — tips, mechanics, and getting started</span></div>
+  </div>
+</section>
+
+<!-- ── CTA Banner ──────────────────────────────────────────────────────── -->
+<div class="cta-section">
+  <div class="cta-inner">
+    <h2 class="cta-title">Ready to resonate?</h2>
+    <p class="cta-sub">Add Cartethyia to your server — free forever, no sign-up required.</p>
+    <div class="hero-buttons">
+      <a class="btn btn-primary" href="https://discord.com/oauth2/authorize?client_id=1510163339177623642">
+        <svg width="18" height="14" viewBox="0 0 71 55" fill="currentColor"><path d="M60.1 4.9A58.5 58.5 0 0 0 45.5.6a40.7 40.7 0 0 0-1.8 3.7 54.1 54.1 0 0 0-16.3 0A40.5 40.5 0 0 0 25.6.6 58.3 58.3 0 0 0 11 4.9C1.6 19-.9 32.7.3 46.2a58.9 58.9 0 0 0 17.9 9.1 44.2 44.2 0 0 0 3.8-6.2 38.3 38.3 0 0 1-6-2.9l1.5-1.2a41.9 41.9 0 0 0 35.9 0l1.5 1.2a38.5 38.5 0 0 1-6 2.9 44.1 44.1 0 0 0 3.8 6.2 58.7 58.7 0 0 0 17.9-9.1C72.2 30.6 68.3 17 60.1 4.9ZM23.7 38c-3.5 0-6.4-3.2-6.4-7.2s2.8-7.2 6.4-7.2 6.5 3.3 6.4 7.2c0 4-2.8 7.2-6.4 7.2Zm23.6 0c-3.5 0-6.4-3.2-6.4-7.2s2.8-7.2 6.4-7.2 6.5 3.3 6.4 7.2c0 4-2.8 7.2-6.4 7.2Z"/></svg>
+        Add to Discord — It's Free
+      </a>
+      <a class="btn btn-outline" href="#">Join the Community</a>
+    </div>
+  </div>
+</div>
+
+<!-- ── Footer ──────────────────────────────────────────────────────────── -->
+<footer>
+  <div class="footer-inner">
+    <div>
+      <div class="footer-logo">CARTETHYIA</div>
+      <div class="footer-copy">© 2025 Cartethyia · Not affiliated with Kuro Games or Wuthering Waves</div>
+    </div>
+    <div class="footer-links">
+      <a href="./terms.html">Terms of Service</a>
+      <a href="./privacy.html">Privacy Policy</a>
+      <a href="mailto:lokeshwara.rao2972005@gmail.com">Contact</a>
+    </div>
+  </div>
+</footer>
+
+<!-- Scroll-triggered fade-in via IntersectionObserver -->
+<script>
+  const io = new IntersectionObserver((entries) => {
+    entries.forEach(e => {
+      if (e.isIntersecting) {
+        e.target.style.animation = 'fadein 0.65s ease both';
+        io.unobserve(e.target);
+      }
+    });
+  }, { threshold: 0.12 });
+  document.querySelectorAll('.feat-card, .cmd-row, .elem-bonus-card, .preview-row, .stat-item')
+    .forEach(el => {
+      el.style.opacity = '0';
+      io.observe(el);
+    });
+</script>
+
 </body>
 </html>
