@@ -57,10 +57,18 @@ export interface WeaponCardInput {
   ownerAvatar:  string;
   isUnique?:    boolean;
   userId?:      string;
+  // Hidden substats (wish/4★/5★ weapons only)
+  hiddenSub1Type?: string | null;   // null = no hidden sub (forged)
+  hiddenSub1Val?:  number | null;   // null = locked (below Lv20)
+  hiddenSub2Type?: string | null;
+  hiddenSub2Val?:  number | null;   // null = locked (below Lv50)
 }
 
 export async function generateWeaponCard(input: WeaponCardInput): Promise<Buffer> {
-  const W = 700, H = 310;
+  const W = 700;
+  // Dynamic height: base 310 + 28px per hidden sub row that exists
+  const hiddenRows = (input.hiddenSub1Type ? 1 : 0) + (input.hiddenSub2Type ? 1 : 0);
+  const H = 310 + hiddenRows * 28;
   const canvas = createCanvas(W, H);
   const ctx    = canvas.getContext("2d");
 
@@ -174,22 +182,37 @@ export async function generateWeaponCard(input: WeaponCardInput): Promise<Buffer
 
   // ── Stat rows (label left, value right — single line each) ──────────────────
   cy = 96;
-  const stats: { label: string; value: string; hi?: boolean }[] = [
+  interface StatRow { label: string; value: string; hi?: boolean; locked?: boolean }
+  const stats: StatRow[] = [
     { label: "BASE ATK",  value: `${input.baseAtk}` },
     { label: "ATK @ LV "+input.level, value: `${input.effectiveAtk}`, hi: true },
   ];
   if (input.subStatType && input.effectiveSub !== null) {
     stats.push({ label: input.subStatType.replace(/_/g," "), value: `+${input.effectiveSub}%`, hi: true });
   }
+  // Hidden substats
+  if (input.hiddenSub1Type) {
+    if (input.hiddenSub1Val != null)
+      stats.push({ label: input.hiddenSub1Type.replace(/_/g," ") + "  ✦", value: `+${input.hiddenSub1Val}%`, hi: true });
+    else
+      stats.push({ label: "HIDDEN  ·  unlocks Lv 20", value: "? ? ?", locked: true });
+  }
+  if (input.hiddenSub2Type) {
+    if (input.hiddenSub2Val != null)
+      stats.push({ label: input.hiddenSub2Type.replace(/_/g," ") + "  ✦✦", value: `+${input.hiddenSub2Val}%`, hi: true });
+    else
+      stats.push({ label: "HIDDEN  ·  unlocks Lv 50", value: "? ? ?", locked: true });
+  }
 
   const ROW_H = 28;
   for (const row of stats) {
     cy += ROW_H;
     // label
-    ctx.fillStyle = rgba("#FFFFFF",0.38); ctx.font = font(10);
+    ctx.fillStyle = row.locked ? rgba("#FFFFFF",0.20) : rgba("#FFFFFF",0.38); ctx.font = font(10);
     ctx.fillText(row.label.toUpperCase(), SX, cy);
     // value — right-aligned
-    ctx.fillStyle = row.hi ? ec : rgba("#FFFFFF",0.85); ctx.font = font(17);
+    ctx.fillStyle = row.locked ? rgba("#FFFFFF",0.22) : row.hi ? ec : rgba("#FFFFFF",0.85);
+    ctx.font = row.locked ? font(13) : font(17);
     const vw = ctx.measureText(row.value).width;
     ctx.fillText(row.value, RX - vw, cy);
     // thin rule under each row

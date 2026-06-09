@@ -3,6 +3,7 @@ import { Command } from "../../types";
 import { getOrCreateUser } from "../../lib/economy";
 import { WEAPON_TYPE_LABEL, FORGED_WEAPONS } from "../../lib/weapons";
 import { generateWeaponCard } from "../../lib/weaponCard";
+import { ALL_WISH_WEAPONS, calcWishSubStat } from "../../lib/wishWeapons";
 import { WeaponType } from "@prisma/client";
 import prisma from "../../lib/prisma";
 
@@ -38,7 +39,15 @@ const command: Command = {
 
     const user   = await getOrCreateUser(target.id, displayName, avatarUrl);
     const color  = ELEMENT_HEX[user.element] ?? ELEMENT_HEX.NONE;
-    const weapon = await prisma.weapon.findFirst({ where: { userId: target.id, isEquipped: true } });
+    const weapon = await prisma.weapon.findFirst({
+      where: { userId: target.id, isEquipped: true },
+      select: {
+        name: true, weaponType: true, rarity: true, level: true,
+        baseAtk: true, subStatType: true, subStatVal: true,
+        hiddenSub1Type: true, hiddenSub1Val: true,
+        hiddenSub2Type: true, hiddenSub2Val: true,
+      },
+    });
 
     if (!weapon) {
       await interaction.editReply({
@@ -57,7 +66,16 @@ const command: Command = {
       return;
     }
 
-    const weaponDef = FORGED_WEAPONS.find(w => w.name === weapon.name);
+    const weaponDef  = FORGED_WEAPONS.find(w => w.name === weapon.name);
+    const wishDef    = ALL_WISH_WEAPONS.find(w => w.name === weapon.name);
+
+    // Compute hidden substat effective values (revealed at Lv20 / Lv50)
+    const h1Val = weapon.level >= 20 && weapon.hiddenSub1Val != null
+      ? calcWishSubStat(weapon.hiddenSub1Val, wishDef?.hiddenSub1Scale ?? 1.8, weapon.level)
+      : null;
+    const h2Val = weapon.level >= 50 && weapon.hiddenSub2Val != null
+      ? calcWishSubStat(weapon.hiddenSub2Val, wishDef?.hiddenSub2Scale ?? 1.8, weapon.level)
+      : null;
 
     // Generate weapon card
     const cardBuffer = await generateWeaponCard({
@@ -74,6 +92,10 @@ const command: Command = {
       element:      user.element,
       ownerName:    displayName,
       ownerAvatar:  avatarUrl,
+      hiddenSub1Type: weapon.hiddenSub1Type ?? null,
+      hiddenSub1Val:  h1Val,
+      hiddenSub2Type: weapon.hiddenSub2Type ?? null,
+      hiddenSub2Val:  h2Val,
     });
 
     const attachment = new AttachmentBuilder(cardBuffer, { name: "weapon.png" });

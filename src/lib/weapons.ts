@@ -160,4 +160,16 @@ export const WEAPON_PASSIVES: Record<string, WeaponPassive> = {
   // Rectifier
   "Resonance Prism":   { elemDmg: 0.20 },
   "Hollow Focus":      { elemDmg: 0.28, effects: [{ type: "SKILL_POWER", value: 0.10 }] },
+
+  // ── Wish weapons (4★) ─────────────────────────────────────────────────────
+  "Dawnbreaker":       { effects: [{ type: "CRIT_MOMENTUM", value: 18 }, { type: "SKILL_POWER",  value: 0.18 }] },
+  "Gravemaw":          { effects: [{ type: "BERSERK",       value: 0.32 }, { type: "HEAL_ON_CRIT", value: 0.08 }] },
+  "Scatter Hex":       { effects: [{ type: "ESCALATION",    value: 0.09 }, { type: "VIB_BREAKER",  value: 0.35 }] },
+  "Ether Codex":       { elemDmg: 0.08, effects: [{ type: "ESCALATION", value: 0.07 }] },
+
+  // ── Wish weapons (5★) ─────────────────────────────────────────────────────
+  "Oathbreaker's Edge":{ effects: [{ type: "CRIT_MOMENTUM", value: 20 }, { type: "CRIT_DMG",   value: 0.25 }] },
+  "Ruin Sovereign":    { effects: [{ type: "VIB_BREAKER",   value: 0.55 }, { type: "BERSERK",  value: 0.30 }] },
+  "Null Fangs":        { effects: [{ type: "ESCALATION",    value: 0.11 }, { type: "CRIT_RATE", value: 0.10 }] },
+  "Abyssal Tome":      { elemDmg: 0.18, effects: [{ type: "EXECUTE",   value: 0.40 }, { type: "ULT_POWER", value: 0.28 }] },
 };

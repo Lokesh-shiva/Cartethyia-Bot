@@ -374,10 +374,11 @@ export async function resolvePlayerBonuses(userId: string): Promise<PlayerBonuse
   }
 
   if (effects.length > 0) {
-    bonuses.abilityEffects = effects;
+    // Merge with weapon passive effects already pushed earlier — don't overwrite
+    bonuses.abilityEffects = [...bonuses.abilityEffects, ...effects];
 
-    // Passive primitives fold into resolved stats
-    const p = compositePassives(effects);
+    // Passive primitives fold into resolved stats (weapon + unique combined)
+    const p = compositePassives(bonuses.abilityEffects);
     bonuses.atkMult       *= p.atkMult;
     bonuses.hpMult        *= p.hpMult;
     bonuses.defMult       *= p.defMult;
