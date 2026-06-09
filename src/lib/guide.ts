@@ -160,7 +160,7 @@ export const GUIDE_SECTIONS: Record<string, GuideSection> = {
         { name: "🧪  Sealing Tubes",     value: "Reveal sealed Echo substats (1 per reveal). Earned from `/vibe` physical (20%), 7-day `/daily`, Dispatch, Sealed Archive dungeon.", inline: false },
         { name: "⚙️  Forging Ores",      value: "Craft weapons at `/forge`. Earned from `/vibe` physical (15%), 7-day `/daily`, Dispatch, Forging Grounds dungeon.", inline: false },
         { name: "🔮  Paradox Cores",     value: "**Endgame.** Reroll all Echo substats. Earned from Ascension wins, WL1+ Dispatch, Paradox Crucible dungeon.", inline: false },
-        { name: "🔒  Stasis Locks",      value: "Lock a substat before rerolling so it's protected. Cost per lock: 1 / 3 / 6. Earned from Ascension boss drops.", inline: false },
+        { name: "🔒  Stasis Locks",      value: "Lock a substat before rerolling so it's protected. Cost per lock: 1 / 3 / 6. Earned from **Ascension wins** (WL0–2 → 1, WL3–5 → 2, WL6–8 → 3). Also buyable at `/shop` for 500 Credits each.", inline: false },
         { name: "📀  Resonance Records", value: "Instant EXP — one level's worth. Use with `/use record`. Earned from `/vibe`, `/daily`, milestones, Bonds, Memory Vault dungeon.", inline: false },
         { name: "🗝️  Fracture Keys",     value: "Used for **Resonance Wishes** (`/wish`) — the gacha banner. Earned from: boss clears (1–3 keys by WL), dungeon clears (1), Ascension wins (2).", inline: false },
       )

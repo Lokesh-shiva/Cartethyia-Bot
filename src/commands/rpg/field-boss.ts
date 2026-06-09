@@ -63,7 +63,7 @@ function fieldToBoss(fb: FieldBoss): Boss {
     baseHp: fb.baseHp, baseAtk: fb.baseAtk, baseDef: fb.baseDef,
     vibBar: fb.vibBar,
     moves: fb.moves,
-    defeatLoot: { credits: 0, tuningModules: 0, sealingTubes: 0, forgingOres: 0, paradoxCores: 0, fractureKeys: 0, resonanceExp: 0 },
+    defeatLoot: { credits: 0, tuningModules: 0, sealingTubes: 0, forgingOres: 0, paradoxCores: 0, fractureKeys: 0, stasisLocks: 0, resonanceExp: 0 },
   };
 }
 

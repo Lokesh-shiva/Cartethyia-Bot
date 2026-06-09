@@ -87,7 +87,7 @@ export function echoToBoss(enemy: EchoDefinition): Boss {
       { name: "Resonance Pulse", damage: 1.0, effect: "strikes with raw elemental force" },
       { name: "Echo Burst",      damage: 1.3, effect: "releases a burst of echo energy"  },
     ],
-    defeatLoot: { credits: 0, tuningModules: 0, sealingTubes: 0, forgingOres: 0, paradoxCores: 0, fractureKeys: 0, resonanceExp: 0 },
+    defeatLoot: { credits: 0, tuningModules: 0, sealingTubes: 0, forgingOres: 0, paradoxCores: 0, fractureKeys: 0, stasisLocks: 0, resonanceExp: 0 },
   };
 }
 
@@ -127,6 +127,7 @@ export function buildRewardText(rewards: Record<string, number>): string {
   if (rewards.sealingTubes)     lines.push(`${CE.st} ${rewards.sealingTubes} Sealing Tubes`);
   if (rewards.forgingOres)      lines.push(`${CE.fo} ${rewards.forgingOres} Forging Ores`);
   if (rewards.paradoxCores)     lines.push(`${CE.pc} ${rewards.paradoxCores} Paradox Cores`);
+  if (rewards.stasisLocks)      lines.push(`${CE.sl} ${rewards.stasisLocks} Stasis Lock${rewards.stasisLocks !== 1 ? "s" : ""}`);
   if (rewards.resonanceRecords) lines.push(`${CE.rr} ${rewards.resonanceRecords} Resonance Records`);
   if (rewards.fractureKeys)     lines.push(`${CE.fk} ${rewards.fractureKeys} Fracture Keys`);
   if (rewards.resonanceExp)     lines.push(`✨ ${rewards.resonanceExp} EXP`);
