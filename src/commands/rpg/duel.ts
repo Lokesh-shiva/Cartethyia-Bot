@@ -119,12 +119,22 @@ export const data = new SlashCommandBuilder()
   .setDescription("Challenge another player to a turn-based 1v1 duel.")
   .addUserOption(o =>
     o.setName("target").setDescription("Who to challenge").setRequired(true)
+  )
+  .addStringOption(o =>
+    o.setName("visibility")
+      .setDescription("Who can see the duel (default: private)")
+      .addChoices(
+        { name: "🔒 Private — only you two",       value: "private" },
+        { name: "👁️ Public — anyone can spectate", value: "public"  },
+      )
+      .setRequired(false)
   );
 
 export async function execute(interaction: ChatInputCommandInteraction) {
   await interaction.deferReply();
 
-  const target = interaction.options.getUser("target", true);
+  const target    = interaction.options.getUser("target", true);
+  const isPublic  = (interaction.options.getString("visibility") ?? "private") === "public";
 
   if (target.id === interaction.user.id) {
     await interaction.editReply({ content: "You can't duel yourself." }); return;
@@ -186,7 +196,8 @@ export async function execute(interaction: ChatInputCommandInteraction) {
         `**${cName}** challenges **${dName}** to a duel!\n\n` +
         `${elementEmoji(challengerDb.element)} ${cName}  ·  Lv ${challengerDb.level}  ·  ${cStats.hp.toLocaleString()} HP  ·  ${cStats.atk} ATK\n` +
         `${elementEmoji(challengedDb.element)} ${dName}  ·  Lv ${challengedDb.level}  ·  ${dStats.hp.toLocaleString()} HP  ·  ${dStats.atk} ATK\n\n` +
-        `Winner gets **${WIN_CREDITS} Credits** + **${WIN_EXP} EXP**.\n\n` +
+        `Winner gets **${WIN_CREDITS} Credits** + **${WIN_EXP} EXP**.\n` +
+        `${isPublic ? "👁️ **Public duel** — anyone can spectate in the thread." : "🔒 **Private duel** — only participants can see the thread."}\n\n` +
         `*${dName} has 60 seconds to accept.*`
       )
       .setFooter({ text: "CARTETHYIA  ·  Duel" })],
@@ -240,24 +251,26 @@ export async function execute(interaction: ChatInputCommandInteraction) {
       turn: 1,
     };
 
-    // Create private thread
+    // Create thread (public or private based on user choice)
     let thread;
     try {
       thread = await (interaction.channel as TextChannel).threads.create({
         name:                `⚔️ ${cName} vs ${dName}`,
         autoArchiveDuration: 60,
-        type:                ChannelType.PrivateThread,
+        type:                isPublic ? ChannelType.PublicThread : ChannelType.PrivateThread,
       });
       await thread.members.add(interaction.user.id);
       await thread.members.add(target.id);
     } catch {
       releaseLock(interaction.user.id);
       releaseLock(target.id);
-      await interaction.editReply({ content: "I need **Create Private Threads** + **Send Messages in Threads** permissions here to run the duel. Ask an admin, or try another channel.", embeds: [], components: [] }).catch(() => {});
+      await interaction.editReply({ content: "I need **Create Threads** + **Send Messages in Threads** permissions here to run the duel. Ask an admin, or try another channel.", embeds: [], components: [] }).catch(() => {});
       return;
     }
 
-    await interaction.editReply({ content: `⚔️ Duel started! <#${thread.id}>` });
+    await interaction.editReply({
+      content: `${isPublic ? "👁️" : "🔒"} Duel started! <#${thread.id}>${isPublic ? "  ·  *Anyone can spectate.*" : ""}`,
+    });
 
     const color = 0x6366F1;
 
@@ -277,7 +290,10 @@ export async function execute(interaction: ChatInputCommandInteraction) {
       components: [buildDuelButtons(state, state.currentTurn)],
     });
 
-    const cleanup = async (won: boolean, winnerId: string | null) => {
+    const cleanup = async (
+      won: boolean, winnerId: string | null,
+      outcomeDesc: string,
+    ) => {
       releaseLock(interaction.user.id);
       releaseLock(target.id);
       if (won && winnerId) {
@@ -286,6 +302,21 @@ export async function execute(interaction: ChatInputCommandInteraction) {
         await prisma.user.update({ where: { id: winnerId }, data: { duelWins:   { increment: 1 } } }).catch(() => {});
         await prisma.user.update({ where: { id: loserId },  data: { duelLosses: { increment: 1 } } }).catch(() => {});
       }
+      // Post outcome back to the original channel
+      await interaction.editReply({
+        content: "",
+        embeds: [new EmbedBuilder()
+          .setColor(won ? 0x4CAF50 : 0x4A4A5A)
+          .setTitle("⚔️  Duel Concluded")
+          .setDescription(outcomeDesc)
+          .addFields(
+            { name: elementEmoji(state.cElement) + "  " + cName, value: `\`HP\` **${state.cHp}** / ${state.cHpMax}`, inline: true },
+            { name: elementEmoji(state.dElement) + "  " + dName, value: `\`HP\` **${state.dHp}** / ${state.dHpMax}`, inline: true },
+            { name: "Turns", value: `${state.turn}`, inline: true },
+          )
+          .setFooter({ text: "CARTETHYIA  ·  Duel" })],
+        components: [],
+      }).catch(() => {});
       await thread.setArchived(true).catch(() => {});
       setTimeout(() => thread.delete().catch(() => {}), 5 * 60 * 1000);
     };
@@ -340,7 +371,8 @@ export async function execute(interaction: ChatInputCommandInteraction) {
               .setFooter({ text: "CARTETHYIA  ·  Duel" })],
             components: [],
           });
-          await cleanup(true, winnerId);
+          await cleanup(true, winnerId,
+            `**${myName}** forfeited.\n🏆 **${winName}** wins! +${WIN_CREDITS} ${CE.cr}  +${WIN_EXP} EXP`);
           return;
         }
 
@@ -456,7 +488,8 @@ export async function execute(interaction: ChatInputCommandInteraction) {
           );
           await thread.send({ files: [new AttachmentBuilder(resultCard, { name: "duel-result.png" })] }).catch(() => {});
 
-          await cleanup(true, winnerId);
+          await cleanup(true, winnerId,
+            `🏆 **${winnerName}** defeats **${winnerId === state.challengerId ? state.challengedName : state.challengerName}**!\n+${WIN_CREDITS} ${CE.cr}  +${WIN_EXP} EXP`);
           return;
         }
 
@@ -488,7 +521,8 @@ export async function execute(interaction: ChatInputCommandInteraction) {
               .setFooter({ text: "CARTETHYIA  ·  Duel" })],
             components: [],
           });
-          await cleanup(true, winnerId);
+          await cleanup(true, winnerId,
+            `⏱️ **${timeoutUserId === state.challengerId ? state.challengerName : state.challengedName}** timed out.\n🏆 **${winnerName}** wins by default! +${WIN_CREDITS} ${CE.cr}  +${WIN_EXP} EXP`);
         }
       });
     };
