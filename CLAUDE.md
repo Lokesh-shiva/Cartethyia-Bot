@@ -13,7 +13,7 @@
 
 ## Scripts & Env
 - `npm run dev` / `npm start` / `npm run deploy` (auto-discovers all `src/commands/**/*.ts`) / `npm run db:push`
-- `GLOBAL=true npm run deploy` for production. Key IDs: `CLIENT_ID=1510163339177623642`, `GUILD_ID=1495681992082194432`, owner=`979379636586819746`
+- `GLOBAL=true npm run deploy` for production. Key IDs: `CLIENT_ID=1510163339177623642`, `GUILD_ID=1495681992082194432` (dev server), `MAIN_GUILD_ID=1410663578624725045` (Eureka Society — production main server), owner=`979379636586819746`
 
 ## Structure
 ```

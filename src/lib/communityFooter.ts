@@ -1,4 +1,4 @@
-const MAIN_GUILD_ID = process.env.GUILD_ID ?? "1495681992082194432";
+const MAIN_GUILD_ID = process.env.MAIN_GUILD_ID ?? process.env.GUILD_ID ?? "1410663578624725045";
 const COMMUNITY_URL = "discord.gg/HwkdQbN3Ec";
 
 /**
