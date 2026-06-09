@@ -112,6 +112,9 @@ model User {
   ascensionWins   Int @default(0)
   encountersWon   Int @default(0)
 
+  // Voting
+  lastVoted             DateTime?
+
   // Daily
   lastDaily             DateTime?
   dailyStreak           Int            @default(0)

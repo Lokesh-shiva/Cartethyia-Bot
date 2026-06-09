@@ -84,4 +84,8 @@ if (!token) {
 client.login(token).then(() => {
   console.log("🚀 Cartethyia is starting up...");
   logInfo("Bot started successfully");
+
+  // Start top.gg vote webhook (no-op if TOPGG_WEBHOOK_AUTH is unset)
+  const { startVoteWebhook } = require("./lib/voteWebhook");
+  startVoteWebhook(client);
 });

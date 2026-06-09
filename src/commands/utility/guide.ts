@@ -5,6 +5,7 @@ import {
 } from "discord.js";
 import { Command } from "../../types";
 import { GUIDE_SECTIONS, C } from "../../lib/guide";
+import { communityFooter } from "../../lib/communityFooter";
 
 const command: Command = {
   data: new SlashCommandBuilder()
@@ -26,7 +27,7 @@ const command: Command = {
         `The menu stays open — browse as many topics as you like.\n\n` +
         `**Topics:**\n${topicList}`
       )
-      .setFooter({ text: "CARTETHYIA  ·  Player Guide  ·  Menu open for 5 minutes" });
+      .setFooter(communityFooter(interaction.guildId, "CARTETHYIA  ·  Player Guide  ·  Menu open for 5 minutes"));
 
     const select = new StringSelectMenuBuilder()
       .setCustomId("guide_cmd_select")

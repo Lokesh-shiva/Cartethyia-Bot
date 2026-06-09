@@ -7,6 +7,7 @@ import { getOrCreateUser } from "../../lib/economy";
 import { generateProfileCard, BondData, EchoSlotData, WeaponData } from "../../lib/canvas";
 import { resolvePlayerBonuses, applyBonuses } from "../../lib/setBonus";
 import { computeAura, MAX_AURA } from "../../lib/aura";
+import { communityFooter } from "../../lib/communityFooter";
 import prisma from "../../lib/prisma";
 
 const command: Command = {
@@ -118,7 +119,7 @@ const command: Command = {
     const embed      = new EmbedBuilder()
       .setColor(0x0D1117)
       .setImage("attachment://profile.png")
-      .setFooter({ text: `CARTETHYIA  ·  ${displayName}'s Profile`, iconURL: avatarUrl });
+      .setFooter({ ...communityFooter(interaction.guildId, `CARTETHYIA  ·  ${displayName}'s Profile`), iconURL: avatarUrl });
 
     await interaction.editReply({ embeds: [embed], files: [attachment] });
   },

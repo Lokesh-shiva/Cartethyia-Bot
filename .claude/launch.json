@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "landing-page",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["serve", "legal", "-p", "5500", "--no-clipboard"],
+      "port": 5500
+    }
+  ]
+}
