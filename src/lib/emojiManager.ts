@@ -128,6 +128,19 @@ export function emojisReady(): boolean {
 }
 
 /**
+ * Returns an emoji resolvable for use with ButtonBuilder.setEmoji().
+ * Custom emojis return { id, name }; unicode fallback returns the string.
+ */
+export function getEmojiResolvable(key: string, fallback: string): { id: string; name: string } | string {
+  const str = emojiCache.get(key);
+  if (str) {
+    const m = str.match(/^<:(\w+):(\d+)>$/);
+    if (m) return { id: m[2], name: m[1] };
+  }
+  return fallback;
+}
+
+/**
  * Currency emoji shorthands — resolved lazily at call time so they work
  * even if called before `loadEmojis` completes (falls back to Unicode).
  * Import `CE` and use e.g. `CE.cr` for Credits, `CE.lk` for Lunakite, etc.

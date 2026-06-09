@@ -12,7 +12,7 @@ import {
   WishWeapon, calcWishAtk, calcWishSubStat,
 } from "../../lib/wishWeapons";
 import { getWeaponImagePath } from "../../lib/weapons";
-import { CE } from "../../lib/emojiManager";
+import { CE, getEmojiResolvable } from "../../lib/emojiManager";
 import path from "path";
 
 // ── 3★ material rewards ───────────────────────────────────────────────────────
@@ -248,12 +248,13 @@ const command: Command = {
         default:     w.id === dbUser.wishTarget,
       })));
 
+    const fkEmoji = getEmojiResolvable("cc_fracture", "🗝️");
     const pullRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
       new ButtonBuilder().setCustomId("wish_x1")
-        .setLabel("◈  Pull  ×1  (1 🗝️)").setStyle(ButtonStyle.Primary)
+        .setLabel("◈  Pull  ×1  (1)").setEmoji(fkEmoji).setStyle(ButtonStyle.Primary)
         .setDisabled(dbUser.fractureKeys < 1),
       new ButtonBuilder().setCustomId("wish_x10")
-        .setLabel("✦  Pull  ×10  (10 🗝️)").setStyle(ButtonStyle.Danger)
+        .setLabel("✦  Pull  ×10  (10)").setEmoji(fkEmoji).setStyle(ButtonStyle.Danger)
         .setDisabled(dbUser.fractureKeys < 10),
     );
     const targetRow = new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(targetSelect);
