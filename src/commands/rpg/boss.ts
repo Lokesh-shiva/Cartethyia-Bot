@@ -13,6 +13,7 @@ import { registerFight, clearFight } from "../../lib/fightTracker";
 import { checkLevelUp } from "../../lib/progression";
 import { BOSSES, getBoss, veteranScale } from "../../lib/bosses";
 import { gearAwareScale, baselineAtk, buildRewardText } from "../../lib/combat";
+import { voteNudge } from "../../lib/voteNudge";
 import { generateBattleCard, BattleCardState } from "../../lib/battleCard";
 import {
   resolvePlayerBonuses, applyBonuses,
@@ -279,7 +280,7 @@ const command: Command = {
               .setDescription([
                 `**${boss.name}** has been put to rest again.`,
                 ``,
-                `**Rewards (70%):**\n${buildRewardText(loot)}`,
+                `**Rewards (70%):**\n${buildRewardText(loot)}` + voteNudge(),
                 lvlResult.didLevelUp ? `\n◈ Level **${lvlResult.oldLevel}** → **${lvlResult.newLevel}**` : "",
               ].filter(Boolean).join("\n"))
               .setFooter({ text: `CARTETHYIA  ·  Boss Challenge` })],

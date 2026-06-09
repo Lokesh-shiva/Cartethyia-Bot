@@ -12,6 +12,7 @@ import { registerFight, clearFight } from "../../lib/fightTracker";
 import { checkLevelUp } from "../../lib/progression";
 import { FIELD_BOSSES, FieldBoss } from "../../lib/fieldBosses";
 import { gearAwareScale, baselineAtk } from "../../lib/combat";
+import { voteNudge } from "../../lib/voteNudge";
 import { generateBattleCard, BattleCardState } from "../../lib/battleCard";
 import {
   resolvePlayerBonuses, applyBonuses,
@@ -293,7 +294,7 @@ const command: Command = {
                 `**${fb.name}** has been driven off.\n\n` +
                 (echoLines.length ? `**Echo Dropped:**\n${echoLines.join("\n")}\n\n` : "") +
                 `${CE.cr} ${credits} Credits  ·  ${CE.fk} 1 Fracture Key` +
-                (lvl.didLevelUp ? `\n◈ Level **${lvl.oldLevel}** → **${lvl.newLevel}**` : "")
+                (lvl.didLevelUp ? `\n◈ Level **${lvl.oldLevel}** → **${lvl.newLevel}**` : "") + voteNudge()
               )
               .setFooter({ text: "CARTETHYIA  ·  Field Boss" })],
           });
