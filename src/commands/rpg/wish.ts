@@ -12,6 +12,7 @@ import {
   WishWeapon, calcWishAtk, calcWishSubStat,
 } from "../../lib/wishWeapons";
 import { getWeaponImagePath } from "../../lib/weapons";
+import { CE } from "../../lib/emojiManager";
 import path from "path";
 
 // ── 3★ material rewards ───────────────────────────────────────────────────────
@@ -128,7 +129,7 @@ function bannerEmbed(
     .addFields(
       { name: "Your Pity",     value: `**${pity}** / ${HARD_PITY}`,     inline: true },
       { name: "4★ Pity",      value: `**${wish4Pity}** / ${HARD_PITY_4}`, inline: true },
-      { name: "Fracture Keys", value: `🗝️ **${keys}**`,                  inline: true },
+      { name: "Fracture Keys", value: `${CE.fk} **${keys}**`,             inline: true },
       {
         name: "Rates",
         value: [
@@ -315,7 +316,7 @@ const command: Command = {
       if (fresh.fractureKeys < amount) {
         await btn.editReply({
           embeds: [new EmbedBuilder().setColor(0xFF4F6D).setTitle("◈ Not enough Fracture Keys")
-            .setDescription(`You only have **${fresh.fractureKeys}** 🗝️ — need **${amount}**.`)],
+            .setDescription(`You only have **${fresh.fractureKeys}** ${CE.fk} — need **${amount}**.`)],
           files: [], components: [],
         });
         return;

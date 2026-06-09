@@ -15,6 +15,7 @@ const EMOJI_ASSETS: { name: string; file: string }[] = [
   { name: "cc_paradox",  file: "assets/icons/Paradox Core.png"   },
   { name: "cc_stasis",   file: "assets/icons/Stasis Lock.png"    },
   { name: "cc_record",   file: "assets/icons/Resonance EXP.png"  },
+  { name: "cc_fracture", file: "assets/icons/Fracture Key.png"   },
   // 1-cost echoes
   { name: "ec_ember",    file: "assets/echoes/1-cost/Ember Wisp.png"     },
   { name: "ec_frost",    file: "assets/echoes/1-cost/Frost Mote.png"     },
@@ -140,4 +141,5 @@ export const CE = {
   get pc() { return getEmoji("cc_paradox",  "🔮"); },
   get sl() { return getEmoji("cc_stasis",   "🔒"); },
   get rr() { return getEmoji("cc_record",   "📀"); },
+  get fk() { return getEmoji("cc_fracture", "🗝️"); },
 };

@@ -128,7 +128,7 @@ export function buildRewardText(rewards: Record<string, number>): string {
   if (rewards.forgingOres)      lines.push(`${CE.fo} ${rewards.forgingOres} Forging Ores`);
   if (rewards.paradoxCores)     lines.push(`${CE.pc} ${rewards.paradoxCores} Paradox Cores`);
   if (rewards.resonanceRecords) lines.push(`${CE.rr} ${rewards.resonanceRecords} Resonance Records`);
-  if (rewards.fractureKeys)     lines.push(`🗝️ ${rewards.fractureKeys} Fracture Keys`);
+  if (rewards.fractureKeys)     lines.push(`${CE.fk} ${rewards.fractureKeys} Fracture Keys`);
   if (rewards.resonanceExp)     lines.push(`✨ ${rewards.resonanceExp} EXP`);
   return lines.join("  ·  ") || "Nothing";
 }
