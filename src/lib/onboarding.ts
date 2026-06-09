@@ -170,10 +170,15 @@ export async function sendOnboarding(member: GuildMember, channel: TextChannel) 
   }
 
   // ── 5. Save profile ───────────────────────────────────────────────────────
+  const answered = Object.keys(answers).length;
+  const total    = questions.length;
+
   await prisma.user.update({
     where: { id: member.id },
     data:  {
-      isOnboarded:      true,
+      // Only mark fully onboarded if all questions were answered —
+      // partial/timeout lets them restart with /start
+      isOnboarded:      answered === total,
       resonanceProfile: {
         answers,
         dominantVibe:       "mixed",
@@ -186,8 +191,6 @@ export async function sendOnboarding(member: GuildMember, channel: TextChannel) 
   });
 
   // ── 6. First steps closing ────────────────────────────────────────────────
-  const answered = Object.keys(answers).length;
-  const total    = questions.length;
 
   await channel.send({
     embeds: [new EmbedBuilder()
