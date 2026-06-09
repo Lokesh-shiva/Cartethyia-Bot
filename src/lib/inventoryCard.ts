@@ -16,6 +16,7 @@ const CURRENCIES = [
   { key: "forgingOres",      file: "Forging Ore.png",    label: "Forging Ore",    color: "#F97316", desc: "Weapon upgrade"       },
   { key: "paradoxCores",     file: "Paradox Core.png",   label: "Paradox Core",   color: "#EC4899", desc: "Reroll substats"      },
   { key: "stasisLocks",      file: "Stasis Lock.png",    label: "Stasis Lock",    color: "#38BDF8", desc: "Lock a substat"       },
+  { key: "fractureKeys",    file: "Fracture Key.png",   label: "Fracture Keys",  color: "#A855F7", desc: "Wish pulls"           },
 ];
 
 const ELEMENT_COLORS: Record<string, string> = {
@@ -45,8 +46,8 @@ function rrect(ctx: SKRSContext2D, x: number, y: number, w: number, h: number, r
 }
 
 export async function generateInventoryCard(user: User, displayName: string, avatarUrl: string | null): Promise<Buffer> {
-  const COLS = 4, ROWS = 2;
-  const CELL_W = 160, CELL_H = 80;
+  const COLS = 3, ROWS = 3;
+  const CELL_W = 200, CELL_H = 80;
   const PAD = 20, GAP = 10;
   const HEADER_H = 72;
 
