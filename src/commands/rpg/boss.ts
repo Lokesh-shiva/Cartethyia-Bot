@@ -203,20 +203,21 @@ const command: Command = {
       // lock already held
 
       // ── Scale boss ───────────────────────────────────────────────────────────
-      // Cap the level used for gearAwareScale at the boss's intended level ceiling.
-      // veteranScale already penalises overlevelled players — without this cap,
-      // a level-84 player would also inflate the boss's levelScale to 3.98×,
-      // making every re-challenge a one-shot regardless of gear.
+      // Rechallenges are meant to be farmable, not a progression wall.
+      // Cap fightLevel at the WL's intended ceiling so levelScale stays fair.
+      // Cap gearRatio at 1.5 and use softer weights so boss ATK doesn't spike
+      // to one-shot territory — veteranScale already handles the overleveled penalty.
       const WL_LEVEL_CAP: Record<number, number> = { 0: 20, 1: 40, 2: 50, 3: 60, 4: 70, 5: 80, 6: 84, 7: 88, 8: 90 };
-      const fightLevel  = Math.min(user.level, WL_LEVEL_CAP[wl] ?? user.level);
-      const gearRatio   = stats.atk / baselineAtk(fightLevel);
-      const vScale      = veteranScale(user.level, wl);
+      const fightLevel      = Math.min(user.level, WL_LEVEL_CAP[wl] ?? user.level);
+      const rawGearRatio    = stats.atk / baselineAtk(fightLevel);
+      const cappedGearRatio = Math.min(rawGearRatio, 1.5);
+      const vScale          = veteranScale(user.level, wl);
       const scaledBase  = {
         hp:  Math.floor(boss.baseHp  * vScale),
         atk: Math.floor(boss.baseAtk * vScale),
         def: Math.floor(boss.baseDef * vScale),
       };
-      const scaled = gearAwareScale(scaledBase, fightLevel, boss.worldLevel, gearRatio);
+      const scaled = gearAwareScale(scaledBase, fightLevel, boss.worldLevel, cappedGearRatio, 0.30, 0.20);
 
       // ── State ────────────────────────────────────────────────────────────────
       let firstSkillUsed  = false;
