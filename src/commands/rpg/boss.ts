@@ -203,9 +203,14 @@ const command: Command = {
       // lock already held
 
       // ── Scale boss ───────────────────────────────────────────────────────────
-      const fightLevel  = user.level;
+      // Cap the level used for gearAwareScale at the boss's intended level ceiling.
+      // veteranScale already penalises overlevelled players — without this cap,
+      // a level-84 player would also inflate the boss's levelScale to 3.98×,
+      // making every re-challenge a one-shot regardless of gear.
+      const WL_LEVEL_CAP: Record<number, number> = { 0: 20, 1: 40, 2: 50, 3: 60, 4: 70, 5: 80, 6: 84, 7: 88, 8: 90 };
+      const fightLevel  = Math.min(user.level, WL_LEVEL_CAP[wl] ?? user.level);
       const gearRatio   = stats.atk / baselineAtk(fightLevel);
-      const vScale      = veteranScale(fightLevel, wl);
+      const vScale      = veteranScale(user.level, wl);
       const scaledBase  = {
         hp:  Math.floor(boss.baseHp  * vScale),
         atk: Math.floor(boss.baseAtk * vScale),
