@@ -589,6 +589,9 @@ async function grantRewards(
   if (r.paradoxCores)     { gained.paradoxCores     = scale(r.paradoxCores);     lines.push(`${CE.pc} ${scale(r.paradoxCores)} Paradox Cores`); }
   if (r.resonanceRecords) { gained.resonanceRecords = scale(r.resonanceRecords); lines.push(`${CE.rr} ${scale(r.resonanceRecords)} Resonance Records`); }
 
+  // Fracture Key — always +1 per dungeon clear (awarded separately after grantRewards, shown here)
+  lines.push(`${CE.fk} 1 Fracture Key`);
+
   // EXP (with dungeon multiplier AND WL multiplier)
   const totalExp = Math.floor(r.resonanceExp * r.resonanceExpMult * wlMult);
   if (totalExp > 0) { gained.resonanceExp = totalExp; lines.push(`✨ ${totalExp} Resonance EXP${r.resonanceExpMult > 1 ? ` (${r.resonanceExpMult}×)` : ""}${worldLevel > 0 ? ` (+${Math.round((wlMult - 1) * 100)}% WL bonus)` : ""}`); }
