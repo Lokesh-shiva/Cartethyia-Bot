@@ -45,7 +45,7 @@ Bosses/  ← boss art PNGs, Title Case with spaces. Never snake_case.
 | 7 | Galeborne Phantom | AERO | ELECTRO | 88 |
 | 8 | The Resonant Absolute | SPECTRO | HAVOC | 90 |
 
-Boss trials for all 9 in `dungeons.ts`. Field bosses (6, one/element) in `src/lib/fieldBosses.ts` → `/field-boss` command. **TODO**: field bosses need 4-cost echo drops + their own BOSS_ECHO_DEFINITIONS (Ignis Behemoth/Permafrost Sovereign/Voltaic Aberrant/Tempest Ancient/Null Ravager/Luminal Specter). Art goes in `Bosses/`.
+Boss trials for all 9 in `dungeons.ts`. Field bosses (6, one/element) in `src/lib/fieldBosses.ts` → `/field-boss` command. Each field boss drops a 4-cost echo; BOSS_ECHO_DEFINITIONS for all 6 are in `src/lib/echoes.ts`. Art in `Bosses/`.
 
 ## Elements & Innate Bonuses
 | Element | Stat Bonuses | Hook |
