@@ -127,28 +127,43 @@ function bannerEmbed(
 }
 
 // ── Suspense frames ───────────────────────────────────────────────────────────
-const SUSPENSE_FRAMES = [
-  { title: "◈  Reaching into the fracture...",      desc: "*The resonance responds...*",                           color: 0x1E1F2E },
-  { title: "✦  Something stirs in the void...",     desc: "*A weapon takes shape from the darkness...*",           color: 0x2D1B4E },
-  { title: "⚡  The fracture tears open...",         desc: "*Energy crackles — a name is about to surface...*",    color: 0x4A0E6B },
+import path from "path";
+
+const ANIM_5STAR = path.join(process.cwd(), "assets", "5_star animation.gif");
+const ANIM_4STAR = path.join(process.cwd(), "assets", "4_star animation.gif");
+
+const SUSPENSE_5STAR = [
+  { title: "◈  Reaching into the fracture...",   desc: "*The resonance responds...*",                        color: 0x1E1F2E },
+  { title: "✦  Something stirs in the void...",  desc: "*A weapon takes shape from the darkness...*",        color: 0x2D1B4E },
+  { title: "⚡  The fracture tears open...",      desc: "*Energy crackles — a name is about to surface...*", color: 0x4A0E6B },
+];
+const SUSPENSE_4STAR = [
+  { title: "◈  Reaching into the fracture...",   desc: "*The resonance stirs...*",                           color: 0x1E1F2E },
+  { title: "◆  A resonance takes form...",        desc: "*Something worthy emerges from the glow...*",       color: 0x3D2A00 },
 ];
 
 async function runSuspense(
   interaction: ChatInputCommandInteraction,
   is5Star: boolean,
 ): Promise<void> {
-  const frames = is5Star ? SUSPENSE_FRAMES : SUSPENSE_FRAMES.slice(0, 2);
-  for (const frame of frames) {
-    await interaction.editReply({
-      embeds: [new EmbedBuilder()
-        .setColor(frame.color)
-        .setTitle(frame.title)
-        .setDescription(frame.desc)
-        .setFooter({ text: "CARTETHYIA  ·  Wish" })],
-      files: [],
-      components: [],
-    });
-    await new Promise(r => setTimeout(r, is5Star ? 1400 : 900));
+  const frames  = is5Star ? SUSPENSE_5STAR : SUSPENSE_4STAR;
+  const gifPath = is5Star ? ANIM_5STAR : ANIM_4STAR;
+  const gifName = is5Star ? "anim.gif" : "anim.gif";
+
+  for (let i = 0; i < frames.length; i++) {
+    const frame = frames[i];
+    const isLast = i === frames.length - 1;
+    // Show the GIF on the final suspense frame for max impact
+    const files = isLast ? [new AttachmentBuilder(gifPath, { name: gifName })] : [];
+    const embed = new EmbedBuilder()
+      .setColor(frame.color)
+      .setTitle(frame.title)
+      .setDescription(frame.desc)
+      .setFooter({ text: "CARTETHYIA  ·  Wish" });
+    if (isLast) embed.setImage(`attachment://${gifName}`);
+
+    await interaction.editReply({ embeds: [embed], files, components: [] });
+    await new Promise(r => setTimeout(r, is5Star ? 1400 : 1000));
   }
 }
 
