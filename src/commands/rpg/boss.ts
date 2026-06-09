@@ -210,14 +210,14 @@ const command: Command = {
       const WL_LEVEL_CAP: Record<number, number> = { 0: 20, 1: 40, 2: 50, 3: 60, 4: 70, 5: 80, 6: 84, 7: 88, 8: 90 };
       const fightLevel      = Math.min(user.level, WL_LEVEL_CAP[wl] ?? user.level);
       const rawGearRatio    = stats.atk / baselineAtk(fightLevel);
-      const cappedGearRatio = Math.min(rawGearRatio, 1.5);
+      const cappedGearRatio = Math.min(rawGearRatio, 2.0);
       const vScale          = veteranScale(user.level, wl);
       const scaledBase  = {
         hp:  Math.floor(boss.baseHp  * vScale),
         atk: Math.floor(boss.baseAtk * vScale),
         def: Math.floor(boss.baseDef * vScale),
       };
-      const scaled = gearAwareScale(scaledBase, fightLevel, boss.worldLevel, cappedGearRatio, 0.30, 0.20);
+      const scaled = gearAwareScale(scaledBase, fightLevel, boss.worldLevel, cappedGearRatio, 0.40, 0.30);
 
       // ── State ────────────────────────────────────────────────────────────────
       let firstSkillUsed  = false;
