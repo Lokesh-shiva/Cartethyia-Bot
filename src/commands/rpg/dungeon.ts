@@ -302,7 +302,7 @@ async function runDungeon(
 
   // All 3 waves cleared — grant rewards
   await grantRewards(thread, interaction.user.id, dungeon, dbUser.worldLevel, displayName);
-  await prisma.user.update({ where: { id: interaction.user.id }, data: { dungeonClears: { increment: 1 } } }).catch(() => {});
+  await prisma.user.update({ where: { id: interaction.user.id }, data: { dungeonClears: { increment: 1 }, fractureKeys: { increment: 1 } } }).catch(() => {});
   await checkLevelUp(interaction.user.id);
   await thread.setArchived(true).catch(() => {});
 }

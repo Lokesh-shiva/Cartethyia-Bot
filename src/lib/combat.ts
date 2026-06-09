@@ -87,7 +87,7 @@ export function echoToBoss(enemy: EchoDefinition): Boss {
       { name: "Resonance Pulse", damage: 1.0, effect: "strikes with raw elemental force" },
       { name: "Echo Burst",      damage: 1.3, effect: "releases a burst of echo energy"  },
     ],
-    defeatLoot: { credits: 0, tuningModules: 0, sealingTubes: 0, forgingOres: 0, paradoxCores: 0, resonanceExp: 0 },
+    defeatLoot: { credits: 0, tuningModules: 0, sealingTubes: 0, forgingOres: 0, paradoxCores: 0, fractureKeys: 0, resonanceExp: 0 },
   };
 }
 

@@ -47,6 +47,7 @@ export async function awardUser(
     paradoxCores?:    number;
     stasisLocks?:     number;
     resonanceRecords?:number;
+    fractureKeys?:    number;
     resonanceExp?:    number;
   }
 ) {
@@ -61,6 +62,7 @@ export async function awardUser(
       paradoxCores:     { increment: rewards.paradoxCores     ?? 0 },
       stasisLocks:      { increment: rewards.stasisLocks      ?? 0 },
       resonanceRecords: { increment: rewards.resonanceRecords ?? 0 },
+      fractureKeys:     { increment: rewards.fractureKeys     ?? 0 },
       resonanceExp:     { increment: rewards.resonanceExp     ?? 0 },
     },
   });

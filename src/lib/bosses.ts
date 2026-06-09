@@ -23,6 +23,7 @@ export interface Boss {
     sealingTubes:  number;
     forgingOres:   number;
     paradoxCores:  number;
+    fractureKeys:  number;
     resonanceExp:  number;
   };
 }
@@ -46,7 +47,7 @@ export const BOSSES: Record<number, Boss> = {
       { name: "Spectral Surge", damage: 1.4,  effect: "unleashes a wave of corrupted energy" },
       { name: "Phase Drift",    damage: 0.6,  effect: "clips you as it passes through reality"},
     ],
-    defeatLoot: { credits: 800, tuningModules: 4, sealingTubes: 2, forgingOres: 2, paradoxCores: 0, resonanceExp: 200 },
+    defeatLoot: { credits: 800, tuningModules: 4, sealingTubes: 2, forgingOres: 2, paradoxCores: 0, fractureKeys: 1, resonanceExp: 200 },
   },
 
   // WL1 → WL2
@@ -67,7 +68,7 @@ export const BOSSES: Record<number, Boss> = {
       { name: "Sovereign's Edict", damage: 1.6, effect: "channels the full force of both tides"   },
       { name: "Frost Brand",    damage: 0.8,  effect: "marks you with a slowing ice sigil"        },
     ],
-    defeatLoot: { credits: 1600, tuningModules: 6, sealingTubes: 4, forgingOres: 3, paradoxCores: 1, resonanceExp: 450 },
+    defeatLoot: { credits: 1600, tuningModules: 6, sealingTubes: 4, forgingOres: 3, paradoxCores: 1, fractureKeys: 1, resonanceExp: 450 },
   },
 
   // WL2 → WL3
@@ -88,7 +89,7 @@ export const BOSSES: Record<number, Boss> = {
       { name: "Clockwork Ruin",  damage: 1.0,  effect: "sends shattered gears of gold through you" },
       { name: "Arbiter's Wrath", damage: 1.8,  effect: "channels both divine and Havoc energy"     },
     ],
-    defeatLoot: { credits: 3000, tuningModules: 8, sealingTubes: 6, forgingOres: 5, paradoxCores: 2, resonanceExp: 800 },
+    defeatLoot: { credits: 3000, tuningModules: 8, sealingTubes: 6, forgingOres: 5, paradoxCores: 2, fractureKeys: 1, resonanceExp: 800 },
   },
 
   // WL3 → WL4
@@ -110,7 +111,7 @@ export const BOSSES: Record<number, Boss> = {
       { name: "Pulse Collapse",     damage: 0.9, effect: "compresses the local field into a detonation"     },
       { name: "Overload Protocol",  damage: 1.9, effect: "enters overload state — unleashes everything"     },
     ],
-    defeatLoot: { credits: 5000, tuningModules: 10, sealingTubes: 8, forgingOres: 7, paradoxCores: 3, resonanceExp: 1300 },
+    defeatLoot: { credits: 5000, tuningModules: 10, sealingTubes: 8, forgingOres: 7, paradoxCores: 3, fractureKeys: 1, resonanceExp: 1300 },
   },
 
   // WL4 → WL5
@@ -132,7 +133,7 @@ export const BOSSES: Record<number, Boss> = {
       { name: "Shadow Step",        damage: 0.7, effect: "phases through your defenses and strikes from within"},
       { name: "Herald's Judgment",  damage: 2.0, effect: "calls down the full wrath of the endless dark"      },
     ],
-    defeatLoot: { credits: 7500, tuningModules: 12, sealingTubes: 10, forgingOres: 9, paradoxCores: 4, resonanceExp: 2000 },
+    defeatLoot: { credits: 7500, tuningModules: 12, sealingTubes: 10, forgingOres: 9, paradoxCores: 4, fractureKeys: 1, resonanceExp: 2000 },
   },
 
   // WL5 → WL6
@@ -154,7 +155,7 @@ export const BOSSES: Record<number, Boss> = {
       { name: "Resonant Rebuke",    damage: 1.0, effect: "repels your attack with a shockwave of pure light"  },
       { name: "Guardian's Wrath",   damage: 2.2, effect: "channels the age of resonance into a single strike" },
     ],
-    defeatLoot: { credits: 12000, tuningModules: 15, sealingTubes: 12, forgingOres: 11, paradoxCores: 6, resonanceExp: 3000 },
+    defeatLoot: { credits: 12000, tuningModules: 15, sealingTubes: 12, forgingOres: 11, paradoxCores: 6, fractureKeys: 2, resonanceExp: 3000 },
   },
 
   // WL6 → WL7
@@ -176,7 +177,7 @@ export const BOSSES: Record<number, Boss> = {
       { name: "Emberburst Step",    damage: 0.9, effect: "vanishes in flame and strikes from your blind side"  },
       { name: "Crown of Ruin",      damage: 2.3, effect: "ignites everything — the crown burns brightest last" },
     ],
-    defeatLoot: { credits: 18000, tuningModules: 18, sealingTubes: 15, forgingOres: 14, paradoxCores: 8, resonanceExp: 4500 },
+    defeatLoot: { credits: 18000, tuningModules: 18, sealingTubes: 15, forgingOres: 14, paradoxCores: 8, fractureKeys: 2, resonanceExp: 4500 },
   },
 
   // WL7 → WL8
@@ -198,7 +199,7 @@ export const BOSSES: Record<number, Boss> = {
       { name: "Phase Step",         damage: 0.8, effect: "ghosts through your defenses entirely"                 },
       { name: "Gale Annihilation",  damage: 2.4, effect: "tears the air apart — the silence after is deafening" },
     ],
-    defeatLoot: { credits: 25000, tuningModules: 22, sealingTubes: 18, forgingOres: 17, paradoxCores: 10, resonanceExp: 6000 },
+    defeatLoot: { credits: 25000, tuningModules: 22, sealingTubes: 18, forgingOres: 17, paradoxCores: 10, fractureKeys: 2, resonanceExp: 6000 },
   },
 
   // WL8 — final
@@ -220,7 +221,7 @@ export const BOSSES: Record<number, Boss> = {
       { name: "Null Convergence",   damage: 1.1, effect: "reverses your resonance field for a single terrible moment" },
       { name: "The Final Silence",  damage: 2.6, effect: "there are no words for what this is"                  },
     ],
-    defeatLoot: { credits: 35000, tuningModules: 28, sealingTubes: 22, forgingOres: 20, paradoxCores: 14, resonanceExp: 8000 },
+    defeatLoot: { credits: 35000, tuningModules: 28, sealingTubes: 22, forgingOres: 20, paradoxCores: 14, fractureKeys: 3, resonanceExp: 8000 },
   },
 };
 

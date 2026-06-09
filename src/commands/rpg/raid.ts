@@ -306,6 +306,7 @@ async function startRaid(interaction: ChatInputCommandInteraction) {
     await interaction.editReply({ content: "A raid is already active in this channel." }); return;
   }
 
+
   const choice = interaction.options.getString("boss", true);
   const boss   = getRaidBoss(choice);
   if (!boss) { await interaction.editReply({ content: "Boss not found." }); return; }

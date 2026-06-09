@@ -59,6 +59,7 @@ const CURRENCY_EMOJI_MAP: Record<string, string> = {
   paradoxCores:     "cc_paradox",
   stasisLocks:      "cc_stasis",
   resonanceRecords: "cc_record",
+  fractureKeys:     "cc_fracture",
 };
 
 // ── Load / create APPLICATION emojis on startup ───────────────────────────────

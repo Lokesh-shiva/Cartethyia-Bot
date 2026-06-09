@@ -80,6 +80,12 @@ model User {
   paradoxCores     Int            @default(0)
   stasisLocks      Int            @default(0)
   resonanceRecords Int            @default(0)
+  fractureKeys     Int            @default(0)
+
+  // Wish / gacha pity
+  wishPity         Int            @default(0)   // pulls since last 5★
+  wish4Pity        Int            @default(0)   // pulls since last 4★
+  wishGuaranteed   Boolean        @default(false) // lost 50/50 → next 5★ is guaranteed featured
 
   // Onboarding & personality
   isOnboarded      Boolean        @default(false)
@@ -151,6 +157,12 @@ model Weapon {
   baseAtk     Int        @default(30)
   subStatType String?
   subStatVal  Float?
+
+  // Hidden substats — revealed at Lv20 (slot 1) and Lv50 (slot 2, 5★ only)
+  hiddenSub1Type String?
+  hiddenSub1Val  Float?
+  hiddenSub2Type String?
+  hiddenSub2Val  Float?
 
   createdAt   DateTime   @default(now())
 

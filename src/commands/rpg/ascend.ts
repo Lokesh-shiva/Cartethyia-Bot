@@ -360,7 +360,7 @@ const command: Command = {
           await awardUser(interaction.user.id, boss.defeatLoot);
           await prisma.user.update({
             where: { id: interaction.user.id },
-            data:  { worldLevel: { increment: 1 }, ascensionWins: { increment: 1 } },
+            data:  { worldLevel: { increment: 1 }, ascensionWins: { increment: 1 }, fractureKeys: { increment: 2 } },
           });
 
           await thread.send({
