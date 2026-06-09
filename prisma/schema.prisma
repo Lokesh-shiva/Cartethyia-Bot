@@ -85,7 +85,8 @@ model User {
   // Wish / gacha pity
   wishPity         Int            @default(0)   // pulls since last 5★
   wish4Pity        Int            @default(0)   // pulls since last 4★
-  wishGuaranteed   Boolean        @default(false) // lost 50/50 → next 5★ is guaranteed featured
+  wishGuaranteed   Boolean        @default(false) // lost 50/50 → next 5★ is guaranteed target
+  wishTarget       String?        // weapon id the player is targeting (from WISH_WEAPONS_5STAR)
 
   // Onboarding & personality
   isOnboarded      Boolean        @default(false)
