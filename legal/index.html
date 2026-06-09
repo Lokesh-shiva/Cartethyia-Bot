@@ -486,6 +486,23 @@
     }
     .preview-desc { color: var(--dim); font-size: 0.95rem; line-height: 1.6; font-weight: 300; }
 
+    /* Real screenshot wrapper */
+    .screenshot-wrap {
+      border-radius: 12px;
+      overflow: hidden;
+      box-shadow: 0 24px 64px rgba(0,0,0,0.6), 0 0 0 1px rgba(255,255,255,0.06);
+      transition: transform 0.3s, box-shadow 0.3s;
+    }
+    .screenshot-wrap:hover {
+      transform: translateY(-4px) scale(1.01);
+      box-shadow: 0 32px 80px rgba(0,0,0,0.7), 0 0 0 1px rgba(167,139,250,0.2);
+    }
+    .screenshot {
+      display: block;
+      width: 100%;
+      height: auto;
+    }
+
     /* Discord window chrome */
     .discord-window {
       background: #313338;
@@ -929,136 +946,32 @@
         <div class="preview-title">Boss Battles</div>
         <div class="preview-desc">Challenge one of 9 world-tier bosses in turn-based combat. Watch the vibration bar shatter as you land crits. Defeat them before they enrage at 40% HP — when they hit back harder and shatter recovery drops to 60%.</div>
       </div>
-      <div class="discord-window">
-        <div class="discord-bar">
-          <div class="discord-dot" style="background:#ed4245"></div>
-          <div class="discord-dot" style="background:#fee75c"></div>
-          <div class="discord-dot" style="background:#57f287"></div>
-          <span class="discord-channel"># cartethyia-rpg</span>
-        </div>
-        <div class="discord-body">
-          <div class="d-embed" style="--embed-color:#C355E0">
-            <div class="d-embed-author">⚔️  WL5 Boss Trial  ·  Auric Colossus</div>
-            <div class="d-embed-title">SPECTRO BOSS  ·  Weakness: HAVOC</div>
-            <div class="d-embed-desc">
-              <div class="hp-bar-wrap">
-                <div class="hp-bar-label"><span>🌑 Shiva  HP</span><span style="color:#57f287">3,840 / 5,200</span></div>
-                <div class="hp-bar"><div class="hp-bar-fill" style="width:73%;background:linear-gradient(90deg,#57f287,#3ba55d)"></div></div>
-              </div>
-              <div class="hp-bar-wrap" style="margin-top:0.5rem">
-                <div class="hp-bar-label"><span>✨ Auric Colossus  HP</span><span style="color:#ed4245">4,120 / 12,000</span></div>
-                <div class="hp-bar"><div class="hp-bar-fill" style="width:34%;background:linear-gradient(90deg,#ed4245,#a12d2f)"></div></div>
-              </div>
-              <div class="hp-bar-wrap" style="margin-top:0.5rem">
-                <div class="hp-bar-label"><span>💠 Vibration Bar</span><span style="color:#60a5fa">6 / 10</span></div>
-                <div class="hp-bar"><div class="hp-bar-fill vib-bar-fill" style="width:60%"></div></div>
-              </div>
-              <div style="margin-top:0.5rem;font-size:0.7rem;color:#fee75c">⚠️ ENRAGE — Boss ATK ×1.6 · Turn 14</div>
-            </div>
-            <div class="d-embed-fields">
-              <div><div class="d-field-name">TURN DMG</div><div class="d-field-val" style="color:#a78bfa">−1,840</div></div>
-              <div><div class="d-field-name">CRIT</div><div class="d-field-val" style="color:#fee75c">✦ 2.4×</div></div>
-              <div><div class="d-field-name">ELEMENT</div><div class="d-field-val">HAVOC</div></div>
-            </div>
-            <div class="action-row">
-              <div class="d-btn">⚔ Attack</div>
-              <div class="d-btn">🌀 Skill</div>
-              <div class="d-btn">✨ Ultimate</div>
-              <div class="d-btn gray">Flee</div>
-            </div>
-          </div>
-        </div>
+      <div class="screenshot-wrap">
+        <img src="./battle.png" alt="Ignis Behemoth boss battle card showing HP bars, vibration bar, and combat UI" class="screenshot" />
       </div>
     </div>
 
-    <!-- Weapon -->
+    <!-- Profile -->
     <div class="preview-row reverse">
       <div class="preview-label">
-        <div class="preview-cmd"><span>/weapon</span></div>
-        <div class="preview-title">Weapon Cards</div>
-        <div class="preview-desc">View your equipped weapon with a full canvas card. Hidden substats unlock at Lv 20 and Lv 50 — wish for 4★ and 5★ weapons via Resonance Wish to access them.</div>
+        <div class="preview-cmd"><span>/profile</span></div>
+        <div class="preview-title">Character Profile</div>
+        <div class="preview-desc">Your full character sheet at a glance — level, element, stats, equipped weapon, Resonance Aura, and your recent party in the sidebar. Every stat scales with gear, echoes, and set bonuses.</div>
       </div>
-      <div class="discord-window">
-        <div class="discord-bar">
-          <div class="discord-dot" style="background:#ed4245"></div>
-          <div class="discord-dot" style="background:#fee75c"></div>
-          <div class="discord-dot" style="background:#57f287"></div>
-          <span class="discord-channel"># cartethyia-rpg</span>
-        </div>
-        <div class="discord-body">
-          <div class="d-embed" style="--embed-color:#a78bfa">
-            <div class="d-embed-author">🗡️  Shiva  ·  Equipped Weapon</div>
-            <div class="weapon-mockup">
-              <div class="weapon-art">🗡️</div>
-              <div class="weapon-info">
-                <div class="weapon-name">Oathbreaker's Edge</div>
-                <div class="weapon-type">⭐⭐⭐⭐⭐  Sword  ·  Lv 67 / 90</div>
-                <div class="weapon-stat"><span>BASE ATK</span><span>48</span></div>
-                <div class="weapon-stat"><span>ATK @ LV 67</span><span style="color:#a78bfa">216</span></div>
-                <div class="weapon-stat"><span>CRIT RATE</span><span style="color:#a78bfa">+18.4%</span></div>
-                <div class="weapon-stat"><span>CRIT DMG  ✦</span><span style="color:#a78bfa">+31.2%</span></div>
-                <div class="weapon-stat weapon-locked"><span>HIDDEN  · unlocks Lv 50 ✦✦</span><span>? ? ?</span></div>
-              </div>
-            </div>
-          </div>
-        </div>
+      <div class="screenshot-wrap">
+        <img src="./profile.png" alt="Character profile card showing Tranzue with Aero element, stats, and equipped weapon" class="screenshot" />
       </div>
     </div>
 
-    <!-- Echo grid -->
+    <!-- Echo -->
     <div class="preview-row">
       <div class="preview-label">
         <div class="preview-cmd"><span>/echo</span></div>
-        <div class="preview-title">Echo Collection</div>
-        <div class="preview-desc">Browse your full echo inventory as a canvas grid card. Each echo has a rarity, element type, main stat, and up to four substats that scale with level. Build set bonuses to unlock powerful passive effects.</div>
+        <div class="preview-title">Echo Cards</div>
+        <div class="preview-desc">Each echo is a canvas card with rarity, element, main stat, and up to four substats that scale 1.5× by Lv 25. Hunt field bosses and dungeons to collect them, then build set bonuses for powerful passive effects.</div>
       </div>
-      <div class="discord-window">
-        <div class="discord-bar">
-          <div class="discord-dot" style="background:#ed4245"></div>
-          <div class="discord-dot" style="background:#fee75c"></div>
-          <div class="discord-dot" style="background:#57f287"></div>
-          <span class="discord-channel"># cartethyia-rpg</span>
-        </div>
-        <div class="discord-body">
-          <div class="d-embed" style="--embed-color:#FFD54F">
-            <div class="d-embed-author">🌀  Shiva  ·  Echo Inventory</div>
-            <div class="d-embed-desc" style="margin-bottom:0.5rem">4 echoes equipped  ·  Set: <span style="color:#FFD54F">Spectro ×2 · Havoc ×2</span></div>
-            <div class="echo-grid">
-              <div class="echo-card">
-                <span class="echo-icon">👁️</span>
-                <div class="echo-rarity" style="color:#F43F5E">★★★★★</div>
-                <div class="echo-name">Resonant Wraith</div>
-                <div class="echo-level">Lv 25</div>
-              </div>
-              <div class="echo-card">
-                <span class="echo-icon">🌊</span>
-                <div class="echo-rarity" style="color:#F43F5E">★★★★★</div>
-                <div class="echo-name">Tidecaller</div>
-                <div class="echo-level">Lv 20</div>
-              </div>
-              <div class="echo-card">
-                <span class="echo-icon">⚡</span>
-                <div class="echo-rarity" style="color:#F59E0B">★★★★</div>
-                <div class="echo-name">Void Fracture</div>
-                <div class="echo-level">Lv 15</div>
-              </div>
-              <div class="echo-card">
-                <span class="echo-icon">🌀</span>
-                <div class="echo-rarity" style="color:#818CF8">★★★</div>
-                <div class="echo-name">Null Shade</div>
-                <div class="echo-level">Lv 10</div>
-              </div>
-              <div class="echo-card" style="border-style:dashed;opacity:0.4">
-                <span class="echo-icon" style="opacity:0.3">＋</span>
-                <div class="echo-name" style="color:#475569">Empty slot</div>
-              </div>
-              <div class="echo-card" style="border-style:dashed;opacity:0.4">
-                <span class="echo-icon" style="opacity:0.3">＋</span>
-                <div class="echo-name" style="color:#475569">Empty slot</div>
-              </div>
-            </div>
-          </div>
-        </div>
+      <div class="screenshot-wrap">
+        <img src="./echo.png" alt="Tempest Ancient echo card showing Aero element, Crit DMG main stat, and four substats" class="screenshot" />
       </div>
     </div>
 
