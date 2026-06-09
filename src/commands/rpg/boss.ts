@@ -259,6 +259,8 @@ const command: Command = {
         releaseLock(interaction.user.id);
         await clearFight(interaction.user.id);
         if (won) {
+          // 1–3 Fracture Keys based on world level (WL0-2 → 1, WL3-5 → 2, WL6+ → 3)
+          const bossKeys = boss.worldLevel >= 6 ? 3 : boss.worldLevel >= 3 ? 2 : 1;
           const loot = {
             credits:       Math.floor(boss.defeatLoot.credits       * LOOT_MULT),
             tuningModules: Math.floor(boss.defeatLoot.tuningModules * LOOT_MULT),
@@ -266,6 +268,7 @@ const command: Command = {
             forgingOres:   Math.floor(boss.defeatLoot.forgingOres   * LOOT_MULT),
             paradoxCores:  Math.floor(boss.defeatLoot.paradoxCores  * LOOT_MULT),
             resonanceExp:  Math.floor(boss.defeatLoot.resonanceExp  * LOOT_MULT),
+            fractureKeys:  bossKeys,
           };
           await awardUser(interaction.user.id, loot);
           const lvlResult = await checkLevelUp(interaction.user.id);

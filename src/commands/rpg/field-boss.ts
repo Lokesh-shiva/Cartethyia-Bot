@@ -282,7 +282,7 @@ const command: Command = {
           }
 
           const credits = 300 + user.worldLevel * 120;
-          await awardUser(interaction.user.id, { credits, resonanceExp: 100 + user.worldLevel * 40 });
+          await awardUser(interaction.user.id, { credits, resonanceExp: 100 + user.worldLevel * 40, fractureKeys: 1 });
           const lvl = await checkLevelUp(interaction.user.id);
 
           await thread.send({
@@ -292,7 +292,7 @@ const command: Command = {
               .setDescription(
                 `**${fb.name}** has been driven off.\n\n` +
                 (echoLines.length ? `**Echo Dropped:**\n${echoLines.join("\n")}\n\n` : "") +
-                `${CE.cr} ${credits} Credits` +
+                `${CE.cr} ${credits} Credits  ·  ${CE.fk} 1 Fracture Key` +
                 (lvl.didLevelUp ? `\n◈ Level **${lvl.oldLevel}** → **${lvl.newLevel}**` : "")
               )
               .setFooter({ text: "CARTETHYIA  ·  Field Boss" })],
