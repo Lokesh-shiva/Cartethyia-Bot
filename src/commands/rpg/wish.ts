@@ -12,6 +12,19 @@ import {
 } from "../../lib/wishWeapons";
 import { getWeaponImagePath } from "../../lib/weapons";
 
+// ── 3★ material rewards ───────────────────────────────────────────────────────
+interface MaterialDrop { forgingOres: number; tuningModules: number; credits: number; label: string; }
+const MATERIAL_DROPS: MaterialDrop[] = [
+  { forgingOres: 4, tuningModules: 0, credits: 400,  label: "4× Forging Ores + 400 Credits"         },
+  { forgingOres: 3, tuningModules: 1, credits: 200,  label: "3× Forging Ores + 1× Tuning Module"    },
+  { forgingOres: 2, tuningModules: 2, credits: 0,    label: "2× Forging Ores + 2× Tuning Modules"   },
+  { forgingOres: 5, tuningModules: 0, credits: 0,    label: "5× Forging Ores"                        },
+  { forgingOres: 3, tuningModules: 0, credits: 600,  label: "3× Forging Ores + 600 Credits"         },
+];
+function rollMaterials(): MaterialDrop {
+  return MATERIAL_DROPS[Math.floor(Math.random() * MATERIAL_DROPS.length)];
+}
+
 // ── Config ────────────────────────────────────────────────────────────────────
 const BASE_5_RATE = 0.006;
 const BASE_4_RATE = 0.051;
@@ -50,27 +63,28 @@ function roll4Star(): WishWeapon {
   return WISH_WEAPONS_4STAR[Math.floor(Math.random() * WISH_WEAPONS_4STAR.length)];
 }
 
-function doSinglePull(wishPity: number, wish4Pity: number, wishGuaranteed: boolean) {
-  let weapon: WishWeapon;
-  let newPity      = wishPity + 1;
-  let new4Pity     = wish4Pity + 1;
+type PullResult =
+  | { tier: 5; weapon: WishWeapon; newPity: number; new4Pity: number; newGuaranteed: boolean }
+  | { tier: 4; weapon: WishWeapon; newPity: number; new4Pity: number; newGuaranteed: boolean }
+  | { tier: 3; mat: MaterialDrop;  newPity: number; new4Pity: number; newGuaranteed: boolean };
+
+function doSinglePull(wishPity: number, wish4Pity: number, wishGuaranteed: boolean): PullResult {
+  let newPity       = wishPity + 1;
+  let new4Pity      = wish4Pity + 1;
   let newGuaranteed = wishGuaranteed;
 
   const rate5 = softPityRate(newPity);
   const r     = Math.random();
 
   if (newPity >= HARD_PITY || r < rate5) {
-    weapon        = roll5Star(newGuaranteed);
+    const weapon  = roll5Star(newGuaranteed);
     newGuaranteed = weapon.id !== FEATURED_5STAR.id;
-    newPity = 0; new4Pity = 0;
-  } else if (new4Pity >= HARD_PITY_4 || r < BASE_5_RATE + BASE_4_RATE) {
-    weapon    = roll4Star();
-    new4Pity  = 0;
-  } else {
-    weapon = { ...roll4Star(), rarity: 3 as any };
+    return { tier: 5, weapon, newPity: 0, new4Pity: 0, newGuaranteed };
   }
-
-  return { weapon, newPity, new4Pity, newGuaranteed };
+  if (new4Pity >= HARD_PITY_4 || r < BASE_5_RATE + BASE_4_RATE) {
+    return { tier: 4, weapon: roll4Star(), newPity, new4Pity: 0, newGuaranteed };
+  }
+  return { tier: 3, mat: rollMaterials(), newPity, new4Pity, newGuaranteed };
 }
 
 // ── Banner info embed (shown before pulling) ──────────────────────────────────
@@ -131,6 +145,7 @@ import path from "path";
 
 const ANIM_5STAR = path.join(process.cwd(), "assets", "5_star animation.gif");
 const ANIM_4STAR = path.join(process.cwd(), "assets", "4_star animation.gif");
+const ANIM_3STAR = path.join(process.cwd(), "assets", "3_star animation.gif");
 
 const SUSPENSE_5STAR = [
   { title: "◈  Reaching into the fracture...",   desc: "*The resonance responds...*",                        color: 0x1E1F2E },
@@ -139,31 +154,32 @@ const SUSPENSE_5STAR = [
 ];
 const SUSPENSE_4STAR = [
   { title: "◈  Reaching into the fracture...",   desc: "*The resonance stirs...*",                           color: 0x1E1F2E },
-  { title: "◆  A resonance takes form...",        desc: "*Something worthy emerges from the glow...*",       color: 0x3D2A00 },
+  { title: "◆  A resonance takes form...",        desc: "*Something worthy emerges from the glow...*",       color: 0x2D1B69 },
+];
+const SUSPENSE_3STAR = [
+  { title: "◈  Reaching into the fracture...",   desc: "*The fracture gives something back...*",             color: 0x1A1A1A },
 ];
 
 async function runSuspense(
   interaction: ChatInputCommandInteraction,
-  is5Star: boolean,
+  tier: 3 | 4 | 5,
 ): Promise<void> {
-  const frames  = is5Star ? SUSPENSE_5STAR : SUSPENSE_4STAR;
-  const gifPath = is5Star ? ANIM_5STAR : ANIM_4STAR;
-  const gifName = is5Star ? "anim.gif" : "anim.gif";
+  const frames  = tier === 5 ? SUSPENSE_5STAR : tier === 4 ? SUSPENSE_4STAR : SUSPENSE_3STAR;
+  const gifPath = tier === 5 ? ANIM_5STAR     : tier === 4 ? ANIM_4STAR     : ANIM_3STAR;
+  const delay   = tier === 5 ? 1400           : tier === 4 ? 1000           : 800;
 
   for (let i = 0; i < frames.length; i++) {
-    const frame = frames[i];
     const isLast = i === frames.length - 1;
-    // Show the GIF on the final suspense frame for max impact
-    const files = isLast ? [new AttachmentBuilder(gifPath, { name: gifName })] : [];
-    const embed = new EmbedBuilder()
-      .setColor(frame.color)
-      .setTitle(frame.title)
-      .setDescription(frame.desc)
+    const files  = isLast ? [new AttachmentBuilder(gifPath, { name: "anim.gif" })] : [];
+    const embed  = new EmbedBuilder()
+      .setColor(frames[i].color)
+      .setTitle(frames[i].title)
+      .setDescription(frames[i].desc)
       .setFooter({ text: "CARTETHYIA  ·  Wish" });
-    if (isLast) embed.setImage(`attachment://${gifName}`);
+    if (isLast) embed.setImage("attachment://anim.gif");
 
     await interaction.editReply({ embeds: [embed], files, components: [] });
-    await new Promise(r => setTimeout(r, is5Star ? 1400 : 1000));
+    await new Promise(r => setTimeout(r, delay));
   }
 }
 
@@ -288,80 +304,126 @@ const command: Command = {
 
       // ── Single pull ─────────────────────────────────────────────────────────
       if (amount === 1) {
-        const res        = doSinglePull(fresh.wishPity, fresh.wish4Pity, fresh.wishGuaranteed);
-        const { weapon, newPity, new4Pity, newGuaranteed } = res;
-        const lostCoin   = weapon.rarity === 5 && weapon.id !== FEATURED_5STAR.id && !fresh.wishGuaranteed;
+        const res = doSinglePull(fresh.wishPity, fresh.wish4Pity, fresh.wishGuaranteed);
+        const { newPity, new4Pity, newGuaranteed } = res;
 
-        // Save first so DB is consistent
-        await prisma.$transaction([
-          prisma.user.update({
+        // Save first
+        if (res.tier === 3) {
+          await prisma.user.update({
             where: { id: interaction.user.id },
-            data:  { fractureKeys: { decrement: 1 }, wishPity: newPity, wish4Pity: new4Pity, wishGuaranteed: newGuaranteed },
-          }),
-          prisma.weapon.create({ data: weaponCreateData(interaction.user.id, weapon) }),
-        ]);
+            data:  {
+              fractureKeys:  { decrement: 1 },
+              wishPity:      newPity, wish4Pity: new4Pity, wishGuaranteed: newGuaranteed,
+              forgingOres:   { increment: res.mat.forgingOres },
+              tuningModules: { increment: res.mat.tuningModules },
+              credits:       { increment: res.mat.credits },
+            },
+          });
+        } else {
+          await prisma.$transaction([
+            prisma.user.update({
+              where: { id: interaction.user.id },
+              data:  { fractureKeys: { decrement: 1 }, wishPity: newPity, wish4Pity: new4Pity, wishGuaranteed: newGuaranteed },
+            }),
+            prisma.weapon.create({ data: weaponCreateData(interaction.user.id, res.weapon) }),
+          ]);
+        }
 
-        // Suspense animation
-        await runSuspense(interaction, weapon.rarity === 5);
+        await runSuspense(interaction, res.tier);
 
-        // Reveal
-        const imgPath = getWeaponImagePath(weapon.type, weapon.name);
-        const files   = imgPath ? [new AttachmentBuilder(imgPath, { name: "weapon.png" })] : [];
-        const embed   = resultEmbed(weapon, newPity, color, fresh.wishGuaranteed, lostCoin);
-        if (imgPath) embed.setImage("attachment://weapon.png");
-
-        await interaction.editReply({ embeds: [embed], files, components: [] });
+        if (res.tier === 3) {
+          await interaction.editReply({
+            embeds: [new EmbedBuilder()
+              .setColor(0x4A4A5A)
+              .setTitle("◇  The fracture yields materials")
+              .setDescription([
+                `**${res.mat.label}**`,
+                ``,
+                `*The resonance wasn't strong enough this time.*`,
+              ].join("\n"))
+              .addFields({ name: "Pity", value: `${newPity} / ${HARD_PITY}`, inline: true })
+              .setFooter({ text: "CARTETHYIA  ·  Wish  ·  Keep pulling — pity carries over" })],
+            files: [], components: [],
+          });
+        } else {
+          const lostCoin = res.weapon.rarity === 5 && res.weapon.id !== FEATURED_5STAR.id && !fresh.wishGuaranteed;
+          const imgPath  = getWeaponImagePath(res.weapon.type, res.weapon.name);
+          const files    = imgPath ? [new AttachmentBuilder(imgPath, { name: "weapon.png" })] : [];
+          const embed    = resultEmbed(res.weapon, newPity, color, fresh.wishGuaranteed, lostCoin);
+          if (imgPath) embed.setImage("attachment://weapon.png");
+          await interaction.editReply({ embeds: [embed], files, components: [] });
+        }
         return;
       }
 
       // ── ×10 pull ────────────────────────────────────────────────────────────
       let pity = fresh.wishPity, p4 = fresh.wish4Pity, guar = fresh.wishGuaranteed;
-      const results: ReturnType<typeof doSinglePull>[] = [];
+      const results: PullResult[] = [];
       for (let i = 0; i < 10; i++) {
         const r = doSinglePull(pity, p4, guar);
         results.push(r);
         pity = r.newPity; p4 = r.new4Pity; guar = r.newGuaranteed;
       }
 
-      // Guarantee at least one 4★
-      if (!results.some(r => (r.weapon.rarity as number) >= 4)) {
-        results[9] = { ...results[9], weapon: { ...roll4Star(), rarity: 4 as any } };
+      // Guarantee at least one 4★ — replace last 3★ if needed
+      if (!results.some(r => r.tier >= 4)) {
+        results[9] = { tier: 4, weapon: roll4Star(), newPity: pity, new4Pity: 0, newGuaranteed: guar };
+        p4 = 0;
       }
+
+      // Tally materials from 3★ pulls
+      const matTotals = { forgingOres: 0, tuningModules: 0, credits: 0 };
+      for (const r of results) {
+        if (r.tier === 3) {
+          matTotals.forgingOres   += r.mat.forgingOres;
+          matTotals.tuningModules += r.mat.tuningModules;
+          matTotals.credits       += r.mat.credits;
+        }
+      }
+      const weaponResults = results.filter((r): r is Extract<PullResult, { tier: 4 | 5 }> => r.tier >= 4);
+      const star3count    = results.filter(r => r.tier === 3).length;
 
       await prisma.$transaction([
         prisma.user.update({
           where: { id: interaction.user.id },
-          data:  { fractureKeys: { decrement: 10 }, wishPity: pity, wish4Pity: p4, wishGuaranteed: guar },
+          data:  {
+            fractureKeys:  { decrement: 10 },
+            wishPity:      pity, wish4Pity: p4, wishGuaranteed: guar,
+            forgingOres:   { increment: matTotals.forgingOres },
+            tuningModules: { increment: matTotals.tuningModules },
+            credits:       { increment: matTotals.credits },
+          },
         }),
-        ...results.map(r => prisma.weapon.create({ data: weaponCreateData(interaction.user.id, r.weapon) })),
+        ...weaponResults.map(r => prisma.weapon.create({ data: weaponCreateData(interaction.user.id, r.weapon) })),
       ]);
 
-      // Suspense — longer if any 5★
-      const has5 = results.some(r => r.weapon.rarity === 5);
-      await runSuspense(interaction, has5);
+      const has5 = results.some(r => r.tier === 5);
+      const has4 = results.some(r => r.tier === 4);
+      await runSuspense(interaction, has5 ? 5 : has4 ? 4 : 3);
 
-      // ×10 summary reveal
-      const star5s    = results.filter(r => r.weapon.rarity === 5);
-      const star4s    = results.filter(r => (r.weapon.rarity as number) === 4);
-      const highlight = star5s[0] ?? star4s[0] ?? results[results.length - 1];
+      const star5s    = results.filter(r => r.tier === 5) as Extract<PullResult, { tier: 5 }>[];
+      const star4s    = results.filter(r => r.tier === 4) as Extract<PullResult, { tier: 4 }>[];
+      const highlight = star5s[0] ?? star4s[0];
 
       const lines = results.map(r => {
-        const stars = "★".repeat(r.weapon.rarity as number);
-        return `${RARITY_LABEL[r.weapon.rarity as number] ?? "◇"}  **${r.weapon.name}**  ${stars}  ·  ${r.weapon.type}`;
+        if (r.tier === 3) return `◇  *${r.mat.label}*`;
+        const stars = "★".repeat(r.tier);
+        return `${RARITY_LABEL[r.tier]}  **${r.weapon.name}**  ${stars}  ·  ${r.weapon.type}`;
       });
 
       const summaryEmbed = new EmbedBuilder()
-        .setColor(star5s.length ? RARITY_COLOR[5] : star4s.length ? RARITY_COLOR[4] : color)
+        .setColor(star5s.length ? RARITY_COLOR[5] : star4s.length ? RARITY_COLOR[4] : 0x4A4A5A)
         .setTitle(`✦  ×10 Fracture Resonance`)
         .setDescription(lines.join("\n"))
         .addFields(
-          { name: "✦ 5★",     value: `${star5s.length}`,        inline: true },
-          { name: "◆ 4★",     value: `${star4s.length}`,        inline: true },
-          { name: "Pity",     value: `${pity} / ${HARD_PITY}`, inline: true },
+          { name: "✦ 5★",  value: `${star5s.length}`,        inline: true },
+          { name: "◆ 4★",  value: `${star4s.length}`,        inline: true },
+          { name: "Pity",  value: `${pity} / ${HARD_PITY}`,  inline: true },
+          ...(star3count > 0 ? [{ name: "◇ Materials", value: `${star3count} pulls → ${matTotals.forgingOres} Forging Ores + ${matTotals.tuningModules} Tuning Modules + ${matTotals.credits} Credits`, inline: false }] : []),
         )
-        .setFooter({ text: "CARTETHYIA  ·  Wish  ·  All weapons added to your arsenal  ·  /equip to swap" });
+        .setFooter({ text: "CARTETHYIA  ·  Wish  ·  Weapons added to arsenal  ·  /equip to swap" });
 
-      const hlImg = getWeaponImagePath(highlight.weapon.type, highlight.weapon.name);
+      const hlImg = highlight ? getWeaponImagePath(highlight.weapon.type, highlight.weapon.name) : null;
       const files = hlImg ? [new AttachmentBuilder(hlImg, { name: "weapon.png" })] : [];
       if (hlImg) summaryEmbed.setThumbnail("attachment://weapon.png");
 
