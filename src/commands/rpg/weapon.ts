@@ -46,6 +46,7 @@ const command: Command = {
         baseAtk: true, subStatType: true, subStatVal: true,
         hiddenSub1Type: true, hiddenSub1Val: true,
         hiddenSub2Type: true, hiddenSub2Val: true,
+        awakened: true, awakenedName: true, awakenedLore: true, awakenedPassive: true,
       },
     });
 
@@ -88,7 +89,9 @@ const command: Command = {
       subStatType:  weapon.subStatType ?? null,
       subStatVal:   weapon.subStatVal  ?? null,
       effectiveSub: weapon.subStatVal  != null ? effectiveSub(weapon.subStatVal, weapon.level) : null,
-      passive:      weaponDef?.passive ?? WEAPON_TYPE_LABEL[weapon.weaponType as WeaponType] ?? "",
+      passive:      weapon.awakened && (weapon.awakenedPassive as any)?.desc
+        ? (weapon.awakenedPassive as any).desc
+        : weaponDef?.passive ?? WEAPON_TYPE_LABEL[weapon.weaponType as WeaponType] ?? "",
       element:      user.element,
       ownerName:    displayName,
       ownerAvatar:  avatarUrl,
@@ -96,14 +99,17 @@ const command: Command = {
       hiddenSub1Val:  h1Val,
       hiddenSub2Type: weapon.hiddenSub2Type ?? null,
       hiddenSub2Val:  h2Val,
+      awakened:      weapon.awakened,
+      awakenedName:  weapon.awakenedName,
     });
 
     const attachment = new AttachmentBuilder(cardBuffer, { name: "weapon.png" });
     const embed = new EmbedBuilder()
-      .setColor(color)
+      .setColor(weapon.awakened ? 0xFCD34D : color)
       .setAuthor({ name: `${displayName}  ·  Equipped Weapon`, iconURL: avatarUrl })
       .setImage("attachment://weapon.png")
-      .setFooter({ text: "CARTETHYIA  ·  Arsenal  ·  /forge to change  ·  /weapon-upgrade to level up" });
+      .setFooter({ text: weapon.awakened ? "CARTETHYIA  ·  Arsenal  ·  ✦ Ego Awakened" : "CARTETHYIA  ·  Arsenal  ·  /forge to change  ·  /weapon-upgrade to level up" });
+    if (weapon.awakened && weapon.awakenedLore) embed.setDescription(`*${weapon.awakenedLore}*`);
 
     await interaction.editReply({ embeds: [embed], files: [attachment] });
   },

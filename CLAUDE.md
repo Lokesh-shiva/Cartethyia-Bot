@@ -70,8 +70,17 @@ Boss trials for all 9 in `dungeons.ts`. Field bosses (6, one/element) in `src/li
 - Quest hooks: `trackEvolutionProgress()` in dungeon.ts `grantRewards` + boss.ts win cleanup.
 - Evolved card: gold accents, 540px tall, 4 effect slots (`evolved` flag on `generateAbilityCard`).
 
+## Ego Weapon Awakening (Lv60)
+- `/awaken` — requires player Lv60+, evolved ability, equipped weapon. Cost: 20 Forging Ores + 8 Paradox Cores + 20k Credits. One-time, permanent.
+- `src/lib/weaponAwakening.ts`: `generateAwakening()` — AI (full player context + evolved ability + weapon) generates name/lore/artPrompt/new effect; deterministic element-epithet fallback. Refunds cost on hard failure.
+- Stats ×AWAKEN_STAT_MULT by rarity (3★ 1.15 / 4★ 1.20 / 5★ 1.25) applied to baseAtk + subStatVal + hidden sub vals. Existing passive amplified ×1.25 (cap 1.3× registry max) + 1 new effect (value position in range scales with rarity).
+- Weapon row keeps original `name`; awakened identity in `awakened*` fields. `awakenedPassive` JSON `{desc, elemDmg?, effects[]}` replaces WEAPON_PASSIVES lookup in setBonus.
+- Awakened art: drop PNG at `assets/weapons/awakened/{awakenedName}.png` — `getWeaponImagePath` checks it first, card auto-upgrades. Art prompt stored in DB + shown on awakening embed.
+- **Hidden substats now apply in combat** (setBonus, Lv20/Lv50 gates) — they were display-only before.
+
 ## Upcoming Features (next sessions)
-- **Lv60 — Ego Weapon Awakening**: current equipped weapon transforms (not replaced). AI generates new name, lore, evolved stats + passive using: weapon type/rarity, player element, evolved unique ability, combat history/build style. Gacha rarity = awakening ceiling (5★ > 3★). Post-awakening: **Bond/Closeness system** — weapon starts at partial power, grows through use. Build unique ability evolution first since ego weapon factors it in.
+- **Weapon Bond/Closeness**: post-awakening, weapon starts at partial power and grows to full through use (battles fought with it). Touches every combat loop.
+- **Profile/weapon canvas overhaul**: more impactful awakened weapon art on profile card (user wants bigger than current small PNG).
 
 ## Gotchas
 - Prisma v7: no `url` in datasource — adapter only. After schema changes: `npm run db:push` then `npx prisma generate`.

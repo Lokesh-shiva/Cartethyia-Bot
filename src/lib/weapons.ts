@@ -130,8 +130,14 @@ export function getForgedWeaponsByType(type: WeaponType): WeaponDefinition[] {
 export function getWeaponImagePath(
   weaponType: string,
   weaponName: string,
-  opts?: { isUnique?: boolean; userId?: string }
+  opts?: { isUnique?: boolean; userId?: string; awakenedName?: string | null }
 ): string | null {
+  // Awakened art takes priority: assets/weapons/awakened/{awakenedName}.png
+  // (drop the file in and the card auto-upgrades — no code change needed)
+  if (opts?.awakenedName) {
+    const awakenedPath = path.join(process.cwd(), "assets", "weapons", "awakened", `${opts.awakenedName}.png`);
+    if (fs.existsSync(awakenedPath)) return awakenedPath;
+  }
   const imgPath = opts?.isUnique && opts.userId
     ? path.join(process.cwd(), "assets", "weapons", "unique", `${opts.userId}.png`)
     : path.join(

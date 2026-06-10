@@ -173,6 +173,13 @@ model Weapon {
   hiddenSub2Type String?
   hiddenSub2Val  Float?
 
+  // Lv60 Ego Weapon Awakening — weapon transforms, keeps original name in `name`
+  awakened          Boolean @default(false)
+  awakenedName      String?
+  awakenedLore      String?
+  awakenedArtPrompt String? // AI image-gen prompt; art goes in assets/weapons/awakened/{awakenedName}.png
+  awakenedPassive   Json?   // { desc, elemDmg?, effects: [{type,value}] } — replaces WEAPON_PASSIVES lookup
+
   createdAt   DateTime   @default(now())
 
   @@map("weapons")

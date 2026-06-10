@@ -5,6 +5,7 @@ import {
   compositeEnergyOnHit, compositeVibMult, AbilityCtx,
 } from "./abilityEffects";
 import { WEAPON_PASSIVES } from "./weapons";
+import { ALL_WISH_WEAPONS, calcWishSubStat } from "./wishWeapons";
 import { calcSubstatValue } from "./echoes";
 
 // ── Set bonus definitions ─────────────────────────────────────────────────────
@@ -203,7 +204,11 @@ export async function resolvePlayerBonuses(userId: string): Promise<PlayerBonuse
     }),
     prisma.weapon.findFirst({
       where:  { userId, isEquipped: true },
-      select: { name: true, baseAtk: true, level: true, rarity: true, subStatType: true, subStatVal: true },
+      select: {
+        name: true, baseAtk: true, level: true, rarity: true, subStatType: true, subStatVal: true,
+        hiddenSub1Type: true, hiddenSub1Val: true, hiddenSub2Type: true, hiddenSub2Val: true,
+        awakened: true, awakenedName: true, awakenedPassive: true,
+      },
     }),
   ]);
 
@@ -297,24 +302,43 @@ export async function resolvePlayerBonuses(userId: string): Promise<PlayerBonuse
     // Sub-stat scales from base → base × 1.8 at level 90
     const svBase = weapon.subStatVal ?? 0;
     const sv     = Math.round((svBase * (1 + (weapon.level - 1) * 0.8 / 89)) * 10) / 10;
-    switch (weapon.subStatType) {
-      case "HP_PERCENT":    bonuses.hpMult        *= (1 + sv/100); break;
-      case "ATK_PERCENT":   bonuses.atkMult       *= (1 + sv/100); break;
-      case "DEF_PERCENT":   bonuses.defMult       *= (1 + sv/100); break;
-      case "CRIT_RATE":     bonuses.critRateBonus += sv/100;       break;
-      case "CRIT_DMG":      bonuses.critDmgBonus  += sv/100;       break;
-      case "ELEMENTAL_DMG": bonuses.elemDmgBonus  += sv/100;       break;
-      case "ENERGY_REGEN":  bonuses.energyBonus   += sv/2;         break;
+    const applySub = (type: string | null, val: number) => {
+      switch (type) {
+        case "HP_PERCENT":    bonuses.hpMult        *= (1 + val/100); break;
+        case "ATK_PERCENT":   bonuses.atkMult       *= (1 + val/100); break;
+        case "DEF_PERCENT":   bonuses.defMult       *= (1 + val/100); break;
+        case "CRIT_RATE":     bonuses.critRateBonus += val/100;       break;
+        case "CRIT_DMG":      bonuses.critDmgBonus  += val/100;       break;
+        case "ELEMENTAL_DMG": bonuses.elemDmgBonus  += val/100;       break;
+        case "ENERGY_REGEN":  bonuses.energyBonus   += val/2;         break;
+      }
+    };
+    applySub(weapon.subStatType, sv);
+
+    // Hidden substats (wish weapons) — unlock at Lv20 / Lv50, scale like weapon.ts display
+    const wishDef = ALL_WISH_WEAPONS.find(w => w.name === weapon.name);
+    if (weapon.level >= 20 && weapon.hiddenSub1Type && weapon.hiddenSub1Val != null) {
+      applySub(weapon.hiddenSub1Type, calcWishSubStat(weapon.hiddenSub1Val, wishDef?.hiddenSub1Scale ?? 1.8, weapon.level));
+    }
+    if (weapon.level >= 50 && weapon.hiddenSub2Type && weapon.hiddenSub2Val != null) {
+      applySub(weapon.hiddenSub2Type, calcWishSubStat(weapon.hiddenSub2Val, wishDef?.hiddenSub2Scale ?? 1.8, weapon.level));
     }
 
-    // Weapon passive
-    const passive = WEAPON_PASSIVES[weapon.name];
-    if (passive) {
-      if (passive.elemDmg) bonuses.elemDmgBonus += passive.elemDmg;
-      if (passive.effects) bonuses.abilityEffects.push(...passive.effects);
+    // Weapon passive — awakened weapons carry their own passive in the DB
+    if (weapon.awakened && weapon.awakenedPassive) {
+      const ap = weapon.awakenedPassive as any;
+      if (ap.elemDmg) bonuses.elemDmgBonus += Number(ap.elemDmg) || 0;
+      if (Array.isArray(ap.effects)) bonuses.abilityEffects.push(...sanitizeEffects(ap.effects, true));
+    } else {
+      const passive = WEAPON_PASSIVES[weapon.name];
+      if (passive) {
+        if (passive.elemDmg) bonuses.elemDmgBonus += passive.elemDmg;
+        if (passive.effects) bonuses.abilityEffects.push(...passive.effects);
+      }
     }
 
-    bonuses.activeLabels.push(`🗡️ ${weapon.name} Lv${weapon.level} — +${effectiveAtk} ATK`);
+    const shownName = weapon.awakened && weapon.awakenedName ? `✦ ${weapon.awakenedName}` : weapon.name;
+    bonuses.activeLabels.push(`🗡️ ${shownName} Lv${weapon.level} — +${effectiveAtk} ATK`);
   }
 
   // Summarise echo stat contribution for display

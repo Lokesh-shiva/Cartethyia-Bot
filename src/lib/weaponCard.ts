@@ -62,6 +62,9 @@ export interface WeaponCardInput {
   hiddenSub1Val?:  number | null;   // null = locked (below Lv20)
   hiddenSub2Type?: string | null;
   hiddenSub2Val?:  number | null;   // null = locked (below Lv50)
+  // Ego awakening — name stays the ORIGINAL weapon name (art lookup), awakenedName is displayed
+  awakened?:      boolean;
+  awakenedName?:  string | null;
 }
 
 export async function generateWeaponCard(input: WeaponCardInput): Promise<Buffer> {
@@ -98,6 +101,7 @@ export async function generateWeaponCard(input: WeaponCardInput): Promise<Buffer
 
   const imgPath = getWeaponImagePath(input.weaponType, input.name, {
     isUnique: input.isUnique, userId: input.userId,
+    awakenedName: input.awakened ? input.awakenedName : null,
   });
   if (imgPath) {
     try {
@@ -134,14 +138,17 @@ export async function generateWeaponCard(input: WeaponCardInput): Promise<Buffer
 
   // ── Weapon name ─────────────────────────────────────────────────────────────
   cy = 46;
-  ctx.fillStyle = input.isUnique ? ec : "#FFFFFF";
+  const displayName = (input.awakened && input.awakenedName) ? input.awakenedName : input.name;
+  ctx.fillStyle = input.awakened ? "#FCD34D" : input.isUnique ? ec : "#FFFFFF";
   ctx.font = font(24);
+  if (input.awakened) { ctx.shadowColor = "#FCD34D"; ctx.shadowBlur = 12; }
   // truncate if too long
-  let nameText = input.name;
+  let nameText = displayName;
   while (ctx.measureText(nameText).width > RX - SX - 4 && nameText.length > 1)
     nameText = nameText.slice(0, -1);
-  if (nameText !== input.name) nameText += "…";
+  if (nameText !== displayName) nameText += "…";
   ctx.fillText(nameText, SX, cy);
+  ctx.shadowBlur = 0;
 
   // ── Type + unique badge ──────────────────────────────────────────────────────
   cy = 64;
@@ -150,7 +157,14 @@ export async function generateWeaponCard(input: WeaponCardInput): Promise<Buffer
   ctx.font = font(11);
   ctx.fillText(typeFull.toUpperCase(), SX, cy);
 
-  if (input.isUnique) {
+  if (input.awakened) {
+    const tw = ctx.measureText(typeFull.toUpperCase()).width;
+    const bx = SX + tw + 8, bw = 74, bh = 14;
+    ctx.fillStyle = rgba("#FCD34D",0.2); rrect(ctx,bx,cy-11,bw,bh,3); ctx.fill();
+    ctx.strokeStyle = rgba("#FCD34D",0.6); ctx.lineWidth=1; rrect(ctx,bx,cy-11,bw,bh,3); ctx.stroke();
+    ctx.fillStyle = "#FCD34D"; ctx.font = font(8);
+    ctx.fillText("✦ AWAKENED", bx+6, cy-1);
+  } else if (input.isUnique) {
     const tw = ctx.measureText(typeFull.toUpperCase()).width;
     const bx = SX + tw + 8, bw = 62, bh = 14;
     ctx.fillStyle = rgba(ec,0.2); rrect(ctx,bx,cy-11,bw,bh,3); ctx.fill();
