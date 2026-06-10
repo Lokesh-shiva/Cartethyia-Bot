@@ -64,6 +64,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
   );
 
   if (available.length === 0) {
+    releaseLock(interaction.user.id);
     await interaction.editReply({ content: "No dungeons available yet. Reach Level 3 to unlock your first." });
     return;
   }
@@ -120,11 +121,16 @@ export async function execute(interaction: ChatInputCommandInteraction) {
 
   pickCollector?.on("collect", async (sel: StringSelectMenuInteraction) => {
     const dungeon = getDungeon(sel.values[0]);
-    if (!dungeon) { await sel.update({ content: "Dungeon not found.", components: [], embeds: [] }); return; }
+    if (!dungeon) {
+      releaseLock(interaction.user.id);
+      await sel.update({ content: "Dungeon not found.", components: [], embeds: [] });
+      return;
+    }
 
     // Re-check aura at entry time
     const freshAura = computeAura(dbUser.resonanceAura, dbUser.auraUpdatedAt);
     if (freshAura.current < dungeon.auraCost) {
+      releaseLock(interaction.user.id);
       await sel.update({
         embeds: [new EmbedBuilder().setColor(0x4A4A5A)
           .setDescription(
@@ -190,9 +196,15 @@ export async function execute(interaction: ChatInputCommandInteraction) {
       // Consume aura immediately on entry
       await consumeAura(interaction.user.id, dungeon.auraCost);
 
-      await runDungeon(interaction, dungeon, dbUser);
-      releaseLock(interaction.user.id);
-      await clearFight(interaction.user.id);
+      try {
+        await runDungeon(interaction, dungeon, dbUser);
+      } catch (err) {
+        console.error("[Dungeon] run failed:", err);
+        await interaction.editReply({ content: "◈ The dungeon collapsed unexpectedly. Your combat lock has been cleared — try again.", embeds: [], components: [] }).catch(() => {});
+      } finally {
+        releaseLock(interaction.user.id);
+        await clearFight(interaction.user.id);
+      }
     });
 
     confirmCollector?.on("end", async (col) => {
@@ -412,10 +424,10 @@ async function runWave(
       });
 
       collector.on("collect", async (btn: ButtonInteraction) => {
-        await btn.deferUpdate();
+        await btn.deferUpdate().catch(() => {});
 
         if (btn.customId === "dg_flee") {
-          await battleMsg.edit({ components: [] });
+          await battleMsg.edit({ components: [] }).catch(() => {});
           resolve({ ...ws, survived: false });
           return;
         }
@@ -510,7 +522,7 @@ async function runWave(
 
         // Win
         if (enemyHp <= 0) {
-          await battleMsg.edit({ embeds: [buildWaveEmbed(moveLine + " — **DEFEATED!**")], components: [] });
+          await battleMsg.edit({ embeds: [buildWaveEmbed(moveLine + " — **DEFEATED!**")], components: [] }).catch(() => {});
           resolve({ ...ws, survived: true });
           return;
         }
@@ -538,24 +550,29 @@ async function runWave(
         // Lose
         if (ws.playerHp <= 0) {
           ws.playerHp = 0;
-          await battleMsg.edit({ embeds: [buildWaveEmbed(moveLine + " — **YOU FELL.**")], components: [] });
+          await battleMsg.edit({ embeds: [buildWaveEmbed(moveLine + " — **YOU FELL.**")], components: [] }).catch(() => {});
           resolve({ ...ws, survived: false });
           return;
         }
 
         // Next turn
-        const newMsg = await thread.send({
-          embeds: [buildWaveEmbed(moveLine)],
-          components: [buildButtons()],
-        });
-        await battleMsg.edit({ components: [] }).catch(() => {});
-        battleMsg = newMsg;
-        runTurn();
+        try {
+          const newMsg = await thread.send({
+            embeds: [buildWaveEmbed(moveLine)],
+            components: [buildButtons()],
+          });
+          await battleMsg.edit({ components: [] }).catch(() => {});
+          battleMsg = newMsg;
+          runTurn();
+        } catch (err) {
+          console.error("[Dungeon] wave message failed:", err);
+          resolve({ ...ws, survived: false });
+        }
       });
 
       collector.on("end", async (_: any, reason: string) => {
         if (reason === "time") {
-          await battleMsg.edit({ components: [] });
+          await battleMsg.edit({ components: [] }).catch(() => {});
           resolve({ ...ws, survived: false });
         }
       });

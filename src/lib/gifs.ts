@@ -63,7 +63,9 @@ interface NekosBestResponse {
  */
 export async function fetchGif(action: ActionType): Promise<string | null> {
   try {
-    const res = await fetch(`https://nekos.best/api/v2/${ACTION_META[action].nekoEndpoint}`);
+    const res = await fetch(`https://nekos.best/api/v2/${ACTION_META[action].nekoEndpoint}`, {
+      headers: { "User-Agent": "Cartethyia-DiscordBot/1.0 (+https://cartethyia-bot.vercel.app)" },
+    });
     if (!res.ok) return null;
     const data = await res.json() as NekosBestResponse;
     return data.results?.[0]?.url ?? null;

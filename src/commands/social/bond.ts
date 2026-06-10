@@ -99,8 +99,21 @@ async function handleCreate(interaction: ChatInputCommandInteraction) {
   await interaction.deferReply();
 
   const target    = interaction.options.getUser("user", true);
-  const bondType  = interaction.options.getString("type", true) as BondType;
+  // Prefix commands pass raw text (e.g. "friend", "parent") — normalize to enum keys
+  const rawType   = (interaction.options.getString("type", true) ?? "").toUpperCase().replace(/[\s-]+/g, "_");
+  const bondType  = (rawType === "PARENT" ? "ADOPTED_PARENT"
+    : rawType === "CHILD" || rawType === "ADOPT" ? "ADOPTED_CHILD"
+    : rawType) as BondType;
   const meta      = BOND_META[bondType];
+
+  if (!meta) {
+    await interaction.editReply({ content: "◈ Unknown bond type. Use one of: **friend**, **partner**, **parent**, **child**." });
+    return;
+  }
+  if (!target) {
+    await interaction.editReply({ content: "◈ Mention someone to bond with — e.g. `bond create @user friend`." });
+    return;
+  }
 
   const actorName  = interaction.guild?.members.cache.get(interaction.user.id)?.displayName
     ?? interaction.user.displayName ?? interaction.user.username;
