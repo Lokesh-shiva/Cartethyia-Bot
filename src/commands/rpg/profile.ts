@@ -30,12 +30,11 @@ const command: Command = {
     const user     = await getOrCreateUser(target.id, displayName, avatarUrl);
     const auraState = computeAura(user.resonanceAura ?? MAX_AURA, user.auraUpdatedAt ?? new Date());
 
-    // ── Bonds ───────────────────────────────────────────────────────────────
+    // ── Bonds (sorted by synchrony score descending) ────────────────────────
     const allRawBonds = await prisma.bond.findMany({
       where: { OR: [{ initiatorId: user.id }, { receiverId: user.id }] },
     });
-    const totalBonds  = allRawBonds.length;
-    const rawBonds    = allRawBonds.slice(0, 3);
+    const totalBonds = allRawBonds.length;
 
     const partnerIds = allRawBonds.map(b =>
       b.initiatorId === user.id ? b.receiverId : b.initiatorId
@@ -46,8 +45,29 @@ const command: Command = {
       select: { id: true, username: true, avatarUrl: true },
     });
 
-    // Fetch display names from guild cache
-    const bonds: BondData[] = rawBonds.map(b => {
+    // Fetch synchrony scores for sorting
+    const affinities = await prisma.affinity.findMany({
+      where: {
+        OR: partnerIds.map(pid => {
+          const [a, b] = [user.id, pid].sort();
+          return { userAId: a, userBId: b };
+        }),
+      },
+      select: { userAId: true, userBId: true, score: true },
+    });
+
+    const getScore = (partnerId: string) => {
+      const [a, b] = [user.id, partnerId].sort();
+      return affinities.find(af => af.userAId === a && af.userBId === b)?.score ?? 0;
+    };
+
+    const sortedBonds = [...allRawBonds].sort((a, b) => {
+      const pA = a.initiatorId === user.id ? a.receiverId : a.initiatorId;
+      const pB = b.initiatorId === user.id ? b.receiverId : b.initiatorId;
+      return getScore(pB) - getScore(pA);
+    });
+
+    const bonds: BondData[] = sortedBonds.slice(0, 3).map(b => {
       const partnerId = b.initiatorId === user.id ? b.receiverId : b.initiatorId;
       const pu        = partnerUsers.find(p => p.id === partnerId);
       const gMember   = interaction.guild?.members.cache.get(partnerId);

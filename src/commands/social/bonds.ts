@@ -40,7 +40,6 @@ const command: Command = {
 
     const rawBonds = await prisma.bond.findMany({
       where: { OR: [{ initiatorId: target.id }, { receiverId: target.id }] },
-      orderBy: { createdAt: "asc" },
     });
 
     if (rawBonds.length === 0) {
@@ -62,14 +61,34 @@ const command: Command = {
       select: { id: true, username: true },
     });
 
-    const lines = rawBonds.map(b => {
-      const partnerId   = b.initiatorId === target.id ? b.receiverId : b.initiatorId;
-      const pu          = partnerUsers.find(p => p.id === partnerId);
-      const gMember     = interaction.guild?.members.cache.get(partnerId);
-      const name        = gMember?.displayName ?? pu?.username ?? "Unknown";
-      const emoji       = BOND_EMOJI[b.bondType];
-      const label       = BOND_LABEL[b.bondType];
-      return `${emoji} **${name}** — ${label}`;
+    const affinities = await prisma.affinity.findMany({
+      where: {
+        OR: partnerIds.map(pid => {
+          const [a, b] = [target.id, pid].sort();
+          return { userAId: a, userBId: b };
+        }),
+      },
+      select: { userAId: true, userBId: true, score: true },
+    });
+
+    const getScore = (partnerId: string) => {
+      const [a, b] = [target.id, partnerId].sort();
+      return affinities.find(af => af.userAId === a && af.userBId === b)?.score ?? 0;
+    };
+
+    const sorted = [...rawBonds].sort((a, b) => {
+      const pA = a.initiatorId === target.id ? a.receiverId : a.initiatorId;
+      const pB = b.initiatorId === target.id ? b.receiverId : b.initiatorId;
+      return getScore(pB) - getScore(pA);
+    });
+
+    const lines = sorted.map(b => {
+      const partnerId = b.initiatorId === target.id ? b.receiverId : b.initiatorId;
+      const pu        = partnerUsers.find(p => p.id === partnerId);
+      const gMember   = interaction.guild?.members.cache.get(partnerId);
+      const name      = gMember?.displayName ?? pu?.username ?? "Unknown";
+      const score     = getScore(partnerId);
+      return `${BOND_EMOJI[b.bondType]} **${name}** — ${BOND_LABEL[b.bondType]}  ·  ✨ ${score} Synchrony`;
     });
 
     await interaction.editReply({
