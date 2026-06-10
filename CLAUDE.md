@@ -63,6 +63,10 @@ Boss trials for all 9 in `dungeons.ts`. Field bosses (6, one/element) in `src/li
 - Per level: +12 HP, +3 ATK, +2 DEF, +1 SPD. Element at Lv20. Unique ability on first ascension win.
 - Boss enrage at ≤40% HP in ascend/boss: ATK ×1.6, always uses highest-damage move, shatter recovery 60% vib.
 
+## Upcoming Features (next sessions)
+- **Lv50 — Unique Ability Evolution**: player's unique ability (earned on first ascension win) evolves into a stronger form via short quest + materials. Predetermined stronger version (not AI-generated).
+- **Lv60 — Ego Weapon Awakening**: current equipped weapon transforms (not replaced). AI generates new name, lore, evolved stats + passive using: weapon type/rarity, player element, evolved unique ability, combat history/build style. Gacha rarity = awakening ceiling (5★ > 3★). Post-awakening: **Bond/Closeness system** — weapon starts at partial power, grows through use. Build unique ability evolution first since ego weapon factors it in.
+
 ## Gotchas
 - Prisma v7: no `url` in datasource — adapter only. After schema changes: `npm run db:push` then `npx prisma generate`.
 - `ephemeral: true` → `flags: 64`. `fetchReply` → `withResponse: true`. p-queue must be v7.
@@ -70,4 +74,5 @@ Boss trials for all 9 in `dungeons.ts`. Field bosses (6, one/element) in `src/li
 - Whisper Crystals: removed. Don't re-add. Multi-server: `loadAllGuildSettings()` on ready.
 - BOSS_ART_FILENAMES defined in 3 places: `echoCard.ts`, `gridCard.ts`, `canvas.ts` — update all three when adding bosses.
 - `gearAwareScale` in combat.ts: HP capped at gearRatio 3.0 (prevents 400k+ HP slogs), ATK uncapped.
-- `/boss` re-challenge: uses `boss.worldLevel` (not `user.worldLevel`) in gearAwareScale call.
+- `/boss` re-challenge: fightLevel capped at WL's level ceiling, gearRatio capped at 2.0, weights 0.40/0.30 (farmable but not trivial).
+- `communityFooter(guildId)` in `src/lib/communityFooter.ts` — shows invite link only outside MAIN_GUILD_ID. `voteNudge()` in `src/lib/voteNudge.ts` — 20% chance upvote prompt in reward messages.
