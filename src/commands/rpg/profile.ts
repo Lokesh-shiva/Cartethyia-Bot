@@ -31,12 +31,13 @@ const command: Command = {
     const auraState = computeAura(user.resonanceAura ?? MAX_AURA, user.auraUpdatedAt ?? new Date());
 
     // ── Bonds ───────────────────────────────────────────────────────────────
-    const rawBonds = await prisma.bond.findMany({
+    const allRawBonds = await prisma.bond.findMany({
       where: { OR: [{ initiatorId: user.id }, { receiverId: user.id }] },
-      take: 3,
     });
+    const totalBonds  = allRawBonds.length;
+    const rawBonds    = allRawBonds.slice(0, 3);
 
-    const partnerIds = rawBonds.map(b =>
+    const partnerIds = allRawBonds.map(b =>
       b.initiatorId === user.id ? b.receiverId : b.initiatorId
     );
 
@@ -116,10 +117,11 @@ const command: Command = {
     });
 
     const attachment = new AttachmentBuilder(buffer, { name: "profile.png" });
+    const extraBonds = totalBonds > 3 ? `  ·  +${totalBonds - 3} more bond${totalBonds - 3 !== 1 ? "s" : ""} — use /bonds` : "";
     const embed      = new EmbedBuilder()
       .setColor(0x0D1117)
       .setImage("attachment://profile.png")
-      .setFooter({ ...communityFooter(interaction.guildId, `CARTETHYIA  ·  ${displayName}'s Profile`), iconURL: avatarUrl });
+      .setFooter({ ...communityFooter(interaction.guildId, `CARTETHYIA  ·  ${displayName}'s Profile${extraBonds}`), iconURL: avatarUrl });
 
     await interaction.editReply({ embeds: [embed], files: [attachment] });
   },
