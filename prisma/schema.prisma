@@ -98,6 +98,11 @@ model User {
   uniqueAbilityValue  Float?   // legacy magnitude
   uniqueAbilityEffects Json?   // composite: [{ type, value }, ...] — the real mechanic
 
+  // Lv50 Unique Ability Evolution
+  abilityEvolved     Boolean @default(false)
+  abilityEvoStep     Int     @default(0)   // 0=not started, 1=dungeon clears, 2=boss kill, 3=ready to pay
+  abilityEvoDungeons Int     @default(0)   // dungeon clears since quest start (need 3)
+
   // Playstyle tracking (updated silently throughout 1-20)
   vibePhysicalCount  Int @default(0)
   vibeExpressiveCount Int @default(0)

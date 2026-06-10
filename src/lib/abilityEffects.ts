@@ -161,16 +161,21 @@ export function clampEffectValue(type: string, value: number): number {
 }
 
 // Validate + clamp a raw effect list from the AI. Drops unknown types, caps at 3.
-export function sanitizeEffects(raw: any): AbilityEffect[] {
+// Evolved abilities get a 4th slot and values up to 1.3× the registry max.
+export function sanitizeEffects(raw: any, evolved = false): AbilityEffect[] {
   if (!Array.isArray(raw)) return [];
+  const maxCount = evolved ? 4 : 3;
   const seen = new Set<string>();
   const out: AbilityEffect[] = [];
   for (const e of raw) {
     const type = String(e?.type ?? "").toUpperCase();
-    if (!ABILITY_REGISTRY[type] || seen.has(type)) continue;
+    const def  = ABILITY_REGISTRY[type];
+    if (!def || seen.has(type)) continue;
     seen.add(type);
-    out.push({ type, value: clampEffectValue(type, Number(e?.value) || ABILITY_REGISTRY[type].min) });
-    if (out.length >= 3) break;
+    const v   = Number(e?.value) || def.min;
+    const cap = evolved ? def.max * 1.3 : def.max;
+    out.push({ type, value: Math.max(def.min, Math.min(cap, v)) });
+    if (out.length >= maxCount) break;
   }
   return out;
 }

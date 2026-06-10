@@ -36,6 +36,8 @@ const command: Command = {
         uniqueAbilityName:    true,
         uniqueAbilityEffects: true,
         uniqueAbilityType:    true,
+        uniqueAbilityLore:    true,
+        abilityEvolved:       true,
         worldLevel:           true,
       },
     });
@@ -63,7 +65,7 @@ const command: Command = {
       return;
     }
 
-    const effects     = sanitizeEffects(user.uniqueAbilityEffects);
+    const effects     = sanitizeEffects(user.uniqueAbilityEffects, user.abilityEvolved);
     const effectLines = formatEffects(effects).split("\n").filter(Boolean);
 
     // Generate the ability card
@@ -73,22 +75,16 @@ const command: Command = {
       element:     user.element as string,
       abilityName: user.uniqueAbilityName,
       effects:     effectLines,
-      lore:        "", // lore not stored separately; shown via uniqueAbilityEffects
+      lore:        user.uniqueAbilityLore ?? "",
+      evolved:     user.abilityEvolved,
     });
 
-    // Fetch stored lore if it exists (stored in uniqueAbilityEffects as JSON w/ lore field)
-    let loreText = "";
-    try {
-      const raw = user.uniqueAbilityEffects as any;
-      if (Array.isArray(raw) && raw.length > 0 && raw[0]?.lore) {
-        loreText = raw[0].lore;
-      }
-    } catch { /* no lore */ }
+    const loreText = user.uniqueAbilityLore ?? "";
 
     const embed = new EmbedBuilder()
-      .setColor(color)
+      .setColor(user.abilityEvolved ? 0xFCD34D : color)
       .setImage("attachment://ability.png")
-      .setFooter({ text: "CARTETHYIA  ·  This ability is yours alone." });
+      .setFooter({ text: user.abilityEvolved ? "CARTETHYIA  ·  ✦ Evolved — this awakened form is yours alone." : "CARTETHYIA  ·  This ability is yours alone." });
 
     if (loreText) {
       embed.setDescription(`*${loreText}*`);

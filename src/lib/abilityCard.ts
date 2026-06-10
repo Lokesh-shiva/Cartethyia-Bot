@@ -43,13 +43,14 @@ export interface AbilityCardData {
   abilityName: string;
   effects:     string[];   // formatted primitive lines (e.g. "Reaper's Mark: Vs enemies below 30% HP: +45% DMG")
   lore:        string;
+  evolved?:    boolean;    // awakened form — gold accents, 4 effect slots
 }
 
 export async function generateAbilityCard(d: AbilityCardData): Promise<Buffer> {
-  const W = 860, H = 480;
+  const W = 860, H = d.evolved ? 540 : 480;
   const canvas = createCanvas(W, H);
   const ctx = canvas.getContext("2d");
-  const ec = ELEMENT_HEX[d.element] ?? ELEMENT_HEX.NONE;
+  const ec = d.evolved ? "#FCD34D" : (ELEMENT_HEX[d.element] ?? ELEMENT_HEX.NONE);
 
   // ── Cosmic base ───────────────────────────────────────────────────────────
   const g = ctx.createLinearGradient(0, 0, W, H);
@@ -84,13 +85,14 @@ export async function generateAbilityCard(d: AbilityCardData): Promise<Buffer> {
   ctx.textAlign = "center";
   ctx.fillStyle = rgba(ec, 0.95); ctx.font = `bold 14px Rajdhani, 'Noto Sans', 'Noto Sans CJK SC', 'Noto Sans JP', Arial, sans-serif`;
   ctx.letterSpacing = "6px";
-  ctx.fillText("UNIQUE  PASSIVE  ·  FORGED  AT  ASCENSION", W / 2, 56);
+  ctx.fillText(d.evolved ? "✦  EVOLVED  RESONANCE  ·  AWAKENED  FORM  ✦" : "UNIQUE  PASSIVE  ·  FORGED  AT  ASCENSION", W / 2, 56);
   ctx.letterSpacing = "0px";
 
   // ── Ability name (big, glowing) ───────────────────────────────────────────
   ctx.shadowColor = ec; ctx.shadowBlur = 26;
-  ctx.fillStyle = "#FFFFFF"; ctx.font = `bold 50px Rajdhani, 'Arial Black', 'Noto Sans', 'Noto Sans CJK SC', Arial, sans-serif`;
-  ctx.fillText(d.abilityName.length > 26 ? d.abilityName.slice(0, 25) + "…" : d.abilityName, W / 2, 112);
+  const nameFont = d.abilityName.length > 26 ? 38 : 50;
+  ctx.fillStyle = "#FFFFFF"; ctx.font = `bold ${nameFont}px Rajdhani, 'Arial Black', 'Noto Sans', 'Noto Sans CJK SC', Arial, sans-serif`;
+  ctx.fillText(d.abilityName.length > 38 ? d.abilityName.slice(0, 37) + "…" : d.abilityName, W / 2, 112);
   ctx.shadowBlur = 0;
 
   // divider with diamond
@@ -104,7 +106,7 @@ export async function generateAbilityCard(d: AbilityCardData): Promise<Buffer> {
   ctx.textAlign = "left";
 
   // ── Effects panel ─────────────────────────────────────────────────────────
-  const px = 60, pw = W - 120, py = 160, ph = 200;
+  const px = 60, pw = W - 120, py = 160, ph = d.evolved ? 260 : 200;
   ctx.fillStyle = "rgba(255,255,255,0.03)"; rrect(ctx, px, py, pw, ph, 12); ctx.fill();
   ctx.strokeStyle = rgba(ec, 0.4); ctx.lineWidth = 1; rrect(ctx, px, py, pw, ph, 12); ctx.stroke();
 
@@ -112,7 +114,7 @@ export async function generateAbilityCard(d: AbilityCardData): Promise<Buffer> {
   ctx.letterSpacing = "3px"; ctx.fillText("RESONANT EFFECTS", px + 22, py + 30); ctx.letterSpacing = "0px";
 
   let ly = py + 60;
-  for (const eff of d.effects.slice(0, 3)) {
+  for (const eff of d.effects.slice(0, d.evolved ? 4 : 3)) {
     // split "Label: description" into name + desc
     const idx = eff.indexOf(":");
     const name = idx > 0 ? eff.slice(0, idx) : eff;
@@ -133,7 +135,7 @@ export async function generateAbilityCard(d: AbilityCardData): Promise<Buffer> {
   ctx.textAlign = "center";
   ctx.fillStyle = rgba(ec, 0.75); ctx.font = `italic 16px Rajdhani, 'Noto Sans', 'Noto Sans CJK SC', 'Noto Sans JP', Arial, sans-serif`;
   const loreLines = wrap(ctx, `“${d.lore}”`, W - 160);
-  let lly = 392;
+  let lly = d.evolved ? 452 : 392;
   for (const l of loreLines.slice(0, 2)) { ctx.fillText(l, W / 2, lly); lly += 22; }
   ctx.textAlign = "left";
 

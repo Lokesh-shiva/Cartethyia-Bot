@@ -17,6 +17,7 @@ import { registerFight, clearFight } from "../../lib/fightTracker";
 import { checkLevelUp } from "../../lib/progression";
 import { computeAura, consumeAura, auraBar, fmtAuraRegen, MAX_AURA } from "../../lib/aura";
 import { CE } from "../../lib/emojiManager";
+import { trackEvolutionProgress } from "../../lib/abilityEvolution";
 
 const SKILL_CD     = 3;
 const TURN_TIMEOUT = 8 * 60 * 1000; // 8 min per turn
@@ -674,6 +675,8 @@ async function grantRewards(
     }
   }
 
+  const evoLine = await trackEvolutionProgress(userId, { kind: "dungeon" }).catch(() => null);
+
   await thread.send({
     embeds: [new EmbedBuilder()
       .setColor(dungeon.color)
@@ -681,7 +684,8 @@ async function grantRewards(
       .setDescription(
         `**${displayName}** conquered all 3 waves of **${dungeon.name}**!\n\n` +
         (echoLines.length ? `**Echoes Dropped:**\n${echoLines.join("\n")}\n\n` : "") +
-        `**Materials Earned:**\n${lines.join("\n")}` + voteNudge()
+        `**Materials Earned:**\n${lines.join("\n")}` + voteNudge() +
+        (evoLine ? `\n\n${evoLine}` : "")
       )
       .setFooter({ text: "CARTETHYIA  ·  Dungeon  ·  Aura regens 1 charge every 3h" })],
   });

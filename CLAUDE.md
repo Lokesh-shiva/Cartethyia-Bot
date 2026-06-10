@@ -63,8 +63,14 @@ Boss trials for all 9 in `dungeons.ts`. Field bosses (6, one/element) in `src/li
 - Per level: +12 HP, +3 ATK, +2 DEF, +1 SPD. Element at Lv20. Unique ability on first ascension win.
 - Boss enrage at ≤40% HP in ascend/boss: ATK ×1.6, always uses highest-damage move, shatter recovery 60% vib.
 
+## Ability Evolution (Lv50)
+- `/evolve` — ordered quest: start → 3 dungeon clears → WL5+ `/boss` kill → pay 5 Paradox Cores + 8 Stasis Locks.
+- `src/lib/abilityEvolution.ts`: effects ×1.3 (over-cap to 1.3× registry max) + 4th primitive. `generateEvolution()` uses AI with FULL player context (personality, bonds, combat record, equipped weapon, echo build) for evolved name/effect/lore/4th pick; deterministic element-epithet fallback if LM Studio offline.
+- `sanitizeEffects(raw, evolved)` — evolved=true allows 4 effects + 1.3× max clamp. Pass `user.abilityEvolved` wherever stored effects are read (setBonus.ts and ability.ts do).
+- Quest hooks: `trackEvolutionProgress()` in dungeon.ts `grantRewards` + boss.ts win cleanup.
+- Evolved card: gold accents, 540px tall, 4 effect slots (`evolved` flag on `generateAbilityCard`).
+
 ## Upcoming Features (next sessions)
-- **Lv50 — Unique Ability Evolution**: player's unique ability (earned on first ascension win) evolves into a stronger form via short quest + materials. Predetermined stronger version (not AI-generated).
 - **Lv60 — Ego Weapon Awakening**: current equipped weapon transforms (not replaced). AI generates new name, lore, evolved stats + passive using: weapon type/rarity, player element, evolved unique ability, combat history/build style. Gacha rarity = awakening ceiling (5★ > 3★). Post-awakening: **Bond/Closeness system** — weapon starts at partial power, grows through use. Build unique ability evolution first since ego weapon factors it in.
 
 ## Gotchas

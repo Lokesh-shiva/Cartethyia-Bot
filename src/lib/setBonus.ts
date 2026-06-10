@@ -187,7 +187,7 @@ export async function resolvePlayerBonuses(userId: string): Promise<PlayerBonuse
   const [user, echoes, weapon] = await Promise.all([
     prisma.user.findUnique({
       where:  { id: userId },
-      select: { element: true, uniqueAbilityType: true, uniqueAbilityValue: true, uniqueAbilityEffects: true, uniqueAbilityName: true },
+      select: { element: true, uniqueAbilityType: true, uniqueAbilityValue: true, uniqueAbilityEffects: true, uniqueAbilityName: true, abilityEvolved: true },
     }),
     prisma.echo.findMany({
       where:  { userId, isEquipped: true },
@@ -362,7 +362,7 @@ export async function resolvePlayerBonuses(userId: string): Promise<PlayerBonuse
 
   // ── Unique ability (composite) ────────────────────────────────────────────
   // Source priority: stored composite → migrate legacy single-type → none.
-  let effects: AbilityEffect[] = sanitizeEffects(user.uniqueAbilityEffects);
+  let effects: AbilityEffect[] = sanitizeEffects(user.uniqueAbilityEffects, user.abilityEvolved);
 
   if (effects.length === 0 && user.uniqueAbilityType) {
     // Legacy player — build a composite from their old single mechanic, persist once.
