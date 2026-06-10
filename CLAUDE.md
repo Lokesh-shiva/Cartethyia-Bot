@@ -88,6 +88,6 @@ Boss trials for all 9 in `dungeons.ts`. Field bosses (6, one/element) in `src/li
 - New command → `npm run deploy`. AI: `max_tokens ~40`, hardcoded fallbacks for offline LM Studio.
 - Whisper Crystals: removed. Don't re-add. Multi-server: `loadAllGuildSettings()` on ready.
 - BOSS_ART_FILENAMES defined in 3 places: `echoCard.ts`, `gridCard.ts`, `canvas.ts` — update all three when adding bosses.
-- `gearAwareScale` in combat.ts: HP capped at gearRatio 3.0 (prevents 400k+ HP slogs), ATK uncapped.
+- `gearAwareScale` in combat.ts: ALL axes hard-capped (levelScale ≤2.2, hpScale ≤2.0, atkScale ≤1.7, defScale ≤1.5; gearRatio capped 2.0 HP / 2.5 ATK). Boss bases already encode WL progression — uncapped stacking one-shot every WL5+ player and made 300k+ HP slogs. Target: ~24-turn fights, avg hit ~32% player HP.
 - `/boss` re-challenge: fightLevel capped at WL's level ceiling, gearRatio capped at 2.0, weights 0.40/0.30 (farmable but not trivial).
 - `communityFooter(guildId)` in `src/lib/communityFooter.ts` — shows invite link only outside MAIN_GUILD_ID. `voteNudge()` in `src/lib/voteNudge.ts` — 20% chance upvote prompt in reward messages.
