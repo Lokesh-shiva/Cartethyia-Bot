@@ -99,7 +99,7 @@ const command: Command = {
       .setFooter({ text: "CARTETHYIA  ·  Ego Weapon Awakening  ·  This cannot be undone" });
 
     const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
-      new ButtonBuilder().setCustomId("ego_confirm").setLabel("Wake the Ego").setStyle(ButtonStyle.Danger).setEmoji("✦").setDisabled(!canAfford),
+      new ButtonBuilder().setCustomId("ego_confirm").setLabel("✦ Wake the Ego").setStyle(ButtonStyle.Danger).setDisabled(!canAfford),
     );
     const msg = await interaction.editReply({ embeds: [embed], components: [row] });
     if (!canAfford) return;

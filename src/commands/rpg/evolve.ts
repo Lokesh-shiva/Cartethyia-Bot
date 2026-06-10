@@ -83,7 +83,7 @@ const command: Command = {
         .setFooter({ text: "CARTETHYIA  ·  Unique Ability Evolution" });
 
       const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
-        new ButtonBuilder().setCustomId("evo_start").setLabel("Begin the Quest").setStyle(ButtonStyle.Primary).setEmoji("✦"),
+        new ButtonBuilder().setCustomId("evo_start").setLabel("✦ Begin the Quest").setStyle(ButtonStyle.Primary),
       );
       const msg = await interaction.editReply({ embeds: [embed], components: [row] });
 
@@ -142,7 +142,7 @@ const command: Command = {
       .setFooter({ text: "CARTETHYIA  ·  Unique Ability Evolution" });
 
     const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
-      new ButtonBuilder().setCustomId("evo_confirm").setLabel("Complete the Awakening").setStyle(ButtonStyle.Success).setEmoji("✦").setDisabled(!canAfford),
+      new ButtonBuilder().setCustomId("evo_confirm").setLabel("✦ Complete the Awakening").setStyle(ButtonStyle.Success).setDisabled(!canAfford),
     );
     const msg = await interaction.editReply({ embeds: [embed], components: [row] });
     if (!canAfford) return;
