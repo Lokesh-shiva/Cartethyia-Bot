@@ -57,7 +57,7 @@ export function calcPlayerDamage(
 // DEF uses a divisor model (WuWa/Genshin-style): diminishing returns, never immune.
 // reduction = DEF / (DEF + 600), clamped to 75% max so squishies always take some damage.
 export function calcEnemyDamage(enemyAtk: number, playerDef: number, moveMult: number): number {
-  const reduction = Math.min(0.75, playerDef / (playerDef + 600));
+  const reduction = Math.min(0.75, playerDef / (playerDef + 1500));
   return Math.max(1, Math.floor(enemyAtk * moveMult * (1 - reduction)));
 }
 
@@ -97,7 +97,7 @@ export function echoToBoss(enemy: EchoDefinition): Boss {
 // ── Gear-aware enemy scaling ──────────────────────────────────────────────────
 // Baseline ATK a player would have at `level` with NO gear (level curve only).
 export function baselineAtk(level: number): number {
-  return 50 + 3 * Math.max(0, level - 1);
+  return 40 + 4 * Math.max(0, level - 1);
 }
 
 // Scale an enemy so fights stay challenging regardless of gear.
