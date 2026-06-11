@@ -246,7 +246,7 @@ export async function resolvePlayerBonuses(userId: string): Promise<PlayerBonuse
 
   // ── Element affinity (+3% elem damage per matching echo) ─────────────────
   const matchingCount = echoes.filter(e => e.element === playerElem).length;
-  bonuses.elemDmgBonus = matchingCount * 0.03;
+  bonuses.elemDmgBonus += matchingCount * 0.03;
   if (matchingCount > 0) {
     bonuses.activeLabels.push(`${elementEmoji(playerElem)} Affinity ×${matchingCount} — +${matchingCount * 3}% Elem DMG`);
   }

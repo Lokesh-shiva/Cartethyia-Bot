@@ -415,7 +415,7 @@ const command: Command = {
 
       const hlImg = highlight ? getWeaponImagePath(highlight.weapon.type, highlight.weapon.name) : null;
       const files = hlImg ? [new AttachmentBuilder(hlImg, { name: "weapon.png" })] : [];
-      if (hlImg) summaryEmbed.setThumbnail("attachment://weapon.png");
+      if (hlImg) summaryEmbed.setImage("attachment://weapon.png");
       await interaction.editReply({ embeds: [summaryEmbed], files, components: [] });
     });
 
