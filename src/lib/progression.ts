@@ -94,7 +94,7 @@ export async function sendMilestoneNotifications(
 // ── EXP thresholds per level ──────────────────────────────────────────────────
 // Level cap per World Level: WL0→20, WL1→40, WL2→60... WL8→90 (max 90)
 export const WORLD_LEVEL_CAPS: Record<number, number> = {
-  0: 20, 1: 40, 2: 50, 3: 60, 4: 70, 5: 80, 6: 84, 7: 88, 8: 90,
+  0: 20, 1: 40, 2: 50, 3: 60, 4: 70, 5: 80, 6: 84, 7: 88, 8: 90, 9: 90,
 };
 
 // EXP needed to reach the next level (scales quadratically)

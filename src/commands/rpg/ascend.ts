@@ -353,7 +353,7 @@ const command: Command = {
           await sendBattleCard(thread as any, { ...state, lastMove: `${moveName} — **BOSS DEFEATED!**` }, buildButtons(state));
 
           const isFirstAscension = user.worldLevel === 0;
-          const newWL            = Math.min(user.worldLevel + 1, 8);
+          const newWL            = user.worldLevel + 1;
           const newCap           = WORLD_LEVEL_CAPS[newWL] ?? 90;
 
           // Award loot + raise WL
