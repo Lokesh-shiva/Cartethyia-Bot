@@ -230,7 +230,7 @@ function bondTypeLabel(type: string): string {
 
 // ── Main export ───────────────────────────────────────────────────────────────
 export async function generateProfileCard(input: ProfileCardInput): Promise<Buffer> {
-  const W = 820, H = 340;
+  const W = 820, H = input.weapon?.awakened ? 380 : 340;
   const canvas = createCanvas(W, H);
   const ctx    = canvas.getContext("2d");
 
@@ -399,11 +399,8 @@ export async function generateProfileCard(input: ProfileCardInput): Promise<Buff
   ctx.beginPath(); ctx.moveTo(NX, weapY - 2); ctx.lineTo(NX + 320, weapY - 2); ctx.stroke();
 
   if (input.weapon) {
-    const WS = 36; // thumbnail size
+    const WS = input.weapon.awakened ? 72 : 36;
 
-    // Resolve art path: awakened → assets/weapons/awakened/{awakenedName}.png
-    //                   unique   → assets/weapons/unique/{userId}.png
-    //                   normal   → assets/weapons/{TypeFolder}/{Name}.png
     const typeFolder = input.weapon.weaponType.charAt(0).toUpperCase()
       + input.weapon.weaponType.slice(1).toLowerCase();
     const awakenedImgPath = input.weapon.awakened && input.weapon.awakenedName
@@ -415,9 +412,17 @@ export async function generateProfileCard(input: ProfileCardInput): Promise<Buff
         ? path.join(process.cwd(), "assets", "weapons", "unique", `${input.weapon.userId}.png`)
         : path.join(process.cwd(), "assets", "weapons", typeFolder, `${input.weapon.name}.png`);
 
+    // Gold aura behind awakened thumbnail
+    if (input.weapon.awakened) {
+      ctx.shadowColor = "#FCD34D"; ctx.shadowBlur = 24;
+      ctx.fillStyle = "rgba(252,211,77,0.10)";
+      rrect(ctx, NX - 2, weapY - 4, WS + 4, WS + 4, 10); ctx.fill();
+      ctx.shadowBlur = 0;
+    }
+
     // Thumbnail box
     ctx.save();
-    rrect(ctx, NX, weapY - 2, WS, WS, 6);
+    rrect(ctx, NX, weapY - 2, WS, WS, input.weapon.awakened ? 10 : 6);
     ctx.clip();
     let weapImgLoaded = false;
     if (fs.existsSync(weapImgPath)) {
@@ -428,7 +433,6 @@ export async function generateProfileCard(input: ProfileCardInput): Promise<Buff
       } catch { /* fall through */ }
     }
     if (!weapImgLoaded) {
-      // Fallback: element-tinted box with weapon type initial
       ctx.fillStyle = rgba(t.primary, 0.25);
       ctx.fillRect(NX, weapY - 2, WS, WS);
       ctx.fillStyle = rgba(t.primary, 0.8);
@@ -439,63 +443,76 @@ export async function generateProfileCard(input: ProfileCardInput): Promise<Buff
     }
     ctx.restore();
 
-    // Rarity border glow around thumbnail
+    // Border glow
     const rarityColors: Record<number, string> = { 1: "#9CA3AF", 2: "#34D399", 3: "#818CF8", 4: "#F59E0B", 5: "#F43F5E" };
-    ctx.strokeStyle = rarityColors[input.weapon.rarity] ?? "#818CF8";
-    ctx.lineWidth   = 1.5;
-    rrect(ctx, NX, weapY - 2, WS, WS, 6); ctx.stroke();
+    if (input.weapon.awakened) {
+      ctx.shadowColor = "#FCD34D"; ctx.shadowBlur = 14;
+      ctx.strokeStyle = "rgba(252,211,77,0.90)";
+    } else {
+      ctx.strokeStyle = rarityColors[input.weapon.rarity] ?? "#818CF8";
+    }
+    ctx.lineWidth = input.weapon.awakened ? 2 : 1.5;
+    rrect(ctx, NX, weapY - 2, WS, WS, input.weapon.awakened ? 10 : 6); ctx.stroke();
+    ctx.shadowBlur = 0;
 
-    // Stars — filled only, small, below thumbnail right edge
+    const TX = NX + WS + 8; // text column X
+
+    // Stars
     const filledStars = "★".repeat(input.weapon.rarity);
-    ctx.fillStyle = rarityColors[input.weapon.rarity] ?? "#818CF8";
-    ctx.font = `bold 8px Rajdhani, Arial, sans-serif`;
-    ctx.fillText(filledStars, NX, weapY + WS + 6);
+    ctx.fillStyle = input.weapon.awakened ? "#FCD34D" : (rarityColors[input.weapon.rarity] ?? "#818CF8");
+    ctx.font = `bold ${input.weapon.awakened ? 10 : 8}px Rajdhani, Arial, sans-serif`;
+    ctx.fillText(filledStars, input.weapon.awakened ? TX : NX, weapY + WS + 6);
 
-    // Weapon name — show awakenedName when awakened
+    // Weapon name
     const displayWeaponName = (input.weapon.awakened && input.weapon.awakenedName) ? input.weapon.awakenedName : input.weapon.name;
+    if (input.weapon.awakened) { ctx.shadowColor = "#FCD34D"; ctx.shadowBlur = 10; }
     ctx.fillStyle = input.weapon.awakened ? "#FCD34D" : input.weapon.isUnique ? t.secondary : "#FFFFFF";
-    ctx.font = `bold 13px Rajdhani, 'Noto Sans', 'Noto Sans CJK SC', 'Noto Sans JP', Arial, sans-serif`;
-    ctx.fillText(truncate(displayWeaponName, 22), NX + WS + 6, weapY + 12);
+    ctx.font = `bold ${input.weapon.awakened ? 16 : 13}px Rajdhani, 'Noto Sans', 'Noto Sans CJK SC', 'Noto Sans JP', Arial, sans-serif`;
+    ctx.fillText(truncate(displayWeaponName, input.weapon.awakened ? 18 : 22), TX, weapY + (input.weapon.awakened ? 16 : 12));
+    ctx.shadowBlur = 0;
 
     // Type · ATK
     ctx.fillStyle = "rgba(255,255,255,0.35)";
     ctx.font = `bold 10px Rajdhani, 'Noto Sans', 'Noto Sans CJK SC', 'Noto Sans JP', Arial, sans-serif`;
-    ctx.fillText(`${typeFolder}  ·  ${input.weapon.baseAtk} ATK`, NX + WS + 6, weapY + 24);
+    ctx.fillText(`${typeFolder}  ·  ${input.weapon.baseAtk} ATK`, TX, weapY + (input.weapon.awakened ? 32 : 24));
 
-    // Unique badge or awakened badge
     if (input.weapon.awakened) {
-      const bond    = Math.min(10, Math.max(0, input.weapon.weaponBond ?? 0));
-      const bx = NX + WS + 6, bw = 58, bh = 12;
+      const bond = Math.min(10, Math.max(0, input.weapon.weaponBond ?? 0));
+
+      // AWAKENED badge
+      const bx = TX, bw = 64, bh = 13;
       ctx.fillStyle = "rgba(252,211,77,0.15)";
-      rrect(ctx, bx, weapY + 27, bw, bh, 3); ctx.fill();
+      rrect(ctx, bx, weapY + 38, bw, bh, 3); ctx.fill();
       ctx.strokeStyle = "rgba(252,211,77,0.55)"; ctx.lineWidth = 1;
-      rrect(ctx, bx, weapY + 27, bw, bh, 3); ctx.stroke();
+      rrect(ctx, bx, weapY + 38, bw, bh, 3); ctx.stroke();
       ctx.fillStyle = "#FCD34D";
       ctx.font = `bold 8px Rajdhani, Arial, sans-serif`;
-      ctx.fillText("✦ AWAKENED", bx + 5, weapY + 36);
+      ctx.fillText("✦ AWAKENED", bx + 6, weapY + 48);
 
       // Bond micro-bar
-      const barX = bx + bw + 6, barW = 320 - WS - 6 - bw - 12, barH = 5;
-      ctx.fillStyle = "rgba(252,211,77,0.12)";
-      rrect(ctx, barX, weapY + 29, barW, barH, 2); ctx.fill();
+      const barX = TX, barW = 320 - WS - 14, barH = 6;
+      ctx.fillStyle = "rgba(252,211,77,0.10)";
+      rrect(ctx, barX, weapY + 56, barW, barH, 2); ctx.fill();
       if (bond > 0) {
         const fill = ctx.createLinearGradient(barX, 0, barX + barW, 0);
         fill.addColorStop(0, "rgba(252,211,77,0.9)");
         fill.addColorStop(1, "rgba(245,158,11,0.9)");
         ctx.fillStyle = fill;
-        rrect(ctx, barX, weapY + 29, Math.max(4, barW * (bond / 10)), barH, 2); ctx.fill();
+        rrect(ctx, barX, weapY + 56, Math.max(4, barW * (bond / 10)), barH, 2); ctx.fill();
       }
-      ctx.fillStyle = "rgba(252,211,77,0.45)";
-      ctx.font = `bold 7px Rajdhani, Arial, sans-serif`;
-      ctx.fillText(`${bond}/10`, barX + barW + 4, weapY + 34);
+      ctx.strokeStyle = "rgba(252,211,77,0.30)"; ctx.lineWidth = 1;
+      rrect(ctx, barX, weapY + 56, barW, barH, 2); ctx.stroke();
+      ctx.fillStyle = "rgba(252,211,77,0.55)";
+      ctx.font = `bold 8px Rajdhani, Arial, sans-serif`;
+      ctx.fillText(`${bond}/10`, barX + barW + 4, weapY + 62);
     } else if (input.weapon.isUnique) {
       ctx.fillStyle = rgba(t.primary, 0.15);
-      rrect(ctx, NX + WS + 6, weapY + 27, 46, 12, 3); ctx.fill();
+      rrect(ctx, TX, weapY + 27, 46, 12, 3); ctx.fill();
       ctx.strokeStyle = rgba(t.primary, 0.5); ctx.lineWidth = 1;
-      rrect(ctx, NX + WS + 6, weapY + 27, 46, 12, 3); ctx.stroke();
+      rrect(ctx, TX, weapY + 27, 46, 12, 3); ctx.stroke();
       ctx.fillStyle = t.secondary;
       ctx.font = `bold 8px Rajdhani, Arial, sans-serif`;
-      ctx.fillText("◈ FORGED", NX + WS + 10, weapY + 36);
+      ctx.fillText("◈ FORGED", TX + 4, weapY + 36);
     }
   } else {
     ctx.fillStyle = "rgba(255,255,255,0.2)";
@@ -505,7 +522,7 @@ export async function generateProfileCard(input: ProfileCardInput): Promise<Buff
 
   // ── Unique ability ────────────────────────────────────────────────────────
   if (input.uniqueAbilityName) {
-    const abY = weapY + (input.weapon?.awakened ? 50 : 36);
+    const abY = weapY + (input.weapon?.awakened ? 82 : 44);
     ctx.shadowColor = t.primary; ctx.shadowBlur = 12;
     ctx.fillStyle = rgba(t.primary, 0.15);
     rrect(ctx, NX, abY, 320, 20, 4); ctx.fill();

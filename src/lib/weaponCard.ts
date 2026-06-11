@@ -69,28 +69,31 @@ export interface WeaponCardInput {
 }
 
 export async function generateWeaponCard(input: WeaponCardInput): Promise<Buffer> {
-  const W = 700;
-  // Dynamic height: base 310 + 28px per hidden sub row + 50px for bond bar on awakened weapons
+  const W = 720;
   const hiddenRows = (input.hiddenSub1Type ? 1 : 0) + (input.hiddenSub2Type ? 1 : 0);
   const H = 310 + hiddenRows * 28 + (input.awakened ? 50 : 0);
   const canvas = createCanvas(W, H);
   const ctx    = canvas.getContext("2d");
 
-  const ec = ELEMENT_HEX[input.element.toUpperCase()] ?? ELEMENT_HEX.NONE;
+  const ec = input.awakened ? "#FCD34D" : (ELEMENT_HEX[input.element.toUpperCase()] ?? ELEMENT_HEX.NONE);
   const rc = RARITY_COLOR[input.rarity] ?? RARITY_COLOR[3];
   const font = (sz: number, w = "bold") => `${w} ${sz}px Rajdhani, 'Noto Sans', Arial, sans-serif`;
 
   // ── Background ──────────────────────────────────────────────────────────────
-  ctx.fillStyle = "#080B12"; ctx.fillRect(0,0,W,H);
+  ctx.fillStyle = input.awakened ? "#0C0A06" : "#080B12"; ctx.fillRect(0,0,W,H);
 
-  // Element bloom from art side
+  // Bloom from art side
+  const bloomColor = input.awakened ? "#FCD34D" : (ELEMENT_HEX[input.element.toUpperCase()] ?? ELEMENT_HEX.NONE);
   const bloom = ctx.createRadialGradient(210,H/2,0,210,H/2,340);
-  bloom.addColorStop(0, rgba(ec,0.30)); bloom.addColorStop(0.6,rgba(ec,0.08)); bloom.addColorStop(1,"rgba(0,0,0,0)");
+  bloom.addColorStop(0, rgba(bloomColor, input.awakened ? 0.18 : 0.30));
+  bloom.addColorStop(0.6, rgba(bloomColor, input.awakened ? 0.05 : 0.08));
+  bloom.addColorStop(1,"rgba(0,0,0,0)");
   ctx.fillStyle = bloom; ctx.fillRect(0,0,W,H);
 
-  // Rarity bloom behind art
+  // Rarity / gold bloom behind art
   const rb = ctx.createRadialGradient(210,H/2,0,210,H/2,190);
-  rb.addColorStop(0,rgba(rc,0.20)); rb.addColorStop(1,"rgba(0,0,0,0)");
+  rb.addColorStop(0, rgba(input.awakened ? "#FCD34D" : rc, input.awakened ? 0.14 : 0.20));
+  rb.addColorStop(1,"rgba(0,0,0,0)");
   ctx.fillStyle = rb; ctx.fillRect(0,0,W,H);
 
   // ── Art panel ───────────────────────────────────────────────────────────────
@@ -116,10 +119,12 @@ export async function generateWeaponCard(input: WeaponCardInput): Promise<Buffer
 
   ctx.restore();
 
-  // Rarity border glow
+  // Border glow — gold for awakened, rarity color otherwise
   ctx.save();
-  ctx.shadowColor = rc; ctx.shadowBlur = 16;
-  ctx.strokeStyle = rgba(rc,0.85); ctx.lineWidth = 1.5;
+  const borderColor = input.awakened ? "#FCD34D" : rc;
+  ctx.shadowColor = borderColor; ctx.shadowBlur = input.awakened ? 24 : 16;
+  ctx.strokeStyle = rgba(borderColor, input.awakened ? 0.95 : 0.85);
+  ctx.lineWidth = input.awakened ? 2 : 1.5;
   rrect(ctx,AX,AY,AW,AH,14); ctx.stroke();
   ctx.shadowBlur = 0;
   ctx.restore();
@@ -127,8 +132,10 @@ export async function generateWeaponCard(input: WeaponCardInput): Promise<Buffer
   // ── Divider ─────────────────────────────────────────────────────────────────
   const DX = AX+AW+14;
   const dvGrad = ctx.createLinearGradient(DX,0,DX,H);
-  dvGrad.addColorStop(0,"rgba(0,0,0,0)"); dvGrad.addColorStop(0.25,rgba(ec,0.45));
-  dvGrad.addColorStop(0.75,rgba(ec,0.45)); dvGrad.addColorStop(1,"rgba(0,0,0,0)");
+  dvGrad.addColorStop(0,"rgba(0,0,0,0)");
+  dvGrad.addColorStop(0.25, rgba(ec, input.awakened ? 0.60 : 0.45));
+  dvGrad.addColorStop(0.75, rgba(ec, input.awakened ? 0.60 : 0.45));
+  dvGrad.addColorStop(1,"rgba(0,0,0,0)");
   ctx.strokeStyle = dvGrad; ctx.lineWidth = 1;
   ctx.beginPath(); ctx.moveTo(DX,18); ctx.lineTo(DX,H-18); ctx.stroke();
 
