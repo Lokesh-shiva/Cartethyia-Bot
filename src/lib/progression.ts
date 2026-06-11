@@ -33,8 +33,13 @@ const MILESTONES: Record<number, Milestone> = {
   45: { title: "Boss Trial Unlocked", lines: [
     "› `/dungeon` → **Nullfire's Trial** *(requires WL3)* — 4-cost Electro Echo on win. (2 ◈ Aura)",
   ]},
-  50: { title: "Boss Trial Unlocked", lines: [
+  50: { title: "Boss Trial Unlocked · Ability Evolution Available", lines: [
     "› `/dungeon` → **Galeborne's Trial** *(requires WL3)* — **4-cost Aero Echo** on win. (2 ◈ Aura)",
+    "› 🌀 `/evolve` — **Ability Evolution** is now unlocked! Evolve your unique passive into a legendary form with 1.3× amplified effects and a 4th combat primitive.",
+  ]},
+  60: { title: "Ego Weapon Awakening Available", lines: [
+    "› ✦ `/awaken` — **Ego Weapon Awakening** is now unlocked! Transform your equipped weapon into its Ego form — amplified stats, a new AI-generated effect, and a Weapon Bond that grows through combat.",
+    "› *Requires evolved unique ability and an equipped weapon.*",
   ]},
   55: { title: "Boss Trial Unlocked", lines: [
     "› `/dungeon` → **Sable Harbinger's Trial** *(requires WL4)* — 4-cost Havoc Echo on win. (2 ◈ Aura)",
