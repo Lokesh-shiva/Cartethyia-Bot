@@ -78,12 +78,24 @@ Boss trials for all 9 in `dungeons.ts`. Field bosses (6, one/element) in `src/li
 - Awakened art: drop PNG at `assets/weapons/awakened/{awakenedName}.png` — `getWeaponImagePath` checks it first, card auto-upgrades. Art prompt stored in DB + shown on awakening embed.
 - **Hidden substats now apply in combat** (setBonus, Lv20/Lv50 gates) — they were display-only before.
 
-## Upcoming Features (next sessions)
-- **Weapon Bond/Closeness**: post-awakening, weapon starts at partial power and grows to full through use (battles fought with it). Touches every combat loop.
-- **Profile/weapon canvas overhaul**: more impactful awakened weapon art on profile card (user wants bigger than current small PNG).
+## Shipped 2026-06-11 (QoL + fixes session)
+- `/weapons` — arsenal browser (select menu → full weapon card). `/equip` — current-vs-incoming comparison + Confirm/Cancel + card image on confirm.
+- `/echo-equip` — shows slot occupant, comparison embed before swap, "Clear slot" unequip option. `/echoes` — per-slot grid breakdown field. `/echo` — main stat values in menus.
+- `/stats` — final combat numbers via `resolvePlayerBonuses`+`applyBonuses` (same path as combat), supports other players.
+- **Records rebalanced**: fixed 2,500 EXP each (`EXP_PER_RECORD` in use.ts), was 1 full level's worth. Max/use 5→10.
+- **1-DMG combat bug fixed**: all 4 loops (dungeon/boss/ascend/field-boss) used flat `atk - defVal` which went negative vs high-WL defense. Now `atk * (1 - min(0.75, def/(def+1500)))` everywhere.
+- **/start gate fixed**: messageCreate no longer auto-creates users; chat EXP + encounters require `isOnboarded`. Encounter Engage button checks `isOnboarded` too (rows exist via command auto-create). Unstarted users with levels keep them but EXP freezes until /start.
+- **DB stability**: switched to `@prisma/adapter-neon` (WebSocket, `ws` package) + retry wrapper (3× backoff, skips PrismaClientKnownRequestError/ValidationError) covering model ops AND $queryRaw/$executeRaw. Event-based error logging (`[Prisma:error]` with real message — stdout logging printed `undefined`).
+- Compensated user `1400767611746128005` (Adityaa) for ETIMEDOUT-eaten Nullfire WL9 rewards via one-off script (deleted after).
+
+## TODO Next
+1. **Website update** (`legal/index.html`): add Evolution (Lv50) + Awakening (Lv60) section w/ gold card screenshot · vote rewards + DBL link (`discordbotlist.com/bots/cartethyia/upvote`, 1k credits + 1 key, 2× weekends) · new commands `/weapons /stats /evolve /awaken /vote` · Weapon Bond flavor · refresh old embed screenshots.
+2. **Named Echo Sets** — unique lore names per set instead of "Fusion 2pc" (labels in setBonus.ts TWO_PC/FOUR_PC/FIVE_PC).
+3. **`grantRewards` transaction wrap** (dungeon.ts) — multi-write reward grants can still partially fail.
+4. Consider: echo lock flag, `/echo-compare`, upgrade cost preview, echo sell/discard, announce records nerf before deploy.
 
 ## Gotchas
-- Prisma v7: no `url` in datasource — adapter only. After schema changes: `npm run db:push` then `npx prisma generate`.
+- Prisma v7: no `url` in datasource — adapter only. After schema changes: `npm run db:push` then `npx prisma generate`. DB client lives in `src/lib/prisma.ts` (Neon adapter + retry — don't revert to adapter-pg).
 - `ephemeral: true` → `flags: 64`. `fetchReply` → `withResponse: true`. p-queue must be v7.
 - New command → `npm run deploy`. AI: `max_tokens ~40`, hardcoded fallbacks for offline LM Studio.
 - Whisper Crystals: removed. Don't re-add. Multi-server: `loadAllGuildSettings()` on ready.
