@@ -497,7 +497,7 @@ export async function generateProfileCard(input: ProfileCardInput): Promise<Buff
 
   // ── Unique ability ────────────────────────────────────────────────────────
   if (input.uniqueAbilityName) {
-    const abY = weapY + 36;
+    const abY = weapY + (input.weapon?.awakened ? 50 : 36);
     ctx.shadowColor = t.primary; ctx.shadowBlur = 12;
     ctx.fillStyle = rgba(t.primary, 0.15);
     rrect(ctx, NX, abY, 320, 20, 4); ctx.fill();
