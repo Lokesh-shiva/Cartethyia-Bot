@@ -14,8 +14,10 @@ const ELEMENT_HEX: Record<string, number> = {
   AERO:   0x10B981, HAVOC:  0xEC4899, SPECTRO: 0xEAB308, NONE: 0x6366F1,
 };
 
-// Each Resonance Record grants EXP equal to 1 full level's worth at current level
-const EXP_PER_RECORD = (level: number) => expToNextLevel(level);
+// Each Resonance Record grants a FIXED amount of EXP — meaningful early game,
+// a smaller fraction of a level as you climb. (Previously 1 full level each,
+// which made records absurdly strong at high levels.)
+const EXP_PER_RECORD = 2500;
 
 const command: Command = {
   data: new SlashCommandBuilder()
@@ -28,7 +30,7 @@ const command: Command = {
           o.setName("amount")
             .setDescription("How many records to use (default: 1).")
             .setMinValue(1)
-            .setMaxValue(5)
+            .setMaxValue(10)
             .setRequired(false)
         )
     ) as SlashCommandBuilder,
@@ -74,8 +76,9 @@ async function handleRecord(interaction: ChatInputCommandInteraction) {
   }
 
   // Calculate total EXP gain
-  const expGain    = EXP_PER_RECORD(user.level) * amount;
-  const expAfter   = user.resonanceExp + expGain;
+  const expGain  = EXP_PER_RECORD * amount;
+  const needed   = expToNextLevel(user.level);
+  const progress = Math.min(100, Math.round(((user.resonanceExp + expGain) / needed) * 100));
 
   // Preview embed
   const previewEmbed = new EmbedBuilder()
@@ -84,10 +87,11 @@ async function handleRecord(interaction: ChatInputCommandInteraction) {
     .setDescription([
       `Using **${amount}** Resonance Record${amount > 1 ? "s" : ""}`,
       ``,
-      `◈  EXP Gain: **+${expGain.toLocaleString()}**`,
+      `◈  EXP Gain: **+${expGain.toLocaleString()}**  (${EXP_PER_RECORD.toLocaleString()} each)`,
+      `◈  Progress toward Lv${user.level + 1}: **~${progress}%** after use`,
       `◈  Records remaining after: **${user.resonanceRecords - amount}**`,
       ``,
-      `*Records grant EXP equal to one full level's worth each.*`,
+      `*Each record grants a fixed ${EXP_PER_RECORD.toLocaleString()} EXP.*`,
     ].join("\n"))
     .setFooter({ text: "CARTETHYIA  ·  Items  ·  Confirm to proceed" });
 
