@@ -75,12 +75,14 @@ export interface EchoSlotData {
 }
 
 export interface WeaponData {
-  name:       string;
-  weaponType: string;
-  rarity:     number;
-  baseAtk:    number;
-  userId?:    string;   // for unique forged weapons → assets/weapons/unique/{userId}.png
-  isUnique?:  boolean;
+  name:        string;
+  weaponType:  string;
+  rarity:      number;
+  baseAtk:     number;
+  userId?:     string;   // for unique forged weapons → assets/weapons/unique/{userId}.png
+  isUnique?:   boolean;
+  awakened?:   boolean;
+  weaponBond?: number;
 }
 
 export interface ProfileCardInput {
@@ -452,8 +454,33 @@ export async function generateProfileCard(input: ProfileCardInput): Promise<Buff
     ctx.font = `bold 10px Rajdhani, 'Noto Sans', 'Noto Sans CJK SC', 'Noto Sans JP', Arial, sans-serif`;
     ctx.fillText(`${typeFolder}  ·  ${input.weapon.baseAtk} ATK`, NX + WS + 6, weapY + 24);
 
-    // Unique badge
-    if (input.weapon.isUnique) {
+    // Unique badge or awakened badge
+    if (input.weapon.awakened) {
+      const bond    = Math.min(10, Math.max(0, input.weapon.weaponBond ?? 0));
+      const bx = NX + WS + 6, bw = 58, bh = 12;
+      ctx.fillStyle = "rgba(252,211,77,0.15)";
+      rrect(ctx, bx, weapY + 27, bw, bh, 3); ctx.fill();
+      ctx.strokeStyle = "rgba(252,211,77,0.55)"; ctx.lineWidth = 1;
+      rrect(ctx, bx, weapY + 27, bw, bh, 3); ctx.stroke();
+      ctx.fillStyle = "#FCD34D";
+      ctx.font = `bold 8px Rajdhani, Arial, sans-serif`;
+      ctx.fillText("✦ AWAKENED", bx + 5, weapY + 36);
+
+      // Bond micro-bar
+      const barX = bx + bw + 6, barW = 320 - WS - 6 - bw - 12, barH = 5;
+      ctx.fillStyle = "rgba(252,211,77,0.12)";
+      rrect(ctx, barX, weapY + 29, barW, barH, 2); ctx.fill();
+      if (bond > 0) {
+        const fill = ctx.createLinearGradient(barX, 0, barX + barW, 0);
+        fill.addColorStop(0, "rgba(252,211,77,0.9)");
+        fill.addColorStop(1, "rgba(245,158,11,0.9)");
+        ctx.fillStyle = fill;
+        rrect(ctx, barX, weapY + 29, Math.max(4, barW * (bond / 10)), barH, 2); ctx.fill();
+      }
+      ctx.fillStyle = "rgba(252,211,77,0.45)";
+      ctx.font = `bold 7px Rajdhani, Arial, sans-serif`;
+      ctx.fillText(`${bond}/10`, barX + barW + 4, weapY + 34);
+    } else if (input.weapon.isUnique) {
       ctx.fillStyle = rgba(t.primary, 0.15);
       rrect(ctx, NX + WS + 6, weapY + 27, 46, 12, 3); ctx.fill();
       ctx.strokeStyle = rgba(t.primary, 0.5); ctx.lineWidth = 1;

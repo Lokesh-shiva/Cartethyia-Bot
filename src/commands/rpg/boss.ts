@@ -15,6 +15,7 @@ import { BOSSES, getBoss, veteranScale } from "../../lib/bosses";
 import { gearAwareScale, baselineAtk, buildRewardText } from "../../lib/combat";
 import { voteNudge } from "../../lib/voteNudge";
 import { trackEvolutionProgress } from "../../lib/abilityEvolution";
+import { incrementWeaponBond } from "../../lib/weaponAwakening";
 import { generateBattleCard, BattleCardState } from "../../lib/battleCard";
 import {
   resolvePlayerBonuses, applyBonuses,
@@ -279,8 +280,9 @@ const command: Command = {
             fractureKeys:  bossKeys,
           };
           await awardUser(interaction.user.id, loot);
-          const lvlResult = await checkLevelUp(interaction.user.id);
-          const evoLine   = await trackEvolutionProgress(interaction.user.id, { kind: "boss", worldLevel: boss.worldLevel }).catch(() => null);
+          const lvlResult  = await checkLevelUp(interaction.user.id);
+          const evoLine    = await trackEvolutionProgress(interaction.user.id, { kind: "boss", worldLevel: boss.worldLevel }).catch(() => null);
+          const bondResult = await incrementWeaponBond(interaction.user.id).catch(() => null);
           await thread.send({
             embeds: [new EmbedBuilder()
               .setColor(0xFCD34D)
@@ -291,6 +293,7 @@ const command: Command = {
                 `**Rewards (70%):**\n${buildRewardText(loot)}` + voteNudge(),
                 lvlResult.didLevelUp ? `\n◈ Level **${lvlResult.oldLevel}** → **${lvlResult.newLevel}**` : "",
                 evoLine ? `\n${evoLine}` : "",
+                bondResult ? `\n✦ Weapon Bond **${bondResult.bond}/${10}**${bondResult.milestone ? ` — *${bondResult.milestone}*` : ""}` : "",
               ].filter(Boolean).join("\n"))
               .setFooter({ text: `CARTETHYIA  ·  Boss Challenge` })],
           });

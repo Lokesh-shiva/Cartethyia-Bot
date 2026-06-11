@@ -46,7 +46,7 @@ const command: Command = {
         baseAtk: true, subStatType: true, subStatVal: true,
         hiddenSub1Type: true, hiddenSub1Val: true,
         hiddenSub2Type: true, hiddenSub2Val: true,
-        awakened: true, awakenedName: true, awakenedLore: true, awakenedPassive: true,
+        awakened: true, awakenedName: true, awakenedLore: true, awakenedPassive: true, weaponBond: true,
       },
     });
 
@@ -101,6 +101,7 @@ const command: Command = {
       hiddenSub2Val:  h2Val,
       awakened:      weapon.awakened,
       awakenedName:  weapon.awakenedName,
+      weaponBond:    weapon.weaponBond,
     });
 
     const attachment = new AttachmentBuilder(cardBuffer, { name: "weapon.png" });

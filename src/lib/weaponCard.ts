@@ -65,13 +65,14 @@ export interface WeaponCardInput {
   // Ego awakening — name stays the ORIGINAL weapon name (art lookup), awakenedName is displayed
   awakened?:      boolean;
   awakenedName?:  string | null;
+  weaponBond?:    number;
 }
 
 export async function generateWeaponCard(input: WeaponCardInput): Promise<Buffer> {
   const W = 700;
-  // Dynamic height: base 310 + 28px per hidden sub row that exists
+  // Dynamic height: base 310 + 28px per hidden sub row + 50px for bond bar on awakened weapons
   const hiddenRows = (input.hiddenSub1Type ? 1 : 0) + (input.hiddenSub2Type ? 1 : 0);
-  const H = 310 + hiddenRows * 28;
+  const H = 310 + hiddenRows * 28 + (input.awakened ? 50 : 0);
   const canvas = createCanvas(W, H);
   const ctx    = canvas.getContext("2d");
 
@@ -236,6 +237,45 @@ export async function generateWeaponCard(input: WeaponCardInput): Promise<Buffer
 
   cy += 10;
   sep(ctx, SX, cy, RX-SX, ec);
+
+  // ── Bond bar (awakened weapons only) ─────────────────────────────────────────
+  if (input.awakened) {
+    const bond    = Math.min(10, Math.max(0, input.weaponBond ?? 0));
+    const BOND_MILESTONES: Record<number, string> = { 1: "Awakening", 5: "Resonance", 10: "Synchrony" };
+    const label   = bond >= 10 ? "SYNCHRONY — FULL BOND" : `WEAPON BOND  ${bond} / 10`;
+    const pct     = bond / 10;
+    const barW    = RX - SX;
+    const barH    = 8;
+
+    cy += 14;
+    // Label
+    ctx.fillStyle = rgba("#FCD34D", 0.7); ctx.font = font(9);
+    ctx.fillText(label, SX, cy);
+    if (BOND_MILESTONES[bond] && bond < 10) {
+      const mLabel = `— ${BOND_MILESTONES[bond]}`;
+      ctx.fillStyle = rgba("#FCD34D", 0.5);
+      ctx.fillText(mLabel, SX + ctx.measureText(label).width + 6, cy);
+    }
+    cy += 5;
+
+    // Track
+    ctx.fillStyle = rgba("#FCD34D", 0.12);
+    rrect(ctx, SX, cy, barW, barH, 3); ctx.fill();
+    // Fill
+    if (pct > 0) {
+      const fillGrad = ctx.createLinearGradient(SX, 0, SX + barW, 0);
+      fillGrad.addColorStop(0, rgba("#FCD34D", 0.9));
+      fillGrad.addColorStop(1, rgba("#F59E0B", 0.9));
+      ctx.fillStyle = fillGrad;
+      rrect(ctx, SX, cy, Math.max(6, barW * pct), barH, 3); ctx.fill();
+    }
+    // Border
+    ctx.strokeStyle = rgba("#FCD34D", 0.3); ctx.lineWidth = 1;
+    rrect(ctx, SX, cy, barW, barH, 3); ctx.stroke();
+
+    cy += barH + 6;
+    sep(ctx, SX, cy, barW, ec);
+  }
 
   // ── Passive block ────────────────────────────────────────────────────────────
   cy += 10;

@@ -98,11 +98,11 @@ const command: Command = {
     // ── Equipped weapon ─────────────────────────────────────────────────────
     const rawWeapon = await prisma.weapon.findFirst({
       where:  { userId: user.id, isEquipped: true },
-      select: { name: true, weaponType: true, rarity: true, baseAtk: true },
+      select: { name: true, weaponType: true, rarity: true, baseAtk: true, awakened: true, weaponBond: true },
     });
 
     const weapon: WeaponData | null = rawWeapon
-      ? { name: rawWeapon.name, weaponType: rawWeapon.weaponType, rarity: rawWeapon.rarity, baseAtk: rawWeapon.baseAtk }
+      ? { name: rawWeapon.name, weaponType: rawWeapon.weaponType, rarity: rawWeapon.rarity, baseAtk: rawWeapon.baseAtk, awakened: rawWeapon.awakened, weaponBond: rawWeapon.weaponBond }
       : null;
 
     // ── Resolve combat stats (echoes + weapon + set bonuses + ability) ──────

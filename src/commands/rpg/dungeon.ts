@@ -18,6 +18,7 @@ import { checkLevelUp } from "../../lib/progression";
 import { computeAura, consumeAura, auraBar, fmtAuraRegen, MAX_AURA } from "../../lib/aura";
 import { CE } from "../../lib/emojiManager";
 import { trackEvolutionProgress } from "../../lib/abilityEvolution";
+import { incrementWeaponBond } from "../../lib/weaponAwakening";
 
 const SKILL_CD     = 3;
 const TURN_TIMEOUT = 8 * 60 * 1000; // 8 min per turn
@@ -675,7 +676,8 @@ async function grantRewards(
     }
   }
 
-  const evoLine = await trackEvolutionProgress(userId, { kind: "dungeon" }).catch(() => null);
+  const evoLine    = await trackEvolutionProgress(userId, { kind: "dungeon" }).catch(() => null);
+  const bondResult = await incrementWeaponBond(userId).catch(() => null);
 
   await thread.send({
     embeds: [new EmbedBuilder()
@@ -685,7 +687,8 @@ async function grantRewards(
         `**${displayName}** conquered all 3 waves of **${dungeon.name}**!\n\n` +
         (echoLines.length ? `**Echoes Dropped:**\n${echoLines.join("\n")}\n\n` : "") +
         `**Materials Earned:**\n${lines.join("\n")}` + voteNudge() +
-        (evoLine ? `\n\n${evoLine}` : "")
+        (evoLine ? `\n\n${evoLine}` : "") +
+        (bondResult ? `\n✦ Weapon Bond **${bondResult.bond}/10**${bondResult.milestone ? ` — *${bondResult.milestone}*` : ""}` : "")
       )
       .setFooter({ text: "CARTETHYIA  ·  Dungeon  ·  Aura regens 1 charge every 3h" })],
   });

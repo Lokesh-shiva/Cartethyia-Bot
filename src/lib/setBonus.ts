@@ -6,6 +6,7 @@ import {
 } from "./abilityEffects";
 import { WEAPON_PASSIVES } from "./weapons";
 import { ALL_WISH_WEAPONS, calcWishSubStat } from "./wishWeapons";
+import { bondMultiplier } from "./weaponAwakening";
 import { calcSubstatValue } from "./echoes";
 
 // ── Set bonus definitions ─────────────────────────────────────────────────────
@@ -207,7 +208,7 @@ export async function resolvePlayerBonuses(userId: string): Promise<PlayerBonuse
       select: {
         name: true, baseAtk: true, level: true, rarity: true, subStatType: true, subStatVal: true,
         hiddenSub1Type: true, hiddenSub1Val: true, hiddenSub2Type: true, hiddenSub2Val: true,
-        awakened: true, awakenedName: true, awakenedPassive: true,
+        awakened: true, awakenedName: true, awakenedPassive: true, weaponBond: true,
       },
     }),
   ]);
@@ -296,12 +297,16 @@ export async function resolvePlayerBonuses(userId: string): Promise<PlayerBonuse
   if (weapon) {
     // ATK scales from base → base × maxMult at level 90, by rarity
     const maxMult     = weapon.rarity === 3 ? 3.5 : weapon.rarity === 2 ? 3.0 : 2.5;
-    const effectiveAtk = Math.round(weapon.baseAtk * (1 + (weapon.level - 1) * (maxMult - 1) / 89));
+    const rawAtk      = Math.round(weapon.baseAtk * (1 + (weapon.level - 1) * (maxMult - 1) / 89));
+    // Bond multiplier: awakened weapons start at 80% power (bond 0), reach 100% at bond 10
+    const bondMult    = weapon.awakened ? bondMultiplier(weapon.weaponBond ?? 0) : 1.0;
+    const effectiveAtk = Math.round(rawAtk * bondMult);
     bonuses.atkFlat   += effectiveAtk;
 
     // Sub-stat scales from base → base × 1.8 at level 90
     const svBase = weapon.subStatVal ?? 0;
-    const sv     = Math.round((svBase * (1 + (weapon.level - 1) * 0.8 / 89)) * 10) / 10;
+    const svRaw  = Math.round((svBase * (1 + (weapon.level - 1) * 0.8 / 89)) * 10) / 10;
+    const sv     = Math.round(svRaw * bondMult * 10) / 10;
     const applySub = (type: string | null, val: number) => {
       switch (type) {
         case "HP_PERCENT":    bonuses.hpMult        *= (1 + val/100); break;
@@ -318,10 +323,10 @@ export async function resolvePlayerBonuses(userId: string): Promise<PlayerBonuse
     // Hidden substats (wish weapons) — unlock at Lv20 / Lv50, scale like weapon.ts display
     const wishDef = ALL_WISH_WEAPONS.find(w => w.name === weapon.name);
     if (weapon.level >= 20 && weapon.hiddenSub1Type && weapon.hiddenSub1Val != null) {
-      applySub(weapon.hiddenSub1Type, calcWishSubStat(weapon.hiddenSub1Val, wishDef?.hiddenSub1Scale ?? 1.8, weapon.level));
+      applySub(weapon.hiddenSub1Type, Math.round(calcWishSubStat(weapon.hiddenSub1Val, wishDef?.hiddenSub1Scale ?? 1.8, weapon.level) * bondMult * 10) / 10);
     }
     if (weapon.level >= 50 && weapon.hiddenSub2Type && weapon.hiddenSub2Val != null) {
-      applySub(weapon.hiddenSub2Type, calcWishSubStat(weapon.hiddenSub2Val, wishDef?.hiddenSub2Scale ?? 1.8, weapon.level));
+      applySub(weapon.hiddenSub2Type, Math.round(calcWishSubStat(weapon.hiddenSub2Val, wishDef?.hiddenSub2Scale ?? 1.8, weapon.level) * bondMult * 10) / 10);
     }
 
     // Weapon passive — awakened weapons carry their own passive in the DB

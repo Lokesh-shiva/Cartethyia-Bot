@@ -180,6 +180,9 @@ model Weapon {
   awakenedArtPrompt String? // AI image-gen prompt; art goes in assets/weapons/awakened/{awakenedName}.png
   awakenedPassive   Json?   // { desc, elemDmg?, effects: [{type,value}] } — replaces WEAPON_PASSIVES lookup
 
+  // Weapon Bond — awakened weapons start at 80% power, grow to 100% over 10 wins
+  weaponBond  Int     @default(0)
+
   createdAt   DateTime   @default(now())
 
   @@map("weapons")

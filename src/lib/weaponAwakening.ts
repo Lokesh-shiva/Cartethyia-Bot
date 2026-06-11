@@ -218,3 +218,29 @@ export async function generateAwakening(userId: string): Promise<AwakeningResult
     return fallback;
   }
 }
+
+// ── Weapon Bond ───────────────────────────────────────────────────────────────
+// Awakened weapons start at 80% power (bond 0) and grow to 100% at bond 10.
+// Bond increments on boss/dungeon/field-boss wins when weapon is equipped.
+export const BOND_MAX = 10;
+export const BOND_MILESTONES: Record<number, string> = {
+  1:  "Awakening",
+  5:  "Resonance",
+  10: "Synchrony",
+};
+
+export function bondMultiplier(bond: number): number {
+  return 0.80 + Math.min(BOND_MAX, Math.max(0, bond)) * 0.02;
+}
+
+export async function incrementWeaponBond(userId: string): Promise<{ bond: number; milestone: string | null } | null> {
+  const weapon = await prisma.weapon.findFirst({
+    where:  { userId, isEquipped: true, awakened: true },
+    select: { id: true, weaponBond: true },
+  });
+  if (!weapon || weapon.weaponBond >= BOND_MAX) return null;
+
+  const newBond = weapon.weaponBond + 1;
+  await prisma.weapon.update({ where: { id: weapon.id }, data: { weaponBond: newBond } });
+  return { bond: newBond, milestone: BOND_MILESTONES[newBond] ?? null };
+}
