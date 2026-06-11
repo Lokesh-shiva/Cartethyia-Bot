@@ -99,11 +99,32 @@ function fallbackNewEffect(element: string, rarity: number, weaponName: string, 
   return { type: "ATK_BOOST", value: effectValueForRarity("ATK_BOOST", rarity) };
 }
 
+const ELEMENT_ART_LANGUAGE: Record<string, string> = {
+  FUSION:  "volcanic magma veins, orange-red fire cracks, molten metal dripping, intense heat shimmer, ember sparks swirling",
+  GLACIO:  "crystalline ice fractals, deep blue frost runes, frozen tundra shards orbiting, sub-zero aurora shimmer",
+  ELECTRO: "crackling violet lightning arcs, neon purple plasma threads, static discharge halos, electric sigil matrices",
+  AERO:    "spiraling wind currents, translucent jade-green air slashes, feather-light debris orbiting, tornado eye calm center",
+  HAVOC:   "void-black fractures splitting reality, deep crimson entropy waves, shattered dimensional glass, gravitational distortion",
+  SPECTRO: "golden radiance bursting from the core, spectral white light trails, soft lens-flare halos, prismatic refraction",
+  NONE:    "silver resonance energy, white-blue arcane sigils, neutral cosmic shimmer",
+};
+
+const WEAPON_TYPE_ART: Record<string, string> = {
+  BROADBLADE: "massive two-handed blade, wide serrated edge, heavy dark metal, imposing silhouette",
+  SWORD:      "elegant longsword, razor-thin edge, ornate crossguard, balanced and deadly",
+  PISTOLS:    "twin enchanted pistols, rune-etched barrels, crystalline chambers, floating muzzle-flare",
+  RECTIFIER:  "arcane focus catalyst, orbiting resonance crystals, channeling rod, ethereal resonance disk",
+};
+
 function fallbackArtPrompt(weaponName: string, weaponType: string, element: string, egoName: string): string {
+  const elemVfx  = ELEMENT_ART_LANGUAGE[element.toUpperCase()] ?? ELEMENT_ART_LANGUAGE.NONE;
+  const typeDesc = WEAPON_TYPE_ART[weaponType.toUpperCase()] ?? "weapon";
   return [
-    `Anime fantasy weapon concept art, ${weaponType.toLowerCase()} called "${egoName}" — an awakened, transformed version of "${weaponName}".`,
-    `${element.toLowerCase()} elemental energy coursing through the blade/body, glowing runes, dark cosmic background,`,
-    `Wuthering Waves / Honkai Star Rail aesthetic, dramatic lighting, intricate detail, no humans, weapon centered, 1:1 ratio.`,
+    `Anime fantasy weapon concept art of "${egoName}", the awakened soul of "${weaponName}".`,
+    `${typeDesc}, forged from ${element.toLowerCase()} resonance — ${elemVfx}.`,
+    `The weapon hovers centered in frame, radiating awakened energy, surrounded by orbiting runic fragments and elemental particles.`,
+    `Dark cosmic void background peppered with stars and dimensional rift light; dramatic rim-lighting; ultra-detailed metalwork and glowing inscriptions.`,
+    `Wuthering Waves / Honkai Star Rail aesthetic, cinematic composition, no humans, no text, weapon fills 70% of frame, 1:1 ratio.`,
   ].join(" ");
 }
 
@@ -167,7 +188,7 @@ export async function generateAwakening(userId: string): Promise<AwakeningResult
     `Rules:`,
     `- NAME: 2-4 words, title-case. Must feel like the awakened soul of the original weapon name — grander, alive. Do not reuse the original name verbatim.`,
     `- LORE: 1-2 sentences, poetic, no numbers. The weapon waking up, shaped by its wielder's story.`,
-    `- ART_PROMPT: one paragraph image-generation prompt for the awakened weapon's art (anime fantasy weapon concept art, ${element.toLowerCase()} elemental energy, dark cosmic background, no humans, weapon centered).`,
+    `- ART_PROMPT: a rich, detailed image-generation prompt (4-6 sentences) describing the awakened weapon's appearance. Include: weapon type and silhouette, specific ${element.toLowerCase()} elemental visual effects (glowing cracks, particle effects, energy aura), material and surface details (runes, engravings, metalwork), background environment (dark cosmic void, stars, dimensional rifts, element-themed atmosphere), lighting style (rim light, bloom, dramatic shadows), and overall aesthetic (anime fantasy, Wuthering Waves / Honkai Star Rail style). No humans, no text in image, weapon centered, cinematic composition.`,
     `- DESC: 1 sentence describing the awakened passive in flavourful but concrete terms.`,
     `- NEW_EFFECT: one object {type, value} — the newly awakened power. type MUST be from this list, value within range:`,
     choices,
@@ -191,7 +212,7 @@ export async function generateAwakening(userId: string): Promise<AwakeningResult
     `Awaken the weapon. Its new name and soul must feel forged from this exact wielder.`,
   ].join("\n");
 
-  const raw = await askAI({ systemPrompt, userPrompt, maxTokens: 500 });
+  const raw = await askAI({ systemPrompt, userPrompt, maxTokens: 800 });
   if (!raw) return fallback;
 
   try {
