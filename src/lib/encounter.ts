@@ -318,12 +318,15 @@ export async function handleEncounterFight(
   const dbUser = await prisma.user.findUnique({
     where:  { id: interaction.user.id },
     select: { level: true, baseAtk: true, baseDef: true, baseHp: true,
-              worldLevel: true, element: true, critRate: true, critDmg: true },
+              worldLevel: true, element: true, critRate: true, critDmg: true,
+              isOnboarded: true },
   });
 
-  if (!dbUser) {
+  // A user row can exist without /start (some commands auto-create) — require
+  // completed onboarding, not just row existence.
+  if (!dbUser?.isOnboarded) {
+    enc.fighterId = null; // free the encounter for someone who has started
     await interaction.followUp({ content: "You need to `/start` before you can fight!", flags: 64 });
-    removeEncounter(interaction.message.id);
     return;
   }
 

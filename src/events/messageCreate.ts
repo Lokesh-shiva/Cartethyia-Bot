@@ -1,5 +1,5 @@
 import { Events, Message, EmbedBuilder, AttachmentBuilder, TextChannel } from "discord.js";
-import { tryAwardChatExp, getOrCreateUser } from "../lib/economy";
+import { tryAwardChatExp } from "../lib/economy";
 import { checkLevelUp, sendMilestoneNotifications } from "../lib/progression";
 import { generateLevelUpCard } from "../lib/levelUpCard";
 import { sendElementSelection } from "../lib/elementSelect";
@@ -22,7 +22,7 @@ export async function execute(message: Message) {
   // ── Prefix command handler ───────────────────────────────────────────────────
   // Runs FIRST — before any DB call — so a slow database can never delay or block
   // a command. Each command calls getOrCreateUser() itself, so the user is still
-  // ensured to exist. EXP/encounter handling below does its own getOrCreateUser.
+  // ensured to exist. EXP/encounter handling below requires an onboarded user.
   const prefix  = getPrefix(message.guildId!);   // always returns a string ("c!" default)
   const content = message.content;
 
@@ -55,23 +55,22 @@ export async function execute(message: Message) {
     }
   }
 
-  // ── Ensure user exists (for EXP + encounters) ────────────────────────────────
-  await getOrCreateUser(
-    message.author.id,
-    displayName,
-    message.author.displayAvatarURL({ size: 128, extension: "png" })
-  );
+  // ── Started players only ─────────────────────────────────────────────────────
+  // Do NOT auto-create users here — that let anyone gain chat EXP, level up and
+  // fight encounters without ever running /start. Only onboarded players
+  // earn EXP or trigger encounter spawns.
+  const chatUser = await prisma.user.findUnique({
+    where:  { id: message.author.id },
+    select: { isOnboarded: true, worldLevel: true },
+  });
+  if (!chatUser?.isOnboarded) return;
 
   // ── Chat EXP ─────────────────────────────────────────────────────────────────
   const expGained = isExpEnabled(message.guildId!) && await tryAwardChatExp(message.author.id);
 
   // Encounter check — runs regardless of exp cooldown
   if (shouldSpawnEncounter(message.guildId!, message.channelId)) {
-    const dbForEnc = await prisma.user.findUnique({
-      where:  { id: message.author.id },
-      select: { worldLevel: true },
-    });
-    await spawnEncounter(channel, dbForEnc?.worldLevel ?? 0);
+    await spawnEncounter(channel, chatUser.worldLevel ?? 0);
   }
 
   if (!expGained) return;
