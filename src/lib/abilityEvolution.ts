@@ -1,6 +1,6 @@
 // ── Lv50 Unique Ability Evolution ─────────────────────────────────────────────
 // Predetermined (non-AI) evolution of the unique ability earned at first ascension.
-// Quest (ordered): start → clear 3 dungeons → defeat a WL3+ boss → pay materials.
+// Quest (ordered): start → clear 3 dungeons → defeat a WL2+ boss → pay materials.
 // Evolution: existing effect values ×1.3 (over-cap up to 1.3× registry max) + a
 // 4th element-themed primitive added. Name gains an epithet, lore gains a line.
 
@@ -11,7 +11,10 @@ import { derivePlaystyle, derivePersonality, deriveBonds, deriveCombat, deriveDe
 
 export const EVO_LEVEL_REQUIRED   = 50;
 export const EVO_DUNGEONS_NEEDED  = 3;
-export const EVO_BOSS_WL_REQUIRED = 3; // WL3 is reachable at Lv50 (quest unlock); WL5 needed Lv70
+// WL2: /boss only lists ALREADY-CLEARED bosses (worldLevel > wl), so a Lv50
+// player (WL3 after ascending) can re-fight the WL2 boss — completable right at
+// the Lv50 quest unlock. WL3 boss would need WL4 = Lv60; WL5 would need Lv70.
+export const EVO_BOSS_WL_REQUIRED = 2;
 export const EVO_COST = { paradoxCores: 5, stasisLocks: 8 };
 
 // ── Predetermined evolved identity per element ────────────────────────────────
