@@ -401,13 +401,19 @@ export async function generateProfileCard(input: ProfileCardInput): Promise<Buff
   if (input.weapon) {
     const WS = 36; // thumbnail size
 
-    // Resolve art path: unique → assets/weapons/unique/{userId}.png
-    //                   normal  → assets/weapons/{TypeFolder}/{Name}.png
+    // Resolve art path: awakened → assets/weapons/awakened/{awakenedName}.png
+    //                   unique   → assets/weapons/unique/{userId}.png
+    //                   normal   → assets/weapons/{TypeFolder}/{Name}.png
     const typeFolder = input.weapon.weaponType.charAt(0).toUpperCase()
-      + input.weapon.weaponType.slice(1).toLowerCase();   // BROADBLADE → Broadblade
-    const weapImgPath = input.weapon.isUnique && input.weapon.userId
-      ? path.join(process.cwd(), "assets", "weapons", "unique", `${input.weapon.userId}.png`)
-      : path.join(process.cwd(), "assets", "weapons", typeFolder, `${input.weapon.name}.png`);
+      + input.weapon.weaponType.slice(1).toLowerCase();
+    const awakenedImgPath = input.weapon.awakened && input.weapon.awakenedName
+      ? path.join(process.cwd(), "assets", "weapons", "awakened", `${input.weapon.awakenedName}.png`)
+      : null;
+    const weapImgPath = (awakenedImgPath && fs.existsSync(awakenedImgPath))
+      ? awakenedImgPath
+      : input.weapon.isUnique && input.weapon.userId
+        ? path.join(process.cwd(), "assets", "weapons", "unique", `${input.weapon.userId}.png`)
+        : path.join(process.cwd(), "assets", "weapons", typeFolder, `${input.weapon.name}.png`);
 
     // Thumbnail box
     ctx.save();

@@ -22,6 +22,15 @@ export function startVoteWebhook(client: Client) {
   const app = express();
   app.use(express.json());
 
+  // Allow DBL's browser test button to reach this endpoint
+  app.use((req, res, next) => {
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
+    res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
+    if (req.method === "OPTIONS") { res.sendStatus(204); return; }
+    next();
+  });
+
   app.post("/dbl-vote", (req, res) => {
     // Verify DBL authorization header
     if (req.headers.authorization !== DBL_WEBHOOK_AUTH) {
