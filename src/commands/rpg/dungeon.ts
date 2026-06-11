@@ -434,7 +434,8 @@ async function runWave(
           return;
         }
 
-        const defVal  = isShattered ? 0 : scaled.def_;
+        const defVal       = isShattered ? 0 : scaled.def_;
+        const defReduction = Math.min(0.75, defVal / (defVal + 1500));
         const radCrit = elemRadianceCrit(bonuses.elementPassive, ws.playerHp, ws.playerHpMax);
         const cRate   = apply5pcLowHpCrit(bonuses, Math.min(1, stats.critRate + radCrit), ws.playerHp, ws.playerHpMax);
         const totalVibMult = vibMult * compositeVibMult(bonuses.abilityEffects);
@@ -448,7 +449,7 @@ async function runWave(
 
         if (btn.customId === "dg_basic") {
           const crit   = Math.random() < cRate; abilCrit = crit;
-          let dmg      = Math.max(1, Math.floor((stats.atk - defVal * 0.5) * (crit ? stats.critDmg : 1) * (isWeak ? 1.5 : 1) * (1 + bonuses.elemDmgBonus)));
+          let dmg      = Math.max(1, Math.floor(stats.atk * (1 - defReduction) * (crit ? stats.critDmg : 1) * (isWeak ? 1.5 : 1) * (1 + bonuses.elemDmgBonus)));
           if (roll4pcDoubleHit(bonuses)) dmg *= 2;
           dmg          = apply5pcFirstHit(bonuses, dmg, !ws.firstActionDone);
           dmg          = apply5pcFullHpDmg(bonuses, dmg, ws.playerHp, ws.playerHpMax);
@@ -467,7 +468,7 @@ async function runWave(
 
         if (btn.customId === "dg_skill") {
           const crit   = Math.random() < Math.min(1, cRate + 0.1); abilCrit = crit;
-          let dmg      = Math.max(1, Math.floor((stats.atk * 1.8 - defVal * 0.5) * (crit ? stats.critDmg : 1) * (isWeak ? 1.5 : 1) * (1 + bonuses.elemDmgBonus)));
+          let dmg      = Math.max(1, Math.floor(stats.atk * 1.8 * (1 - defReduction) * (crit ? stats.critDmg : 1) * (isWeak ? 1.5 : 1) * (1 + bonuses.elemDmgBonus)));
           dmg          = apply4pcSkillBonus(bonuses, dmg, !ws.firstSkillUsed);
           dmg          = apply5pcFirstHit(bonuses, dmg, !ws.firstActionDone);
           dmg          = Math.floor(dmg * elemWindstrideMult(bonuses.elementPassive, 1, "SKILL"));

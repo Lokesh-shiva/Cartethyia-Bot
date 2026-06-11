@@ -322,6 +322,7 @@ const command: Command = {
 
           const isWeak        = user.element === boss.weakness;
           const defVal        = state.isShattered ? 0 : scaled.def;
+          const defReduction  = Math.min(0.75, defVal / (defVal + 1500));
           const vibMult       = get5pcVibDrainMult(bonuses);
           const radCrit       = elemRadianceCrit(bonuses.elementPassive, state.playerHp, state.playerHpMax);
           const activeCritRate = apply5pcLowHpCrit(bonuses, Math.min(1, stats.critRate + radCrit), state.playerHp, state.playerHpMax);
@@ -348,7 +349,7 @@ const command: Command = {
 
           if (btn.customId === "boss_basic") {
             const crit   = Math.random() < activeCritRate; abilCrit = crit;
-            const base   = Math.max(1, stats.atk - defVal);
+            const base   = Math.max(1, Math.floor(stats.atk * (1 - defReduction)));
             let dmg      = Math.floor(base * (crit ? stats.critDmg : 1) * (isWeak ? 1.5 : 1) * (1 + bonuses.elemDmgBonus));
             dmg          = apply5pcFirstHit(bonuses, dmg, !firstActionDone);
             dmg          = apply5pcFullHpDmg(bonuses, dmg, state.playerHp, state.playerHpMax);
@@ -368,7 +369,7 @@ const command: Command = {
 
           if (btn.customId === "boss_skill") {
             const crit   = Math.random() < Math.min(1, activeCritRate + 0.1); abilCrit = crit;
-            const base   = Math.max(1, stats.atk * 1.8 - defVal);
+            const base   = Math.max(1, Math.floor(stats.atk * 1.8 * (1 - defReduction)));
             let dmg      = Math.floor(base * (crit ? stats.critDmg : 1) * (isWeak ? 1.5 : 1) * (1 + bonuses.elemDmgBonus));
             dmg          = apply4pcSkillBonus(bonuses, dmg, !firstSkillUsed);
             dmg          = apply5pcFirstHit(bonuses, dmg, !firstActionDone);
@@ -389,7 +390,7 @@ const command: Command = {
 
           if (btn.customId === "boss_ultimate") {
             abilCrit     = true;
-            const base   = Math.max(1, stats.atk * 3.5 - defVal);
+            const base   = Math.max(1, Math.floor(stats.atk * 3.5 * (1 - defReduction)));
             let dmg      = Math.floor(base * (isWeak ? 1.5 : 1) * (1 + bonuses.elemDmgBonus));
             dmg          = apply4pcUltBonus(bonuses, dmg);
             const am     = compositeDamageMult(bonuses.abilityEffects, { ...abilCtxBase, moveType: "ULT" });
