@@ -15,10 +15,16 @@ export async function execute(client: Client) {
   await prisma.$queryRaw`SELECT 1`.catch(() => {});
   console.log("[Ready] Database connection warmed.");
 
-  // Keep Neon connection alive — prevents serverless suspension between queries
+  // Keep Neon connection alive — prevents serverless auto-suspend (default 5 min
+  // idle). Ping every 2 min for comfortable margin; log failures so a dying
+  // keepalive is visible instead of silently letting the compute suspend.
   setInterval(async () => {
-    await prisma.$queryRaw`SELECT 1`.catch(() => {});
-  }, 4 * 60 * 1000); // every 4 minutes
+    try {
+      await prisma.$queryRaw`SELECT 1`;
+    } catch (err: any) {
+      console.warn("[Ready] keepalive ping failed:", err?.code ?? err?.message ?? err);
+    }
+  }, 2 * 60 * 1000); // every 2 minutes
 
   // Application emojis — uploaded to the bot itself, usable in every server
   await loadEmojis(client);
