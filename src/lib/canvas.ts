@@ -75,14 +75,15 @@ export interface EchoSlotData {
 }
 
 export interface WeaponData {
-  name:        string;
-  weaponType:  string;
-  rarity:      number;
-  baseAtk:     number;
-  userId?:     string;   // for unique forged weapons → assets/weapons/unique/{userId}.png
-  isUnique?:   boolean;
-  awakened?:   boolean;
-  weaponBond?: number;
+  name:          string;
+  weaponType:    string;
+  rarity:        number;
+  baseAtk:       number;
+  userId?:       string;   // for unique forged weapons → assets/weapons/unique/{userId}.png
+  isUnique?:     boolean;
+  awakened?:     boolean;
+  awakenedName?: string | null;
+  weaponBond?:   number;
 }
 
 export interface ProfileCardInput {
@@ -444,10 +445,11 @@ export async function generateProfileCard(input: ProfileCardInput): Promise<Buff
     ctx.font = `bold 8px Rajdhani, Arial, sans-serif`;
     ctx.fillText(filledStars, NX, weapY + WS + 6);
 
-    // Weapon name
-    ctx.fillStyle = input.weapon.isUnique ? t.secondary : "#FFFFFF";
+    // Weapon name — show awakenedName when awakened
+    const displayWeaponName = (input.weapon.awakened && input.weapon.awakenedName) ? input.weapon.awakenedName : input.weapon.name;
+    ctx.fillStyle = input.weapon.awakened ? "#FCD34D" : input.weapon.isUnique ? t.secondary : "#FFFFFF";
     ctx.font = `bold 13px Rajdhani, 'Noto Sans', 'Noto Sans CJK SC', 'Noto Sans JP', Arial, sans-serif`;
-    ctx.fillText(truncate(input.weapon.name, 22), NX + WS + 6, weapY + 12);
+    ctx.fillText(truncate(displayWeaponName, 22), NX + WS + 6, weapY + 12);
 
     // Type · ATK
     ctx.fillStyle = "rgba(255,255,255,0.35)";

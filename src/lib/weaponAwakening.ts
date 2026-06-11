@@ -240,6 +240,41 @@ export async function generateAwakening(userId: string): Promise<AwakeningResult
   }
 }
 
+// ── Art prompt regeneration ───────────────────────────────────────────────────
+// Regenerates ONLY the awakenedArtPrompt for an already-awakened weapon.
+// Keeps name/lore/passive untouched.
+export async function regenerateArtPrompt(userId: string): Promise<string | null> {
+  const [user, weapon] = await Promise.all([
+    prisma.user.findUnique({ where: { id: userId }, select: { element: true } }),
+    prisma.weapon.findFirst({
+      where:  { userId, isEquipped: true, awakened: true },
+      select: { id: true, name: true, weaponType: true, rarity: true, awakenedName: true },
+    }),
+  ]);
+  if (!user || !weapon) return null;
+
+  const element  = (user.element as string) ?? "NONE";
+  const egoName  = weapon.awakenedName ?? weapon.name;
+  const fallback = fallbackArtPrompt(weapon.name, weapon.weaponType, element, egoName);
+
+  const elemVfx  = ELEMENT_ART_LANGUAGE[element.toUpperCase()] ?? ELEMENT_ART_LANGUAGE.NONE;
+  const typeDesc = WEAPON_TYPE_ART[weapon.weaponType.toUpperCase()] ?? "weapon";
+
+  const systemPrompt = `You are a concept art prompt writer for an anime fantasy RPG in the style of Wuthering Waves. Write ONLY a detailed image-generation prompt — no other text.`;
+  const userPrompt   = [
+    `Write a rich art prompt (4-6 sentences) for an awakened weapon called "${egoName}" (original: "${weapon.name}"), ${weapon.rarity}★ ${weapon.weaponType.toLowerCase()}.`,
+    `Visual elements to include: ${typeDesc}. ${element.toLowerCase()} elemental energy — ${elemVfx}.`,
+    `The weapon hovers centered in frame. Dark cosmic void background with stars and dimensional rifts.`,
+    `Include: detailed metalwork/inscriptions, dramatic rim-lighting, particle effects, elemental aura. Wuthering Waves / Honkai Star Rail aesthetic. No humans, no text.`,
+  ].join(" ");
+
+  const raw = await askAI({ systemPrompt, userPrompt, maxTokens: 400 });
+  const prompt = raw?.trim() || fallback;
+
+  await prisma.weapon.update({ where: { id: weapon.id }, data: { awakenedArtPrompt: prompt } });
+  return prompt;
+}
+
 // ── Weapon Bond ───────────────────────────────────────────────────────────────
 // Awakened weapons start at 80% power (bond 0) and grow to 100% at bond 10.
 // Bond increments on boss/dungeon/field-boss wins when weapon is equipped.
