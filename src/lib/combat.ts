@@ -45,11 +45,11 @@ export function calcPlayerDamage(
   weakBonus: boolean,
   shattered: boolean,
 ): DamageResult {
-  const effectiveDef = shattered ? 0 : def;
-  const isCrit       = Math.random() < critRate;
-  const weakMult     = weakBonus ? 1.5 : 1.0;
-  const damage       = Math.max(1, Math.floor(
-    (baseAtk * mult - effectiveDef * 0.5) * (isCrit ? critDmg : 1) * weakMult
+  const isCrit   = Math.random() < critRate;
+  const weakMult = weakBonus ? 1.5 : 1.0;
+  const reduction = shattered ? 0 : Math.min(0.75, def / (def + 1500));
+  const damage   = Math.max(1, Math.floor(
+    baseAtk * mult * (1 - reduction) * (isCrit ? critDmg : 1) * weakMult
   ));
   return { damage, isCrit, isWeak: weakBonus };
 }

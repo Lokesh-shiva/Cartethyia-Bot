@@ -76,7 +76,7 @@ export const WISH_WEAPONS_4STAR: WishWeapon[] = [
 export const WISH_WEAPONS_5STAR: WishWeapon[] = [
   {
     id: "oathbreakers_edge", name: "Oathbreaker's Edge", type: "SWORD", rarity: 5,
-    baseAtk: 130, atkMaxMult: 5.0,
+    baseAtk: 155, atkMaxMult: 5.0,
     subStatType:  "CRIT_DMG",   subStatBase: 30, subStatScale: 2.2,
     hiddenSub1Type: "CRIT_RATE", hiddenSub1Base: 10, hiddenSub1Scale: 2.2,
     hiddenSub2Type: "ATK_PERCENT", hiddenSub2Base: 10, hiddenSub2Scale: 2.2,
