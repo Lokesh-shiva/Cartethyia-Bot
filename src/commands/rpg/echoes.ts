@@ -6,6 +6,7 @@ import prisma from "../../lib/prisma";
 import {
   ELEMENT_COLORS, ELEMENT_EMOJI, RARITY_STARS,
   MAIN_STAT_LABELS, SUBSTAT_LABELS,
+  calcMainStatValue, calcSubstatValue, formatStatValue,
 } from "../../lib/echoes";
 import { echoEmoji } from "../../lib/emojiManager";
 import { resolvePlayerBonuses } from "../../lib/setBonus";
@@ -84,6 +85,26 @@ export async function execute(interaction: ChatInputCommandInteraction) {
   });
   if (unequipped.length > 12) invLines.push(`*… and ${unequipped.length - 12} more*`);
 
+  // ── Grid detail: per-slot breakdown ──────────────────────────────────────
+  const SLOT_NAMES = ["Main Slot", "Sub Slot 1", "Sub Slot 2", "Sub Slot 3", "Sub Slot 4"];
+  const gridDetail = SLOT_NAMES.map((slotName, slot) => {
+    const e = equipped.find(x => x.equippedSlot === slot);
+    if (!e) return `**${slotName}** ·  ○ Empty`;
+    const mainVal   = calcMainStatValue(e.mainStatType, e.level, e.rarity);
+    const mainLabel = MAIN_STAT_LABELS[e.mainStatType] ?? e.mainStatType;
+    const subs = [
+      [e.substat1Type, e.substat1Value],
+      [e.substat2Type, e.substat2Value],
+      [e.substat3Type, e.substat3Value],
+      [e.substat4Type, e.substat4Value],
+      [e.substat5Type, e.substat5Value],
+    ].filter(([t], i) => t && i < (e.revealedSubstats ?? 0)) as [string, number][];
+    const subLine = subs.length > 0
+      ? subs.slice(0, 3).map(([t, v]) => `${SUBSTAT_LABELS[t] ?? t} ${formatStatValue(t, calcSubstatValue(t, v, e.level))}`).join("  ·  ")
+      : "*substats unrevealed*";
+    return `**${slotName}** ·  ${ELEMENT_EMOJI[e.element as Element]} **${e.name}**  ${RARITY_STARS[e.rarity]}  Lv${e.level}  (${e.cost}-cost)\n  \`${mainLabel}: ${formatStatValue(e.mainStatType, mainVal)}\`  ·  ${subLine}`;
+  }).join("\n");
+
   // Full active bonus text for the embed (canvas may wrap long lines)
   const bonusText = bonuses.activeLabels.length === 0
     ? "*No active bonuses — equip echoes of the same element to activate set effects.*"
@@ -94,6 +115,11 @@ export async function execute(interaction: ChatInputCommandInteraction) {
     .setColor(color)
     .setImage("attachment://grid.png")
     .addFields(
+      {
+        name:   "◈  Equipped Grid",
+        value:  gridDetail,
+        inline: false,
+      },
       {
         name:   "✦  Active Bonuses",
         value:  bonusValue,

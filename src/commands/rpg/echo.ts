@@ -5,7 +5,7 @@ import {
 } from "discord.js";
 import prisma from "../../lib/prisma";
 import { replyNotStarted } from "../../lib/economy";
-import { ELEMENT_COLORS, ELEMENT_EMOJI, RARITY_STARS, MAIN_STAT_LABELS } from "../../lib/echoes";
+import { ELEMENT_COLORS, ELEMENT_EMOJI, RARITY_STARS, MAIN_STAT_LABELS, calcMainStatValue, calcSubstatValue, formatStatValue, SUBSTAT_LABELS } from "../../lib/echoes";
 import { Element } from "@prisma/client";
 import { generateEchoCard, echoRowToCard } from "../../lib/echoCard";
 
@@ -91,11 +91,19 @@ export async function execute(interaction: ChatInputCommandInteraction) {
     .setImage("attachment://echo.png")
     .setFooter({ text: `CARTETHYIA  ·  Echo${echo.isEquipped ? "  ·  EQUIPPED" : ""}${filterDesc ? `  ·  Filter: ${filterDesc}` : ""}` });
 
-  const options = shown.map(e => ({
-    label:       `${e.name}  ${RARITY_STARS[e.rarity]}  Lv${e.level}`,
-    description: `${e.cost}-cost · ${MAIN_STAT_LABELS[e.mainStatType] ?? e.mainStatType} · ${ELEMENT_EMOJI[e.element as Element]} ${e.element}${e.isEquipped ? " · equipped" : ""}`,
-    value:       e.id,
-  }));
+  const options = shown.map(e => {
+    const mainVal   = calcMainStatValue(e.mainStatType, e.level, e.rarity);
+    const mainLabel = MAIN_STAT_LABELS[e.mainStatType] ?? e.mainStatType;
+    // Best revealed substat (first one)
+    const bestSub = e.revealedSubstats > 0 && e.substat1Type
+      ? `  ·  ${SUBSTAT_LABELS[e.substat1Type] ?? e.substat1Type} ${formatStatValue(e.substat1Type, calcSubstatValue(e.substat1Type, e.substat1Value ?? 0, e.level))}`
+      : "";
+    return {
+      label:       `${e.name}  ${RARITY_STARS[e.rarity]}  Lv${e.level}${e.isEquipped ? "  ← equipped" : ""}`,
+      description: `${e.cost}-cost · ${mainLabel}: ${formatStatValue(e.mainStatType, mainVal)}${bestSub}`,
+      value:       e.id,
+    };
+  });
 
   const row = new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(
     new StringSelectMenuBuilder()
