@@ -1,11 +1,13 @@
 import {
   SlashCommandBuilder, ChatInputCommandInteraction,
-  EmbedBuilder, StringSelectMenuBuilder,
+  EmbedBuilder, AttachmentBuilder, StringSelectMenuBuilder,
   StringSelectMenuOptionBuilder, ActionRowBuilder, ComponentType,
 } from "discord.js";
 import { Command } from "../../types";
 import { getOrCreateUser } from "../../lib/economy";
-import { RARITY_STARS, WEAPON_TYPE_EMOJI } from "../../lib/weapons";
+import { RARITY_STARS, WEAPON_TYPE_EMOJI, FORGED_WEAPONS } from "../../lib/weapons";
+import { generateWeaponCard } from "../../lib/weaponCard";
+import { ALL_WISH_WEAPONS, calcWishSubStat } from "../../lib/wishWeapons";
 import { WeaponType } from "@prisma/client";
 import prisma from "../../lib/prisma";
 
@@ -110,20 +112,57 @@ const command: Command = {
       await prisma.weapon.update({ where: { id: chosenId }, data: { isEquipped: true } });
       await prisma.user.update({ where: { id: interaction.user.id }, data: { weaponType: chosen.weaponType } });
 
+      const wishDef  = ALL_WISH_WEAPONS.find(x => x.name === chosen.name);
+      const forgeDef = FORGED_WEAPONS.find(x => x.name === chosen.name);
+      const h1Val = chosen.level >= 20 && chosen.hiddenSub1Val != null
+        ? calcWishSubStat(chosen.hiddenSub1Val, wishDef?.hiddenSub1Scale ?? 1.8, chosen.level) : null;
+      const h2Val = chosen.level >= 50 && chosen.hiddenSub2Val != null
+        ? calcWishSubStat(chosen.hiddenSub2Val, wishDef?.hiddenSub2Scale ?? 1.8, chosen.level) : null;
+
+      const maxMult: Record<number, number> = { 1: 2.5, 2: 3.0, 3: 3.5, 4: 4.2, 5: 5.0 };
+      const effectiveAtk = Math.round(chosen.baseAtk * (1 + (chosen.level - 1) * ((maxMult[chosen.rarity] ?? 2.5) - 1) / 89));
+      const effectiveSub = chosen.subStatVal != null
+        ? Math.round((chosen.subStatVal * (1 + (chosen.level - 1) * 0.8 / 89)) * 10) / 10 : null;
+
+      const cardBuf = await generateWeaponCard({
+        name:         chosen.name,
+        weaponType:   chosen.weaponType,
+        rarity:       chosen.rarity,
+        level:        chosen.level,
+        baseAtk:      chosen.baseAtk,
+        effectiveAtk,
+        subStatType:  chosen.subStatType ?? null,
+        subStatVal:   chosen.subStatVal  ?? null,
+        effectiveSub,
+        passive:      chosen.awakened && (chosen.awakenedPassive as any)?.desc
+          ? (chosen.awakenedPassive as any).desc
+          : forgeDef?.passive ?? "",
+        element:      user.element,
+        ownerName:    displayName,
+        ownerAvatar:  avatarUrl,
+        hiddenSub1Type: chosen.hiddenSub1Type ?? null,
+        hiddenSub1Val:  h1Val,
+        hiddenSub2Type: chosen.hiddenSub2Type ?? null,
+        hiddenSub2Val:  h2Val,
+        awakened:      chosen.awakened,
+        awakenedName:  chosen.awakenedName,
+        weaponBond:    chosen.weaponBond,
+      });
+      const file = new AttachmentBuilder(cardBuf, { name: "weapon.png" });
+
+      const displayName2 = (chosen.awakened && chosen.awakenedName) ? chosen.awakenedName : chosen.name;
       await sel.editReply({
         embeds: [
           new EmbedBuilder()
-            .setColor(color)
-            .setTitle(`✦ Weapon Equipped`)
+            .setColor(chosen.awakened ? 0xFCD34D : color)
+            .setTitle(`✦ ${chosen.awakened ? "Ego Weapon" : "Weapon"} Equipped`)
             .setDescription([
-              `**${chosen.name}**  ${RARITY_STARS[chosen.rarity]}`,
-              `${WEAPON_TYPE_EMOJI[chosen.weaponType as WeaponType]}  ${chosen.weaponType}`,
-              ``,
-              `ATK  **${chosen.baseAtk}**${chosen.subStatType ? `  ·  ${chosen.subStatType.replace(/_/g, " ")}  +${chosen.subStatVal}%` : ""}`,
-              equipped ? `\n◇ Unequipped: **${equipped.name}**` : "",
-            ].filter(Boolean).join("\n"))
-            .setFooter({ text: "CARTETHYIA  ·  Arsenal" }),
+              equipped ? `◇ Unequipped: **${(equipped.awakened && equipped.awakenedName) ? equipped.awakenedName : equipped.name}**` : "",
+            ].filter(Boolean).join("\n") || null)
+            .setImage("attachment://weapon.png")
+            .setFooter({ text: `CARTETHYIA  ·  Arsenal${chosen.awakened ? `  ·  ✦ ${displayName2}` : ""}` }),
         ],
+        files: [file],
         components: [],
       });
     });
