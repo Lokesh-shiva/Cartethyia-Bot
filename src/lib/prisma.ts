@@ -1,4 +1,4 @@
-import { PrismaClient } from "@prisma/client";
+import { PrismaClient, Prisma } from "@prisma/client";
 import { PrismaNeon } from "@prisma/adapter-neon";
 import { neonConfig } from "@neondatabase/serverless";
 import ws from "ws";
@@ -14,20 +14,23 @@ function createPrismaClient() {
 
   const client = new PrismaClient({ adapter, log: ["error", "warn"] });
 
-  // Retry failed queries up to 3× with backoff (handles Neon cold-start ETIMEDOUT)
+  // Retry transient connection errors up to 3× with backoff (Neon cold-start)
+  // Only skip retry for definitive business-logic errors (validation, constraint, not-found).
   return client.$extends({
     query: {
       $allModels: {
-        async $allOperations({ operation, model, args, query }) {
+        async $allOperations({ args, query }) {
           let lastErr: unknown;
           for (let attempt = 0; attempt < 3; attempt++) {
             try {
               return await query(args);
             } catch (err: any) {
               lastErr = err;
-              const retryable = err?.code === "ETIMEDOUT" || err?.code === "ECONNRESET" || err?.code === "ENOTFOUND";
-              if (!retryable || attempt === 2) throw err;
-              await new Promise(r => setTimeout(r, 300 * (attempt + 1)));
+              // Don't retry known Prisma query errors (wrong args, constraint violations, etc.)
+              const isQueryError = err instanceof Prisma.PrismaClientKnownRequestError
+                || err instanceof Prisma.PrismaClientValidationError;
+              if (isQueryError || attempt === 2) throw err;
+              await new Promise(r => setTimeout(r, 400 * (attempt + 1)));
             }
           }
           throw lastErr;
