@@ -19,16 +19,20 @@
   "type": "commonjs",
   "dependencies": {
     "@napi-rs/canvas": "^1.0.0",
+    "@neondatabase/serverless": "^1.1.0",
+    "@prisma/adapter-neon": "^7.8.0",
     "@prisma/adapter-pg": "^7.8.0",
     "@prisma/client": "^7.8.0",
     "@top-gg/sdk": "^3.1.6",
+    "@types/ws": "^8.18.1",
     "discord.js": "^14.26.4",
     "dotenv": "^17.4.2",
     "express": "^5.2.1",
     "openai": "^6.39.1",
     "p-queue": "^7.4.1",
     "pg": "^8.21.0",
-    "tsx": "^4.22.3"
+    "tsx": "^4.22.3",
+    "ws": "^8.21.0"
   },
   "devDependencies": {
     "@types/express": "^5.0.6",
