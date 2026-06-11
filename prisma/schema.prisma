@@ -63,9 +63,9 @@ model User {
   weaponType       WeaponType?
 
   // Base Combat Stats
-  baseHp           Int            @default(500)
-  baseAtk          Int            @default(50)
-  baseDef          Int            @default(30)
+  baseHp           Int            @default(800)
+  baseAtk          Int            @default(40)
+  baseDef          Int            @default(50)
   baseSpeed        Int            @default(100)
   critRate         Float          @default(0.05)
   critDmg          Float          @default(1.5)

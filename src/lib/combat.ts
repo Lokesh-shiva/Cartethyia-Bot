@@ -54,8 +54,11 @@ export function calcPlayerDamage(
   return { damage, isCrit, isWeak: weakBonus };
 }
 
+// DEF uses a divisor model (WuWa/Genshin-style): diminishing returns, never immune.
+// reduction = DEF / (DEF + 600), clamped to 75% max so squishies always take some damage.
 export function calcEnemyDamage(enemyAtk: number, playerDef: number, moveMult: number): number {
-  return Math.max(1, Math.floor(enemyAtk * moveMult - playerDef * 0.4));
+  const reduction = Math.min(0.75, playerDef / (playerDef + 600));
+  return Math.max(1, Math.floor(enemyAtk * moveMult * (1 - reduction)));
 }
 
 // ── Resolve echo art path (absolute) ─────────────────────────────────────────

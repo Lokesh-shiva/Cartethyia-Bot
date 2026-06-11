@@ -380,9 +380,9 @@ export async function generateProfileCard(input: ProfileCardInput): Promise<Buff
   // ── Stat bars ─────────────────────────────────────────────────────────────
   const BX = NX, BW = 200;
   const stats = [
-    { label: "HP",     val: input.baseHp,                     max: 5000, color: "#FB7185" },
-    { label: "ATK",    val: input.baseAtk,                    max: 2000, color: t.primary },
-    { label: "DEF",    val: input.baseDef,                    max: 2000, color: "#38BDF8" },
+    { label: "HP",     val: input.baseHp,                     max: 25000, color: "#FB7185" },
+    { label: "ATK",    val: input.baseAtk,                    max: 2000,  color: t.primary },
+    { label: "DEF",    val: input.baseDef,                    max: 3000,  color: "#38BDF8" },
     { label: "SPD",    val: input.baseSpeed,                  max: 200,  color: "#34D399" },
     { label: "CRIT",   val: Math.round(input.critRate * 100), max: 100,  color: "#FBBF24" },
     { label: "C.DMG",  val: Math.round(input.critDmg * 100),  max: 300,  color: "#A78BFA" },

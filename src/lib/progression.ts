@@ -152,9 +152,9 @@ export async function checkLevelUp(userId: string): Promise<LevelUpResult> {
   await prisma.user.update({
     where: { id: userId },
     data: {
-      baseHp:           { increment: levelsGained * 12 },
-      baseAtk:          { increment: levelsGained * 3  },
-      baseDef:          { increment: levelsGained * 2  },
+      baseHp:           { increment: levelsGained * 126 },
+      baseAtk:          { increment: levelsGained * 4   },
+      baseDef:          { increment: levelsGained * 11  },
       baseSpeed:        { increment: levelsGained * 1  },
       resonanceRecords: recordBonus > 0 ? { increment: recordBonus } : undefined,
     },
