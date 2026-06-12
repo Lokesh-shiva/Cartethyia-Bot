@@ -1,10 +1,9 @@
 // ── Lv60 Ego Weapon Awakening ─────────────────────────────────────────────────
-// The player's equipped weapon TRANSFORMS (not replaced): new AI-generated name,
-// lore, art prompt, boosted stats (ATK + substat + hidden substats) and an
-// awakened passive. Gacha rarity = awakening ceiling (5★ > 4★ > 3★).
-// AI uses the full player picture incl. the EVOLVED unique ability; deterministic
-// fallback if LM Studio is offline. Art: drop a PNG at
-// assets/weapons/awakened/{awakenedName}.png and the card picks it up.
+// The player's equipped weapon TRANSFORMS: new AI-generated name, lore, art,
+// boosted baseAtk (×mult), and FULLY RE-ROLLED substats chosen by AI to fit the
+// player's element + evolved ability. Values are set from rarity-scaled tables,
+// not old×mult — awakening is an identity change, not a percentage bump.
+// Gacha rarity = ceiling (5★ > 4★ > 3★). Deterministic fallback if AI offline.
 
 import prisma from "./prisma";
 import { askAI } from "./ai";
@@ -16,8 +15,85 @@ import { derivePersonality, deriveBonds, deriveCombat, deriveDedication } from "
 export const EGO_LEVEL_REQUIRED = 60;
 export const EGO_COST = { forgingOres: 20, paradoxCores: 8, credits: 20000 };
 
-// Rarity = awakening ceiling: stat multiplier applied to baseAtk, substat, hidden substats.
+// Rarity ceiling multiplier — applied to baseAtk ONLY. Substats are now re-rolled fresh.
 export const AWAKEN_STAT_MULT: Record<number, number> = { 1: 1.12, 2: 1.12, 3: 1.15, 4: 1.20, 5: 1.25 };
+
+// ── Awakened substat value tables ─────────────────────────────────────────────
+// All awakened weapons get 3 substats (subStat + 2 hidden), regardless of origin.
+// Values represent the "at bond 10" value for the main substat (stored directly, no
+// level scaling). Hidden subs are stored as base values; they scale ×1.8 at Lv90.
+// Index: [3★, 4★, 5★] — rarity 1-2 treated as 3★.
+const AWAKEN_SUB_VAL: Record<string, [number, number, number]> = {
+  CRIT_RATE:    [16, 20, 24],
+  CRIT_DMG:     [24, 30, 36],
+  ATK_PERCENT:  [14, 18, 22],
+  HP_PERCENT:   [18, 22, 26],
+  DEF_PERCENT:  [18, 22, 26],
+  ELEMENTAL_DMG:[20, 24, 28],
+  ENERGY_REGEN: [24, 30, 36],
+};
+
+const AWAKEN_HIDDEN_BASE: Record<string, [number, number, number]> = {
+  CRIT_RATE:    [8,  10, 12],
+  CRIT_DMG:     [12, 15, 18],
+  ATK_PERCENT:  [8,  10, 12],
+  HP_PERCENT:   [10, 12, 14],
+  DEF_PERCENT:  [10, 12, 14],
+  ELEMENTAL_DMG:[9,  11, 13],
+  ENERGY_REGEN: [14, 17, 20],
+};
+
+const VALID_SUB_TYPES = new Set([
+  "CRIT_RATE", "CRIT_DMG", "ATK_PERCENT",
+  "HP_PERCENT", "DEF_PERCENT", "ELEMENTAL_DMG", "ENERGY_REGEN",
+]);
+const ALL_SUB_TYPES = [
+  "CRIT_RATE", "CRIT_DMG", "ATK_PERCENT", "ELEMENTAL_DMG",
+  "HP_PERCENT", "DEF_PERCENT", "ENERGY_REGEN",
+];
+
+// Element-specific fallback substat picks: [subStatType, hiddenSub1Type, hiddenSub2Type]
+const EGO_SUBSTAT_CHOICES: Record<string, [string, string, string]> = {
+  FUSION:  ["CRIT_DMG",     "ATK_PERCENT",  "CRIT_RATE"],
+  GLACIO:  ["HP_PERCENT",   "DEF_PERCENT",  "ELEMENTAL_DMG"],
+  ELECTRO: ["ENERGY_REGEN", "CRIT_DMG",     "CRIT_RATE"],
+  AERO:    ["CRIT_RATE",    "CRIT_DMG",     "ATK_PERCENT"],
+  HAVOC:   ["ATK_PERCENT",  "CRIT_DMG",     "ELEMENTAL_DMG"],
+  SPECTRO: ["HP_PERCENT",   "ELEMENTAL_DMG","CRIT_RATE"],
+  NONE:    ["ATK_PERCENT",  "CRIT_DMG",     "CRIT_RATE"],
+};
+
+// Labels for display in the awaken embed
+export const SUB_LABELS: Record<string, string> = {
+  CRIT_RATE:    "Crit Rate",
+  CRIT_DMG:     "Crit DMG",
+  ATK_PERCENT:  "ATK%",
+  HP_PERCENT:   "HP%",
+  DEF_PERCENT:  "DEF%",
+  ELEMENTAL_DMG:"Elem DMG",
+  ENERGY_REGEN: "Energy Regen",
+};
+
+function rarityIdx(r: number): number { return Math.max(0, Math.min(2, r - 3)); }
+
+export function awakenSubVal(type: string, rarity: number): number {
+  return (AWAKEN_SUB_VAL[type] ?? AWAKEN_SUB_VAL.ATK_PERCENT)[rarityIdx(rarity)];
+}
+
+export function awakenHiddenBase(type: string, rarity: number): number {
+  return (AWAKEN_HIDDEN_BASE[type] ?? AWAKEN_HIDDEN_BASE.ATK_PERCENT)[rarityIdx(rarity)];
+}
+
+// Ensures 3 distinct valid substat types, falling back to pool order if AI gives bad/duplicate values.
+function resolveSubTypes(s: string, h1: string, h2: string): [string, string, string] {
+  const used = new Set<string>();
+  const pick = (preferred: string): string => {
+    if (VALID_SUB_TYPES.has(preferred) && !used.has(preferred)) { used.add(preferred); return preferred; }
+    for (const t of ALL_SUB_TYPES) { if (!used.has(t)) { used.add(t); return t; } }
+    return "ATK_PERCENT";
+  };
+  return [pick(s), pick(h1), pick(h2)];
+}
 
 // Existing passive effects are amplified by this on awakening (capped at 1.3× registry max).
 const PASSIVE_AMP = 1.25;
@@ -131,10 +207,13 @@ function fallbackArtPrompt(weaponName: string, weaponType: string, element: stri
 
 // ── Main generation ───────────────────────────────────────────────────────────
 export interface AwakeningResult {
-  name:      string;
-  lore:      string;
-  artPrompt: string;
-  passive:   AwakenedPassive;
+  name:           string;
+  lore:           string;
+  artPrompt:      string;
+  passive:        AwakenedPassive;
+  subStatType:    string;
+  hiddenSub1Type: string;
+  hiddenSub2Type: string;
 }
 
 export async function generateAwakening(userId: string): Promise<AwakeningResult | null> {
@@ -164,13 +243,17 @@ export async function generateAwakening(userId: string): Promise<AwakeningResult
   const element = (user.element as string) ?? "NONE";
   const epithet = EGO_EPITHET[element] ?? EGO_EPITHET.NONE;
 
-  const fbEffect = fallbackNewEffect(element, weapon.rarity, weapon.name, userId);
-  const fbDesc   = `Awakened: ${formatEffects([fbEffect])}`;
+  const fbEffect  = fallbackNewEffect(element, weapon.rarity, weapon.name, userId);
+  const fbDesc    = `Awakened: ${formatEffects([fbEffect])}`;
+  const fbSubtypes = EGO_SUBSTAT_CHOICES[element] ?? EGO_SUBSTAT_CHOICES.NONE;
   const fallback: AwakeningResult = {
-    name:      `${epithet} ${weapon.name}`,
-    lore:      EGO_LORE_LINE[element] ?? EGO_LORE_LINE.NONE,
-    artPrompt: fallbackArtPrompt(weapon.name, weapon.weaponType, element, `${epithet} ${weapon.name}`),
-    passive:   buildAwakenedPassive(weapon.name, weapon.rarity, fbEffect, fbDesc),
+    name:           `${epithet} ${weapon.name}`,
+    lore:           EGO_LORE_LINE[element] ?? EGO_LORE_LINE.NONE,
+    artPrompt:      fallbackArtPrompt(weapon.name, weapon.weaponType, element, `${epithet} ${weapon.name}`),
+    passive:        buildAwakenedPassive(weapon.name, weapon.rarity, fbEffect, fbDesc),
+    subStatType:    fbSubtypes[0],
+    hiddenSub1Type: fbSubtypes[1],
+    hiddenSub2Type: fbSubtypes[2],
   };
 
   const basePassive = WEAPON_PASSIVES[weapon.name];
@@ -186,19 +269,21 @@ export async function generateAwakening(userId: string): Promise<AwakeningResult
 
   const systemPrompt = [
     `You are the lore engine for CARTETHYIA — a Wuthering Waves-inspired anime social RPG with a dark, poetic aesthetic.`,
-    `A player's WEAPON is AWAKENING into its Ego form at Level 60 — the weapon develops a soul shaped by its wielder. It TRANSFORMS: new name, new identity, but it is still the same weapon underneath.`,
+    `A player's WEAPON is AWAKENING into its Ego form at Level 60 — the weapon develops a soul shaped by its wielder. It TRANSFORMS: new name, new identity, new substats chosen for THIS wielder.`,
     ``,
     `Rules:`,
-    `- NAME: 2-4 words, title-case. Must feel like the awakened soul of the original weapon name — grander, alive. Do not reuse the original name verbatim.`,
-    `- LORE: 1-2 sentences, poetic, no numbers. The weapon waking up, shaped by its wielder's story.`,
-    `- ART_PROMPT: a rich, detailed image-generation prompt (4-6 sentences) describing the awakened weapon's appearance. Include: weapon type and silhouette, specific ${element.toLowerCase()} elemental visual effects (glowing cracks, particle effects, energy aura), material and surface details (runes, engravings, metalwork), background environment (dark cosmic void, stars, dimensional rifts, element-themed atmosphere), lighting style (rim light, bloom, dramatic shadows), and overall aesthetic (anime fantasy, Wuthering Waves / Honkai Star Rail style). No humans, no text in image, weapon centered, cinematic composition.`,
+    `- NAME: 2-4 words, title-case. Awakened soul of the original weapon — grander, alive. Do not reuse the original name verbatim.`,
+    `- LORE: 1-2 sentences, poetic, no numbers. The weapon waking, shaped by its wielder.`,
+    `- ART_PROMPT: rich image-generation prompt (4-6 sentences). Include: weapon type and silhouette, specific ${element.toLowerCase()} elemental visual effects (glowing cracks, particle effects, energy aura), material and surface details (runes, engravings, metalwork), background environment (dark cosmic void, stars, dimensional rifts, element-themed atmosphere), lighting style (rim light, bloom, dramatic shadows), anime fantasy aesthetic. No humans, no text, weapon centered, cinematic composition.`,
     `- DESC: 1 sentence describing the awakened passive in flavourful but concrete terms.`,
     `- NEW_EFFECT: one object {type, value} — the newly awakened power. type MUST be from this list, value within range:`,
     choices,
-    `- Choose NEW_EFFECT to synergize with the wielder's evolved unique ability and how they actually fight.`,
+    `- Choose NEW_EFFECT to synergize with the wielder's evolved ability and how they actually fight.`,
+    ``,
+    `- SUBSTATS: The awakened weapon gains 3 all-new substats shaped by the wielder — choose from: CRIT_RATE, CRIT_DMG, ATK_PERCENT, HP_PERCENT, DEF_PERCENT, ELEMENTAL_DMG, ENERGY_REGEN. All three must be DIFFERENT. Choose to match the wielder's element and how their ability actually works (e.g. crit-heavy ability → CRIT_RATE + CRIT_DMG; energy/ult build → ENERGY_REGEN + ATK_PERCENT; survival build → HP_PERCENT + DEF_PERCENT).`,
     ``,
     `Respond ONLY with valid JSON, no other text:`,
-    `{"name":"...","lore":"...","artPrompt":"...","desc":"...","newEffect":{"type":"EXECUTE","value":0.5}}`,
+    `{"name":"...","lore":"...","artPrompt":"...","desc":"...","newEffect":{"type":"EXECUTE","value":0.5},"subStatType":"CRIT_DMG","hiddenSub1Type":"ATK_PERCENT","hiddenSub2Type":"CRIT_RATE"}`,
   ].join("\n");
 
   const userPrompt = [
@@ -215,7 +300,7 @@ export async function generateAwakening(userId: string): Promise<AwakeningResult
     `Awaken the weapon. Its new name and soul must feel forged from this exact wielder.`,
   ].join("\n");
 
-  const raw = await askAI({ systemPrompt, userPrompt, maxTokens: 800 });
+  const raw = await askAI({ systemPrompt, userPrompt, maxTokens: 1000 });
   if (!raw) return fallback;
 
   try {
@@ -223,7 +308,7 @@ export async function generateAwakening(userId: string): Promise<AwakeningResult
     const parsed  = JSON.parse(cleaned);
     if (!parsed.name || !parsed.lore) return fallback;
 
-    // Validate the AI's new effect; rarity caps the value position in range
+    // Validate the AI's new passive effect
     let newEffect = fbEffect;
     const valid = sanitizeEffects([parsed.newEffect]).filter(e => !owned.has(e.type));
     if (valid.length > 0) {
@@ -232,11 +317,21 @@ export async function generateAwakening(userId: string): Promise<AwakeningResult
     }
     const desc = parsed.desc ? String(parsed.desc).slice(0, 200) : fbDesc;
 
+    // Validate and deduplicate AI-chosen substat types
+    const [subStatType, hiddenSub1Type, hiddenSub2Type] = resolveSubTypes(
+      parsed.subStatType    ?? fbSubtypes[0],
+      parsed.hiddenSub1Type ?? fbSubtypes[1],
+      parsed.hiddenSub2Type ?? fbSubtypes[2],
+    );
+
     return {
-      name:      String(parsed.name).slice(0, 48),
-      lore:      String(parsed.lore).slice(0, 300),
-      artPrompt: parsed.artPrompt ? String(parsed.artPrompt).slice(0, 800) : fallback.artPrompt,
-      passive:   buildAwakenedPassive(weapon.name, weapon.rarity, newEffect, desc),
+      name:           String(parsed.name).slice(0, 48),
+      lore:           String(parsed.lore).slice(0, 300),
+      artPrompt:      parsed.artPrompt ? String(parsed.artPrompt).slice(0, 800) : fallback.artPrompt,
+      passive:        buildAwakenedPassive(weapon.name, weapon.rarity, newEffect, desc),
+      subStatType,
+      hiddenSub1Type,
+      hiddenSub2Type,
     };
   } catch {
     return fallback;

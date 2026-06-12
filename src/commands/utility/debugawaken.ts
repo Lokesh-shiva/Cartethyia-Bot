@@ -5,7 +5,7 @@ import {
 } from "discord.js";
 import { Command } from "../../types";
 import prisma from "../../lib/prisma";
-import { generateAwakening, AwakeningResult } from "../../lib/weaponAwakening";
+import { generateAwakening, AwakeningResult, awakenSubVal, awakenHiddenBase, SUB_LABELS } from "../../lib/weaponAwakening";
 import { formatEffects } from "../../lib/abilityEffects";
 import { OWNER_ID } from "../../lib/owner";
 
@@ -72,9 +72,14 @@ const command: Command = {
             { name: "Awakened Name", value: `**${result.name}**`, inline: true },
             { name: "Lore", value: `*${result.lore}*`, inline: false },
             { name: "Awakened Passive", value: passiveLines || "none", inline: false },
+            { name: "Substats (re-rolled)", value: [
+              `${SUB_LABELS[result.subStatType] ?? result.subStatType} (main)`,
+              `${SUB_LABELS[result.hiddenSub1Type] ?? result.hiddenSub1Type} (hidden I, Lv20)`,
+              `${SUB_LABELS[result.hiddenSub2Type] ?? result.hiddenSub2Type} (hidden II, Lv50)`,
+            ].join("\n"), inline: false },
             { name: "Art Prompt", value: result.artPrompt.slice(0, 1024), inline: false },
           )
-          .setFooter({ text: "🛠️ Not applied yet — confirm to overwrite identity fields only (stats unchanged)" })],
+          .setFooter({ text: "🛠️ Not applied yet — confirm to overwrite awakening (identity + substats, baseAtk unchanged)" })],
         components: [row],
       });
 
@@ -112,7 +117,7 @@ const command: Command = {
           return;
         }
 
-        // daw_keep — overwrite identity fields only, stats untouched
+        // daw_keep — overwrite identity + substats (baseAtk unchanged)
         if (!pending) return;
         await prisma.weapon.update({
           where: { id: weapon.id },
@@ -121,6 +126,12 @@ const command: Command = {
             awakenedLore:      pending.lore,
             awakenedArtPrompt: pending.artPrompt,
             awakenedPassive:   pending.passive as any,
+            subStatType:       pending.subStatType,
+            subStatVal:        awakenSubVal(pending.subStatType, weapon.rarity),
+            hiddenSub1Type:    pending.hiddenSub1Type,
+            hiddenSub1Val:     awakenHiddenBase(pending.hiddenSub1Type, weapon.rarity),
+            hiddenSub2Type:    pending.hiddenSub2Type,
+            hiddenSub2Val:     awakenHiddenBase(pending.hiddenSub2Type, weapon.rarity),
           },
         });
 
@@ -130,7 +141,8 @@ const command: Command = {
             .setDescription(
               `**${weapon.name}** → **${pending.name}**\n` +
               `*${pending.lore}*\n\n` +
-              `Stats (ATK, substats) are unchanged — only identity was rewritten.`
+              `Substats rewritten: ${SUB_LABELS[pending.subStatType]} · ${SUB_LABELS[pending.hiddenSub1Type]} · ${SUB_LABELS[pending.hiddenSub2Type]}\n` +
+              `baseAtk unchanged.`
             )
             .setFooter({ text: `🛠️ debugawaken · ${displayName}` })],
           components: [],

@@ -11,6 +11,7 @@ import { formatEffects } from "../../lib/abilityEffects";
 import { RARITY_STARS, WEAPON_TYPE_EMOJI } from "../../lib/weapons";
 import {
   EGO_LEVEL_REQUIRED, EGO_COST, AWAKEN_STAT_MULT, generateAwakening,
+  awakenSubVal, awakenHiddenBase, SUB_LABELS,
 } from "../../lib/weaponAwakening";
 import { WeaponType } from "@prisma/client";
 
@@ -157,6 +158,7 @@ const command: Command = {
       }
 
       // Transform the weapon (guard against double-awaken races)
+      // baseAtk gets ×mult. Substats are re-rolled fresh from rarity-scaled tables.
       const updated = await prisma.weapon.updateMany({
         where: { id: weapon.id, awakened: false },
         data: {
@@ -166,15 +168,24 @@ const command: Command = {
           awakenedArtPrompt: awakening.artPrompt,
           awakenedPassive:   awakening.passive as any,
           baseAtk:           Math.round(weapon.baseAtk * mult),
-          ...(weapon.subStatVal    != null ? { subStatVal:    +(weapon.subStatVal    * mult).toFixed(1) } : {}),
-          ...(weapon.hiddenSub1Val != null ? { hiddenSub1Val: +(weapon.hiddenSub1Val * mult).toFixed(1) } : {}),
-          ...(weapon.hiddenSub2Val != null ? { hiddenSub2Val: +(weapon.hiddenSub2Val * mult).toFixed(1) } : {}),
+          subStatType:       awakening.subStatType,
+          subStatVal:        awakenSubVal(awakening.subStatType, weapon.rarity),
+          hiddenSub1Type:    awakening.hiddenSub1Type,
+          hiddenSub1Val:     awakenHiddenBase(awakening.hiddenSub1Type, weapon.rarity),
+          hiddenSub2Type:    awakening.hiddenSub2Type,
+          hiddenSub2Val:     awakenHiddenBase(awakening.hiddenSub2Type, weapon.rarity),
         },
       });
       if (updated.count === 0) {
         await fail("The weapon has already awakened.");
         return;
       }
+
+      const subLine = [
+        `◈ ${SUB_LABELS[awakening.subStatType] ?? awakening.subStatType}  +${awakenSubVal(awakening.subStatType, weapon.rarity)}${awakening.subStatType === "ENERGY_REGEN" ? " Energy" : "%"}`,
+        `◈ ${SUB_LABELS[awakening.hiddenSub1Type] ?? awakening.hiddenSub1Type}  *(scales Lv20–90)*`,
+        `◈ ${SUB_LABELS[awakening.hiddenSub2Type] ?? awakening.hiddenSub2Type}  *(scales Lv50–90)*`,
+      ].join("\n");
 
       await interaction.editReply({
         embeds: [new EmbedBuilder()
@@ -185,11 +196,14 @@ const command: Command = {
             ``,
             `${WEAPON_TYPE_EMOJI[weapon.weaponType as WeaponType]} **${weapon.name}** has become **✦ ${awakening.name}**`,
             ``,
+            `**Forged for you — Substats:**`,
+            subLine,
+            ``,
             `**Awakened passive:** ${awakening.passive.desc}`,
             `**Effects:** ${formatEffects(awakening.passive.effects).replace(/\n/g, " · ")}${awakening.passive.elemDmg ? ` · +${Math.round(awakening.passive.elemDmg * 100)}% Elemental DMG` : ""}`,
-            `**Stats:** ATK, substat & hidden substats ×${mult.toFixed(2)}`,
+            `**ATK:** ×${mult.toFixed(2)}`,
             ``,
-            `🎨 **Art prompt** (for the awakened art — \`assets/weapons/awakened/${awakening.name}.png\`):`,
+            `🎨 **Art prompt** (\`assets/weapons/awakened/${awakening.name}.png\`):`,
             `\`\`\`${awakening.artPrompt}\`\`\``,
           ].join("\n"))
           .setFooter({ text: "CARTETHYIA  ·  This weapon's soul is yours alone." })],
