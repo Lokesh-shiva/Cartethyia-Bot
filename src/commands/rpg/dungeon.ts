@@ -51,11 +51,6 @@ export async function execute(interaction: ChatInputCommandInteraction) {
     await interaction.editReply({ content: "◈ You are on an expedition. Use **/dispatch claim** first before entering combat." });
     return;
   }
-  if (!acquireLock(interaction.user.id, "Dungeon")) {
-    await interaction.editReply({ content: alreadyInCombatMsg(interaction.user.id) });
-    return;
-  }
-
   // Aura check
   const auraState = computeAura(dbUser.resonanceAura, dbUser.auraUpdatedAt);
 
@@ -124,7 +119,6 @@ export async function execute(interaction: ChatInputCommandInteraction) {
   pickCollector?.on("collect", async (sel: StringSelectMenuInteraction) => {
     const dungeon = getDungeon(sel.values[0]);
     if (!dungeon) {
-      releaseLock(interaction.user.id);
       await sel.update({ content: "Dungeon not found.", components: [], embeds: [] });
       return;
     }
@@ -132,7 +126,6 @@ export async function execute(interaction: ChatInputCommandInteraction) {
     // Re-check aura at entry time
     const freshAura = computeAura(dbUser.resonanceAura, dbUser.auraUpdatedAt);
     if (freshAura.current < dungeon.auraCost) {
-      releaseLock(interaction.user.id);
       await sel.update({
         embeds: [new EmbedBuilder().setColor(0x4A4A5A)
           .setDescription(
@@ -187,8 +180,13 @@ export async function execute(interaction: ChatInputCommandInteraction) {
 
     confirmCollector?.on("collect", async (btn: ButtonInteraction) => {
       if (btn.customId === "dungeon_cancel") {
-        releaseLock(interaction.user.id);
         await btn.update({ embeds: [new EmbedBuilder().setColor(0x4A4A5A).setDescription("Dungeon entry cancelled.")], components: [] });
+        return;
+      }
+
+      // Acquire lock only now — user is actually entering the fight
+      if (!acquireLock(interaction.user.id, "Dungeon")) {
+        await btn.update({ content: alreadyInCombatMsg(interaction.user.id), embeds: [], components: [] });
         return;
       }
 
@@ -211,7 +209,6 @@ export async function execute(interaction: ChatInputCommandInteraction) {
 
     confirmCollector?.on("end", async (col) => {
       if (col.size === 0) {
-        releaseLock(interaction.user.id);
         await interaction.editReply({ components: [] }).catch(() => {});
       }
     });
@@ -219,7 +216,6 @@ export async function execute(interaction: ChatInputCommandInteraction) {
 
   pickCollector?.on("end", async (col) => {
     if (col.size === 0) {
-      releaseLock(interaction.user.id);
       await interaction.editReply({ components: [] }).catch(() => {});
     }
   });

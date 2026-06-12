@@ -161,6 +161,7 @@ interface ActiveRaid {
   channelId:    string;
   guildId:      string;
   organizerId:  string;
+  recruitMsg?:  any;      // reference to the recruiting embed message for live updates
 }
 
 const activeRaids  = new Map<string, ActiveRaid>(); // channelId → raid
@@ -335,24 +336,9 @@ async function startRaid(interaction: ChatInputCommandInteraction) {
     new ButtonBuilder().setCustomId("raid_join_btn").setLabel("⚔️  Join Raid").setStyle(ButtonStyle.Success),
   );
 
-  const recruitEmbed = () => new EmbedBuilder()
-    .setColor(0xEC4899)
-    .setTitle(`☄️  Calamity Raid — ${boss.name}`)
-    .setDescription(
-      `*${boss.title}*\n\n` +
-      `${elementEmoji(boss.element)} **${boss.element}**  ·  Weakness: ${elementEmoji(boss.weakness)} **${boss.weakness}**\n\n` +
-      `**Players:** ${raid.participants.length}/${MAX_PLAYERS}\n` +
-      (raid.participants.length
-        ? raid.participants.map(p => `${elementEmoji(p.element)} **${p.name}**`).join("  ") + "\n\n"
-        : "\n") +
-      `Boss power **scales to your party's gear** — bring your best!\n` +
-      `Minimum **${MIN_PLAYERS} players** to begin. Admin uses \`/raid begin\` when ready.\n` +
-      `Auto-starts in 5 minutes.`
-    )
-    .setFooter({ text: "CARTETHYIA  ·  Calamity Raid  ·  Recruiting…" });
-
-  await interaction.editReply({ embeds: [recruitEmbed()], components: [joinRow] });
+  await interaction.editReply({ embeds: [buildRecruitEmbed(raid, boss)], components: [joinRow] });
   const recruitMsg = await interaction.fetchReply();
+  raid.recruitMsg  = recruitMsg;
 
   const joinCollector = (interaction.channel as TextChannel).createMessageComponentCollector({
     componentType: ComponentType.Button,
@@ -370,10 +356,20 @@ async function startRaid(interaction: ChatInputCommandInteraction) {
 
     joiningUsers.set(btn.user.id, interaction.channelId);
     await btn.deferUpdate();
-    await addParticipant(r, btn.user.id, btn.guild!.members.cache.get(btn.user.id)?.displayName ?? btn.user.displayName);
-    joiningUsers.delete(btn.user.id);
+    let added = false;
+    try {
+      added = await addParticipant(r, btn.user.id, btn.guild!.members.cache.get(btn.user.id)?.displayName ?? btn.user.displayName);
+    } catch (err) {
+      console.error("[Raid] addParticipant failed:", err);
+    } finally {
+      joiningUsers.delete(btn.user.id);
+    }
 
-    await (recruitMsg as any).edit({ embeds: [recruitEmbed()], components: [joinRow] });
+    if (!added) {
+      await btn.followUp({ content: "◈ Failed to join — you may not be started (`/start`) or there was a connection issue. Try again.", flags: 64 });
+      return;
+    }
+    await (recruitMsg as any).edit({ embeds: [buildRecruitEmbed(r, boss)], components: [joinRow] });
   });
 
   setTimeout(async () => {
@@ -394,12 +390,31 @@ async function startRaid(interaction: ChatInputCommandInteraction) {
   }, JOIN_WINDOW_MS);
 }
 
-async function addParticipant(raid: ActiveRaid, userId: string, displayName: string) {
+function buildRecruitEmbed(raid: ActiveRaid, boss: RaidBossConfig): EmbedBuilder {
+  return new EmbedBuilder()
+    .setColor(0xEC4899)
+    .setTitle(`☄️  Calamity Raid — ${boss.name}`)
+    .setDescription(
+      `*${boss.title}*\n\n` +
+      `${elementEmoji(boss.element)} **${boss.element}**  ·  Weakness: ${elementEmoji(boss.weakness)} **${boss.weakness}**\n\n` +
+      `**Players:** ${raid.participants.length}/${MAX_PLAYERS}\n` +
+      (raid.participants.length
+        ? raid.participants.map(p => `${elementEmoji(p.element)} **${p.name}**`).join("  ") + "\n\n"
+        : "\n") +
+      `Boss power **scales to your party's gear** — bring your best!\n` +
+      `Minimum **${MIN_PLAYERS} players** to begin. Admin uses \`/raid begin\` when ready.\n` +
+      `Auto-starts in 5 minutes.`
+    )
+    .setFooter({ text: "CARTETHYIA  ·  Calamity Raid  ·  Recruiting…" });
+}
+
+/** Returns true if the participant was added, false if the user wasn't found or not onboarded. */
+async function addParticipant(raid: ActiveRaid, userId: string, displayName: string): Promise<boolean> {
   const db = await prisma.user.findUnique({
     where:  { id: userId },
-    select: { baseHp: true, baseAtk: true, baseDef: true, critRate: true, critDmg: true, element: true },
+    select: { baseHp: true, baseAtk: true, baseDef: true, critRate: true, critDmg: true, element: true, isOnboarded: true },
   });
-  if (!db) return;
+  if (!db?.isOnboarded) return false;
 
   const bonuses = await resolvePlayerBonuses(userId);
   const stats   = applyBonuses(db, bonuses);
@@ -413,6 +428,7 @@ async function addParticipant(raid: ActiveRaid, userId: string, displayName: str
     firstAction: true, secondWindUsed: false,
     dmgDealt: 0, isDefeated: false,
   });
+  return true;
 }
 
 // ── /raid join ────────────────────────────────────────────────────────────────
@@ -431,13 +447,30 @@ async function joinRaid(interaction: ChatInputCommandInteraction) {
   const displayName = interaction.guild?.members.cache.get(interaction.user.id)?.displayName ?? interaction.user.displayName;
   joiningUsers.set(interaction.user.id, interaction.channelId);
   await interaction.deferReply({ flags: 64 });
-  await addParticipant(raid, interaction.user.id, displayName);
-  joiningUsers.delete(interaction.user.id);
+  let added = false;
+  try {
+    added = await addParticipant(raid, interaction.user.id, displayName);
+  } catch (err) {
+    console.error("[Raid] addParticipant failed:", err);
+  } finally {
+    joiningUsers.delete(interaction.user.id);
+  }
 
-  const last = raid.participants[raid.participants.length - 1]!;
+  if (!added) {
+    await interaction.editReply({ content: "◈ You need to use `/start` before joining a raid." });
+    return;
+  }
+
+  const boss = getRaidBoss(raid.bossChoice)!;
+  await raid.recruitMsg?.edit({ embeds: [buildRecruitEmbed(raid, boss)], components: [
+    new ActionRowBuilder<ButtonBuilder>().addComponents(
+      new ButtonBuilder().setCustomId("raid_join_btn").setLabel("⚔️  Join Raid").setStyle(ButtonStyle.Success),
+    ),
+  ]}).catch(() => {});
+
   await interaction.editReply({
     embeds: [new EmbedBuilder().setColor(0x4CAF50)
-      .setDescription(`${elementEmoji(last.element)} **${displayName}** joined the raid. [${raid.participants.length}/${MAX_PLAYERS}]`)
+      .setDescription(`${elementEmoji(raid.participants[raid.participants.length - 1]!.element)} **${displayName}** joined the raid. [${raid.participants.length}/${MAX_PLAYERS}]`)
       .setFooter({ text: "CARTETHYIA  ·  Raid" })],
   });
 }
