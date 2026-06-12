@@ -2,6 +2,9 @@
 import prisma from "./prisma";
 import { ABILITY_REGISTRY, AbilityEffect, sanitizeEffects, composeFallbackEffects } from "./abilityEffects";
 import { V2EffectEntry, sanitizeV2Effects, formatV2Effects, V2_PROMPT_SCHEMA } from "./abilityEngineV2";
+import { resolvePlayerBonuses, applyBonuses } from "./setBonus";
+import { formatAwakenedPassive } from "./weaponAwakening";
+import { FORGED_WEAPONS } from "./weapons";
 
 // â”€â”€ Element context â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const ELEMENT_BONUS: Record<string, string> = {
@@ -340,54 +343,112 @@ export async function generateUniqueAbilityV2(userId: string, persist = true): P
   const dedication  = deriveDedication(user.dailyStreak, user.worldLevel, user.level);
   const elemArch    = ELEMENT_ARCHETYPE[element] ?? "an undefined force";
 
-  // Combat stat profile
-  const critRatePct = Math.round((user.critRate ?? 0.05) * 100);
-  const critDmgPct  = Math.round((user.critDmg  ?? 1.5)  * 100);
-  const statProfile = `Base stats: ATK ${user.baseAtk}, HP ${user.baseHp}, DEF ${user.baseDef}, Crit Rate ${critRatePct}%, Crit DMG ${critDmgPct}%`;
+  // ── Resolved final combat stats (not base) ───────────────────────────────
+  // Base stats are before echoes/weapon/set bonuses — the AI must see FINAL
+  // numbers or it wildly misreads the build (e.g. sees 5% crit, gives crit rate boost).
+  const bonuses = await resolvePlayerBonuses(userId);
+  const stats   = applyBonuses(
+    { baseHp: user.baseHp, baseAtk: user.baseAtk, baseDef: user.baseDef,
+      critRate: user.critRate ?? 0.05, critDmg: user.critDmg ?? 1.5 },
+    bonuses,
+  );
+  const finalCritPct    = Math.round(stats.critRate * 100);
+  const finalCritDmgPct = Math.round(stats.critDmg * 100);
+  const finalAtk        = stats.atk;
+  const finalHp         = stats.hp;
 
-  // Weapon identity
+  // Derive plain-language build archetype from final stats
+  const buildArchetype = (() => {
+    const parts: string[] = [];
+    if (finalCritPct >= 60)       parts.push("crit-capped hypercarry");
+    else if (finalCritPct >= 35)  parts.push("high-crit attacker");
+    else if (finalCritPct >= 20)  parts.push("moderate crit build");
+    if (finalCritDmgPct >= 350)   parts.push("extreme crit damage focus");
+    else if (finalCritDmgPct >= 250) parts.push("high crit damage");
+    if (finalHp >= 15000)         parts.push("tanky sustain build");
+    else if (finalHp <= 6000)     parts.push("glass cannon");
+    if (stats.lifesteal >= 0.20)  parts.push("lifesteal-heavy");
+    if (stats.energyPerTurn >= 50) parts.push("energy-stacking");
+    return parts.length > 0 ? parts.join(", ") : "balanced generalist";
+  })();
+
+  // Active echo set bonuses (give AI the set context)
+  const activeSetLabels = bonuses.activeLabels
+    .filter(l => l.includes("pc") || l.includes("Echo"))
+    .map(l => l.split("—")[0].trim())
+    .join(", ") || "no set bonuses active";
+
+  // Weapon passive description
   let weaponDesc = "no weapon equipped";
   if (weapon) {
     const wName = weapon.awakened && weapon.awakenedName ? weapon.awakenedName : weapon.name;
-    weaponDesc  = `${wName} (${weapon.weaponType}, ★${weapon.rarity}, Lv${weapon.level}${weapon.awakened ? " — Ego Awakened" : ""})`;
+    const wMaxMult = { 1: 2.5, 2: 3.0, 3: 3.5, 4: 4.2, 5: 5.0 }[weapon.rarity] ?? 2.5;
+    const wEffAtk  = Math.round(weapon.baseAtk * (1 + (weapon.level - 1) * (wMaxMult - 1) / 89));
+    let passive = "";
+    if (weapon.awakened && weapon.awakenedPassive) {
+      passive = formatAwakenedPassive(weapon.awakenedPassive);
+    } else {
+      passive = FORGED_WEAPONS.find(w => w.name === weapon.name)?.passive ?? "";
+    }
+    weaponDesc = `${wName} (${weapon.weaponType}, ★${weapon.rarity}, Lv${weapon.level}, ${wEffAtk} ATK${weapon.awakened ? " — Ego Awakened" : ""})`;
+    if (passive) weaponDesc += `\n  Passive: ${passive}`;
   }
 
-  // Evolved ability context (if V1 evolved ability exists)
-  let evolvedAbilityContext = "";
+  // Evolved ability context
+  let evolvedCtx = "";
   if (user.abilityEvolved && user.uniqueAbilityName) {
-    evolvedAbilityContext = `\nEvolved ability (Lv50 ascension): "${user.uniqueAbilityName}" — ${user.uniqueAbilityEffect ?? "an evolved resonance"}`;
+    evolvedCtx = `\nEvolved ability: "${user.uniqueAbilityName}" — ${user.uniqueAbilityEffect ?? "an evolved resonance"}`;
+  }
+
+  // Previous ability (avoid re-generating same thing on reroll)
+  let prevAbilityCtx = "";
+  if (user.uniqueAbilityName && user.abilityVersion === 2) {
+    prevAbilityCtx = `\nPrevious ability (do NOT replicate): "${user.uniqueAbilityName}" — ${user.uniqueAbilityEffect ?? ""}`;
   }
 
   const systemPrompt = [
     `You are the lore engine for CARTETHYIA — a Wuthering Waves-inspired anime social RPG with a dark, poetic aesthetic.`,
     `Generate a UNIQUE PASSIVE ABILITY for a specific player using the V2 composable trigger→effect language.`,
-    `It must feel deeply personal — like it could only belong to this player based on their element, playstyle, bonds, and stat build.`,
+    `It must feel deeply personal and mechanically sharp — it should amplify what the player already does well, not patch weaknesses.`,
     ``,
     V2_PROMPT_SCHEMA,
     ``,
     `Rules:`,
     `- NAME: 2-4 words, title-case, evocative. Should feel like it belongs to THIS player.`,
-    `- EFFECT: 1-2 sentences. Describe what the ability does in flavourful but concrete terms.`,
+    `- EFFECT: 1-2 sentences. Describe the combined mechanic in flavourful but concrete terms.`,
     `- LORE: 1-2 sentences. Poetic, no numbers. Should echo their personality and bonds.`,
-    `- EFFECTS: array of 2-3 V2 effect entries as described above.`,
+    `- EFFECTS: 2-3 V2 effect entries. MUST be synergistic with the player's build archetype and element.`,
     ``,
-    `Use the player's stat profile to bias the ability. A high-crit player should get more ON_CRIT or CRIT_DMG effects. A tanky player gets BELOW_HP_PCT survival. A heavy attacker gets DMG_MULT or STACK_DMG. Element shapes the trigger: Aero = first action/stacks; Havoc = below HP; Electro = energy/on-crit; Spectro = heal/regen; Fusion = on-skill/ult; Glacio = HP-conditional.`,
+    `BUILD BIAS RULES (critical — follow these strictly):`,
+    `- Crit-capped / high-crit attacker → prefer ON_CRIT triggers and CRIT_DMG / DMG_MULT effects. Do NOT give CRIT_RATE (already capped).`,
+    `- Extreme crit damage → ON_CRIT:DMG_MULT or STACK_DMG builds that compound the existing multiplier.`,
+    `- Glass cannon (low HP) → BELOW_HP_PCT survival or FIRST_ACTION burst.`,
+    `- Tanky / high HP → ABOVE_HP_PCT bonuses, HEAL_PCT, or SECOND_WIND.`,
+    `- Energy-stacking → GAIN_ENERGY triggers, ON_ULT payoffs.`,
+    `- Lifesteal-heavy → ON_HIT:LIFESTEAL amplification or BELOW_HP_PCT heal.`,
+    ``,
+    `ELEMENT TRIGGER BIAS:`,
+    `Aero = FIRST_ACTION burst or STACK_DMG (wind stacking); Havoc = BELOW_HP_PCT aggression; Electro = ON_CRIT energy + EVERY_N_TURNS; Spectro = TURN_START heal + ON_ULT sustain; Fusion = ON_SKILL/ULT power; Glacio = ABOVE_HP_PCT or BELOW_HP_PCT resilience.`,
     ``,
     `Respond ONLY with valid JSON, no other text:`,
-    `{"name":"...","effect":"...","lore":"...","effects":[{"trigger":"ON_CRIT","effect":"CRIT_DMG","value":0.22,"displayName":"Lethal Edge","desc":"Critical hits deal 22% more damage."},{"trigger":"PASSIVE","effect":"ATK_MULT","value":0.12,"displayName":"Iron Will","desc":"Base attack power increased by 12%."}]}`,
+    `{"name":"...","effect":"...","lore":"...","effects":[{"trigger":"ON_CRIT","effect":"CRIT_DMG","value":0.28,"displayName":"Lethal Edge","desc":"Critical hits amplify crit damage by 28%."},{"trigger":"FIRST_ACTION","effect":"DMG_MULT","value":0.55,"displayName":"Gale Opener","desc":"The first strike of every fight deals 55% bonus damage."}]}`,
   ].join("\n");
 
   const userPrompt = [
     `Element: ${element} — ${elemArch}.`,
-    `Personality (from onboarding): ${personality}.`,
-    `Social interaction style: ${playstyle}.`,
+    `Personality: ${personality}.`,
+    `Social style: ${playstyle}.`,
     `Bonds: ${bondSummary}.`,
     `Combat history: ${combat}.`,
-    `Dedication & progression: ${dedication}.`,
-    `${statProfile}.`,
-    `Weapon: ${weaponDesc}.${evolvedAbilityContext}`,
+    `Progression: ${dedication}.`,
     ``,
-    `Design their V2 ability (2–3 components). Let their stat build and element guide the triggers. Make it feel like it grew from who they are.`,
+    `FINAL COMBAT STATS (after all echoes, weapon, set bonuses):`,
+    `ATK ${finalAtk}  ·  HP ${finalHp}  ·  Crit Rate ${finalCritPct}%  ·  Crit DMG ${finalCritDmgPct}%  ·  Lifesteal ${Math.round(stats.lifesteal * 100)}%  ·  Energy/turn ${stats.energyPerTurn}`,
+    `Build archetype: ${buildArchetype}.`,
+    `Active echo sets: ${activeSetLabels}.`,
+    `Weapon: ${weaponDesc}.${evolvedCtx}${prevAbilityCtx}`,
+    ``,
+    `Design their V2 ability (2–3 components). Amplify their strengths. A ${buildArchetype} player needs mechanics that COMPOUND what they already do — not plug gaps.`,
   ].join("\n");
 
   const raw = await askAI({ systemPrompt, userPrompt, maxTokens: 600 });
