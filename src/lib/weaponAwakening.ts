@@ -9,6 +9,7 @@
 import prisma from "./prisma";
 import { askAI } from "./ai";
 import { ABILITY_REGISTRY, AbilityEffect, sanitizeEffects, formatEffects } from "./abilityEffects";
+import { sanitizeV2Effects, formatV2Effects } from "./abilityEngineV2";
 import { WEAPON_PASSIVES, WeaponPassive } from "./weapons";
 import { derivePersonality, deriveBonds, deriveCombat, deriveDedication } from "./uniqueAbility";
 
@@ -143,7 +144,7 @@ export async function generateAwakening(userId: string): Promise<AwakeningResult
       select: {
         element: true, level: true, worldLevel: true, dailyStreak: true,
         uniqueAbilityName: true, uniqueAbilityEffect: true, uniqueAbilityLore: true,
-        uniqueAbilityEffects: true, abilityEvolved: true,
+        uniqueAbilityEffects: true, abilityEvolved: true, abilityVersion: true,
         resonanceProfile: true,
         duelWins: true, duelLosses: true, encountersWon: true, raidWins: true,
         dungeonClears: true, ascensionWins: true,
@@ -179,7 +180,9 @@ export async function generateAwakening(userId: string): Promise<AwakeningResult
     .map(([k, def]) => `${k} (${def.desc.replace("{v}", "X")}; value ${def.min}–${def.max})`)
     .join(", ");
 
-  const evolvedFx = sanitizeEffects(user.uniqueAbilityEffects, user.abilityEvolved);
+  const abilityMechanics = user.abilityVersion === 2
+    ? formatV2Effects(sanitizeV2Effects(user.uniqueAbilityEffects)).replace(/\*\*/g, "").replace(/\*([^*]+)\*/g, "$1").replace(/\n/g, " | ")
+    : formatEffects(sanitizeEffects(user.uniqueAbilityEffects, user.abilityEvolved)).replace(/\n/g, " | ");
 
   const systemPrompt = [
     `You are the lore engine for CARTETHYIA — a Wuthering Waves-inspired anime social RPG with a dark, poetic aesthetic.`,
@@ -203,7 +206,7 @@ export async function generateAwakening(userId: string): Promise<AwakeningResult
     `Current weapon passive: ${basePassive?.effects ? formatEffects(basePassive.effects as AbilityEffect[]).replace(/\n/g, " | ") : basePassive?.elemDmg ? `+${Math.round(basePassive.elemDmg * 100)}% Elemental DMG` : "none (this awakening grants its first)"}.`,
     ``,
     `WIELDER — Element: ${element}.`,
-    `Evolved unique ability: "${user.uniqueAbilityName}" — ${user.uniqueAbilityEffect} (mechanics: ${formatEffects(evolvedFx).replace(/\n/g, " | ")})`,
+    `Evolved unique ability: "${user.uniqueAbilityName}" — ${user.uniqueAbilityEffect} (mechanics: ${abilityMechanics})`,
     `Personality: ${derivePersonality(user.resonanceProfile)}.`,
     `Bonds: ${deriveBonds(bonds)}.`,
     `Combat history: ${deriveCombat(user.duelWins, user.duelLosses, user.encountersWon, user.raidWins)}; ${user.dungeonClears} dungeons, ${user.ascensionWins} ascensions.`,

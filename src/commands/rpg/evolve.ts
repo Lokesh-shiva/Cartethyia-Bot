@@ -8,9 +8,11 @@ import prisma from "../../lib/prisma";
 import { replyNotStarted } from "../../lib/economy";
 import { CE } from "../../lib/emojiManager";
 import { sanitizeEffects, formatEffects } from "../../lib/abilityEffects";
+import { sanitizeV2Effects, formatV2Effects } from "../../lib/abilityEngineV2";
 import {
   EVO_LEVEL_REQUIRED, EVO_DUNGEONS_NEEDED, EVO_BOSS_WL_REQUIRED, EVO_COST,
   EVOLVED_LORE_LINE, evolveEffects, evolvedName, generateEvolution,
+  evolveEffectsV2, generateEvolutionV2,
 } from "../../lib/abilityEvolution";
 import { generateAbilityCard } from "../../lib/abilityCard";
 
@@ -33,7 +35,7 @@ const command: Command = {
       select: {
         level: true, element: true,
         uniqueAbilityName: true, uniqueAbilityLore: true, uniqueAbilityEffects: true,
-        abilityEvolved: true, abilityEvoStep: true, abilityEvoDungeons: true,
+        abilityEvolved: true, abilityEvoStep: true, abilityEvoDungeons: true, abilityVersion: true,
         paradoxCores: true, stasisLocks: true,
       },
     });
@@ -176,15 +178,34 @@ const command: Command = {
       }
 
       const element = (user.element as string) ?? "NONE";
-
-      // AI-personalized evolution (weapon, build, bonds, combat record, personality).
-      // Falls back to deterministic element tables if LM Studio is offline.
-      const evo = await generateEvolution(interaction.user.id).catch(() => null);
-      const oldFx    = sanitizeEffects(user.uniqueAbilityEffects);
-      const newFx    = evo?.effects ?? evolveEffects(oldFx, element, interaction.user.id);
-      const newName  = evo?.name    ?? evolvedName(user.uniqueAbilityName!, element);
       const loreLine = EVOLVED_LORE_LINE[element] ?? EVOLVED_LORE_LINE.NONE;
-      const newLore  = evo?.lore    ?? (user.uniqueAbilityLore ? `${user.uniqueAbilityLore} ${loreLine}` : loreLine);
+      const isV2 = (user.abilityVersion ?? 1) === 2;
+
+      let newFx: any[];
+      let newName: string;
+      let newLore: string;
+      let newEffect: string | undefined;
+      let effectLines: string[];
+
+      if (isV2) {
+        const evo = await generateEvolutionV2(interaction.user.id).catch(() => null);
+        const oldFxV2 = sanitizeV2Effects(user.uniqueAbilityEffects);
+        newFx     = evo?.v2Effects ?? evolveEffectsV2(oldFxV2, element, interaction.user.id);
+        newName   = evo?.name   ?? evolvedName(user.uniqueAbilityName!, element);
+        newLore   = evo?.lore   ?? (user.uniqueAbilityLore ? `${user.uniqueAbilityLore} ${loreLine}` : loreLine);
+        newEffect = evo?.effect;
+        effectLines = formatV2Effects(sanitizeV2Effects(newFx))
+          .replace(/\*\*/g, "").replace(/\*([^*]+)\*/g, "$1")
+          .split("\n").filter(Boolean);
+      } else {
+        const evo = await generateEvolution(interaction.user.id).catch(() => null);
+        const oldFx = sanitizeEffects(user.uniqueAbilityEffects);
+        newFx     = evo?.effects ?? evolveEffects(oldFx, element, interaction.user.id);
+        newName   = evo?.name   ?? evolvedName(user.uniqueAbilityName!, element);
+        newLore   = evo?.lore   ?? (user.uniqueAbilityLore ? `${user.uniqueAbilityLore} ${loreLine}` : loreLine);
+        newEffect = evo?.effect;
+        effectLines = formatEffects(sanitizeEffects(newFx, true)).split("\n").filter(Boolean);
+      }
 
       await prisma.user.update({
         where: { id: interaction.user.id },
@@ -192,12 +213,11 @@ const command: Command = {
           abilityEvolved:       true,
           uniqueAbilityName:    newName,
           uniqueAbilityLore:    newLore,
-          ...(evo?.effect ? { uniqueAbilityEffect: evo.effect } : {}),
+          ...(newEffect ? { uniqueAbilityEffect: newEffect } : {}),
           uniqueAbilityEffects: newFx as any,
+          ...(isV2 ? { abilityVersion: 2 } : {}),
         },
       });
-
-      const effectLines = formatEffects(sanitizeEffects(newFx, true)).split("\n").filter(Boolean);
       const displayName = interaction.guild?.members.cache.get(interaction.user.id)?.displayName
         ?? interaction.user.displayName ?? interaction.user.username;
 

@@ -13,9 +13,10 @@ import { WORLD_LEVEL_CAPS, checkLevelUp } from "../../lib/progression";
 import { getBoss, scaledBoss } from "../../lib/bosses";
 import { gearAwareScale, baselineAtk } from "../../lib/combat";
 import { generateBattleCard, BattleCardState } from "../../lib/battleCard";
-import { generateUniqueAbility } from "../../lib/uniqueAbility";
+import { generateUniqueAbilityV2 } from "../../lib/uniqueAbility";
 import { resolvePlayerBonuses, applyBonuses, apply4pcSkillBonus, apply4pcUltBonus, roll4pcDoubleHit, roll4pcBlock, apply5pcLowHpCrit, apply5pcFirstHit, apply5pcFullHpDmg, get5pcVibDrainMult, get5pcHpRegen, applyLifesteal, elemIgniteProc, elemFrostShield, elemDischargeEnergy, elemWindstrideMult, elemVoidSurgeHeal, elemRadianceRegen, elemRadianceCrit } from "../../lib/setBonus";
-import { compositeDamageMult, compositeVibMult, compositeHealOnHit, compositeEnergyOnHit, compositeHasSecondWind, formatEffects, sanitizeEffects } from "../../lib/abilityEffects";
+import { compositeDamageMult, compositeVibMult, compositeHealOnHit, compositeEnergyOnHit, compositeHasSecondWind } from "../../lib/abilityEffects";
+import { formatV2Effects } from "../../lib/abilityEngineV2";
 import { generateAbilityCard } from "../../lib/abilityCard";
 import prisma from "../../lib/prisma";
 
@@ -387,17 +388,14 @@ const command: Command = {
                 .setFooter({ text: "CARTETHYIA  ·  Unique Ability Generation" })],
             });
 
-            const ability = await generateUniqueAbility(interaction.user.id);
+            const ability = await generateUniqueAbilityV2(interaction.user.id);
 
             await generatingMsg.delete().catch(() => {});
 
             if (ability) {
-              // Read the persisted composite effects for the reveal card
-              const me = await prisma.user.findUnique({
-                where:  { id: interaction.user.id },
-                select: { uniqueAbilityEffects: true },
-              });
-              const effList = formatEffects(sanitizeEffects(me?.uniqueAbilityEffects)).split("\n").filter(Boolean);
+              const effList = formatV2Effects(ability.v2Effects)
+                .replace(/\*\*/g, "").replace(/\*([^*]+)\*/g, "$1")
+                .split("\n").filter(Boolean);
 
               const abilityCardBuf = await generateAbilityCard({
                 displayName,
