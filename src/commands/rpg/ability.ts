@@ -7,6 +7,7 @@ import prisma from "../../lib/prisma";
 import { replyNotStarted } from "../../lib/economy";
 import { generateAbilityCard } from "../../lib/abilityCard";
 import { formatEffects, sanitizeEffects } from "../../lib/abilityEffects";
+import { formatV2Effects, sanitizeV2Effects } from "../../lib/abilityEngineV2";
 
 const ELEMENT_HEX: Record<string, number> = {
   FUSION: 0xFF6B35, GLACIO: 0x38BDF8, ELECTRO: 0xA855F7,
@@ -38,6 +39,7 @@ const command: Command = {
         uniqueAbilityType:    true,
         uniqueAbilityLore:    true,
         abilityEvolved:       true,
+        abilityVersion:       true,
         worldLevel:           true,
       },
     });
@@ -65,8 +67,12 @@ const command: Command = {
       return;
     }
 
-    const effects     = sanitizeEffects(user.uniqueAbilityEffects, user.abilityEvolved);
-    const effectLines = formatEffects(effects).split("\n").filter(Boolean);
+    const isV2        = user.abilityVersion === 2;
+    const effectLines = isV2
+      ? formatV2Effects(sanitizeV2Effects(user.uniqueAbilityEffects))
+          .replace(/\*\*/g, "").replace(/\*([^*]+)\*/g, "$1")
+          .split("\n").filter(Boolean)
+      : formatEffects(sanitizeEffects(user.uniqueAbilityEffects, user.abilityEvolved)).split("\n").filter(Boolean);
 
     // Generate the ability card
     const cardBuffer = await generateAbilityCard({
