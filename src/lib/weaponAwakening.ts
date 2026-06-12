@@ -275,6 +275,25 @@ export async function regenerateArtPrompt(userId: string): Promise<string | null
   return prompt;
 }
 
+// ── Display helper ────────────────────────────────────────────────────────────
+// Builds the full passive string for display: desc + each named effect on its
+// own line. Used by weapon card, /weapons, /equip, /weapon so they all match.
+export function formatAwakenedPassive(ap: any): string {
+  if (!ap) return "";
+  const lines: string[] = [];
+  if (ap.desc) lines.push(ap.desc);
+  if (ap.elemDmg) lines.push(`+${Math.round(Number(ap.elemDmg) * 100)}% Elemental DMG`);
+  if (Array.isArray(ap.effects)) {
+    for (const e of ap.effects) {
+      const def = (ABILITY_REGISTRY as any)[e.type];
+      if (!def) continue;
+      const valStr = def.isPct ? `${Math.round(e.value * 100)}%` : String(e.value);
+      lines.push(`${def.label}: ${def.desc.replace("{v}", valStr)}`);
+    }
+  }
+  return lines.join("\n");
+}
+
 // ── Weapon Bond ───────────────────────────────────────────────────────────────
 // Awakened weapons start at 80% power (bond 0) and grow to 100% at bond 10.
 // Bond increments on boss/dungeon/field-boss wins when weapon is equipped.

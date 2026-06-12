@@ -3,6 +3,7 @@ import { Command } from "../../types";
 import { getOrCreateUser } from "../../lib/economy";
 import { WEAPON_TYPE_LABEL, FORGED_WEAPONS } from "../../lib/weapons";
 import { generateWeaponCard } from "../../lib/weaponCard";
+import { formatAwakenedPassive } from "../../lib/weaponAwakening";
 import { ALL_WISH_WEAPONS, calcWishSubStat } from "../../lib/wishWeapons";
 import { WeaponType } from "@prisma/client";
 import prisma from "../../lib/prisma";
@@ -89,8 +90,8 @@ const command: Command = {
       subStatType:  weapon.subStatType ?? null,
       subStatVal:   weapon.subStatVal  ?? null,
       effectiveSub: weapon.subStatVal  != null ? effectiveSub(weapon.subStatVal, weapon.level) : null,
-      passive:      weapon.awakened && (weapon.awakenedPassive as any)?.desc
-        ? (weapon.awakenedPassive as any).desc
+      passive:      weapon.awakened && weapon.awakenedPassive
+        ? formatAwakenedPassive(weapon.awakenedPassive)
         : weaponDef?.passive ?? WEAPON_TYPE_LABEL[weapon.weaponType as WeaponType] ?? "",
       element:      user.element,
       ownerName:    displayName,

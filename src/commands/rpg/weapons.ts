@@ -7,6 +7,7 @@ import { Command } from "../../types";
 import { getOrCreateUser } from "../../lib/economy";
 import { RARITY_STARS, WEAPON_TYPE_EMOJI } from "../../lib/weapons";
 import { generateWeaponCard } from "../../lib/weaponCard";
+import { formatAwakenedPassive } from "../../lib/weaponAwakening";
 import { ALL_WISH_WEAPONS, calcWishSubStat } from "../../lib/wishWeapons";
 import { FORGED_WEAPONS } from "../../lib/weapons";
 import { WeaponType } from "@prisma/client";
@@ -72,8 +73,8 @@ const command: Command = {
         subStatType:  w.subStatType ?? null,
         subStatVal:   w.subStatVal  ?? null,
         effectiveSub: w.subStatVal  != null ? effectiveSub(w.subStatVal, w.level) : null,
-        passive:      w.awakened && (w.awakenedPassive as any)?.desc
-          ? (w.awakenedPassive as any).desc
+        passive:      w.awakened && w.awakenedPassive
+          ? formatAwakenedPassive(w.awakenedPassive)
           : forgeDef?.passive ?? "",
         element:      user.element,
         ownerName:    displayName,

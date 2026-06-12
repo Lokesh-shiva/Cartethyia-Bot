@@ -8,6 +8,7 @@ import { Command } from "../../types";
 import { getOrCreateUser } from "../../lib/economy";
 import { RARITY_STARS, WEAPON_TYPE_EMOJI, FORGED_WEAPONS } from "../../lib/weapons";
 import { generateWeaponCard } from "../../lib/weaponCard";
+import { formatAwakenedPassive } from "../../lib/weaponAwakening";
 import { ALL_WISH_WEAPONS, calcWishSubStat } from "../../lib/wishWeapons";
 import { WeaponType } from "@prisma/client";
 import prisma from "../../lib/prisma";
@@ -53,8 +54,8 @@ function weaponBlock(w: any): string {
   }
 
   // Passive
-  const passiveDesc = w.awakened && (w.awakenedPassive as any)?.desc
-    ? (w.awakenedPassive as any).desc
+  const passiveDesc = w.awakened && w.awakenedPassive
+    ? formatAwakenedPassive(w.awakenedPassive)
     : forgeDef?.passive ?? "";
   if (passiveDesc) {
     const short = passiveDesc.length > 80 ? passiveDesc.slice(0, 77) + "…" : passiveDesc;
@@ -82,8 +83,8 @@ async function buildCard(w: any, element: string, ownerName: string, ownerAvatar
     subStatType:  w.subStatType ?? null,
     subStatVal:   w.subStatVal  ?? null,
     effectiveSub: w.subStatVal != null ? effectiveSub(w.subStatVal, w.level) : null,
-    passive:      w.awakened && (w.awakenedPassive as any)?.desc
-      ? (w.awakenedPassive as any).desc
+    passive:      w.awakened && w.awakenedPassive
+      ? formatAwakenedPassive(w.awakenedPassive)
       : forgeDef?.passive ?? "",
     element,
     ownerName,
