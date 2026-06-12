@@ -113,9 +113,10 @@
       align-items: center;
       justify-content: space-between;
       padding: 1rem 2.5rem;
-      background: rgba(8,11,18,0.75);
-      backdrop-filter: blur(16px);
-      border-bottom: 1px solid var(--border);
+      background: rgba(8,11,18,0.45);
+      backdrop-filter: blur(28px) saturate(200%);
+      -webkit-backdrop-filter: blur(28px) saturate(200%);
+      border-bottom: 1px solid rgba(167,139,250,0.12);
     }
     .nav-logo {
       font-family: 'Rajdhani', sans-serif;
@@ -364,18 +365,20 @@
       display: grid;
       grid-template-columns: repeat(3, 1fr);
       gap: 1px;
-      background: var(--border);
-      border: 1px solid var(--border);
-      border-radius: 14px;
+      background: rgba(255,255,255,0.04);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 16px;
       overflow: hidden;
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
     }
     .stat-item {
-      background: var(--surface);
+      background: rgba(17,21,32,0.4);
       padding: 2.2rem 2rem;
       text-align: center;
       transition: background 0.2s;
     }
-    .stat-item:hover { background: #161b28; }
+    .stat-item:hover { background: rgba(22,27,40,0.8); }
     .stat-num {
       font-family: 'Rajdhani', sans-serif;
       font-size: 2.8rem;
@@ -399,17 +402,30 @@
     .features-grid {
       display: grid;
       grid-template-columns: repeat(3, 1fr);
+      grid-template-areas:
+        "combat  combat  echo"
+        "wish    dungeon echo"
+        "element element prog";
       gap: 1.25rem;
       margin-top: 3.5rem;
     }
+    .feat-combat  { grid-area: combat; }
+    .feat-echo    { grid-area: echo; }
+    .feat-wish    { grid-area: wish; }
+    .feat-dungeon { grid-area: dungeon; }
+    .feat-element { grid-area: element; }
+    .feat-prog    { grid-area: prog; }
+
     .feat-card {
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: 14px;
+      background: rgba(17,21,32,0.5);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border: 1px solid rgba(255,255,255,0.07);
+      border-radius: 16px;
       padding: 1.8rem;
       position: relative;
       overflow: hidden;
-      transition: transform 0.25s, border-color 0.25s, box-shadow 0.25s;
+      transition: transform 0.3s cubic-bezier(0.16,1,0.3,1), border-color 0.3s, box-shadow 0.3s;
       cursor: default;
     }
     .feat-card::before {
@@ -419,10 +435,21 @@
       height: 2px;
       background: var(--accent, linear-gradient(90deg, var(--purple), var(--blue)));
       opacity: 0;
-      transition: opacity 0.25s;
+      transition: opacity 0.3s;
     }
-    .feat-card:hover { transform: translateY(-4px); border-color: rgba(167,139,250,0.25); box-shadow: 0 16px 48px rgba(0,0,0,0.4); }
+    /* subtle inner glow on hover */
+    .feat-card::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: var(--accent-glow, radial-gradient(circle at 50% 0%, rgba(167,139,250,0.06), transparent 60%));
+      opacity: 0;
+      transition: opacity 0.3s;
+      pointer-events: none;
+    }
+    .feat-card:hover { transform: translateY(-6px); border-color: rgba(255,255,255,0.14); box-shadow: 0 24px 60px rgba(0,0,0,0.5); }
     .feat-card:hover::before { opacity: 1; }
+    .feat-card:hover::after  { opacity: 1; }
     .feat-icon { font-size: 2.2rem; margin-bottom: 1rem; display: block; }
     .feat-name {
       font-family: 'Rajdhani', sans-serif;
@@ -435,12 +462,12 @@
     .feat-desc { color: var(--dim); font-size: 0.92rem; line-height: 1.55; font-weight: 300; }
 
     /* per-card accent colors */
-    .feat-combat  { --accent: linear-gradient(90deg, var(--fusion), var(--havoc)); }
-    .feat-echo    { --accent: linear-gradient(90deg, var(--electro), var(--glacio)); }
-    .feat-wish    { --accent: linear-gradient(90deg, var(--gold), var(--purple)); }
-    .feat-dungeon { --accent: linear-gradient(90deg, var(--blue), var(--purple)); }
-    .feat-element { --accent: linear-gradient(90deg, var(--spectro), var(--aero)); }
-    .feat-prog    { --accent: linear-gradient(90deg, var(--aero), var(--blue)); }
+    .feat-combat  { --accent: linear-gradient(90deg, var(--fusion), var(--havoc));     --accent-glow: radial-gradient(circle at 50% 0%, rgba(255,107,53,0.08), transparent 60%); }
+    .feat-echo    { --accent: linear-gradient(90deg, var(--electro), var(--glacio));   --accent-glow: radial-gradient(circle at 50% 0%, rgba(79,195,247,0.08), transparent 60%); }
+    .feat-wish    { --accent: linear-gradient(90deg, var(--gold), var(--purple));      --accent-glow: radial-gradient(circle at 50% 0%, rgba(245,158,11,0.08), transparent 60%); }
+    .feat-dungeon { --accent: linear-gradient(90deg, var(--blue), var(--purple));      --accent-glow: radial-gradient(circle at 50% 0%, rgba(96,165,250,0.08), transparent 60%); }
+    .feat-element { --accent: linear-gradient(90deg, var(--spectro), var(--aero));     --accent-glow: radial-gradient(circle at 50% 0%, rgba(255,213,79,0.08), transparent 60%); }
+    .feat-prog    { --accent: linear-gradient(90deg, var(--aero), var(--blue));        --accent-glow: radial-gradient(circle at 50% 0%, rgba(128,203,196,0.08), transparent 60%); }
 
     /* ── Discord card mockups ───────────────────────────────────────────── */
     .previews-wrap {
@@ -930,7 +957,9 @@
       margin-top: 1rem;
     }
     .milestone-card {
-      background: var(--surface);
+      background: rgba(17,21,32,0.5);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
       border: 1px solid rgba(245,158,11,0.2);
       border-radius: 16px;
       padding: 2rem;
@@ -1070,8 +1099,10 @@
       margin-top: 3rem;
     }
     .vote-reward-item {
-      background: var(--surface);
-      border: 1px solid var(--border);
+      background: rgba(17,21,32,0.5);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border: 1px solid rgba(255,255,255,0.07);
       border-radius: 14px;
       padding: 2rem 1.5rem;
       text-align: center;
@@ -1105,9 +1136,84 @@
     }
     .btn-vote:hover { box-shadow: 0 0 40px rgba(245,158,11,0.5); }
 
+    /* ── Cursor glow ────────────────────────────────────────────────────── */
+    .cursor-glow {
+      position: fixed;
+      width: 700px; height: 700px;
+      border-radius: 50%;
+      pointer-events: none;
+      z-index: 0;
+      background: radial-gradient(circle, rgba(167,139,250,0.055) 0%, transparent 65%);
+      transform: translate(-50%, -50%);
+      transition: left 0.08s linear, top 0.08s linear;
+    }
+
+    /* ── Directional reveals ─────────────────────────────────────────────── */
+    .will-reveal { opacity: 0; }
+    @keyframes reveal-up    { from { opacity:0; transform:translateY(32px);  } to { opacity:1; transform:translateY(0);  } }
+    @keyframes reveal-left  { from { opacity:0; transform:translateX(-40px); } to { opacity:1; transform:translateX(0); } }
+    @keyframes reveal-right { from { opacity:0; transform:translateX(40px);  } to { opacity:1; transform:translateX(0); } }
+    .revealed-up    { animation: reveal-up    0.72s cubic-bezier(0.16,1,0.3,1) both; }
+    .revealed-left  { animation: reveal-left  0.72s cubic-bezier(0.16,1,0.3,1) both; }
+    .revealed-right { animation: reveal-right 0.72s cubic-bezier(0.16,1,0.3,1) both; }
+
+    /* ── 3D tilt ────────────────────────────────────────────────────────── */
+    .tilt-wrap {
+      transform-style: preserve-3d;
+      will-change: transform;
+      transition: transform 0.12s ease-out, box-shadow 0.12s ease-out;
+    }
+    .tilt-wrap:hover {
+      box-shadow: 0 32px 80px rgba(0,0,0,0.65), 0 0 0 1px rgba(167,139,250,0.2);
+    }
+    .milestone-card.tilt-wrap:hover {
+      box-shadow: 0 28px 70px rgba(0,0,0,0.6), 0 0 0 1px rgba(245,158,11,0.25);
+    }
+
+    /* ── Element stat bars ──────────────────────────────────────────────── */
+    .elem-stat-bars {
+      margin-top: 0.65rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.28rem;
+    }
+    .elem-bar-row {
+      display: grid;
+      grid-template-columns: 54px 1fr 38px;
+      align-items: center;
+      gap: 0.4rem;
+      font-size: 0.67rem;
+    }
+    .elem-bar-name { color: rgba(255,255,255,0.45); text-align: right; font-family: 'Rajdhani', sans-serif; letter-spacing: 0.04em; }
+    .elem-bar-val  { color: rgba(255,255,255,0.65); font-family: 'Rajdhani', sans-serif; font-weight: 600; }
+    .elem-bar { height: 3px; background: rgba(255,255,255,0.08); border-radius: 2px; overflow: hidden; }
+    .elem-bar-fill {
+      height: 100%;
+      border-radius: 2px;
+      width: 0;
+      transition: width 0.9s cubic-bezier(0.16,1,0.3,1);
+      background: var(--bar-color, rgba(167,139,250,0.8));
+    }
+    .elem-bonus-card.fusion  .elem-bar-fill { --bar-color: var(--fusion);  }
+    .elem-bonus-card.glacio  .elem-bar-fill { --bar-color: var(--glacio);  }
+    .elem-bonus-card.electro .elem-bar-fill { --bar-color: var(--electro); }
+    .elem-bonus-card.aero    .elem-bar-fill { --bar-color: var(--aero);    }
+    .elem-bonus-card.havoc   .elem-bar-fill { --bar-color: var(--havoc);   }
+    .elem-bonus-card.spectro .elem-bar-fill { --bar-color: var(--spectro); }
+    .elem-bonus-card.bars-active .elem-bar-fill { width: var(--bar-w, 50%); }
+
     /* ── Responsive ─────────────────────────────────────────────────────── */
+    @media (max-width: 1024px) {
+      .features-grid {
+        grid-template-areas:
+          "combat  combat"
+          "echo    wish"
+          "dungeon element"
+          "prog    prog";
+        grid-template-columns: repeat(2, 1fr);
+      }
+    }
     @media (max-width: 900px) {
-      .features-grid { grid-template-columns: repeat(2, 1fr); }
       .preview-row { grid-template-columns: 1fr; }
       .preview-row.reverse { direction: ltr; }
       .cmd-grid { grid-template-columns: 1fr; }
@@ -1115,21 +1221,28 @@
       .stats-inner { grid-template-columns: 1fr; gap: 1px; }
       .milestone-cards { grid-template-columns: 1fr; }
       .vote-reward-grid { grid-template-columns: 1fr; }
+      .cursor-glow { display: none; }
     }
     @media (max-width: 600px) {
       nav { padding: 0.75rem 1.25rem; }
       .nav-links { display: none; }
-      .features-grid { grid-template-columns: 1fr; }
+      .features-grid {
+        grid-template-areas: none;
+        grid-template-columns: 1fr;
+      }
       .elem-bonus-grid { grid-template-columns: 1fr; }
       .d-embed-fields { grid-template-columns: repeat(2,1fr); }
       .echo-grid { grid-template-columns: repeat(3,1fr); }
       .cta-inner { padding: 2.5rem 1.5rem; }
       .footer-inner { flex-direction: column; align-items: flex-start; }
       .milestone-timeline { gap: 0.5rem; }
+      .elem-bar-row { grid-template-columns: 42px 1fr 32px; }
     }
   </style>
 </head>
 <body>
+
+<div class="cursor-glow" id="cursorGlow"></div>
 
 <!-- ── Navigation ──────────────────────────────────────────────────────── -->
 <nav>
@@ -1172,15 +1285,15 @@
 <!-- ── Stats bar ───────────────────────────────────────────────────────── -->
 <div class="stats-bar">
   <div class="stats-inner">
-    <div class="stat-item">
-      <div class="stat-num">9</div>
+    <div class="stat-item will-reveal">
+      <div class="stat-num" data-count="9" data-suffix="">0</div>
       <div class="stat-label">World Levels</div>
     </div>
-    <div class="stat-item">
-      <div class="stat-num">50+</div>
+    <div class="stat-item will-reveal">
+      <div class="stat-num" data-count="50" data-suffix="+">0</div>
       <div class="stat-label">Commands</div>
     </div>
-    <div class="stat-item">
+    <div class="stat-item will-reveal">
       <div class="stat-num">Free</div>
       <div class="stat-label">To Play</div>
     </div>
@@ -1237,13 +1350,13 @@
   <div class="previews-wrap">
 
     <!-- Boss Combat -->
-    <div class="preview-row">
-      <div class="preview-label">
+    <div class="preview-row" data-reveal="split">
+      <div class="preview-label" data-reveal="left">
         <div class="preview-cmd"><span>/boss</span></div>
         <div class="preview-title">Boss Battles</div>
         <div class="preview-desc">Challenge one of 9 world-tier bosses in turn-based combat. Watch the vibration bar shatter as you land crits. Defeat them before they enrage at 40% HP — when they hit back harder and shatter recovery drops to 60%.</div>
       </div>
-      <div class="screenshot-wrap">
+      <div class="screenshot-wrap tilt-wrap" data-reveal="right">
         <img src="./battle.png" alt="Ignis Behemoth boss battle card showing HP bars, vibration bar, and combat UI" class="screenshot" />
       </div>
     </div>
@@ -1255,19 +1368,19 @@
         <div class="preview-title">Character Profile</div>
         <div class="preview-desc">Your full character sheet at a glance — level, element, stats, equipped weapon with its Weapon Bond lore, Resonance Aura charges, and your recent party in the sidebar. Every stat scales with gear, echoes, and set bonuses.</div>
       </div>
-      <div class="screenshot-wrap">
+      <div class="screenshot-wrap tilt-wrap" data-reveal="right">
         <img src="./profile.png" alt="Character profile card showing Tranzue with Aero element, stats, and equipped weapon" class="screenshot" />
       </div>
     </div>
 
     <!-- Echo -->
-    <div class="preview-row">
-      <div class="preview-label">
+    <div class="preview-row" data-reveal="split">
+      <div class="preview-label" data-reveal="left">
         <div class="preview-cmd"><span>/echo</span></div>
         <div class="preview-title">Echo Cards</div>
         <div class="preview-desc">Each echo is a canvas card with rarity, element, main stat, and up to four substats that scale 1.5× by Lv 25. Hunt field bosses and dungeons to collect them, then build set bonuses for powerful passive effects.</div>
       </div>
-      <div class="screenshot-wrap">
+      <div class="screenshot-wrap tilt-wrap" data-reveal="right">
         <img src="./echo.png" alt="Tempest Ancient echo card showing Aero element, Crit DMG main stat, and four substats" class="screenshot" />
       </div>
     </div>
@@ -1279,19 +1392,19 @@
         <div class="preview-title">Weapon Arsenal</div>
         <div class="preview-desc">Browse your full weapon collection with a select menu — each entry shows rarity, ATK, level, and its Weapon Bond flavor text. Equip from a side-by-side comparison card before you commit. Awakened weapons display their AI-forged name and unique lore.</div>
       </div>
-      <div class="screenshot-wrap">
+      <div class="screenshot-wrap tilt-wrap" data-reveal="right">
         <img src="./weapons.png" alt="Weapons arsenal browser showing Fractured Fang sword selected with stats and Weapon Bond" class="screenshot" />
       </div>
     </div>
 
     <!-- Stats -->
-    <div class="preview-row">
-      <div class="preview-label">
+    <div class="preview-row" data-reveal="split">
+      <div class="preview-label" data-reveal="left">
         <div class="preview-cmd"><span>/stats</span></div>
         <div class="preview-title">Combat Stats</div>
         <div class="preview-desc">See every final number the game actually uses — HP, ATK, DEF, Crit, Elem DMG, and a full breakdown of every bonus source: innate element bonuses, echo substats, set effects, weapon passive, and your unique evolved ability effects.</div>
       </div>
-      <div class="screenshot-wrap">
+      <div class="screenshot-wrap tilt-wrap" data-reveal="right">
         <img src="./stats.png" alt="Combat stats embed showing Tranzue's final numbers with full bonus source breakdown" class="screenshot" />
       </div>
     </div>
@@ -1325,6 +1438,11 @@
       <div class="elem-content">
         <div class="elem-bonus-name">Fusion</div>
         <div class="elem-bonus-stat">+15% ATK · +15% Crit · +20% Elem DMG<em>IGNITE: 35% → +25% ATK hit</em></div>
+        <div class="elem-stat-bars">
+          <div class="elem-bar-row"><span class="elem-bar-name">ATK</span><div class="elem-bar"><div class="elem-bar-fill" style="--bar-w:38%"></div></div><span class="elem-bar-val">+15%</span></div>
+          <div class="elem-bar-row"><span class="elem-bar-name">CRIT</span><div class="elem-bar"><div class="elem-bar-fill" style="--bar-w:38%"></div></div><span class="elem-bar-val">+15%</span></div>
+          <div class="elem-bar-row"><span class="elem-bar-name">ELEM</span><div class="elem-bar"><div class="elem-bar-fill" style="--bar-w:50%"></div></div><span class="elem-bar-val">+20%</span></div>
+        </div>
       </div>
     </div>
     <div class="elem-bonus-card glacio">
@@ -1334,6 +1452,11 @@
       <div class="elem-content">
         <div class="elem-bonus-name">Glacio</div>
         <div class="elem-bonus-stat">+30% DEF · +15% HP · +20% Elem DMG<em>FROST SHIELD: 25% → absorb 40%</em></div>
+        <div class="elem-stat-bars">
+          <div class="elem-bar-row"><span class="elem-bar-name">DEF</span><div class="elem-bar"><div class="elem-bar-fill" style="--bar-w:75%"></div></div><span class="elem-bar-val">+30%</span></div>
+          <div class="elem-bar-row"><span class="elem-bar-name">HP</span><div class="elem-bar"><div class="elem-bar-fill" style="--bar-w:38%"></div></div><span class="elem-bar-val">+15%</span></div>
+          <div class="elem-bar-row"><span class="elem-bar-name">ELEM</span><div class="elem-bar"><div class="elem-bar-fill" style="--bar-w:50%"></div></div><span class="elem-bar-val">+20%</span></div>
+        </div>
       </div>
     </div>
     <div class="elem-bonus-card electro">
@@ -1343,6 +1466,11 @@
       <div class="elem-content">
         <div class="elem-bonus-name">Electro</div>
         <div class="elem-bonus-stat">+5% Crit · +20% Crit DMG · +25 Energy/turn<em>DISCHARGE: crit → +20 energy</em></div>
+        <div class="elem-stat-bars">
+          <div class="elem-bar-row"><span class="elem-bar-name">CRIT</span><div class="elem-bar"><div class="elem-bar-fill" style="--bar-w:13%"></div></div><span class="elem-bar-val">+5%</span></div>
+          <div class="elem-bar-row"><span class="elem-bar-name">CR DMG</span><div class="elem-bar"><div class="elem-bar-fill" style="--bar-w:50%"></div></div><span class="elem-bar-val">+20%</span></div>
+          <div class="elem-bar-row"><span class="elem-bar-name">ENERGY</span><div class="elem-bar"><div class="elem-bar-fill" style="--bar-w:63%"></div></div><span class="elem-bar-val">+25</span></div>
+        </div>
       </div>
     </div>
     <div class="elem-bonus-card aero">
@@ -1352,6 +1480,11 @@
       <div class="elem-content">
         <div class="elem-bonus-name">Aero</div>
         <div class="elem-bonus-stat">+15% ATK · +40% Crit DMG · +20% Elem DMG<em>WINDSTRIDE: +8% DMG/turn ×5</em></div>
+        <div class="elem-stat-bars">
+          <div class="elem-bar-row"><span class="elem-bar-name">ATK</span><div class="elem-bar"><div class="elem-bar-fill" style="--bar-w:38%"></div></div><span class="elem-bar-val">+15%</span></div>
+          <div class="elem-bar-row"><span class="elem-bar-name">CR DMG</span><div class="elem-bar"><div class="elem-bar-fill" style="--bar-w:100%"></div></div><span class="elem-bar-val">+40%</span></div>
+          <div class="elem-bar-row"><span class="elem-bar-name">ELEM</span><div class="elem-bar"><div class="elem-bar-fill" style="--bar-w:50%"></div></div><span class="elem-bar-val">+20%</span></div>
+        </div>
       </div>
     </div>
     <div class="elem-bonus-card havoc">
@@ -1361,6 +1494,11 @@
       <div class="elem-content">
         <div class="elem-bonus-name">Havoc</div>
         <div class="elem-bonus-stat">+15% ATK · +20% Lifesteal · +20% Elem DMG<em>VOID SURGE: shatter → +25% HP</em></div>
+        <div class="elem-stat-bars">
+          <div class="elem-bar-row"><span class="elem-bar-name">ATK</span><div class="elem-bar"><div class="elem-bar-fill" style="--bar-w:38%"></div></div><span class="elem-bar-val">+15%</span></div>
+          <div class="elem-bar-row"><span class="elem-bar-name">LEECH</span><div class="elem-bar"><div class="elem-bar-fill" style="--bar-w:50%"></div></div><span class="elem-bar-val">+20%</span></div>
+          <div class="elem-bar-row"><span class="elem-bar-name">ELEM</span><div class="elem-bar"><div class="elem-bar-fill" style="--bar-w:50%"></div></div><span class="elem-bar-val">+20%</span></div>
+        </div>
       </div>
     </div>
     <div class="elem-bonus-card spectro">
@@ -1370,6 +1508,10 @@
       <div class="elem-content">
         <div class="elem-bonus-name">Spectro</div>
         <div class="elem-bonus-stat">+30% HP · +20% Elem DMG<em>RADIANCE: 2% regen &amp; &lt;40% HP → +25% Crit</em></div>
+        <div class="elem-stat-bars">
+          <div class="elem-bar-row"><span class="elem-bar-name">HP</span><div class="elem-bar"><div class="elem-bar-fill" style="--bar-w:75%"></div></div><span class="elem-bar-val">+30%</span></div>
+          <div class="elem-bar-row"><span class="elem-bar-name">ELEM</span><div class="elem-bar"><div class="elem-bar-fill" style="--bar-w:50%"></div></div><span class="elem-bar-val">+20%</span></div>
+        </div>
       </div>
     </div>
   </div>
@@ -1408,21 +1550,21 @@
   <div class="milestone-cards">
 
     <!-- Evolution -->
-    <div class="milestone-card evo-card">
+    <div class="milestone-card evo-card tilt-wrap">
       <span class="mc-badge">Lv 50 · /evolve</span>
       <h3 class="mc-title">Ability Evolution</h3>
       <p class="mc-desc">Complete a three-part quest — dungeon clears, a WL5+ boss kill, and a material cost — to permanently evolve your ability. The AI rewrites its name, lore, and adds a fourth effect using your full combat history, gear, and personality bonds.</p>
-      <div class="screenshot-wrap">
+      <div class="screenshot-wrap tilt-wrap" data-reveal="right">
         <img src="./evolve.png" alt="Eclipse of Resolve evolved ability card showing four gold-accented effects and lore" class="screenshot" />
       </div>
     </div>
 
     <!-- Awakening -->
-    <div class="milestone-card awaken-card">
+    <div class="milestone-card awaken-card tilt-wrap">
       <span class="mc-badge">Lv 60 · /awaken</span>
       <h3 class="mc-title">Ego Weapon Awakening</h3>
       <p class="mc-desc">Requires an evolved ability and an equipped weapon. Stats are amplified by rarity (up to ×1.25), the passive is enhanced, and the AI adds a new effect plus a unique awakened name, lore, and art description — all permanent.</p>
-      <div class="screenshot-wrap">
+      <div class="screenshot-wrap tilt-wrap" data-reveal="right">
         <img src="./awaken.png" alt="Pyrclast Oathbreaker's Edge awakened weapon card with gold border, weapon art, and amplified stats" class="screenshot" />
       </div>
     </div>
@@ -1525,21 +1667,95 @@
   </div>
 </footer>
 
-<!-- Scroll-triggered fade-in via IntersectionObserver -->
 <script>
-  const io = new IntersectionObserver((entries) => {
+  // ── Cursor glow ────────────────────────────────────────────────────────
+  const glow = document.getElementById('cursorGlow');
+  if (glow) {
+    document.addEventListener('mousemove', e => {
+      glow.style.left = e.clientX + 'px';
+      glow.style.top  = e.clientY + 'px';
+    });
+  }
+
+  // ── Directional reveal logic ───────────────────────────────────────────
+  function revealClass(el) {
+    const row = el.closest('.preview-row');
+    if (row) {
+      const rev = row.classList.contains('reverse');
+      if (el.classList.contains('preview-label'))   return rev ? 'revealed-right' : 'revealed-left';
+      if (el.classList.contains('screenshot-wrap')) return rev ? 'revealed-left'  : 'revealed-right';
+    }
+    if (el.classList.contains('milestone-card') || el.classList.contains('vote-reward-item')) return 'revealed-up';
+    return 'revealed-up';
+  }
+
+  const revealSels = '.feat-card, .cmd-row, .elem-bonus-card, .preview-label, .screenshot-wrap, .stat-item, .milestone-card, .vote-reward-item';
+  const revealEls = [...document.querySelectorAll(revealSels)];
+  revealEls.forEach(el => el.classList.add('will-reveal'));
+
+  // Stagger feat-cards and cmd-rows
+  document.querySelectorAll('.feat-card').forEach((el, i) => { el.style.animationDelay = (i * 0.07) + 's'; });
+  document.querySelectorAll('.cmd-row').forEach((el, i)   => { el.style.animationDelay = (i * 0.04) + 's'; });
+
+  const revIO = new IntersectionObserver(entries => {
     entries.forEach(e => {
-      if (e.isIntersecting) {
-        e.target.style.animation = 'fadein 0.65s ease both';
-        io.unobserve(e.target);
-      }
+      if (!e.isIntersecting) return;
+      e.target.classList.remove('will-reveal');
+      e.target.classList.add(revealClass(e.target));
+      revIO.unobserve(e.target);
     });
   }, { threshold: 0.12 });
-  document.querySelectorAll('.feat-card, .cmd-row, .elem-bonus-card, .preview-row, .stat-item')
-    .forEach(el => {
-      el.style.opacity = '0';
-      io.observe(el);
+  revealEls.forEach(el => revIO.observe(el));
+
+  // ── Animated counters ──────────────────────────────────────────────────
+  function runCounter(el) {
+    const target = parseInt(el.dataset.count);
+    const suffix = el.dataset.suffix || '';
+    const t0 = performance.now();
+    const dur = 1100;
+    (function tick(now) {
+      const p = Math.min((now - t0) / dur, 1);
+      const eased = p === 1 ? 1 : 1 - Math.pow(2, -10 * p);
+      el.textContent = Math.round(eased * target) + suffix;
+      if (p < 1) requestAnimationFrame(tick);
+    })(t0);
+  }
+  const cntIO = new IntersectionObserver(entries => {
+    entries.forEach(e => {
+      if (!e.isIntersecting) return;
+      e.target.querySelectorAll('.stat-num[data-count]').forEach(runCounter);
+      cntIO.unobserve(e.target);
     });
+  }, { threshold: 0.5 });
+  document.querySelectorAll('.stat-item').forEach(el => cntIO.observe(el));
+
+  // ── Element bars ───────────────────────────────────────────────────────
+  const barIO = new IntersectionObserver(entries => {
+    entries.forEach(e => {
+      if (!e.isIntersecting) return;
+      e.target.classList.add('bars-active');
+      barIO.unobserve(e.target);
+    });
+  }, { threshold: 0.3 });
+  document.querySelectorAll('.elem-bonus-card').forEach(el => barIO.observe(el));
+
+  // ── 3D tilt ────────────────────────────────────────────────────────────
+  const TILT = 7;
+  document.querySelectorAll('.tilt-wrap').forEach(card => {
+    card.addEventListener('mouseenter', () => {
+      card.style.transition = 'transform 0.1s ease-out, box-shadow 0.1s ease-out';
+    });
+    card.addEventListener('mousemove', e => {
+      const r  = card.getBoundingClientRect();
+      const dx = (e.clientX - r.left - r.width  / 2) / (r.width  / 2);
+      const dy = (e.clientY - r.top  - r.height / 2) / (r.height / 2);
+      card.style.transform = `perspective(900px) rotateX(${-dy * TILT}deg) rotateY(${dx * TILT}deg) scale(1.025)`;
+    });
+    card.addEventListener('mouseleave', () => {
+      card.style.transition = 'transform 0.55s cubic-bezier(0.16,1,0.3,1), box-shadow 0.55s';
+      card.style.transform  = 'perspective(900px) rotateX(0deg) rotateY(0deg) scale(1)';
+    });
+  });
 </script>
 
 </body>
