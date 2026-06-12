@@ -404,7 +404,20 @@ export async function resolvePlayerBonuses(userId: string): Promise<PlayerBonuse
   bonuses.abilityVersion = user.abilityVersion ?? 1;
 
   if (bonuses.abilityVersion === 2) {
-    // V2 — composable trigger→effect language
+    // V2 — composable trigger→effect language.
+    // Weapon effects are already in bonuses.abilityEffects — fold their passives
+    // first so CRIT_DMG / LIFESTEAL / EXECUTE from awakened weapons still apply.
+    if (bonuses.abilityEffects.length > 0) {
+      const wp = compositePassives(bonuses.abilityEffects);
+      bonuses.atkMult       *= wp.atkMult;
+      bonuses.hpMult        *= wp.hpMult;
+      bonuses.defMult       *= wp.defMult;
+      bonuses.critRateBonus += wp.critRateBonus;
+      bonuses.critDmgBonus  += wp.critDmgBonus;
+      bonuses.lifesteal     += wp.lifesteal;
+      bonuses.energyBonus   += wp.energyBonus;
+      bonuses.elemDmgBonus  += wp.elemDmgBonus;
+    }
     const v2 = sanitizeV2Effects(user.uniqueAbilityEffects);
     if (v2.length > 0) {
       bonuses.v2Effects = v2;
@@ -545,7 +558,7 @@ export interface AbilityAttackResult {
 export function applyAbilityAttack(
   bonuses: PlayerBonuses, baseDmg: number, isCrit: boolean, ctx: AbilityCtx,
 ): AbilityAttackResult {
-  if (bonuses.abilityVersion === 2 && bonuses.v2Effects.length > 0) {
+  if (bonuses.abilityVersion === 2) {
     const v2ctx = {
       ...ctx,
       isCrit,
@@ -553,8 +566,18 @@ export function applyAbilityAttack(
       isShattered: ctx.isShattered ?? false,
       v2Stacks:    ctx.v2Stacks    ?? 0,
     };
-    const r = applyV2Attack(bonuses.v2Effects, baseDmg, isCrit, v2ctx);
-    return { dmg: r.dmg, healHp: r.healHp, bonusEnergy: r.bonusEnergy, tag: r.tag };
+    // V2 unique ability hooks
+    const r = bonuses.v2Effects.length > 0
+      ? applyV2Attack(bonuses.v2Effects, baseDmg, isCrit, v2ctx)
+      : { dmg: baseDmg, healHp: 0, bonusEnergy: 0, tag: "", newStacks: 0, critDmgBonus: 0, lifesteal: 0, vibMult: 1 };
+    // Weapon passive combat hooks (EXECUTE, CRIT_MOMENTUM, etc.) still apply via V1 path
+    const { mult: wMult, tags: wTags } = compositeDamageMult(bonuses.abilityEffects, ctx);
+    return {
+      dmg:         Math.floor(r.dmg * wMult),
+      healHp:      r.healHp + compositeHealOnHit(bonuses.abilityEffects, isCrit, ctx.maxHp),
+      bonusEnergy: r.bonusEnergy + compositeEnergyOnHit(bonuses.abilityEffects, isCrit),
+      tag:         [r.tag, ...wTags].filter(Boolean).join("·"),
+    };
   }
   const { mult, tags } = compositeDamageMult(bonuses.abilityEffects, ctx);
   return {
@@ -570,14 +593,20 @@ export function abilityCritRate(bonuses: PlayerBonuses, baseCrit: number, curren
   if (bonuses.abilityVersion === 2) {
     const ctx = { isCrit: false, isWeak: false, isShattered: false, v2Stacks: 0,
       moveType: "BASIC" as const, currentHp, maxHp, enemyHpPct: 0, turn: 1, isFirstAction: false };
-    return Math.min(1, baseCrit + abilityCritRateV2(bonuses.v2Effects, ctx));
+    // V2 ability crit bonus + weapon crit bonus (LOW_HP_CRIT etc.)
+    return Math.min(1, baseCrit
+      + abilityCritRateV2(bonuses.v2Effects, ctx)
+      + compositeCritBonus(bonuses.abilityEffects, currentHp, maxHp));
   }
   return Math.min(1, baseCrit + compositeCritBonus(bonuses.abilityEffects, currentHp, maxHp));
 }
 
 // Vibration drain multiplier from ability (Shatterpoint).
 export function abilityVib(bonuses: PlayerBonuses): number {
-  if (bonuses.abilityVersion === 2) return abilityVibV2(bonuses.v2Effects);
+  if (bonuses.abilityVersion === 2) {
+    // V2 vib × weapon vib (VIB_BREAKER from weapon still applies)
+    return abilityVibV2(bonuses.v2Effects) * compositeVibMult(bonuses.abilityEffects);
+  }
   return compositeVibMult(bonuses.abilityEffects);
 }
 
