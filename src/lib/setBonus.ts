@@ -2,8 +2,13 @@ import prisma from "./prisma";
 import {
   AbilityEffect, sanitizeEffects, legacyToComposite, compositePassives,
   formatEffects, compositeDamageMult, compositeCritBonus, compositeHealOnHit,
-  compositeEnergyOnHit, compositeVibMult, AbilityCtx,
+  compositeEnergyOnHit, compositeVibMult, compositeHasSecondWind, AbilityCtx,
 } from "./abilityEffects";
+import {
+  V2EffectEntry, sanitizeV2Effects, v2CompositePassives,
+  applyV2Attack, abilityCritRateV2, abilityVibV2, hasSecondWindV2,
+  getV2TurnStartRegen, formatV2Effects,
+} from "./abilityEngineV2";
 import { WEAPON_PASSIVES } from "./weapons";
 import { ALL_WISH_WEAPONS, calcWishSubStat } from "./wishWeapons";
 import { bondMultiplier } from "./weaponAwakening";
@@ -178,7 +183,11 @@ export interface PlayerBonuses {
   elementPassive: ElementPassive | null;
 
   // Unique ability — composite list of mechanical primitives
-  abilityEffects: AbilityEffect[];
+  abilityEffects:  AbilityEffect[];
+
+  // V2 ability engine fields (abilityVersion=2 only)
+  abilityVersion:  number;          // 1 or 2
+  v2Effects:       V2EffectEntry[];
 
   // Display
   activeLabels: string[];
@@ -189,7 +198,7 @@ export async function resolvePlayerBonuses(userId: string): Promise<PlayerBonuse
   const [user, echoes, weapon] = await Promise.all([
     prisma.user.findUnique({
       where:  { id: userId },
-      select: { element: true, uniqueAbilityType: true, uniqueAbilityValue: true, uniqueAbilityEffects: true, uniqueAbilityName: true, abilityEvolved: true },
+      select: { element: true, uniqueAbilityType: true, uniqueAbilityValue: true, uniqueAbilityEffects: true, uniqueAbilityName: true, abilityEvolved: true, abilityVersion: true },
     }),
     prisma.echo.findMany({
       where:  { userId, isEquipped: true },
@@ -219,9 +228,11 @@ export async function resolvePlayerBonuses(userId: string): Promise<PlayerBonuse
     critRateBonus: 0, critDmgBonus: 0,
     energyBonus: 0, lifesteal: 0, elemDmgBonus: 0,
     set4pc: null, set5pc: null,
-    elementPassive: null,
-    abilityEffects: [],
-    activeLabels: [],
+    elementPassive:  null,
+    abilityEffects:  [],
+    abilityVersion:  1,
+    v2Effects:       [],
+    activeLabels:    [],
   };
 
   if (!user) return bonuses;
@@ -390,35 +401,49 @@ export async function resolvePlayerBonuses(userId: string): Promise<PlayerBonuse
   }
 
   // ── Unique ability (composite) ────────────────────────────────────────────
-  // Source priority: stored composite → migrate legacy single-type → none.
-  let effects: AbilityEffect[] = sanitizeEffects(user.uniqueAbilityEffects, user.abilityEvolved);
+  bonuses.abilityVersion = user.abilityVersion ?? 1;
 
-  if (effects.length === 0 && user.uniqueAbilityType) {
-    // Legacy player — build a composite from their old single mechanic, persist once.
-    effects = legacyToComposite(user.uniqueAbilityType, user.uniqueAbilityValue, playerElem, userId);
-    prisma.user.update({
-      where: { id: userId },
-      data:  { uniqueAbilityEffects: effects as any },
-    }).catch(() => {});
-  }
+  if (bonuses.abilityVersion === 2) {
+    // V2 — composable trigger→effect language
+    const v2 = sanitizeV2Effects(user.uniqueAbilityEffects);
+    if (v2.length > 0) {
+      bonuses.v2Effects = v2;
+      const p = v2CompositePassives(v2);
+      bonuses.atkMult       *= p.atkMult;
+      bonuses.hpMult        *= p.hpMult;
+      bonuses.defMult       *= p.defMult;
+      bonuses.critRateBonus += p.critRateBonus;
+      bonuses.critDmgBonus  += p.critDmgBonus;
+      bonuses.lifesteal     += p.lifesteal;
+      bonuses.energyBonus   += p.energyBonus;
+      bonuses.elemDmgBonus  += p.elemDmgBonus;
+      bonuses.activeLabels.push(`✦ Unique${user.uniqueAbilityName ? ` — ${user.uniqueAbilityName}` : ""}:\n${formatV2Effects(v2).split("\n").map(l => "  › " + l).join("\n")}`);
+    }
+  } else {
+    // V1 — source priority: stored composite → migrate legacy single-type → none
+    let effects: AbilityEffect[] = sanitizeEffects(user.uniqueAbilityEffects, user.abilityEvolved);
 
-  if (effects.length > 0) {
-    // Merge with weapon passive effects already pushed earlier — don't overwrite
-    bonuses.abilityEffects = [...bonuses.abilityEffects, ...effects];
+    if (effects.length === 0 && user.uniqueAbilityType) {
+      effects = legacyToComposite(user.uniqueAbilityType, user.uniqueAbilityValue, playerElem, userId);
+      prisma.user.update({
+        where: { id: userId },
+        data:  { uniqueAbilityEffects: effects as any },
+      }).catch(() => {});
+    }
 
-    // Passive primitives fold into resolved stats (weapon + unique combined)
-    const p = compositePassives(bonuses.abilityEffects);
-    bonuses.atkMult       *= p.atkMult;
-    bonuses.hpMult        *= p.hpMult;
-    bonuses.defMult       *= p.defMult;
-    bonuses.critRateBonus += p.critRateBonus;
-    bonuses.critDmgBonus  += p.critDmgBonus;
-    bonuses.lifesteal     += p.lifesteal;
-    bonuses.energyBonus   += p.energyBonus;
-    bonuses.elemDmgBonus  += p.elemDmgBonus;
-    // COMBAT_HOOK primitives fire inside the loops via composite helpers
-
-    bonuses.activeLabels.push(`✦ Unique${user.uniqueAbilityName ? ` — ${user.uniqueAbilityName}` : ""}:\n${formatEffects(effects).split("\n").map(l => "  › " + l).join("\n")}`);
+    if (effects.length > 0) {
+      bonuses.abilityEffects = [...bonuses.abilityEffects, ...effects];
+      const p = compositePassives(bonuses.abilityEffects);
+      bonuses.atkMult       *= p.atkMult;
+      bonuses.hpMult        *= p.hpMult;
+      bonuses.defMult       *= p.defMult;
+      bonuses.critRateBonus += p.critRateBonus;
+      bonuses.critDmgBonus  += p.critDmgBonus;
+      bonuses.lifesteal     += p.lifesteal;
+      bonuses.energyBonus   += p.energyBonus;
+      bonuses.elemDmgBonus  += p.elemDmgBonus;
+      bonuses.activeLabels.push(`✦ Unique${user.uniqueAbilityName ? ` — ${user.uniqueAbilityName}` : ""}:\n${formatEffects(effects).split("\n").map(l => "  › " + l).join("\n")}`);
+    }
   }
 
   return bonuses;
@@ -520,6 +545,17 @@ export interface AbilityAttackResult {
 export function applyAbilityAttack(
   bonuses: PlayerBonuses, baseDmg: number, isCrit: boolean, ctx: AbilityCtx,
 ): AbilityAttackResult {
+  if (bonuses.abilityVersion === 2 && bonuses.v2Effects.length > 0) {
+    const v2ctx = {
+      ...ctx,
+      isCrit,
+      isWeak:      ctx.isWeak      ?? false,
+      isShattered: ctx.isShattered ?? false,
+      v2Stacks:    ctx.v2Stacks    ?? 0,
+    };
+    const r = applyV2Attack(bonuses.v2Effects, baseDmg, isCrit, v2ctx);
+    return { dmg: r.dmg, healHp: r.healHp, bonusEnergy: r.bonusEnergy, tag: r.tag };
+  }
   const { mult, tags } = compositeDamageMult(bonuses.abilityEffects, ctx);
   return {
     dmg:         Math.floor(baseDmg * mult),
@@ -531,12 +567,30 @@ export function applyAbilityAttack(
 
 // Crit rate including ability bonus (e.g. Desperation below 40% HP).
 export function abilityCritRate(bonuses: PlayerBonuses, baseCrit: number, currentHp: number, maxHp: number): number {
+  if (bonuses.abilityVersion === 2) {
+    const ctx = { isCrit: false, isWeak: false, isShattered: false, v2Stacks: 0,
+      moveType: "BASIC" as const, currentHp, maxHp, enemyHpPct: 0, turn: 1, isFirstAction: false };
+    return Math.min(1, baseCrit + abilityCritRateV2(bonuses.v2Effects, ctx));
+  }
   return Math.min(1, baseCrit + compositeCritBonus(bonuses.abilityEffects, currentHp, maxHp));
 }
 
 // Vibration drain multiplier from ability (Shatterpoint).
 export function abilityVib(bonuses: PlayerBonuses): number {
+  if (bonuses.abilityVersion === 2) return abilityVibV2(bonuses.v2Effects);
   return compositeVibMult(bonuses.abilityEffects);
+}
+
+// V2 turn-start regen (call at top of each turn like 5pc HP_REGEN).
+export function abilityV2TurnRegen(bonuses: PlayerBonuses, maxHp: number): { healHp: number; energy: number } {
+  if (bonuses.abilityVersion !== 2) return { healHp: 0, energy: 0 };
+  return getV2TurnStartRegen(bonuses.v2Effects, maxHp);
+}
+
+// Second wind — survive lethal blow once.
+export function abilityHasSecondWind(bonuses: PlayerBonuses): boolean {
+  if (bonuses.abilityVersion === 2) return hasSecondWindV2(bonuses.v2Effects);
+  return compositeHasSecondWind(bonuses.abilityEffects);
 }
 
 // ── Element passive in-combat helpers ─────────────────────────────────────────

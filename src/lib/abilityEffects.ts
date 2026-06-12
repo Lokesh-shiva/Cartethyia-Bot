@@ -71,6 +71,11 @@ export interface AbilityCtx {
   enemyHpPct:    number;   // 0–1
   turn:          number;   // 1-based
   isFirstAction: boolean;
+  // V2 extension fields — optional so existing V1 call sites need no changes
+  isCrit?:       boolean;  // whether this attack critted (for ON_CRIT trigger)
+  isWeak?:       boolean;  // attacking enemy's elemental weakness (for VS_WEAK trigger)
+  isShattered?:  boolean;  // enemy was shattered this turn (for ON_SHATTER trigger)
+  v2Stacks?:     number;   // current STACK_DMG stack count
 }
 
 // ── Damage multiplier from ability (multiplicative, 1.0 = no change) ──────────

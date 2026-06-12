@@ -6,9 +6,10 @@ import {
 } from "discord.js";
 import { Command } from "../../types";
 import prisma from "../../lib/prisma";
-import { generateUniqueAbility } from "../../lib/uniqueAbility";
+import { generateUniqueAbility, generateUniqueAbilityV2 } from "../../lib/uniqueAbility";
 import { generateAbilityCard } from "../../lib/abilityCard";
 import { formatEffects, sanitizeEffects, composeFallbackEffects } from "../../lib/abilityEffects";
+import { formatV2Effects, sanitizeV2Effects } from "../../lib/abilityEngineV2";
 import { OWNER_ID } from "../../lib/owner";
 
 const command: Command = {
@@ -29,6 +30,11 @@ const command: Command = {
     .addBooleanOption(o =>
       o.setName("reroll")
         .setDescription("Generate a fresh ability preview — confirm before saving")
+        .setRequired(false)
+    )
+    .addBooleanOption(o =>
+      o.setName("v2")
+        .setDescription("Generate using the V2 composable trigger→effect engine")
         .setRequired(false)
     )
     .addUserOption(o =>
@@ -71,20 +77,24 @@ const command: Command = {
       return;
     }
 
-    const reroll = interaction.options.getBoolean("reroll") ?? false;
+    const reroll  = interaction.options.getBoolean("reroll") ?? false;
+    const useV2   = interaction.options.getBoolean("v2")     ?? false;
 
     if (!reroll) {
       // ── No reroll: just show the current saved ability ───────────────────
       const user = await prisma.user.findUnique({
         where:  { id: targetId },
         select: { element: true, uniqueAbilityName: true, uniqueAbilityEffect: true,
-                  uniqueAbilityLore: true, uniqueAbilityEffects: true },
+                  uniqueAbilityLore: true, uniqueAbilityEffects: true, abilityVersion: true },
       });
       if (!user || !user.uniqueAbilityName) {
         await interaction.editReply({ content: `${displayName} has no ability saved yet. Use \`reroll:true\` to generate one.` });
         return;
       }
-      const effList = formatEffects(sanitizeEffects(user.uniqueAbilityEffects)).split("\n").filter(Boolean);
+      const isV2   = user.abilityVersion === 2;
+      const effList = isV2
+        ? formatV2Effects(sanitizeV2Effects(user.uniqueAbilityEffects)).split("\n").filter(Boolean)
+        : formatEffects(sanitizeEffects(user.uniqueAbilityEffects)).split("\n").filter(Boolean);
       const cardBuf = await generateAbilityCard({
         displayName,
         avatarUrl:   targetUser.displayAvatarURL({ size: 128, extension: "png" }),
@@ -94,10 +104,10 @@ const command: Command = {
         lore:        user.uniqueAbilityLore ?? "",
       });
       await interaction.editReply({
-        embeds: [new EmbedBuilder().setColor(0x8B7FF5)
+        embeds: [new EmbedBuilder().setColor(isV2 ? 0xA78BFA : 0x8B7FF5)
           .setImage("attachment://ability.png")
           .setDescription(`**${user.uniqueAbilityName}** — *${user.uniqueAbilityEffect}*`)
-          .setFooter({ text: `🛠️ Current saved ability · use reroll:true to generate a new one` })],
+          .setFooter({ text: `🛠️ Current saved ability (${isV2 ? "V2" : "V1"}) · use reroll:true to generate a new one` })],
         files: [new AttachmentBuilder(cardBuf, { name: "ability.png" })],
       });
       return;
@@ -113,15 +123,29 @@ const command: Command = {
       return;
     }
 
-    const showPreview = async (isReroll: boolean) => {
-      // Generate without persisting
-      const ability = await generateUniqueAbility(targetId, false);
-      if (!ability) {
-        await interaction.editReply({ content: "Generation failed." });
-        return null;
+    type PendingAbility =
+      | { v2: false; name: string; effect: string; lore: string; effects: any[] }
+      | { v2: true;  name: string; effect: string; lore: string; v2Effects: any[] };
+
+    const showPreview = async (isReroll: boolean): Promise<PendingAbility | null> => {
+      let effList: string[];
+      let ability: { name: string; effect: string; lore: string };
+      let pending: PendingAbility;
+
+      if (useV2) {
+        const result = await generateUniqueAbilityV2(targetId, false);
+        if (!result) { await interaction.editReply({ content: "V2 generation failed." }); return null; }
+        effList  = formatV2Effects(result.v2Effects).split("\n").filter(Boolean);
+        ability  = result;
+        pending  = { v2: true, ...ability, v2Effects: result.v2Effects };
+      } else {
+        const result = await generateUniqueAbility(targetId, false);
+        if (!result) { await interaction.editReply({ content: "Generation failed." }); return null; }
+        effList  = formatEffects(result.effects).split("\n").filter(Boolean);
+        ability  = result;
+        pending  = { v2: false, ...ability, effects: result.effects };
       }
 
-      const effList = formatEffects(ability.effects).split("\n").filter(Boolean);
       const cardBuf = await generateAbilityCard({
         displayName,
         avatarUrl:   targetUser.displayAvatarURL({ size: 128, extension: "png" }),
@@ -138,15 +162,15 @@ const command: Command = {
       );
 
       await interaction.editReply({
-        embeds: [new EmbedBuilder().setColor(0x8B7FF5)
+        embeds: [new EmbedBuilder().setColor(useV2 ? 0xA78BFA : 0x8B7FF5)
           .setImage("attachment://ability.png")
           .setDescription(`**${ability.name}** — *${ability.effect}*`)
-          .setFooter({ text: `🛠️ Dry-run preview${isReroll ? " (rerolled)" : ""} · not saved yet` })],
+          .setFooter({ text: `🛠️ ${useV2 ? "V2" : "V1"} dry-run${isReroll ? " (rerolled)" : ""} · not saved yet` })],
         files:      [new AttachmentBuilder(cardBuf, { name: "ability.png" })],
         components: [row],
       });
 
-      return ability;
+      return pending;
     };
 
     let pending = await showPreview(false);
@@ -177,25 +201,39 @@ const command: Command = {
 
         if (btn.customId === "da_reroll") {
           pending = await showPreview(true);
-          if (pending) listen(); // re-attach collector for the new preview
+          if (pending) listen();
           return;
         }
 
         // da_keep — persist the pending ability
         if (!pending) return;
-        await prisma.user.update({
-          where: { id: targetId },
-          data:  {
-            uniqueAbilityName:    pending.name,
-            uniqueAbilityEffect:  pending.effect,
-            uniqueAbilityLore:    pending.lore,
-            uniqueAbilityEffects: pending.effects as any,
-          },
-        });
+        if (pending.v2) {
+          await prisma.user.update({
+            where: { id: targetId },
+            data:  {
+              uniqueAbilityName:    pending.name,
+              uniqueAbilityEffect:  pending.effect,
+              uniqueAbilityLore:    pending.lore,
+              uniqueAbilityEffects: pending.v2Effects as any,
+              abilityVersion:       2,
+            },
+          });
+        } else {
+          await prisma.user.update({
+            where: { id: targetId },
+            data:  {
+              uniqueAbilityName:    pending.name,
+              uniqueAbilityEffect:  pending.effect,
+              uniqueAbilityLore:    pending.lore,
+              uniqueAbilityEffects: pending.effects as any,
+              abilityVersion:       1,
+            },
+          });
+        }
 
         await interaction.editReply({
           embeds: [new EmbedBuilder().setColor(0x22C55E)
-            .setDescription(`✓ **${pending.name}** saved for ${displayName}.`)
+            .setDescription(`✓ **${pending.name}** saved for ${displayName} (${pending.v2 ? "V2 engine" : "V1 engine"}).`)
             .setFooter({ text: "🛠️ debugability · ability committed to DB" })],
           files: [], components: [],
         });

@@ -99,6 +99,7 @@ model User {
   uniqueAbilityEffects Json?   // composite: [{ type, value }, ...] — the real mechanic
 
   // Lv50 Unique Ability Evolution
+  abilityVersion     Int     @default(1)   // 1=V1 registry presets, 2=V2 composable trigger→effect
   abilityEvolved     Boolean @default(false)
   abilityEvoStep     Int     @default(0)   // 0=not started, 1=dungeon clears, 2=boss kill, 3=ready to pay
   abilityEvoDungeons Int     @default(0)   // dungeon clears since quest start (need 3)

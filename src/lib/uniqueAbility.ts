@@ -1,6 +1,7 @@
 ﻿import { askAI } from "./ai";
 import prisma from "./prisma";
 import { ABILITY_REGISTRY, AbilityEffect, sanitizeEffects, composeFallbackEffects } from "./abilityEffects";
+import { V2EffectEntry, sanitizeV2Effects, formatV2Effects, V2_PROMPT_SCHEMA } from "./abilityEngineV2";
 
 // â”€â”€ Element context â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const ELEMENT_BONUS: Record<string, string> = {
@@ -279,3 +280,184 @@ export async function generateUniqueAbility(userId: string, persist = true): Pro
 
   return { ...ability, effects };
 }
+
+// ── V2 Ability Generation ────────────────────────────────────────────────────
+// AI composes trigger→effect entries with full player context including
+// resolved combat stats and weapon identity.
+
+export async function generateUniqueAbilityV2(userId: string, persist = true): Promise<{
+  name: string; effect: string; lore: string; v2Effects: V2EffectEntry[];
+} | null> {
+  const [user, bonds, weapon] = await Promise.all([
+    prisma.user.findUnique({
+      where:  { id: userId },
+      select: {
+        element: true, level: true, worldLevel: true,
+        baseAtk: true, baseHp: true, baseDef: true, critRate: true, critDmg: true,
+        resonanceProfile: true,
+        vibePhysicalCount: true, vibeExpressiveCount: true, vibeEmotionalCount: true,
+        uniqueTargetCount: true,
+        uniqueAbilityName: true,
+        uniqueAbilityEffects: true,
+        abilityVersion: true,
+        abilityEvolved: true,
+        uniqueAbilityEffect: true,
+        uniqueAbilityLore: true,
+        duelWins: true, duelLosses: true, encountersWon: true, raidWins: true,
+        dailyStreak: true,
+      },
+    }),
+    prisma.bond.findMany({
+      where:  { OR: [{ initiatorId: userId }, { receiverId: userId }] },
+      select: { bondType: true },
+    }),
+    prisma.weapon.findFirst({
+      where:  { userId, isEquipped: true },
+      select: {
+        name: true, weaponType: true, rarity: true, level: true, baseAtk: true,
+        awakened: true, awakenedName: true, awakenedPassive: true,
+      },
+    }),
+  ]);
+
+  if (!user) return null;
+
+  // Dry-run already-generated guard
+  if (user.uniqueAbilityName && persist && user.abilityVersion === 2) {
+    return {
+      name:      user.uniqueAbilityName,
+      effect:    user.uniqueAbilityEffect ?? "",
+      lore:      user.uniqueAbilityLore   ?? "",
+      v2Effects: sanitizeV2Effects(user.uniqueAbilityEffects),
+    };
+  }
+
+  const element     = user.element ?? "NONE";
+  const playstyle   = derivePlaystyle(user.vibePhysicalCount, user.vibeExpressiveCount, user.vibeEmotionalCount);
+  const personality = derivePersonality(user.resonanceProfile);
+  const bondSummary = deriveBonds(bonds);
+  const combat      = deriveCombat(user.duelWins, user.duelLosses, user.encountersWon, user.raidWins);
+  const dedication  = deriveDedication(user.dailyStreak, user.worldLevel, user.level);
+  const elemArch    = ELEMENT_ARCHETYPE[element] ?? "an undefined force";
+
+  // Combat stat profile
+  const critRatePct = Math.round((user.critRate ?? 0.05) * 100);
+  const critDmgPct  = Math.round((user.critDmg  ?? 1.5)  * 100);
+  const statProfile = `Base stats: ATK ${user.baseAtk}, HP ${user.baseHp}, DEF ${user.baseDef}, Crit Rate ${critRatePct}%, Crit DMG ${critDmgPct}%`;
+
+  // Weapon identity
+  let weaponDesc = "no weapon equipped";
+  if (weapon) {
+    const wName = weapon.awakened && weapon.awakenedName ? weapon.awakenedName : weapon.name;
+    weaponDesc  = `${wName} (${weapon.weaponType}, ★${weapon.rarity}, Lv${weapon.level}${weapon.awakened ? " — Ego Awakened" : ""})`;
+  }
+
+  // Evolved ability context (if V1 evolved ability exists)
+  let evolvedAbilityContext = "";
+  if (user.abilityEvolved && user.uniqueAbilityName) {
+    evolvedAbilityContext = `\nEvolved ability (Lv50 ascension): "${user.uniqueAbilityName}" — ${user.uniqueAbilityEffect ?? "an evolved resonance"}`;
+  }
+
+  const systemPrompt = [
+    `You are the lore engine for CARTETHYIA — a Wuthering Waves-inspired anime social RPG with a dark, poetic aesthetic.`,
+    `Generate a UNIQUE PASSIVE ABILITY for a specific player using the V2 composable trigger→effect language.`,
+    `It must feel deeply personal — like it could only belong to this player based on their element, playstyle, bonds, and stat build.`,
+    ``,
+    V2_PROMPT_SCHEMA,
+    ``,
+    `Rules:`,
+    `- NAME: 2-4 words, title-case, evocative. Should feel like it belongs to THIS player.`,
+    `- EFFECT: 1-2 sentences. Describe what the ability does in flavourful but concrete terms.`,
+    `- LORE: 1-2 sentences. Poetic, no numbers. Should echo their personality and bonds.`,
+    `- EFFECTS: array of 2-3 V2 effect entries as described above.`,
+    ``,
+    `Use the player's stat profile to bias the ability. A high-crit player should get more ON_CRIT or CRIT_DMG effects. A tanky player gets BELOW_HP_PCT survival. A heavy attacker gets DMG_MULT or STACK_DMG. Element shapes the trigger: Aero = first action/stacks; Havoc = below HP; Electro = energy/on-crit; Spectro = heal/regen; Fusion = on-skill/ult; Glacio = HP-conditional.`,
+    ``,
+    `Respond ONLY with valid JSON, no other text:`,
+    `{"name":"...","effect":"...","lore":"...","effects":[{"trigger":"ON_CRIT","effect":"CRIT_DMG","value":0.22,"displayName":"Lethal Edge","desc":"Critical hits deal 22% more damage."},{"trigger":"PASSIVE","effect":"ATK_MULT","value":0.12,"displayName":"Iron Will","desc":"Base attack power increased by 12%."}]}`,
+  ].join("\n");
+
+  const userPrompt = [
+    `Element: ${element} — ${elemArch}.`,
+    `Personality (from onboarding): ${personality}.`,
+    `Social interaction style: ${playstyle}.`,
+    `Bonds: ${bondSummary}.`,
+    `Combat history: ${combat}.`,
+    `Dedication & progression: ${dedication}.`,
+    `${statProfile}.`,
+    `Weapon: ${weaponDesc}.${evolvedAbilityContext}`,
+    ``,
+    `Design their V2 ability (2–3 components). Let their stat build and element guide the triggers. Make it feel like it grew from who they are.`,
+  ].join("\n");
+
+  const raw = await askAI({ systemPrompt, userPrompt, maxTokens: 600 });
+
+  let ability: { name: string; effect: string; lore: string } | null = null;
+  let v2Effects: V2EffectEntry[] = [];
+
+  if (raw) {
+    try {
+      const cleaned = raw.replace(/```json?\n?/g, "").replace(/```/g, "").trim();
+      const parsed  = JSON.parse(cleaned);
+      if (parsed.name && parsed.effect && parsed.lore) {
+        ability   = { name: parsed.name, effect: parsed.effect, lore: parsed.lore };
+        v2Effects = sanitizeV2Effects(parsed.effects);
+      }
+    } catch { /* fall through to fallback */ }
+  }
+
+  // Fallback: element-themed V2 ability
+  if (!ability) {
+    ability = FALLBACK_ABILITIES[element] ?? FALLBACK_ABILITIES.FUSION;
+  }
+  if (v2Effects.length === 0) {
+    v2Effects = V2_ELEMENT_FALLBACKS[element] ?? V2_ELEMENT_FALLBACKS.FUSION;
+  }
+
+  if (persist) {
+    await prisma.user.update({
+      where: { id: userId },
+      data:  {
+        uniqueAbilityName:    ability.name,
+        uniqueAbilityEffect:  ability.effect,
+        uniqueAbilityLore:    ability.lore,
+        uniqueAbilityEffects: v2Effects as any,
+        abilityVersion:       2,
+      },
+    });
+  }
+
+  return { ...ability, v2Effects };
+}
+
+// ── V2 element fallbacks (offline AI) ─────────────────────────────────────────
+const V2_ELEMENT_FALLBACKS: Record<string, V2EffectEntry[]> = {
+  FUSION: [
+    { trigger: "ON_SKILL", effect: "DMG_MULT", value: 0.28, displayName: "Flare Burst", desc: "Resonance Skills deal 28% more damage." },
+    { trigger: "BELOW_HP_PCT", triggerParam: 0.40, effect: "CRIT_RATE", value: 0.20, displayName: "Ember's Edge", desc: "Below 40% HP, Crit Rate increases by 20%." },
+  ],
+  GLACIO: [
+    { trigger: "ABOVE_HP_PCT", triggerParam: 0.60, effect: "DMG_MULT", value: 0.20, displayName: "Glacial Poise", desc: "Above 60% HP, deal 20% more damage." },
+    { trigger: "BELOW_HP_PCT", triggerParam: 0.35, effect: "HEAL_PCT", value: 0.12, displayName: "Frost Mend", desc: "Below 35% HP, attacks heal 12% max HP." },
+  ],
+  ELECTRO: [
+    { trigger: "ON_CRIT", effect: "GAIN_ENERGY", value: 20, displayName: "Discharge", desc: "Critical hits generate 20 bonus energy." },
+    { trigger: "EVERY_N_TURNS", triggerParam: 3, effect: "DMG_MULT", value: 0.38, displayName: "Storm Surge", desc: "Every 3rd turn, deal 38% more damage." },
+  ],
+  AERO: [
+    { trigger: "FIRST_ACTION", effect: "DMG_MULT", value: 0.65, displayName: "Opening Gust", desc: "First attack of the fight deals 65% bonus damage." },
+    { trigger: "ON_HIT", effect: "STACK_DMG", value: 0.08, stackMax: 5, displayName: "Wind Stacks", desc: "Each hit builds a stack of +8% DMG, up to ×5." },
+  ],
+  HAVOC: [
+    { trigger: "BELOW_HP_PCT", triggerParam: 0.40, effect: "DMG_MULT", value: 0.55, displayName: "Void Rage", desc: "Below 40% HP, deal 55% more damage." },
+    { trigger: "ON_HIT", effect: "LIFESTEAL", value: 0.08, displayName: "Devour", desc: "Each hit restores 8% of damage dealt as HP." },
+  ],
+  SPECTRO: [
+    { trigger: "TURN_START", effect: "HEAL_PCT", value: 0.04, displayName: "Radiance", desc: "At the start of each turn, restore 4% max HP." },
+    { trigger: "ON_ULT", effect: "HEAL_PCT", value: 0.12, displayName: "Resonant Light", desc: "Using your Ultimate heals 12% of max HP." },
+  ],
+  NONE: [
+    { trigger: "PASSIVE", effect: "ATK_MULT", value: 0.12, displayName: "Iron Will", desc: "Passively increases base attack power by 12%." },
+    { trigger: "ON_CRIT", effect: "CRIT_DMG", value: 0.20, displayName: "Keen Strike", desc: "Critical hits deal an additional 20% more damage." },
+  ],
+};
