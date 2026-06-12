@@ -876,6 +876,235 @@
       z-index: 1;
     }
 
+    /* ── Milestones ──────────────────────────────────────────────────────── */
+    .milestone-timeline {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin: 3.5rem 0 4rem;
+      flex-wrap: wrap;
+      gap: 0;
+    }
+    .milestone-step {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 0.6rem;
+      flex: 0 0 auto;
+    }
+    .milestone-dot {
+      width: 52px; height: 52px;
+      border-radius: 50%;
+      border: 2px solid;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 1.4rem;
+    }
+    .elem-dot   { border-color: var(--purple); background: rgba(167,139,250,0.12); box-shadow: 0 0 20px rgba(167,139,250,0.3); }
+    .evo-dot    { border-color: var(--gold);   background: rgba(245,158,11,0.12);  box-shadow: 0 0 20px rgba(245,158,11,0.3);  }
+    .awaken-dot { border-color: var(--gold);   background: rgba(245,158,11,0.18);  box-shadow: 0 0 28px rgba(245,158,11,0.45); }
+    .milestone-line {
+      flex: 1;
+      min-width: 60px;
+      height: 2px;
+      background: linear-gradient(90deg, rgba(255,255,255,0.06), rgba(245,158,11,0.3), rgba(255,255,255,0.06));
+      margin: 0 0.5rem 2.5rem;
+    }
+    .milestone-level {
+      font-family: 'Rajdhani', sans-serif;
+      font-size: 0.72rem;
+      font-weight: 700;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+    .milestone-name {
+      font-family: 'Rajdhani', sans-serif;
+      font-weight: 600;
+      font-size: 0.95rem;
+      color: var(--text);
+    }
+    .milestone-cards {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 2rem;
+      margin-top: 1rem;
+    }
+    .milestone-card {
+      background: var(--surface);
+      border: 1px solid rgba(245,158,11,0.2);
+      border-radius: 16px;
+      padding: 2rem;
+      position: relative;
+      overflow: hidden;
+    }
+    .milestone-card::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      height: 3px;
+    }
+    .evo-card::before    { background: linear-gradient(90deg, var(--gold), #fbbf24, var(--gold)); }
+    .awaken-card::before { background: linear-gradient(90deg, var(--gold), #f97316, var(--gold)); }
+    .mc-badge {
+      font-family: 'Rajdhani', sans-serif;
+      font-size: 0.7rem;
+      font-weight: 700;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      padding: 0.25rem 0.75rem;
+      border-radius: 100px;
+      display: inline-block;
+      margin-bottom: 0.8rem;
+      color: var(--gold);
+      background: rgba(245,158,11,0.1);
+      border: 1px solid rgba(245,158,11,0.3);
+    }
+    .mc-title {
+      font-family: 'Rajdhani', sans-serif;
+      font-weight: 700;
+      font-size: 1.5rem;
+      color: var(--text);
+      margin-bottom: 0.6rem;
+    }
+    .mc-desc {
+      color: var(--dim);
+      font-size: 0.9rem;
+      line-height: 1.6;
+      font-weight: 300;
+      margin-bottom: 1.5rem;
+    }
+    /* Evolved ability embed mock */
+    .evo-embed   { --embed-color: var(--gold); }
+    .awaken-embed { --embed-color: var(--gold); }
+    .evo-ability-name {
+      font-size: 1rem !important;
+      background: linear-gradient(135deg, var(--gold), #fbbf24);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      margin-bottom: 0.35rem !important;
+    }
+    .evo-element-badge {
+      font-size: 0.7rem;
+      color: var(--havoc);
+      background: rgba(195,85,224,0.1);
+      border: 1px solid rgba(195,85,224,0.25);
+      display: inline-block;
+      padding: 0.1rem 0.5rem;
+      border-radius: 3px;
+      margin-bottom: 0.6rem;
+    }
+    .evo-effects { margin: 0.4rem 0; }
+    .evo-effect {
+      font-size: 0.75rem;
+      color: #b5bac1;
+      padding: 0.2rem 0;
+      border-bottom: 1px solid rgba(255,255,255,0.04);
+    }
+    .evo-fourth {
+      color: var(--gold) !important;
+      background: rgba(245,158,11,0.07);
+      padding: 0.25rem 0.4rem !important;
+      border-radius: 3px;
+      border: none !important;
+      margin-top: 0.25rem;
+      display: block;
+    }
+    .evo-lore {
+      font-size: 0.7rem;
+      color: rgba(255,213,79,0.6);
+      font-style: italic;
+      margin-top: 0.5rem;
+    }
+    /* Awakened weapon embed mock */
+    .awaken-weapon-header {
+      display: grid;
+      grid-template-columns: 52px 1fr;
+      gap: 0.7rem;
+      align-items: start;
+      margin-bottom: 0.8rem;
+    }
+    .awaken-art-placeholder {
+      width: 52px; height: 52px;
+      border-radius: 6px;
+      background: linear-gradient(135deg, rgba(245,158,11,0.2), rgba(249,115,22,0.15));
+      border: 1px solid rgba(245,158,11,0.3);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 1.6rem;
+    }
+    .awaken-weapon-name {
+      font-size: 0.9rem;
+      font-weight: 700;
+      background: linear-gradient(135deg, var(--gold), #fbbf24);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      margin-bottom: 0.15rem;
+      display: block;
+    }
+    .awaken-rarity { font-size: 0.67rem; color: var(--gold); margin-bottom: 0.15rem; }
+    .awaken-stats  { font-size: 0.72rem; color: #b5bac1; }
+    .awaken-passive-title {
+      font-size: 0.72rem;
+      font-weight: 700;
+      color: var(--gold);
+      margin-bottom: 0.3rem;
+    }
+    .awaken-passive-text {
+      font-size: 0.75rem;
+      color: #b5bac1;
+      line-height: 1.5;
+      margin-bottom: 0.5rem;
+    }
+    .awaken-lore {
+      font-size: 0.7rem;
+      color: rgba(255,213,79,0.6);
+      font-style: italic;
+    }
+
+    /* ── Vote ────────────────────────────────────────────────────────────── */
+    .vote-reward-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 1.25rem;
+      margin-top: 3rem;
+    }
+    .vote-reward-item {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 2rem 1.5rem;
+      text-align: center;
+      transition: border-color 0.2s, transform 0.2s;
+    }
+    .vote-reward-item:hover { transform: translateY(-3px); border-color: rgba(245,158,11,0.3); }
+    .vote-reward-item.vote-highlight { border-color: rgba(245,158,11,0.25); background: rgba(245,158,11,0.03); }
+    .vote-reward-icon { font-size: 2rem; margin-bottom: 0.6rem; }
+    .vote-reward-val {
+      font-family: 'Rajdhani', sans-serif;
+      font-size: 2.4rem;
+      font-weight: 700;
+      background: linear-gradient(135deg, var(--gold), #fbbf24);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      line-height: 1;
+    }
+    .vote-reward-label {
+      font-size: 0.82rem;
+      color: var(--muted);
+      font-family: 'Rajdhani', sans-serif;
+      letter-spacing: 0.07em;
+      text-transform: uppercase;
+      margin-top: 0.4rem;
+    }
+    .btn-vote {
+      background: linear-gradient(135deg, var(--gold), #d97706);
+      color: #000;
+      box-shadow: 0 0 24px rgba(245,158,11,0.3);
+    }
+    .btn-vote:hover { box-shadow: 0 0 40px rgba(245,158,11,0.5); }
+
     /* ── Responsive ─────────────────────────────────────────────────────── */
     @media (max-width: 900px) {
       .features-grid { grid-template-columns: repeat(2, 1fr); }
@@ -884,6 +1113,8 @@
       .cmd-grid { grid-template-columns: 1fr; }
       .elem-bonus-grid { grid-template-columns: repeat(2, 1fr); }
       .stats-inner { grid-template-columns: 1fr; gap: 1px; }
+      .milestone-cards { grid-template-columns: 1fr; }
+      .vote-reward-grid { grid-template-columns: 1fr; }
     }
     @media (max-width: 600px) {
       nav { padding: 0.75rem 1.25rem; }
@@ -894,6 +1125,7 @@
       .echo-grid { grid-template-columns: repeat(3,1fr); }
       .cta-inner { padding: 2.5rem 1.5rem; }
       .footer-inner { flex-direction: column; align-items: flex-start; }
+      .milestone-timeline { gap: 0.5rem; }
     }
   </style>
 </head>
@@ -905,8 +1137,9 @@
   <ul class="nav-links">
     <li><a href="#features">Features</a></li>
     <li><a href="#preview">Preview</a></li>
+    <li><a href="#milestones">Milestones</a></li>
     <li><a href="#commands">Commands</a></li>
-    <li><a href="#elements">Elements</a></li>
+    <li><a href="#vote">Vote</a></li>
     <li><a href="https://discord.com/oauth2/authorize?client_id=1510163339177623642" class="nav-cta">Add Bot</a></li>
   </ul>
 </nav>
@@ -988,7 +1221,7 @@
     <div class="feat-card feat-prog">
       <span class="feat-icon">📈</span>
       <div class="feat-name">Deep Progression</div>
-      <div class="feat-desc">Level up, ascend, forge weapons, upgrade echoes, and unlock unique abilities on your path to WL9.</div>
+      <div class="feat-desc">Level up, ascend, evolve your ability at Lv50, awaken your ego weapon at Lv60 — every milestone is permanent and AI-crafted.</div>
     </div>
   </div>
 </section>
@@ -1020,7 +1253,7 @@
       <div class="preview-label">
         <div class="preview-cmd"><span>/profile</span></div>
         <div class="preview-title">Character Profile</div>
-        <div class="preview-desc">Your full character sheet at a glance — level, element, stats, equipped weapon, Resonance Aura, and your recent party in the sidebar. Every stat scales with gear, echoes, and set bonuses.</div>
+        <div class="preview-desc">Your full character sheet at a glance — level, element, stats, equipped weapon with its Weapon Bond lore, Resonance Aura charges, and your recent party in the sidebar. Every stat scales with gear, echoes, and set bonuses.</div>
       </div>
       <div class="screenshot-wrap">
         <img src="./profile.png" alt="Character profile card showing Tranzue with Aero element, stats, and equipped weapon" class="screenshot" />
@@ -1038,6 +1271,31 @@
         <img src="./echo.png" alt="Tempest Ancient echo card showing Aero element, Crit DMG main stat, and four substats" class="screenshot" />
       </div>
     </div>
+
+    <!-- Weapons -->
+    <div class="preview-row reverse">
+      <div class="preview-label">
+        <div class="preview-cmd"><span>/weapons</span> · <span>/equip</span></div>
+        <div class="preview-title">Weapon Arsenal</div>
+        <div class="preview-desc">Browse your full weapon collection with a select menu — each entry shows rarity, ATK, level, and its Weapon Bond flavor text. Equip from a side-by-side comparison card before you commit. Awakened weapons display their AI-forged name and unique lore.</div>
+      </div>
+      <div class="screenshot-wrap">
+        <img src="./weapons.png" alt="Weapons arsenal browser showing Fractured Fang sword selected with stats and Weapon Bond" class="screenshot" />
+      </div>
+    </div>
+
+    <!-- Stats -->
+    <div class="preview-row">
+      <div class="preview-label">
+        <div class="preview-cmd"><span>/stats</span></div>
+        <div class="preview-title">Combat Stats</div>
+        <div class="preview-desc">See every final number the game actually uses — HP, ATK, DEF, Crit, Elem DMG, and a full breakdown of every bonus source: innate element bonuses, echo substats, set effects, weapon passive, and your unique evolved ability effects.</div>
+      </div>
+      <div class="screenshot-wrap">
+        <img src="./stats.png" alt="Combat stats embed showing Tranzue's final numbers with full bonus source breakdown" class="screenshot" />
+      </div>
+    </div>
+
 
   </div>
 </section>
@@ -1119,6 +1377,97 @@
 
 <hr class="section-rule" />
 
+<!-- ── Milestones ──────────────────────────────────────────────────────── -->
+<section id="milestones">
+  <div class="section-label">Path to power</div>
+  <h2 class="section-title">Three milestones. One legend.</h2>
+  <p class="section-sub">At every threshold your character deepens permanently — each result shaped by AI and your own combat record.</p>
+
+  <!-- Timeline -->
+  <div class="milestone-timeline">
+    <div class="milestone-step">
+      <div class="milestone-level">Lv 20</div>
+      <div class="milestone-dot elem-dot">🎭</div>
+      <div class="milestone-name">Choose Element</div>
+    </div>
+    <div class="milestone-line"></div>
+    <div class="milestone-step">
+      <div class="milestone-level">Lv 50</div>
+      <div class="milestone-dot evo-dot">✦</div>
+      <div class="milestone-name">Evolve Ability</div>
+    </div>
+    <div class="milestone-line"></div>
+    <div class="milestone-step">
+      <div class="milestone-level">Lv 60</div>
+      <div class="milestone-dot awaken-dot">⚔️</div>
+      <div class="milestone-name">Awaken Weapon</div>
+    </div>
+  </div>
+
+  <!-- Evolution + Awakening cards -->
+  <div class="milestone-cards">
+
+    <!-- Evolution -->
+    <div class="milestone-card evo-card">
+      <span class="mc-badge">Lv 50 · /evolve</span>
+      <h3 class="mc-title">Ability Evolution</h3>
+      <p class="mc-desc">Complete a three-part quest — dungeon clears, a WL5+ boss kill, and a material cost — to permanently evolve your ability. The AI rewrites its name, lore, and adds a fourth effect using your full combat history, gear, and personality bonds.</p>
+      <div class="screenshot-wrap">
+        <img src="./evolve.png" alt="Eclipse of Resolve evolved ability card showing four gold-accented effects and lore" class="screenshot" />
+      </div>
+    </div>
+
+    <!-- Awakening -->
+    <div class="milestone-card awaken-card">
+      <span class="mc-badge">Lv 60 · /awaken</span>
+      <h3 class="mc-title">Ego Weapon Awakening</h3>
+      <p class="mc-desc">Requires an evolved ability and an equipped weapon. Stats are amplified by rarity (up to ×1.25), the passive is enhanced, and the AI adds a new effect plus a unique awakened name, lore, and art description — all permanent.</p>
+      <div class="screenshot-wrap">
+        <img src="./awaken.png" alt="Pyrclast Oathbreaker's Edge awakened weapon card with gold border, weapon art, and amplified stats" class="screenshot" />
+      </div>
+    </div>
+
+  </div>
+</section>
+
+<hr class="section-rule" />
+
+<!-- ── Vote ────────────────────────────────────────────────────────────── -->
+<section id="vote">
+  <div class="section-label">Support the bot</div>
+  <h2 class="section-title">Vote for rewards</h2>
+  <p class="section-sub">Every vote on Discord Bot List keeps Cartethyia climbing the rankings — and earns you real in-game rewards instantly.</p>
+
+  <div class="vote-reward-grid">
+    <div class="vote-reward-item">
+      <div class="vote-reward-icon">💎</div>
+      <div class="vote-reward-val">1,000</div>
+      <div class="vote-reward-label">Credits per vote</div>
+    </div>
+    <div class="vote-reward-item">
+      <div class="vote-reward-icon">🗝️</div>
+      <div class="vote-reward-val">1</div>
+      <div class="vote-reward-label">Fracture Key per vote</div>
+    </div>
+    <div class="vote-reward-item vote-highlight">
+      <div class="vote-reward-icon">✨</div>
+      <div class="vote-reward-val">2×</div>
+      <div class="vote-reward-label">Rewards on weekends</div>
+    </div>
+  </div>
+
+  <div style="margin-top:2.5rem; display:flex; gap:1.25rem; flex-wrap:wrap; align-items:center;">
+    <a class="btn btn-vote" href="https://discordbotlist.com/bots/cartethyia/upvote">
+      🗳️ &nbsp;Vote on Discord Bot List
+    </a>
+    <span style="color:var(--dim); font-size:0.9rem; font-weight:300;">
+      Or type <code style="background:rgba(167,139,250,0.1);color:var(--purple);padding:0.1rem 0.4rem;border-radius:3px;">/vote</code> in Discord for the direct link
+    </span>
+  </div>
+</section>
+
+<hr class="section-rule" />
+
 <!-- ── Commands ────────────────────────────────────────────────────────── -->
 <section id="commands" class="commands-section">
   <div class="section-label">Quick reference</div>
@@ -1138,6 +1487,11 @@
     <div class="cmd-row"><span class="cmd-name">/duel</span><span class="cmd-desc">Challenge another player — public or private match</span></div>
     <div class="cmd-row"><span class="cmd-name">/inventory</span><span class="cmd-desc">Check your currencies: Credits, Lunakite, Fracture Keys…</span></div>
     <div class="cmd-row"><span class="cmd-name">/guide</span><span class="cmd-desc">In-Discord guide — tips, mechanics, and getting started</span></div>
+    <div class="cmd-row"><span class="cmd-name">/weapons</span><span class="cmd-desc">Browse your weapon arsenal with stats and Weapon Bond lore</span></div>
+    <div class="cmd-row"><span class="cmd-name">/stats</span><span class="cmd-desc">View final combat numbers — the exact values used in every fight</span></div>
+    <div class="cmd-row"><span class="cmd-name">/evolve</span><span class="cmd-desc">Complete the evolution quest to permanently upgrade your ability (Lv 50)</span></div>
+    <div class="cmd-row"><span class="cmd-name">/awaken</span><span class="cmd-desc">Awaken your ego weapon into its final AI-forged form (Lv 60)</span></div>
+    <div class="cmd-row"><span class="cmd-name">/vote</span><span class="cmd-desc">Vote on Discord Bot List for 1,000 Credits + 1 Fracture Key</span></div>
   </div>
 </section>
 
@@ -1161,7 +1515,7 @@
   <div class="footer-inner">
     <div>
       <div class="footer-logo">CARTETHYIA</div>
-      <div class="footer-copy">© 2025 Cartethyia · Not affiliated with Kuro Games or Wuthering Waves</div>
+      <div class="footer-copy">© 2026 Cartethyia · Not affiliated with Kuro Games or Wuthering Waves</div>
     </div>
     <div class="footer-links">
       <a href="./terms.html">Terms of Service</a>
