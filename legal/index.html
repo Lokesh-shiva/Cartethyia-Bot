@@ -530,11 +530,6 @@
       border-radius: 12px;
       overflow: hidden;
       box-shadow: 0 24px 64px rgba(0,0,0,0.6), 0 0 0 1px rgba(255,255,255,0.06);
-      transition: transform 0.3s, box-shadow 0.3s;
-    }
-    .screenshot-wrap:hover {
-      transform: translateY(-4px) scale(1.01);
-      box-shadow: 0 32px 80px rgba(0,0,0,0.7), 0 0 0 1px rgba(167,139,250,0.2);
     }
     .screenshot {
       display: block;
@@ -1160,9 +1155,7 @@
 
     /* ── 3D tilt ────────────────────────────────────────────────────────── */
     .tilt-wrap {
-      transform-style: preserve-3d;
       will-change: transform;
-      transition: transform 0.12s ease-out, box-shadow 0.12s ease-out;
     }
     .tilt-wrap:hover {
       box-shadow: 0 32px 80px rgba(0,0,0,0.65), 0 0 0 1px rgba(167,139,250,0.2);
@@ -1553,7 +1546,7 @@
       <span class="mc-badge">Lv 50 · /evolve</span>
       <h3 class="mc-title">Ability Evolution</h3>
       <p class="mc-desc">Complete a three-part quest — dungeon clears, a WL5+ boss kill, and a material cost — to permanently evolve your ability. The AI rewrites its name, lore, and adds a fourth effect using your full combat history, gear, and personality bonds.</p>
-      <div class="screenshot-wrap tilt-wrap" data-reveal="right">
+      <div class="screenshot-wrap" data-reveal="right">
         <img src="./evolve.png" alt="Eclipse of Resolve evolved ability card showing four gold-accented effects and lore" class="screenshot" />
       </div>
     </div>
@@ -1563,7 +1556,7 @@
       <span class="mc-badge">Lv 60 · /awaken</span>
       <h3 class="mc-title">Ego Weapon Awakening</h3>
       <p class="mc-desc">Requires an evolved ability and an equipped weapon. Stats are amplified by rarity (up to ×1.25), the passive is enhanced, and the AI adds a new effect plus a unique awakened name, lore, and art description — all permanent.</p>
-      <div class="screenshot-wrap tilt-wrap" data-reveal="right">
+      <div class="screenshot-wrap" data-reveal="right">
         <img src="./awaken.png" alt="Pyrclast Oathbreaker's Edge awakened weapon card with gold border, weapon art, and amplified stats" class="screenshot" />
       </div>
     </div>
@@ -1742,28 +1735,21 @@
   }, { threshold: 0.35 });
   document.querySelectorAll('.elem-bonus-card').forEach(el => barObserver.observe(el));
 
-  // ── 3D tilt (no transition during active tracking) ────────────────────
-  const TILT = 12;
+  // ── 3D tilt ───────────────────────────────────────────────────────────
+  const TILT = 16;
+  const PERSP = 600;
   document.querySelectorAll('.tilt-wrap').forEach(card => {
-    let isHovering = false;
-
-    card.addEventListener('mouseenter', () => {
-      isHovering = true;
-      card.style.transition = 'none';
-    });
-
     card.addEventListener('mousemove', e => {
-      if (!isHovering) return;
       const r  = card.getBoundingClientRect();
       const dx = (e.clientX - r.left - r.width  / 2) / (r.width  / 2);
       const dy = (e.clientY - r.top  - r.height / 2) / (r.height / 2);
-      card.style.transform = `perspective(900px) rotateX(${(-dy * TILT).toFixed(2)}deg) rotateY(${(dx * TILT).toFixed(2)}deg) scale(1.03)`;
+      card.style.transition = 'transform 0.05s linear, box-shadow 0.15s';
+      card.style.transform  = `perspective(${PERSP}px) rotateX(${(-dy * TILT).toFixed(2)}deg) rotateY(${(dx * TILT).toFixed(2)}deg) scale(1.04)`;
     });
 
     card.addEventListener('mouseleave', () => {
-      isHovering = false;
       card.style.transition = 'transform 0.7s cubic-bezier(0.16,1,0.3,1), box-shadow 0.7s';
-      card.style.transform  = 'perspective(900px) rotateX(0deg) rotateY(0deg) scale(1)';
+      card.style.transform  = 'perspective(600px) rotateX(0deg) rotateY(0deg) scale(1)';
     });
   });
 </script>
