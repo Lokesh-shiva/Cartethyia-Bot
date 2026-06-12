@@ -93,7 +93,9 @@ const command: Command = {
       }
       const isV2   = user.abilityVersion === 2;
       const effList = isV2
-        ? formatV2Effects(sanitizeV2Effects(user.uniqueAbilityEffects)).split("\n").filter(Boolean)
+        ? formatV2Effects(sanitizeV2Effects(user.uniqueAbilityEffects))
+            .replace(/\*\*/g, "").replace(/\*([^*]+)\*/g, "$1")
+            .split("\n").filter(Boolean)
         : formatEffects(sanitizeEffects(user.uniqueAbilityEffects)).split("\n").filter(Boolean);
       const cardBuf = await generateAbilityCard({
         displayName,
@@ -135,7 +137,9 @@ const command: Command = {
       if (useV2) {
         const result = await generateUniqueAbilityV2(targetId, false);
         if (!result) { await interaction.editReply({ content: "V2 generation failed." }); return null; }
-        effList  = formatV2Effects(result.v2Effects).split("\n").filter(Boolean);
+        effList  = formatV2Effects(result.v2Effects)
+          .replace(/\*\*/g, "").replace(/\*([^*]+)\*/g, "$1")
+          .split("\n").filter(Boolean);
         ability  = result;
         pending  = { v2: true, ...ability, v2Effects: result.v2Effects };
       } else {
