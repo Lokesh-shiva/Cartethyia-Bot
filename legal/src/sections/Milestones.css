@@ -1,0 +1,67 @@
+.milestone-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1.5rem;
+}
+
+.milestone-card {
+  border-radius: 24px;
+  overflow: hidden;
+  position: relative;
+  transition: transform 0.3s;
+}
+
+.milestone-card::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.mc-evo::before {
+  background: radial-gradient(ellipse at 50% 0%, rgba(167,139,250,0.15) 0%, transparent 60%);
+}
+
+.mc-awaken::before {
+  background: radial-gradient(ellipse at 50% 0%, rgba(245,158,11,0.15) 0%, transparent 60%);
+}
+
+.milestone-card:hover { transform: translateY(-4px); }
+
+.mc-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  width: 100%;
+  position: relative;
+  z-index: 1;
+}
+
+.mc-badge {
+  display: inline-block;
+  padding: 0.25rem 0.75rem;
+  border-radius: 9999px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  align-self: flex-start;
+}
+
+.mc-evo .mc-badge    { background: rgba(167,139,250,0.15); color: var(--primary); border: 1px solid rgba(167,139,250,0.25); }
+.mc-awaken .mc-badge { background: rgba(245,158,11,0.12);  color: var(--gold);    border: 1px solid rgba(245,158,11,0.25); }
+
+.mc-title { font-family: 'Rajdhani', sans-serif; font-size: 1.6rem; font-weight: 700; }
+.mc-desc  { font-size: 0.88rem; color: var(--dim); line-height: 1.65; font-weight: 300; }
+
+.mc-card-wrap {
+  aspect-ratio: 3/2;
+  width: 100%;
+  margin-top: 0.5rem;
+}
+
+@media (max-width: 760px) {
+  .milestone-grid { grid-template-columns: 1fr; }
+}
