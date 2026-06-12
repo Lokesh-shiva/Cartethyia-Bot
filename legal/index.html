@@ -113,10 +113,10 @@
       align-items: center;
       justify-content: space-between;
       padding: 1rem 2.5rem;
-      background: rgba(8,11,18,0.45);
-      backdrop-filter: blur(28px) saturate(200%);
-      -webkit-backdrop-filter: blur(28px) saturate(200%);
-      border-bottom: 1px solid rgba(167,139,250,0.12);
+      background: rgba(8,11,18,0.22);
+      backdrop-filter: blur(32px) saturate(220%);
+      -webkit-backdrop-filter: blur(32px) saturate(220%);
+      border-bottom: 1px solid rgba(255,255,255,0.09);
     }
     .nav-logo {
       font-family: 'Rajdhani', sans-serif;
@@ -365,20 +365,32 @@
       display: grid;
       grid-template-columns: repeat(3, 1fr);
       gap: 1px;
-      background: rgba(255,255,255,0.04);
-      border: 1px solid rgba(255,255,255,0.08);
+      background: rgba(255,255,255,0.06);
+      border: 1px solid rgba(255,255,255,0.1);
       border-radius: 16px;
       overflow: hidden;
-      backdrop-filter: blur(16px);
-      -webkit-backdrop-filter: blur(16px);
+      backdrop-filter: blur(32px) saturate(220%);
+      -webkit-backdrop-filter: blur(32px) saturate(220%);
     }
     .stat-item {
-      background: rgba(17,21,32,0.4);
+      background: rgba(255,255,255,0.03);
       padding: 2.2rem 2rem;
       text-align: center;
-      transition: background 0.2s;
+      transition: background 0.3s;
+      position: relative;
+      overflow: hidden;
     }
-    .stat-item:hover { background: rgba(22,27,40,0.8); }
+    .stat-item::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: radial-gradient(circle at var(--rx,50%) var(--ry,50%), rgba(167,139,250,0.14) 0%, transparent 60%);
+      opacity: 0;
+      transition: opacity 0.4s;
+      pointer-events: none;
+    }
+    .stat-item:hover { background: rgba(255,255,255,0.06); }
+    .stat-item:hover::after { opacity: 1; }
     .stat-num {
       font-family: 'Rajdhani', sans-serif;
       font-size: 2.8rem;
@@ -417,15 +429,15 @@
     .feat-prog    { grid-area: prog; }
 
     .feat-card {
-      background: rgba(17,21,32,0.5);
-      backdrop-filter: blur(16px);
-      -webkit-backdrop-filter: blur(16px);
-      border: 1px solid rgba(255,255,255,0.07);
+      background: rgba(255,255,255,0.04);
+      backdrop-filter: blur(32px) saturate(220%);
+      -webkit-backdrop-filter: blur(32px) saturate(220%);
+      border: 1px solid rgba(255,255,255,0.1);
       border-radius: 16px;
       padding: 1.8rem;
       position: relative;
       overflow: hidden;
-      transition: transform 0.3s cubic-bezier(0.16,1,0.3,1), border-color 0.3s, box-shadow 0.3s;
+      transition: transform 0.35s cubic-bezier(0.16,1,0.3,1), border-color 0.35s, box-shadow 0.35s;
       cursor: default;
     }
     .feat-card::before {
@@ -435,19 +447,19 @@
       height: 2px;
       background: var(--accent, linear-gradient(90deg, var(--purple), var(--blue)));
       opacity: 0;
-      transition: opacity 0.3s;
+      transition: opacity 0.35s;
     }
-    /* subtle inner glow on hover */
+    /* cursor-following liquid glow */
     .feat-card::after {
       content: '';
       position: absolute;
       inset: 0;
-      background: var(--accent-glow, radial-gradient(circle at 50% 0%, rgba(167,139,250,0.06), transparent 60%));
+      background: radial-gradient(circle at var(--rx,50%) var(--ry,50%), var(--ripple,rgba(167,139,250,0.15)) 0%, transparent 55%);
       opacity: 0;
-      transition: opacity 0.3s;
+      transition: opacity 0.4s;
       pointer-events: none;
     }
-    .feat-card:hover { transform: translateY(-6px); border-color: rgba(255,255,255,0.14); box-shadow: 0 24px 60px rgba(0,0,0,0.5); }
+    .feat-card:hover { transform: translateY(-6px); border-color: rgba(255,255,255,0.18); box-shadow: 0 28px 64px rgba(0,0,0,0.55), inset 0 1px 0 rgba(255,255,255,0.1); }
     .feat-card:hover::before { opacity: 1; }
     .feat-card:hover::after  { opacity: 1; }
     .feat-icon { font-size: 2.2rem; margin-bottom: 1rem; display: block; }
@@ -461,13 +473,13 @@
     }
     .feat-desc { color: var(--dim); font-size: 0.92rem; line-height: 1.55; font-weight: 300; }
 
-    /* per-card accent colors */
-    .feat-combat  { --accent: linear-gradient(90deg, var(--fusion), var(--havoc));     --accent-glow: radial-gradient(circle at 50% 0%, rgba(255,107,53,0.08), transparent 60%); }
-    .feat-echo    { --accent: linear-gradient(90deg, var(--electro), var(--glacio));   --accent-glow: radial-gradient(circle at 50% 0%, rgba(79,195,247,0.08), transparent 60%); }
-    .feat-wish    { --accent: linear-gradient(90deg, var(--gold), var(--purple));      --accent-glow: radial-gradient(circle at 50% 0%, rgba(245,158,11,0.08), transparent 60%); }
-    .feat-dungeon { --accent: linear-gradient(90deg, var(--blue), var(--purple));      --accent-glow: radial-gradient(circle at 50% 0%, rgba(96,165,250,0.08), transparent 60%); }
-    .feat-element { --accent: linear-gradient(90deg, var(--spectro), var(--aero));     --accent-glow: radial-gradient(circle at 50% 0%, rgba(255,213,79,0.08), transparent 60%); }
-    .feat-prog    { --accent: linear-gradient(90deg, var(--aero), var(--blue));        --accent-glow: radial-gradient(circle at 50% 0%, rgba(128,203,196,0.08), transparent 60%); }
+    /* per-card accent + ripple colors */
+    .feat-combat  { --accent: linear-gradient(90deg, var(--fusion), var(--havoc));   --ripple: rgba(255,107,53,0.18); }
+    .feat-echo    { --accent: linear-gradient(90deg, var(--electro), var(--glacio)); --ripple: rgba(79,195,247,0.16); }
+    .feat-wish    { --accent: linear-gradient(90deg, var(--gold), var(--purple));    --ripple: rgba(245,158,11,0.16); }
+    .feat-dungeon { --accent: linear-gradient(90deg, var(--blue), var(--purple));    --ripple: rgba(96,165,250,0.16); }
+    .feat-element { --accent: linear-gradient(90deg, var(--spectro), var(--aero));  --ripple: rgba(255,213,79,0.15); }
+    .feat-prog    { --accent: linear-gradient(90deg, var(--aero), var(--blue));      --ripple: rgba(128,203,196,0.15); }
 
     /* ── Discord card mockups ───────────────────────────────────────────── */
     .previews-wrap {
@@ -957,10 +969,10 @@
       margin-top: 1rem;
     }
     .milestone-card {
-      background: rgba(17,21,32,0.5);
-      backdrop-filter: blur(16px);
-      -webkit-backdrop-filter: blur(16px);
-      border: 1px solid rgba(245,158,11,0.2);
+      background: rgba(255,255,255,0.04);
+      backdrop-filter: blur(32px) saturate(220%);
+      -webkit-backdrop-filter: blur(32px) saturate(220%);
+      border: 1px solid rgba(245,158,11,0.22);
       border-radius: 16px;
       padding: 2rem;
       position: relative;
@@ -1099,10 +1111,10 @@
       margin-top: 3rem;
     }
     .vote-reward-item {
-      background: rgba(17,21,32,0.5);
-      backdrop-filter: blur(16px);
-      -webkit-backdrop-filter: blur(16px);
-      border: 1px solid rgba(255,255,255,0.07);
+      background: rgba(255,255,255,0.04);
+      backdrop-filter: blur(32px) saturate(220%);
+      -webkit-backdrop-filter: blur(32px) saturate(220%);
+      border: 1px solid rgba(255,255,255,0.1);
       border-radius: 14px;
       padding: 2rem 1.5rem;
       text-align: center;
@@ -1136,26 +1148,15 @@
     }
     .btn-vote:hover { box-shadow: 0 0 40px rgba(245,158,11,0.5); }
 
-    /* ── Cursor glow ────────────────────────────────────────────────────── */
-    .cursor-glow {
-      position: fixed;
-      width: 700px; height: 700px;
-      border-radius: 50%;
-      pointer-events: none;
-      z-index: 0;
-      background: radial-gradient(circle, rgba(167,139,250,0.055) 0%, transparent 65%);
-      transform: translate(-50%, -50%);
-      transition: left 0.08s linear, top 0.08s linear;
-    }
 
     /* ── Directional reveals ─────────────────────────────────────────────── */
     .will-reveal { opacity: 0; }
-    @keyframes reveal-up    { from { opacity:0; transform:translateY(32px);  } to { opacity:1; transform:translateY(0);  } }
-    @keyframes reveal-left  { from { opacity:0; transform:translateX(-40px); } to { opacity:1; transform:translateX(0); } }
-    @keyframes reveal-right { from { opacity:0; transform:translateX(40px);  } to { opacity:1; transform:translateX(0); } }
-    .revealed-up    { animation: reveal-up    0.72s cubic-bezier(0.16,1,0.3,1) both; }
-    .revealed-left  { animation: reveal-left  0.72s cubic-bezier(0.16,1,0.3,1) both; }
-    .revealed-right { animation: reveal-right 0.72s cubic-bezier(0.16,1,0.3,1) both; }
+    @keyframes reveal-up    { from { opacity:0; transform:translateY(40px);  } to { opacity:1; transform:translateY(0);  } }
+    @keyframes reveal-left  { from { opacity:0; transform:translateX(-50px); } to { opacity:1; transform:translateX(0); } }
+    @keyframes reveal-right { from { opacity:0; transform:translateX(50px);  } to { opacity:1; transform:translateX(0); } }
+    .revealed-up    { animation: reveal-up    1.5s cubic-bezier(0.16,1,0.3,1) both; }
+    .revealed-left  { animation: reveal-left  1.5s cubic-bezier(0.16,1,0.3,1) both; }
+    .revealed-right { animation: reveal-right 1.5s cubic-bezier(0.16,1,0.3,1) both; }
 
     /* ── 3D tilt ────────────────────────────────────────────────────────── */
     .tilt-wrap {
@@ -1191,7 +1192,7 @@
       height: 100%;
       border-radius: 2px;
       width: 0;
-      transition: width 0.9s cubic-bezier(0.16,1,0.3,1);
+      transition: width 1.9s cubic-bezier(0.16,1,0.3,1);
       background: var(--bar-color, rgba(167,139,250,0.8));
     }
     .elem-bonus-card.fusion  .elem-bar-fill { --bar-color: var(--fusion);  }
@@ -1241,8 +1242,6 @@
   </style>
 </head>
 <body>
-
-<div class="cursor-glow" id="cursorGlow"></div>
 
 <!-- ── Navigation ──────────────────────────────────────────────────────── -->
 <nav>
@@ -1668,16 +1667,16 @@
 </footer>
 
 <script>
-  // ── Cursor glow ────────────────────────────────────────────────────────
-  const glow = document.getElementById('cursorGlow');
-  if (glow) {
-    document.addEventListener('mousemove', e => {
-      glow.style.left = e.clientX + 'px';
-      glow.style.top  = e.clientY + 'px';
+  // ── Liquid cursor ripple on glass cards ───────────────────────────────
+  document.querySelectorAll('.feat-card, .stat-item, .milestone-card, .vote-reward-item').forEach(card => {
+    card.addEventListener('mousemove', e => {
+      const r = card.getBoundingClientRect();
+      card.style.setProperty('--rx', ((e.clientX - r.left)  / r.width  * 100).toFixed(1) + '%');
+      card.style.setProperty('--ry', ((e.clientY - r.top)   / r.height * 100).toFixed(1) + '%');
     });
-  }
+  });
 
-  // ── Directional reveal logic ───────────────────────────────────────────
+  // ── Directional reveals ───────────────────────────────────────────────
   function revealClass(el) {
     const row = el.closest('.preview-row');
     if (row) {
@@ -1685,74 +1684,85 @@
       if (el.classList.contains('preview-label'))   return rev ? 'revealed-right' : 'revealed-left';
       if (el.classList.contains('screenshot-wrap')) return rev ? 'revealed-left'  : 'revealed-right';
     }
-    if (el.classList.contains('milestone-card') || el.classList.contains('vote-reward-item')) return 'revealed-up';
     return 'revealed-up';
   }
 
-  const revealSels = '.feat-card, .cmd-row, .elem-bonus-card, .preview-label, .screenshot-wrap, .stat-item, .milestone-card, .vote-reward-item';
-  const revealEls = [...document.querySelectorAll(revealSels)];
+  const revealEls = [...document.querySelectorAll(
+    '.feat-card, .cmd-row, .elem-bonus-card, .preview-label, .screenshot-wrap, .stat-item, .milestone-card, .vote-reward-item'
+  )];
   revealEls.forEach(el => el.classList.add('will-reveal'));
 
-  // Stagger feat-cards and cmd-rows
-  document.querySelectorAll('.feat-card').forEach((el, i) => { el.style.animationDelay = (i * 0.07) + 's'; });
-  document.querySelectorAll('.cmd-row').forEach((el, i)   => { el.style.animationDelay = (i * 0.04) + 's'; });
+  document.querySelectorAll('.feat-card').forEach((el, i) => { el.style.animationDelay = (i * 0.1)  + 's'; });
+  document.querySelectorAll('.cmd-row').forEach((el, i)   => { el.style.animationDelay = (i * 0.06) + 's'; });
+  document.querySelectorAll('.vote-reward-item').forEach((el, i) => { el.style.animationDelay = (i * 0.12) + 's'; });
 
-  const revIO = new IntersectionObserver(entries => {
+  const revealObserver = new IntersectionObserver(entries => {
     entries.forEach(e => {
       if (!e.isIntersecting) return;
       e.target.classList.remove('will-reveal');
       e.target.classList.add(revealClass(e.target));
-      revIO.unobserve(e.target);
+      revealObserver.unobserve(e.target);
     });
   }, { threshold: 0.12 });
-  revealEls.forEach(el => revIO.observe(el));
+  revealEls.forEach(el => revealObserver.observe(el));
 
-  // ── Animated counters ──────────────────────────────────────────────────
+  // ── Animated counters (2.8s, ease-out expo) ───────────────────────────
   function runCounter(el) {
     const target = parseInt(el.dataset.count);
     const suffix = el.dataset.suffix || '';
-    const t0 = performance.now();
-    const dur = 1100;
+    const dur    = 2800;
+    const t0     = performance.now();
     (function tick(now) {
-      const p = Math.min((now - t0) / dur, 1);
+      const p     = Math.min((now - t0) / dur, 1);
       const eased = p === 1 ? 1 : 1 - Math.pow(2, -10 * p);
       el.textContent = Math.round(eased * target) + suffix;
       if (p < 1) requestAnimationFrame(tick);
     })(t0);
   }
-  const cntIO = new IntersectionObserver(entries => {
+  const counterObserver = new IntersectionObserver(entries => {
     entries.forEach(e => {
       if (!e.isIntersecting) return;
       e.target.querySelectorAll('.stat-num[data-count]').forEach(runCounter);
-      cntIO.unobserve(e.target);
+      counterObserver.unobserve(e.target);
     });
   }, { threshold: 0.5 });
-  document.querySelectorAll('.stat-item').forEach(el => cntIO.observe(el));
+  document.querySelectorAll('.stat-item').forEach(el => counterObserver.observe(el));
 
-  // ── Element bars ───────────────────────────────────────────────────────
-  const barIO = new IntersectionObserver(entries => {
+  // ── Element stat bars ─────────────────────────────────────────────────
+  const barObserver = new IntersectionObserver(entries => {
     entries.forEach(e => {
       if (!e.isIntersecting) return;
+      // stagger each bar within the card
+      e.target.querySelectorAll('.elem-bar-fill').forEach((bar, i) => {
+        bar.style.transitionDelay = (i * 0.18) + 's';
+      });
       e.target.classList.add('bars-active');
-      barIO.unobserve(e.target);
+      barObserver.unobserve(e.target);
     });
-  }, { threshold: 0.3 });
-  document.querySelectorAll('.elem-bonus-card').forEach(el => barIO.observe(el));
+  }, { threshold: 0.35 });
+  document.querySelectorAll('.elem-bonus-card').forEach(el => barObserver.observe(el));
 
-  // ── 3D tilt ────────────────────────────────────────────────────────────
-  const TILT = 7;
+  // ── 3D tilt (no transition during active tracking) ────────────────────
+  const TILT = 12;
   document.querySelectorAll('.tilt-wrap').forEach(card => {
+    let isHovering = false;
+
     card.addEventListener('mouseenter', () => {
-      card.style.transition = 'transform 0.1s ease-out, box-shadow 0.1s ease-out';
+      isHovering = true;
+      card.style.transition = 'none';
     });
+
     card.addEventListener('mousemove', e => {
+      if (!isHovering) return;
       const r  = card.getBoundingClientRect();
       const dx = (e.clientX - r.left - r.width  / 2) / (r.width  / 2);
       const dy = (e.clientY - r.top  - r.height / 2) / (r.height / 2);
-      card.style.transform = `perspective(900px) rotateX(${-dy * TILT}deg) rotateY(${dx * TILT}deg) scale(1.025)`;
+      card.style.transform = `perspective(900px) rotateX(${(-dy * TILT).toFixed(2)}deg) rotateY(${(dx * TILT).toFixed(2)}deg) scale(1.03)`;
     });
+
     card.addEventListener('mouseleave', () => {
-      card.style.transition = 'transform 0.55s cubic-bezier(0.16,1,0.3,1), box-shadow 0.55s';
+      isHovering = false;
+      card.style.transition = 'transform 0.7s cubic-bezier(0.16,1,0.3,1), box-shadow 0.7s';
       card.style.transform  = 'perspective(900px) rotateX(0deg) rotateY(0deg) scale(1)';
     });
   });
