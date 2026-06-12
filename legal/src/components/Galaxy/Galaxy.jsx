@@ -215,13 +215,20 @@ export default function Galaxy({
     const mesh = new Mesh(gl, { geometry, program });
     let animateId;
 
+    const TARGET_FPS = 30;
+    const FRAME_MS   = 1000 / TARGET_FPS;
+    let lastFrame = 0;
+
     function update(t) {
       animateId = requestAnimationFrame(update);
+      if (t - lastFrame < FRAME_MS) return;
+      lastFrame = t;
+
       if (!disableAnimation) {
         program.uniforms.uTime.value = t * 0.001;
         program.uniforms.uStarSpeed.value = (t * 0.001 * starSpeed) / 10.0;
       }
-      const lerpFactor = 0.05;
+      const lerpFactor = 0.08;
       smoothMousePos.current.x += (targetMousePos.current.x - smoothMousePos.current.x) * lerpFactor;
       smoothMousePos.current.y += (targetMousePos.current.y - smoothMousePos.current.y) * lerpFactor;
       smoothMouseActive.current += (targetMouseActive.current - smoothMouseActive.current) * lerpFactor;

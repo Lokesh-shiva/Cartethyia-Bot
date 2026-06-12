@@ -1,5 +1,3 @@
-import { useEffect, useRef } from 'react';
-import GlassSurface from '../components/GlassSurface/GlassSurface';
 import useReveal from '../hooks/useReveal';
 import './Features.css';
 
@@ -40,13 +38,11 @@ function FeatCard({ feat }) {
   const ref = useReveal(feat.reveal);
   return (
     <div ref={ref} className={`feat-card will-reveal feat-${feat.id}`} style={{ '--card-accent': feat.accent }}>
-      <GlassSurface height="100%" borderRadius={20} distortionScale={-160} brightness={48}>
-        <div className="feat-content">
-          <span className="feat-emoji">{feat.emoji}</span>
-          <h3 className="feat-label">{feat.label}</h3>
-          <p className="feat-desc">{feat.desc}</p>
-        </div>
-      </GlassSurface>
+      <div className="feat-content">
+        <span className="feat-emoji">{feat.emoji}</span>
+        <h3 className="feat-label">{feat.label}</h3>
+        <p className="feat-desc">{feat.desc}</p>
+      </div>
     </div>
   );
 }

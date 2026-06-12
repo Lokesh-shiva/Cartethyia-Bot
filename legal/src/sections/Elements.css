@@ -14,7 +14,24 @@
   border: 1px solid rgba(255,255,255,0.07);
   transition: transform 0.3s, border-color 0.3s;
 }
+
+.elem-card::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image: var(--elem-bg);
+  background-size: cover;
+  background-position: center;
+  opacity: 0.12;
+  pointer-events: none;
+  z-index: 0;
+  border-radius: inherit;
+  transition: opacity 0.3s;
+}
+.elem-card:hover::after { opacity: 0.2; }
 .elem-card:hover { border-color: color-mix(in srgb, var(--elem-color) 30%, transparent); }
+
+.elem-inner { position: relative; z-index: 1; }
 
 .elem-card::before {
   content: '';

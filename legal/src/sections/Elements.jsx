@@ -56,7 +56,7 @@ function ElemCard({ elem, delay }) {
   }, []);
 
   return (
-    <div ref={ref} className="elem-card will-reveal" style={{ '--elem-color': elem.color, animationDelay: `${delay}s` }}>
+    <div ref={ref} className="elem-card will-reveal" style={{ '--elem-color': elem.color, '--elem-bg': `url(/bg-${elem.id}.png)`, animationDelay: `${delay}s` }}>
         <div className="elem-inner">
           <div className="elem-header">
             <span className="elem-emoji">{elem.emoji}</span>

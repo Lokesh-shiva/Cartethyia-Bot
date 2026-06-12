@@ -1,5 +1,4 @@
 import TiltedCard from '../components/TiltedCard/TiltedCard';
-import GlassSurface from '../components/GlassSurface/GlassSurface';
 import useReveal from '../hooks/useReveal';
 import './Milestones.css';
 
@@ -7,23 +6,21 @@ function MilestoneCard({ badge, title, desc, img, imgAlt, caption, accentClass }
   const ref = useReveal('up');
   return (
     <div ref={ref} className={`milestone-card ${accentClass} will-reveal`}>
-      <GlassSurface height="100%" borderRadius={24} distortionScale={-160} brightness={50}>
-        <div className="mc-body">
-          <span className="mc-badge">{badge}</span>
-          <h3 className="mc-title">{title}</h3>
-          <p className="mc-desc">{desc}</p>
-          <div className="mc-card-wrap">
-            <TiltedCard
-              imageSrc={img}
-              altText={imgAlt}
-              captionText={caption}
-              rotateAmplitude={10}
-              scaleOnHover={1.05}
-              showTooltip={true}
-            />
-          </div>
+      <div className="mc-body">
+        <span className="mc-badge">{badge}</span>
+        <h3 className="mc-title">{title}</h3>
+        <p className="mc-desc">{desc}</p>
+        <div className="mc-card-wrap">
+          <TiltedCard
+            imageSrc={img}
+            altText={imgAlt}
+            captionText={caption}
+            rotateAmplitude={10}
+            scaleOnHover={1.05}
+            showTooltip={true}
+          />
         </div>
-      </GlassSurface>
+      </div>
     </div>
   );
 }

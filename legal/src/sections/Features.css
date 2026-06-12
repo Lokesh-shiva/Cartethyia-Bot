@@ -10,8 +10,12 @@
   min-height: 200px;
   position: relative;
   overflow: hidden;
-  transition: transform 0.3s, box-shadow 0.3s;
+  background: rgba(255,255,255,0.04);
+  backdrop-filter: blur(20px);
+  border: 1px solid rgba(255,255,255,0.07);
+  transition: transform 0.3s, border-color 0.3s, box-shadow 0.3s;
 }
+.feat-card:hover { border-color: rgba(167,139,250,0.2); }
 
 .feat-card::before {
   content: '';
@@ -34,7 +38,7 @@
 .feat-content {
   position: relative;
   z-index: 1;
-  padding: 0;
+  padding: 1.5rem;
 }
 
 .feat-emoji { font-size: 2rem; display: block; margin-bottom: 0.75rem; }

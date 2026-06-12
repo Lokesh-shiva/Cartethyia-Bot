@@ -8,8 +8,13 @@
   border-radius: 24px;
   overflow: hidden;
   position: relative;
-  transition: transform 0.3s;
+  background: rgba(255,255,255,0.04);
+  backdrop-filter: blur(20px);
+  border: 1px solid rgba(255,255,255,0.07);
+  transition: transform 0.3s, border-color 0.3s;
 }
+.mc-evo:hover    { border-color: rgba(167,139,250,0.25); }
+.mc-awaken:hover { border-color: rgba(245,158,11,0.25); }
 
 .milestone-card::before {
   content: '';
@@ -37,6 +42,7 @@
   width: 100%;
   position: relative;
   z-index: 1;
+  padding: 1.75rem;
 }
 
 .mc-badge {
