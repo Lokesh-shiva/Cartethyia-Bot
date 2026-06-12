@@ -5,7 +5,7 @@ import {
 } from "discord.js";
 import { Command } from "../../types";
 import prisma from "../../lib/prisma";
-import { generateAwakening, AwakeningResult, awakenSubVal, awakenHiddenBase, SUB_LABELS } from "../../lib/weaponAwakening";
+import { generateAwakening, AwakeningResult, awakenHiddenBase, SUB_LABELS } from "../../lib/weaponAwakening";
 import { formatEffects } from "../../lib/abilityEffects";
 import { OWNER_ID } from "../../lib/owner";
 
@@ -72,10 +72,9 @@ const command: Command = {
             { name: "Awakened Name", value: `**${result.name}**`, inline: true },
             { name: "Lore", value: `*${result.lore}*`, inline: false },
             { name: "Awakened Passive", value: passiveLines || "none", inline: false },
-            { name: "Substats (re-rolled)", value: [
-              `${SUB_LABELS[result.subStatType] ?? result.subStatType} (main)`,
-              `${SUB_LABELS[result.hiddenSub1Type] ?? result.hiddenSub1Type} (hidden I, Lv20)`,
-              `${SUB_LABELS[result.hiddenSub2Type] ?? result.hiddenSub2Type} (hidden II, Lv50)`,
+            { name: "New Hidden Substats", value: [
+              result.newHiddenSub1Type ? `Hidden I: ${SUB_LABELS[result.newHiddenSub1Type] ?? result.newHiddenSub1Type} *(newly added)*` : "Hidden I: unchanged",
+              result.newHiddenSub2Type ? `Hidden II: ${SUB_LABELS[result.newHiddenSub2Type] ?? result.newHiddenSub2Type} *(newly added)*` : "Hidden II: unchanged",
             ].join("\n"), inline: false },
             { name: "Art Prompt", value: result.artPrompt.slice(0, 1024), inline: false },
           )
@@ -126,12 +125,14 @@ const command: Command = {
             awakenedLore:      pending.lore,
             awakenedArtPrompt: pending.artPrompt,
             awakenedPassive:   pending.passive as any,
-            subStatType:       pending.subStatType,
-            subStatVal:        awakenSubVal(pending.subStatType, weapon.rarity),
-            hiddenSub1Type:    pending.hiddenSub1Type,
-            hiddenSub1Val:     awakenHiddenBase(pending.hiddenSub1Type, weapon.rarity),
-            hiddenSub2Type:    pending.hiddenSub2Type,
-            hiddenSub2Val:     awakenHiddenBase(pending.hiddenSub2Type, weapon.rarity),
+            ...(pending.newHiddenSub1Type ? {
+              hiddenSub1Type: pending.newHiddenSub1Type,
+              hiddenSub1Val:  awakenHiddenBase(pending.newHiddenSub1Type, weapon.rarity),
+            } : {}),
+            ...(pending.newHiddenSub2Type ? {
+              hiddenSub2Type: pending.newHiddenSub2Type,
+              hiddenSub2Val:  awakenHiddenBase(pending.newHiddenSub2Type, weapon.rarity),
+            } : {}),
           },
         });
 
@@ -141,8 +142,10 @@ const command: Command = {
             .setDescription(
               `**${weapon.name}** → **${pending.name}**\n` +
               `*${pending.lore}*\n\n` +
-              `Substats rewritten: ${SUB_LABELS[pending.subStatType]} · ${SUB_LABELS[pending.hiddenSub1Type]} · ${SUB_LABELS[pending.hiddenSub2Type]}\n` +
-              `baseAtk unchanged.`
+              (pending.newHiddenSub1Type || pending.newHiddenSub2Type
+                ? `New hidden subs added: ${[pending.newHiddenSub1Type, pending.newHiddenSub2Type].filter(Boolean).map(t => SUB_LABELS[t!] ?? t).join(", ")}\n`
+                : `No new hidden subs (weapon already had them).\n`) +
+              `Existing substat values and baseAtk unchanged.`
             )
             .setFooter({ text: `🛠️ debugawaken · ${displayName}` })],
           components: [],

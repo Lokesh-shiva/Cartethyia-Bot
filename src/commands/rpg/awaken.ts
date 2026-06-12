@@ -11,7 +11,7 @@ import { formatEffects } from "../../lib/abilityEffects";
 import { RARITY_STARS, WEAPON_TYPE_EMOJI } from "../../lib/weapons";
 import {
   EGO_LEVEL_REQUIRED, EGO_COST, AWAKEN_STAT_MULT, generateAwakening,
-  awakenSubVal, awakenHiddenBase, SUB_LABELS,
+  synergyMult, awakenHiddenBase, SUB_LABELS,
 } from "../../lib/weaponAwakening";
 import { WeaponType } from "@prisma/client";
 
@@ -42,7 +42,10 @@ const command: Command = {
         where:  { userId: interaction.user.id, isEquipped: true },
         select: {
           id: true, name: true, weaponType: true, rarity: true, level: true,
-          baseAtk: true, subStatVal: true, hiddenSub1Val: true, hiddenSub2Val: true,
+          baseAtk: true,
+          subStatType: true, subStatVal: true,
+          hiddenSub1Type: true, hiddenSub1Val: true,
+          hiddenSub2Type: true, hiddenSub2Val: true,
           awakened: true, awakenedName: true,
         },
       }),
@@ -157,8 +160,10 @@ const command: Command = {
         return;
       }
 
-      // Transform the weapon (guard against double-awaken races)
-      // baseAtk gets ×mult. Substats are re-rolled fresh from rarity-scaled tables.
+      // Transform the weapon (guard against double-awaken races).
+      // baseAtk ×mult. Existing substat values boosted by element-aware synergyMult.
+      // Empty hidden-sub slots get new player-specific types added.
+      const element = user.element as string;
       const updated = await prisma.weapon.updateMany({
         where: { id: weapon.id, awakened: false },
         data: {
@@ -168,12 +173,24 @@ const command: Command = {
           awakenedArtPrompt: awakening.artPrompt,
           awakenedPassive:   awakening.passive as any,
           baseAtk:           Math.round(weapon.baseAtk * mult),
-          subStatType:       awakening.subStatType,
-          subStatVal:        awakenSubVal(awakening.subStatType, weapon.rarity),
-          hiddenSub1Type:    awakening.hiddenSub1Type,
-          hiddenSub1Val:     awakenHiddenBase(awakening.hiddenSub1Type, weapon.rarity),
-          hiddenSub2Type:    awakening.hiddenSub2Type,
-          hiddenSub2Val:     awakenHiddenBase(awakening.hiddenSub2Type, weapon.rarity),
+          // Main substat: type unchanged, value boosted with element synergy
+          ...(weapon.subStatVal != null ? {
+            subStatVal: +(weapon.subStatVal * synergyMult(weapon.subStatType, element, mult)).toFixed(1),
+          } : {}),
+          // Hidden sub 1: keep existing (boosted) OR add new if empty
+          ...(weapon.hiddenSub1Type && weapon.hiddenSub1Val != null ? {
+            hiddenSub1Val: +(weapon.hiddenSub1Val * synergyMult(weapon.hiddenSub1Type, element, mult)).toFixed(1),
+          } : awakening.newHiddenSub1Type ? {
+            hiddenSub1Type: awakening.newHiddenSub1Type,
+            hiddenSub1Val:  awakenHiddenBase(awakening.newHiddenSub1Type, weapon.rarity),
+          } : {}),
+          // Hidden sub 2: keep existing (boosted) OR add new if empty
+          ...(weapon.hiddenSub2Type && weapon.hiddenSub2Val != null ? {
+            hiddenSub2Val: +(weapon.hiddenSub2Val * synergyMult(weapon.hiddenSub2Type, element, mult)).toFixed(1),
+          } : awakening.newHiddenSub2Type ? {
+            hiddenSub2Type: awakening.newHiddenSub2Type,
+            hiddenSub2Val:  awakenHiddenBase(awakening.newHiddenSub2Type, weapon.rarity),
+          } : {}),
         },
       });
       if (updated.count === 0) {
@@ -181,11 +198,27 @@ const command: Command = {
         return;
       }
 
-      const subLine = [
-        `◈ ${SUB_LABELS[awakening.subStatType] ?? awakening.subStatType}  +${awakenSubVal(awakening.subStatType, weapon.rarity)}${awakening.subStatType === "ENERGY_REGEN" ? " Energy" : "%"}`,
-        `◈ ${SUB_LABELS[awakening.hiddenSub1Type] ?? awakening.hiddenSub1Type}  *(scales Lv20–90)*`,
-        `◈ ${SUB_LABELS[awakening.hiddenSub2Type] ?? awakening.hiddenSub2Type}  *(scales Lv50–90)*`,
-      ].join("\n");
+      // Build substat summary for the embed
+      const subLines: string[] = [];
+      const eMult = synergyMult(weapon.subStatType, element, mult);
+      if (weapon.subStatType && weapon.subStatVal != null) {
+        const synergy = eMult > mult ? " *(element synergy)*" : "";
+        subLines.push(`◈ **${SUB_LABELS[weapon.subStatType] ?? weapon.subStatType}** — amplified ×${eMult.toFixed(2)}${synergy}`);
+      }
+      if (weapon.hiddenSub1Type) {
+        const hMult = synergyMult(weapon.hiddenSub1Type, element, mult);
+        const syn   = hMult > mult ? " *(synergy)*" : "";
+        subLines.push(`◈ **${SUB_LABELS[weapon.hiddenSub1Type] ?? weapon.hiddenSub1Type}** — amplified ×${hMult.toFixed(2)}${syn}`);
+      } else if (awakening.newHiddenSub1Type) {
+        subLines.push(`◈ **${SUB_LABELS[awakening.newHiddenSub1Type] ?? awakening.newHiddenSub1Type}** — ✦ *newly awakened* *(unlocks Lv20)*`);
+      }
+      if (weapon.hiddenSub2Type) {
+        const hMult = synergyMult(weapon.hiddenSub2Type, element, mult);
+        const syn   = hMult > mult ? " *(synergy)*" : "";
+        subLines.push(`◈ **${SUB_LABELS[weapon.hiddenSub2Type] ?? weapon.hiddenSub2Type}** — amplified ×${hMult.toFixed(2)}${syn}`);
+      } else if (awakening.newHiddenSub2Type) {
+        subLines.push(`◈ **${SUB_LABELS[awakening.newHiddenSub2Type] ?? awakening.newHiddenSub2Type}** — ✦ *newly awakened* *(unlocks Lv50)*`);
+      }
 
       await interaction.editReply({
         embeds: [new EmbedBuilder()
@@ -196,8 +229,8 @@ const command: Command = {
             ``,
             `${WEAPON_TYPE_EMOJI[weapon.weaponType as WeaponType]} **${weapon.name}** has become **✦ ${awakening.name}**`,
             ``,
-            `**Forged for you — Substats:**`,
-            subLine,
+            `**Substats:**`,
+            subLines.join("\n"),
             ``,
             `**Awakened passive:** ${awakening.passive.desc}`,
             `**Effects:** ${formatEffects(awakening.passive.effects).replace(/\n/g, " · ")}${awakening.passive.elemDmg ? ` · +${Math.round(awakening.passive.elemDmg * 100)}% Elemental DMG` : ""}`,

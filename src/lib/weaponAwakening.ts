@@ -18,21 +18,10 @@ export const EGO_COST = { forgingOres: 20, paradoxCores: 8, credits: 20000 };
 // Rarity ceiling multiplier — applied to baseAtk ONLY. Substats are now re-rolled fresh.
 export const AWAKEN_STAT_MULT: Record<number, number> = { 1: 1.12, 2: 1.12, 3: 1.15, 4: 1.20, 5: 1.25 };
 
-// ── Awakened substat value tables ─────────────────────────────────────────────
-// All awakened weapons get 3 substats (subStat + 2 hidden), regardless of origin.
-// Values represent the "at bond 10" value for the main substat (stored directly, no
-// level scaling). Hidden subs are stored as base values; they scale ×1.8 at Lv90.
-// Index: [3★, 4★, 5★] — rarity 1-2 treated as 3★.
-const AWAKEN_SUB_VAL: Record<string, [number, number, number]> = {
-  CRIT_RATE:    [16, 20, 24],
-  CRIT_DMG:     [24, 30, 36],
-  ATK_PERCENT:  [14, 18, 22],
-  HP_PERCENT:   [18, 22, 26],
-  DEF_PERCENT:  [18, 22, 26],
-  ELEMENTAL_DMG:[20, 24, 28],
-  ENERGY_REGEN: [24, 30, 36],
-};
-
+// ── New hidden-substat value tables (for slots that are currently empty) ──────
+// Existing substats keep their types; values are boosted by synergyMult.
+// New hidden subs are added if the weapon's slots were empty (e.g. forged weapons).
+// Base values scale ×1.8 at Lv90 via calcWishSubStat. Index: [3★, 4★, 5★].
 const AWAKEN_HIDDEN_BASE: Record<string, [number, number, number]> = {
   CRIT_RATE:    [8,  10, 12],
   CRIT_DMG:     [12, 15, 18],
@@ -52,16 +41,39 @@ const ALL_SUB_TYPES = [
   "HP_PERCENT", "DEF_PERCENT", "ENERGY_REGEN",
 ];
 
-// Element-specific fallback substat picks: [subStatType, hiddenSub1Type, hiddenSub2Type]
-const EGO_SUBSTAT_CHOICES: Record<string, [string, string, string]> = {
-  FUSION:  ["CRIT_DMG",     "ATK_PERCENT",  "CRIT_RATE"],
-  GLACIO:  ["HP_PERCENT",   "DEF_PERCENT",  "ELEMENTAL_DMG"],
-  ELECTRO: ["ENERGY_REGEN", "CRIT_DMG",     "CRIT_RATE"],
-  AERO:    ["CRIT_RATE",    "CRIT_DMG",     "ATK_PERCENT"],
-  HAVOC:   ["ATK_PERCENT",  "CRIT_DMG",     "ELEMENTAL_DMG"],
-  SPECTRO: ["HP_PERCENT",   "ELEMENTAL_DMG","CRIT_RATE"],
-  NONE:    ["ATK_PERCENT",  "CRIT_DMG",     "CRIT_RATE"],
+// ── Element ↔ substat synergy ─────────────────────────────────────────────────
+// If the existing substat type synergizes with the player's element, it gets an
+// extra +0.05 on top of the base AWAKEN_STAT_MULT — making the boost player-specific.
+const ELEMENT_SUB_SYNERGY: Record<string, Set<string>> = {
+  FUSION:  new Set(["CRIT_DMG",     "ATK_PERCENT",  "ELEMENTAL_DMG"]),
+  GLACIO:  new Set(["HP_PERCENT",   "DEF_PERCENT",  "ELEMENTAL_DMG"]),
+  ELECTRO: new Set(["ENERGY_REGEN", "CRIT_RATE",    "CRIT_DMG"]),
+  AERO:    new Set(["CRIT_RATE",    "CRIT_DMG",     "ATK_PERCENT"]),
+  HAVOC:   new Set(["ATK_PERCENT",  "CRIT_DMG",     "ELEMENTAL_DMG"]),
+  SPECTRO: new Set(["HP_PERCENT",   "ELEMENTAL_DMG","CRIT_RATE"]),
+  NONE:    new Set(["ATK_PERCENT",  "CRIT_DMG"]),
 };
+
+// Returns the actual multiplier to apply to an existing substat value.
+// baseMult = AWAKEN_STAT_MULT[rarity]. +0.05 bonus if type synergizes with element.
+export function synergyMult(subType: string | null | undefined, element: string, baseMult: number): number {
+  if (!subType) return baseMult;
+  const synSet = ELEMENT_SUB_SYNERGY[element] ?? ELEMENT_SUB_SYNERGY.NONE;
+  return synSet.has(subType) ? Math.min(1.35, baseMult + 0.05) : baseMult;
+}
+
+// Element-specific fallback hidden-sub picks, avoiding a given existing type.
+function fallbackNewHiddenTypes(element: string, avoid: Set<string>): [string, string] {
+  const pool = [
+    ...(ELEMENT_SUB_SYNERGY[element] ?? ELEMENT_SUB_SYNERGY.NONE),
+    ...ALL_SUB_TYPES,
+  ];
+  const used = new Set(avoid);
+  const h1 = pool.find(t => !used.has(t)) ?? "ATK_PERCENT";
+  used.add(h1);
+  const h2 = pool.find(t => !used.has(t)) ?? "CRIT_DMG";
+  return [h1, h2];
+}
 
 // Labels for display in the awaken embed
 export const SUB_LABELS: Record<string, string> = {
@@ -76,23 +88,15 @@ export const SUB_LABELS: Record<string, string> = {
 
 function rarityIdx(r: number): number { return Math.max(0, Math.min(2, r - 3)); }
 
-export function awakenSubVal(type: string, rarity: number): number {
-  return (AWAKEN_SUB_VAL[type] ?? AWAKEN_SUB_VAL.ATK_PERCENT)[rarityIdx(rarity)];
-}
-
 export function awakenHiddenBase(type: string, rarity: number): number {
   return (AWAKEN_HIDDEN_BASE[type] ?? AWAKEN_HIDDEN_BASE.ATK_PERCENT)[rarityIdx(rarity)];
 }
 
-// Ensures 3 distinct valid substat types, falling back to pool order if AI gives bad/duplicate values.
-function resolveSubTypes(s: string, h1: string, h2: string): [string, string, string] {
-  const used = new Set<string>();
-  const pick = (preferred: string): string => {
-    if (VALID_SUB_TYPES.has(preferred) && !used.has(preferred)) { used.add(preferred); return preferred; }
-    for (const t of ALL_SUB_TYPES) { if (!used.has(t)) { used.add(t); return t; } }
-    return "ATK_PERCENT";
-  };
-  return [pick(s), pick(h1), pick(h2)];
+// Picks a valid new hidden sub type, avoiding already-used types.
+function resolveNewHidden(preferred: string, avoid: Set<string>): string {
+  if (VALID_SUB_TYPES.has(preferred) && !avoid.has(preferred)) return preferred;
+  for (const t of ALL_SUB_TYPES) { if (!avoid.has(t)) return t; }
+  return "ATK_PERCENT";
 }
 
 // Existing passive effects are amplified by this on awakening (capped at 1.3× registry max).
@@ -207,13 +211,13 @@ function fallbackArtPrompt(weaponName: string, weaponType: string, element: stri
 
 // ── Main generation ───────────────────────────────────────────────────────────
 export interface AwakeningResult {
-  name:           string;
-  lore:           string;
-  artPrompt:      string;
-  passive:        AwakenedPassive;
-  subStatType:    string;
-  hiddenSub1Type: string;
-  hiddenSub2Type: string;
+  name:              string;
+  lore:              string;
+  artPrompt:         string;
+  passive:           AwakenedPassive;
+  // Only set when the weapon's hidden-sub slot was empty — null means keep existing.
+  newHiddenSub1Type: string | null;
+  newHiddenSub2Type: string | null;
 }
 
 export async function generateAwakening(userId: string): Promise<AwakeningResult | null> {
@@ -235,7 +239,12 @@ export async function generateAwakening(userId: string): Promise<AwakeningResult
     }),
     prisma.weapon.findFirst({
       where:  { userId, isEquipped: true },
-      select: { name: true, weaponType: true, rarity: true, level: true, subStatType: true, hiddenSub1Type: true, hiddenSub2Type: true },
+      select: {
+        name: true, weaponType: true, rarity: true, level: true,
+        subStatType: true, subStatVal: true,
+        hiddenSub1Type: true, hiddenSub1Val: true,
+        hiddenSub2Type: true, hiddenSub2Val: true,
+      },
     }),
   ]);
   if (!user || !weapon) return null;
@@ -243,17 +252,22 @@ export async function generateAwakening(userId: string): Promise<AwakeningResult
   const element = (user.element as string) ?? "NONE";
   const epithet = EGO_EPITHET[element] ?? EGO_EPITHET.NONE;
 
-  const fbEffect  = fallbackNewEffect(element, weapon.rarity, weapon.name, userId);
-  const fbDesc    = `Awakened: ${formatEffects([fbEffect])}`;
-  const fbSubtypes = EGO_SUBSTAT_CHOICES[element] ?? EGO_SUBSTAT_CHOICES.NONE;
+  const fbEffect = fallbackNewEffect(element, weapon.rarity, weapon.name, userId);
+  const fbDesc   = `Awakened: ${formatEffects([fbEffect])}`;
+
+  // Determine which hidden-sub slots are empty and need new types
+  const needsHidden1 = !weapon.hiddenSub1Type;
+  const needsHidden2 = !weapon.hiddenSub2Type;
+  const existingTypes = new Set([weapon.subStatType, weapon.hiddenSub1Type, weapon.hiddenSub2Type].filter(Boolean) as string[]);
+  const [fbH1, fbH2]  = fallbackNewHiddenTypes(element, existingTypes);
+
   const fallback: AwakeningResult = {
-    name:           `${epithet} ${weapon.name}`,
-    lore:           EGO_LORE_LINE[element] ?? EGO_LORE_LINE.NONE,
-    artPrompt:      fallbackArtPrompt(weapon.name, weapon.weaponType, element, `${epithet} ${weapon.name}`),
-    passive:        buildAwakenedPassive(weapon.name, weapon.rarity, fbEffect, fbDesc),
-    subStatType:    fbSubtypes[0],
-    hiddenSub1Type: fbSubtypes[1],
-    hiddenSub2Type: fbSubtypes[2],
+    name:              `${epithet} ${weapon.name}`,
+    lore:              EGO_LORE_LINE[element] ?? EGO_LORE_LINE.NONE,
+    artPrompt:         fallbackArtPrompt(weapon.name, weapon.weaponType, element, `${epithet} ${weapon.name}`),
+    passive:           buildAwakenedPassive(weapon.name, weapon.rarity, fbEffect, fbDesc),
+    newHiddenSub1Type: needsHidden1 ? fbH1 : null,
+    newHiddenSub2Type: needsHidden2 ? fbH2 : null,
   };
 
   const basePassive = WEAPON_PASSIVES[weapon.name];
@@ -267,9 +281,24 @@ export async function generateAwakening(userId: string): Promise<AwakeningResult
     ? formatV2Effects(sanitizeV2Effects(user.uniqueAbilityEffects)).replace(/\*\*/g, "").replace(/\*([^*]+)\*/g, "$1").replace(/\n/g, " | ")
     : formatEffects(sanitizeEffects(user.uniqueAbilityEffects, user.abilityEvolved)).replace(/\n/g, " | ");
 
+  const hiddenSubInstruction = (needsHidden1 || needsHidden2) ? [
+    ``,
+    `- NEW HIDDEN SUBSTATS: This weapon has empty hidden-substat slots that awakening will fill.`,
+    `  Choose from: CRIT_RATE, CRIT_DMG, ATK_PERCENT, HP_PERCENT, DEF_PERCENT, ELEMENTAL_DMG, ENERGY_REGEN.`,
+    `  Must NOT duplicate the weapon's existing substats: ${[...existingTypes].join(", ") || "none"}.`,
+    `  The new types must be different from each other.`,
+    `  Choose to complement the wielder's element and ability (e.g. energy build → ENERGY_REGEN, crit build → CRIT_RATE/CRIT_DMG).`,
+    needsHidden1 ? `  Include "newHiddenSub1Type" in your JSON.` : "",
+    needsHidden2 ? `  Include "newHiddenSub2Type" in your JSON.` : "",
+  ].filter(Boolean).join("\n") : "";
+
+  const jsonExample = needsHidden1 || needsHidden2
+    ? `{"name":"...","lore":"...","artPrompt":"...","desc":"...","newEffect":{"type":"EXECUTE","value":0.5}${needsHidden1 ? `,"newHiddenSub1Type":"CRIT_RATE"` : ""}${needsHidden2 ? `,"newHiddenSub2Type":"ATK_PERCENT"` : ""}}`
+    : `{"name":"...","lore":"...","artPrompt":"...","desc":"...","newEffect":{"type":"EXECUTE","value":0.5}}`;
+
   const systemPrompt = [
     `You are the lore engine for CARTETHYIA — a Wuthering Waves-inspired anime social RPG with a dark, poetic aesthetic.`,
-    `A player's WEAPON is AWAKENING into its Ego form at Level 60 — the weapon develops a soul shaped by its wielder. It TRANSFORMS: new name, new identity, new substats chosen for THIS wielder.`,
+    `A player's WEAPON is AWAKENING into its Ego form at Level 60 — the weapon develops a soul shaped by its wielder. It TRANSFORMS: new name, new identity. Existing substats are amplified; empty slots gain new ones chosen for this wielder.`,
     ``,
     `Rules:`,
     `- NAME: 2-4 words, title-case. Awakened soul of the original weapon — grander, alive. Do not reuse the original name verbatim.`,
@@ -279,12 +308,11 @@ export async function generateAwakening(userId: string): Promise<AwakeningResult
     `- NEW_EFFECT: one object {type, value} — the newly awakened power. type MUST be from this list, value within range:`,
     choices,
     `- Choose NEW_EFFECT to synergize with the wielder's evolved ability and how they actually fight.`,
-    ``,
-    `- SUBSTATS: The awakened weapon gains 3 all-new substats shaped by the wielder — choose from: CRIT_RATE, CRIT_DMG, ATK_PERCENT, HP_PERCENT, DEF_PERCENT, ELEMENTAL_DMG, ENERGY_REGEN. All three must be DIFFERENT. Choose to match the wielder's element and how their ability actually works (e.g. crit-heavy ability → CRIT_RATE + CRIT_DMG; energy/ult build → ENERGY_REGEN + ATK_PERCENT; survival build → HP_PERCENT + DEF_PERCENT).`,
+    hiddenSubInstruction,
     ``,
     `Respond ONLY with valid JSON, no other text:`,
-    `{"name":"...","lore":"...","artPrompt":"...","desc":"...","newEffect":{"type":"EXECUTE","value":0.5},"subStatType":"CRIT_DMG","hiddenSub1Type":"ATK_PERCENT","hiddenSub2Type":"CRIT_RATE"}`,
-  ].join("\n");
+    jsonExample,
+  ].filter(s => s !== "").join("\n");
 
   const userPrompt = [
     `WEAPON: "${weapon.name}" — ${weapon.weaponType}, ${weapon.rarity}★, Lv${weapon.level}, substat ${weapon.subStatType ?? "none"}${weapon.hiddenSub1Type ? `, hidden: ${weapon.hiddenSub1Type}${weapon.hiddenSub2Type ? " + " + weapon.hiddenSub2Type : ""}` : ""}.`,
@@ -317,21 +345,23 @@ export async function generateAwakening(userId: string): Promise<AwakeningResult
     }
     const desc = parsed.desc ? String(parsed.desc).slice(0, 200) : fbDesc;
 
-    // Validate and deduplicate AI-chosen substat types
-    const [subStatType, hiddenSub1Type, hiddenSub2Type] = resolveSubTypes(
-      parsed.subStatType    ?? fbSubtypes[0],
-      parsed.hiddenSub1Type ?? fbSubtypes[1],
-      parsed.hiddenSub2Type ?? fbSubtypes[2],
-    );
+    // Resolve new hidden sub types — only for slots that were empty
+    const avoidTypes = new Set(existingTypes);
+    const newH1 = needsHidden1
+      ? resolveNewHidden(parsed.newHiddenSub1Type ?? fbH1, avoidTypes)
+      : null;
+    if (newH1) avoidTypes.add(newH1);
+    const newH2 = needsHidden2
+      ? resolveNewHidden(parsed.newHiddenSub2Type ?? fbH2, avoidTypes)
+      : null;
 
     return {
-      name:           String(parsed.name).slice(0, 48),
-      lore:           String(parsed.lore).slice(0, 300),
-      artPrompt:      parsed.artPrompt ? String(parsed.artPrompt).slice(0, 800) : fallback.artPrompt,
-      passive:        buildAwakenedPassive(weapon.name, weapon.rarity, newEffect, desc),
-      subStatType,
-      hiddenSub1Type,
-      hiddenSub2Type,
+      name:              String(parsed.name).slice(0, 48),
+      lore:              String(parsed.lore).slice(0, 300),
+      artPrompt:         parsed.artPrompt ? String(parsed.artPrompt).slice(0, 800) : fallback.artPrompt,
+      passive:           buildAwakenedPassive(weapon.name, weapon.rarity, newEffect, desc),
+      newHiddenSub1Type: newH1,
+      newHiddenSub2Type: newH2,
     };
   } catch {
     return fallback;
