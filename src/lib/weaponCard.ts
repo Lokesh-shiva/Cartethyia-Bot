@@ -71,7 +71,8 @@ export interface WeaponCardInput {
 export async function generateWeaponCard(input: WeaponCardInput): Promise<Buffer> {
   const W = 720;
   const hiddenRows = (input.hiddenSub1Type ? 1 : 0) + (input.hiddenSub2Type ? 1 : 0);
-  const H = 310 + hiddenRows * 28 + (input.awakened ? 50 : 0);
+  const passiveExtraLines = input.passive ? Math.max(0, input.passive.split("\n").length - 1) : 0;
+  const H = 310 + hiddenRows * 28 + (input.awakened ? 50 + passiveExtraLines * 17 : 0);
   const canvas = createCanvas(W, H);
   const ctx    = canvas.getContext("2d");
 
@@ -299,23 +300,31 @@ export async function generateWeaponCard(input: WeaponCardInput): Promise<Buffer
     ctx.fillStyle = rgba(ec,0.9); ctx.font = font(9);
     ctx.fillText("PASSIVE", SX+6, cy-1);
 
-    // Passive text starting after the chip on the same baseline
+    // Passive text — handle \n as hard breaks, then word-wrap each segment
     ctx.fillStyle = rgba("#FFFFFF",0.70); ctx.font = font(11,"normal");
-    const words = input.passive.split(" ");
-    let line="", lx=SX+chipW+8, ly=cy, lh=16, mw=RX-SX-chipW-12;
-    // First line has reduced width (starts after chip)
+    const segments = input.passive.split("\n");
+    let lx = SX + chipW + 8, ly = cy, lh = 17;
     let firstLine = true;
-    for (const w of words) {
-      const t = line ? `${line} ${w}` : w;
-      const curMw = firstLine ? mw : RX - SX;
-      if (ctx.measureText(t).width > curMw && line) {
-        ctx.fillText(line, lx, ly);
-        ly += lh; line = w;
-        if (ly > passMaxY) { break; }
-        if (firstLine) { lx = SX; firstLine = false; }
-      } else { line = t; }
+    outer:
+    for (const seg of segments) {
+      const words = seg.split(" ");
+      let line = "";
+      for (const w of words) {
+        const t = line ? `${line} ${w}` : w;
+        const maxW = firstLine ? RX - SX - chipW - 12 : RX - SX;
+        if (ctx.measureText(t).width > maxW && line) {
+          ctx.fillText(line, lx, ly);
+          ly += lh; line = w;
+          if (ly > passMaxY) break outer;
+          if (firstLine) { lx = SX; firstLine = false; }
+        } else { line = t; }
+      }
+      if (line && ly <= passMaxY) ctx.fillText(line, lx, ly);
+      // Hard line break after each segment
+      ly += lh;
+      if (ly > passMaxY) break;
+      if (firstLine) { lx = SX; firstLine = false; }
     }
-    if (line && ly <= passMaxY) ctx.fillText(line, lx, ly);
   }
 
   // ── Footer ───────────────────────────────────────────────────────────────────
