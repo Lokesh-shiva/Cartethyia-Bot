@@ -14,8 +14,8 @@ import { getBoss, scaledBoss } from "../../lib/bosses";
 import { gearAwareScale, baselineAtk } from "../../lib/combat";
 import { generateBattleCard, BattleCardState } from "../../lib/battleCard";
 import { generateUniqueAbilityV2 } from "../../lib/uniqueAbility";
-import { resolvePlayerBonuses, applyBonuses, apply4pcSkillBonus, apply4pcUltBonus, roll4pcDoubleHit, roll4pcBlock, apply5pcLowHpCrit, apply5pcFirstHit, apply5pcFullHpDmg, get5pcVibDrainMult, get5pcHpRegen, applyLifesteal, elemIgniteProc, elemFrostShield, elemDischargeEnergy, elemWindstrideMult, elemVoidSurgeHeal, elemRadianceRegen, elemRadianceCrit } from "../../lib/setBonus";
-import { compositeDamageMult, compositeVibMult, compositeHealOnHit, compositeEnergyOnHit, compositeHasSecondWind } from "../../lib/abilityEffects";
+import { resolvePlayerBonuses, applyBonuses, apply4pcSkillBonus, apply4pcUltBonus, roll4pcDoubleHit, roll4pcBlock, apply5pcLowHpCrit, apply5pcFirstHit, apply5pcFullHpDmg, get5pcVibDrainMult, get5pcHpRegen, applyLifesteal, elemIgniteProc, elemFrostShield, elemDischargeEnergy, elemWindstrideMult, elemVoidSurgeHeal, elemRadianceRegen, elemRadianceCrit, applyAbilityAttack, abilityV2TurnRegen } from "../../lib/setBonus";
+import { compositeVibMult, compositeHasSecondWind } from "../../lib/abilityEffects";
 import { formatV2Effects } from "../../lib/abilityEngineV2";
 import { generateAbilityCard } from "../../lib/abilityCard";
 import prisma from "../../lib/prisma";
@@ -171,6 +171,7 @@ const command: Command = {
     // Build initial state (bonuses applied to base stats)
     let firstSkillUsed = false;
     let firstActionDone = false;
+    let v2Stacks        = 0;
     let secondWindUsed = false;
     let isEnraged      = false;
     const ENERGY_PER_TURN_ASCEND = Math.floor(stats.energyPerTurn);
@@ -259,6 +260,7 @@ const command: Command = {
           currentHp: state.playerHp, maxHp: state.playerHpMax,
           enemyHpPct: state.bossHpNow / state.bossHpMax,
           turn: state.turn, isFirstAction: !firstActionDone,
+          isWeak, isShattered: state.isShattered, v2Stacks,
         };
         let abilCrit = false;
 
@@ -270,15 +272,17 @@ const command: Command = {
           dmg          = apply5pcFullHpDmg(bonuses, dmg, state.playerHp, state.playerHpMax);
           if (roll4pcDoubleHit(bonuses)) { dmg *= 2; }
           dmg          = Math.floor(dmg * elemWindstrideMult(bonuses.elementPassive, state.turn, "BASIC"));
-          const am     = compositeDamageMult(bonuses.abilityEffects, { ...abilCtxBase, moveType: "BASIC" });
-          dmg          = Math.floor(dmg * am.mult);
+          const ar_b   = applyAbilityAttack(bonuses, dmg, crit, { ...abilCtxBase, moveType: "BASIC" });
+          dmg          = ar_b.dmg;
+          if (ar_b.newStacks !== undefined) v2Stacks = ar_b.newStacks;
           const ignite = elemIgniteProc(bonuses.elementPassive, stats.atk);
           playerDmg    = dmg + ignite.dmg;
           moveName     = crit ? `Basic Attack — **CRITICAL** (${playerDmg} DMG)` : `Basic Attack — ${playerDmg} DMG`;
-          if (am.tags.length) moveName += `  ✦${am.tags.join("·")}`;
+          if (ar_b.tag)   moveName += `  ✦${ar_b.tag}`;
           if (ignite.tag) moveName += `  ✦${ignite.tag}`;
           state.bossVibNow   = Math.max(0, state.bossVibNow - Math.floor(playerDmg * 0.3 * totalVibMult));
-          state.playerEnergy = Math.min(100, state.playerEnergy + ENERGY_PER_TURN_ASCEND + elemDischargeEnergy(bonuses.elementPassive, crit));
+          state.playerEnergy = Math.min(100, state.playerEnergy + ENERGY_PER_TURN_ASCEND + elemDischargeEnergy(bonuses.elementPassive, crit) + ar_b.bonusEnergy);
+          state.playerHp     = Math.min(state.playerHpMax, state.playerHp + ar_b.healHp);
           state.playerHp     = applyLifesteal(bonuses.lifesteal, playerDmg, state.playerHp, state.playerHpMax);
         }
 
@@ -289,16 +293,18 @@ const command: Command = {
           dmg          = apply4pcSkillBonus(bonuses, dmg, !firstSkillUsed);
           dmg          = apply5pcFirstHit(bonuses, dmg, !firstActionDone);
           dmg          = Math.floor(dmg * elemWindstrideMult(bonuses.elementPassive, state.turn, "SKILL"));
-          const am     = compositeDamageMult(bonuses.abilityEffects, { ...abilCtxBase, moveType: "SKILL" });
-          dmg          = Math.floor(dmg * am.mult);
+          const ar_s   = applyAbilityAttack(bonuses, dmg, crit, { ...abilCtxBase, moveType: "SKILL" });
+          dmg          = ar_s.dmg;
+          if (ar_s.newStacks !== undefined) v2Stacks = ar_s.newStacks;
           const ignite = elemIgniteProc(bonuses.elementPassive, stats.atk);
           playerDmg    = dmg + ignite.dmg;
           moveName     = `Resonance Skill — ${playerDmg} DMG${crit ? " **(CRIT)**" : ""}`;
-          if (am.tags.length) moveName += `  ✦${am.tags.join("·")}`;
+          if (ar_s.tag)   moveName += `  ✦${ar_s.tag}`;
           if (ignite.tag) moveName += `  ✦${ignite.tag}`;
           state.bossVibNow    = Math.max(0, state.bossVibNow - Math.floor(playerDmg * 0.6 * totalVibMult));
           state.skillCooldown = SKILL_COOLDOWN;
-          state.playerEnergy  = Math.min(100, state.playerEnergy + ENERGY_PER_TURN_ASCEND + elemDischargeEnergy(bonuses.elementPassive, crit));
+          state.playerEnergy  = Math.min(100, state.playerEnergy + ENERGY_PER_TURN_ASCEND + elemDischargeEnergy(bonuses.elementPassive, crit) + ar_s.bonusEnergy);
+          state.playerHp      = Math.min(state.playerHpMax, state.playerHp + ar_s.healHp);
           state.playerHp      = applyLifesteal(bonuses.lifesteal, playerDmg, state.playerHp, state.playerHpMax);
           firstSkillUsed = true;
         }
@@ -308,24 +314,23 @@ const command: Command = {
           const base   = Math.max(1, Math.floor(stats.atk * 3.5 * (1 - defReduction)));
           let dmg      = Math.floor(base * (isWeak ? 1.5 : 1) * (1 + bonuses.elemDmgBonus));
           dmg          = apply4pcUltBonus(bonuses, dmg);
-          const am     = compositeDamageMult(bonuses.abilityEffects, { ...abilCtxBase, moveType: "ULT" });
-          dmg          = Math.floor(dmg * am.mult);
+          const ar_u   = applyAbilityAttack(bonuses, dmg, true, { ...abilCtxBase, moveType: "ULT" });
+          dmg          = ar_u.dmg;
+          if (ar_u.newStacks !== undefined) v2Stacks = ar_u.newStacks;
           playerDmg    = dmg;
           moveName     = `⚡ ULTIMATE — ${playerDmg} DMG`;
-          if (am.tags.length) moveName += `  ✦${am.tags.join("·")}`;
+          if (ar_u.tag) moveName += `  ✦${ar_u.tag}`;
           state.bossVibNow   = Math.max(0, state.bossVibNow - Math.floor(playerDmg * 0.8 * totalVibMult));
-          state.playerEnergy = 0;
+          state.playerEnergy = Math.min(100, ar_u.bonusEnergy);
+          state.playerHp     = Math.min(state.playerHpMax, state.playerHp + ar_u.healHp);
           state.playerHp     = applyLifesteal(bonuses.lifesteal, playerDmg, state.playerHp, state.playerHpMax);
           if (bonuses.set5pc?.type === "POST_ULT_SKILL") state.skillCooldown = 0;
         }
 
-        // Ability on-hit effects (heal on crit, crit momentum energy)
-        if (playerDmg > 0) {
-          const healHp = compositeHealOnHit(bonuses.abilityEffects, abilCrit, state.playerHpMax);
-          const enRgy  = compositeEnergyOnHit(bonuses.abilityEffects, abilCrit);
-          if (healHp > 0) state.playerHp = Math.min(state.playerHpMax, state.playerHp + healHp);
-          if (enRgy  > 0) state.playerEnergy = Math.min(100, state.playerEnergy + enRgy);
-        }
+        // V2 turn-start regen
+        const v2Regen = abilityV2TurnRegen(bonuses, state.playerHpMax);
+        if (v2Regen.healHp > 0) state.playerHp     = Math.min(state.playerHpMax, state.playerHp + v2Regen.healHp);
+        if (v2Regen.energy > 0) state.playerEnergy = Math.min(100, state.playerEnergy + v2Regen.energy);
 
         firstActionDone = true;
         state.bossHpNow = Math.max(0, state.bossHpNow - playerDmg);

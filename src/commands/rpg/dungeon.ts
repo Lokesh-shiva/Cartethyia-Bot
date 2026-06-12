@@ -6,8 +6,8 @@ import {
 } from "discord.js";
 import prisma from "../../lib/prisma";
 import { DUNGEONS, getDungeon, getScaledWaveEnemy, DungeonDefinition } from "../../lib/dungeons";
-import { resolvePlayerBonuses, applyBonuses, apply4pcSkillBonus, apply4pcUltBonus, roll4pcDoubleHit, roll4pcBlock, apply5pcLowHpCrit, apply5pcFirstHit, apply5pcFullHpDmg, get5pcVibDrainMult, applyLifesteal, elemIgniteProc, elemFrostShield, elemDischargeEnergy, elemWindstrideMult, elemVoidSurgeHeal, elemRadianceRegen, elemRadianceCrit } from "../../lib/setBonus";
-import { compositeDamageMult, compositeVibMult, compositeHealOnHit, compositeEnergyOnHit, compositeHasSecondWind } from "../../lib/abilityEffects";
+import { resolvePlayerBonuses, applyBonuses, apply4pcSkillBonus, apply4pcUltBonus, roll4pcDoubleHit, roll4pcBlock, apply5pcLowHpCrit, apply5pcFirstHit, apply5pcFullHpDmg, get5pcVibDrainMult, applyLifesteal, elemIgniteProc, elemFrostShield, elemDischargeEnergy, elemWindstrideMult, elemVoidSurgeHeal, elemRadianceRegen, elemRadianceCrit, applyAbilityAttack, abilityV2TurnRegen } from "../../lib/setBonus";
+import { compositeVibMult, compositeHasSecondWind } from "../../lib/abilityEffects";
 import { hpBar, energyBar, baselineAtk } from "../../lib/combat";
 import { voteNudge } from "../../lib/voteNudge";
 import { rollRarity, rollMainStat, rollSubstats, rollSubstatValue, calcMainStatValue, substatCount, RARITY_STARS, ELEMENT_EMOJI } from "../../lib/echoes";
@@ -267,11 +267,12 @@ async function runDungeon(
   let skillCooldown = 0;
   let firstActionDone = false;
   let firstSkillUsed  = false;
+  let v2Stacks        = 0;
 
   for (let waveIdx = 0; waveIdx < dungeon.waves.length; waveIdx++) {
     const result = await runWave(
       thread, interaction.user.id, dungeon, waveIdx, dbUser, stats, bonuses,
-      { playerHp, playerHpMax, playerEnergy, skillCooldown, firstActionDone, firstSkillUsed },
+      { playerHp, playerHpMax, playerEnergy, skillCooldown, firstActionDone, firstSkillUsed, v2Stacks },
       displayName,
     );
 
@@ -299,6 +300,7 @@ async function runDungeon(
     skillCooldown  = Math.max(0, result.skillCooldown - 1);
     firstActionDone = result.firstActionDone;
     firstSkillUsed  = result.firstSkillUsed;
+    v2Stacks        = result.v2Stacks;
 
     if (waveIdx < dungeon.waves.length - 1) {
       await thread.send({
@@ -326,6 +328,7 @@ interface WaveState {
   skillCooldown:   number;
   firstActionDone: boolean;
   firstSkillUsed:  boolean;
+  v2Stacks:        number;
 }
 
 interface WaveResult extends WaveState {
@@ -438,6 +441,7 @@ async function runWave(
         const abilCtxBase = {
           currentHp: ws.playerHp, maxHp: ws.playerHpMax,
           enemyHpPct: enemyHp / scaled.hp, turn: 1, isFirstAction: !ws.firstActionDone,
+          isWeak, isShattered, v2Stacks: ws.v2Stacks,
         };
         let playerDmg = 0;
         let moveLine  = "";
@@ -450,15 +454,17 @@ async function runWave(
           dmg          = apply5pcFirstHit(bonuses, dmg, !ws.firstActionDone);
           dmg          = apply5pcFullHpDmg(bonuses, dmg, ws.playerHp, ws.playerHpMax);
           dmg          = Math.floor(dmg * elemWindstrideMult(bonuses.elementPassive, 1, "BASIC"));
-          const am     = compositeDamageMult(bonuses.abilityEffects, { ...abilCtxBase, moveType: "BASIC" });
-          dmg          = Math.floor(dmg * am.mult);
+          const ar_b   = applyAbilityAttack(bonuses, dmg, crit, { ...abilCtxBase, moveType: "BASIC" });
+          dmg          = ar_b.dmg;
+          if (ar_b.newStacks !== undefined) ws.v2Stacks = ar_b.newStacks;
           const ignite = elemIgniteProc(bonuses.elementPassive, stats.atk);
           playerDmg    = dmg + ignite.dmg;
           moveLine     = crit ? `Basic Attack — **CRITICAL** (${playerDmg} DMG)` : `Basic Attack — ${playerDmg} DMG`;
-          if (am.tags.length) moveLine += `  ✦${am.tags.join("·")}`;
+          if (ar_b.tag) moveLine += `  ✦${ar_b.tag}`;
           if (ignite.tag) moveLine += `  ✦${ignite.tag}`;
           vibBar           = Math.max(0, vibBar - Math.floor(playerDmg * 0.3 * totalVibMult));
-          ws.playerEnergy  = Math.min(100, ws.playerEnergy + Math.floor(stats.energyPerTurn) + elemDischargeEnergy(bonuses.elementPassive, crit));
+          ws.playerEnergy  = Math.min(100, ws.playerEnergy + Math.floor(stats.energyPerTurn) + elemDischargeEnergy(bonuses.elementPassive, crit) + ar_b.bonusEnergy);
+          ws.playerHp      = Math.min(ws.playerHpMax, ws.playerHp + ar_b.healHp);
           ws.playerHp      = applyLifesteal(bonuses.lifesteal, playerDmg, ws.playerHp, ws.playerHpMax);
         }
 
@@ -468,16 +474,18 @@ async function runWave(
           dmg          = apply4pcSkillBonus(bonuses, dmg, !ws.firstSkillUsed);
           dmg          = apply5pcFirstHit(bonuses, dmg, !ws.firstActionDone);
           dmg          = Math.floor(dmg * elemWindstrideMult(bonuses.elementPassive, 1, "SKILL"));
-          const am     = compositeDamageMult(bonuses.abilityEffects, { ...abilCtxBase, moveType: "SKILL" });
-          dmg          = Math.floor(dmg * am.mult);
+          const ar_s   = applyAbilityAttack(bonuses, dmg, crit, { ...abilCtxBase, moveType: "SKILL" });
+          dmg          = ar_s.dmg;
+          if (ar_s.newStacks !== undefined) ws.v2Stacks = ar_s.newStacks;
           const ignite = elemIgniteProc(bonuses.elementPassive, stats.atk);
           playerDmg    = dmg + ignite.dmg;
           moveLine     = `Resonance Skill — ${playerDmg} DMG${crit ? " **(CRIT)**" : ""}`;
-          if (am.tags.length) moveLine += `  ✦${am.tags.join("·")}`;
+          if (ar_s.tag) moveLine += `  ✦${ar_s.tag}`;
           if (ignite.tag) moveLine += `  ✦${ignite.tag}`;
           vibBar           = Math.max(0, vibBar - Math.floor(playerDmg * 0.6 * totalVibMult));
           ws.skillCooldown  = SKILL_CD;
-          ws.playerEnergy   = Math.min(100, ws.playerEnergy + Math.floor(stats.energyPerTurn) + elemDischargeEnergy(bonuses.elementPassive, crit));
+          ws.playerEnergy   = Math.min(100, ws.playerEnergy + Math.floor(stats.energyPerTurn) + elemDischargeEnergy(bonuses.elementPassive, crit) + ar_s.bonusEnergy);
+          ws.playerHp       = Math.min(ws.playerHpMax, ws.playerHp + ar_s.healHp);
           ws.playerHp       = applyLifesteal(bonuses.lifesteal, playerDmg, ws.playerHp, ws.playerHpMax);
           ws.firstSkillUsed = true;
         }
@@ -486,24 +494,23 @@ async function runWave(
           abilCrit  = true;
           let dmg   = Math.max(1, Math.floor(stats.atk * 3.5 * (isWeak ? 1.5 : 1) * (1 + bonuses.elemDmgBonus)));
           dmg       = apply4pcUltBonus(bonuses, dmg);
-          const am  = compositeDamageMult(bonuses.abilityEffects, { ...abilCtxBase, moveType: "ULT" });
-          dmg       = Math.floor(dmg * am.mult);
-          playerDmg = dmg;
-          moveLine  = `⚡ ULTIMATE — ${playerDmg} DMG`;
-          if (am.tags.length) moveLine += `  ✦${am.tags.join("·")}`;
+          const ar_u = applyAbilityAttack(bonuses, dmg, true, { ...abilCtxBase, moveType: "ULT" });
+          dmg        = ar_u.dmg;
+          if (ar_u.newStacks !== undefined) ws.v2Stacks = ar_u.newStacks;
+          playerDmg  = dmg;
+          moveLine   = `⚡ ULTIMATE — ${playerDmg} DMG`;
+          if (ar_u.tag) moveLine += `  ✦${ar_u.tag}`;
           vibBar    = Math.max(0, vibBar - Math.floor(playerDmg * 0.8 * totalVibMult));
-          ws.playerEnergy = 0;
+          ws.playerEnergy = Math.min(100, ar_u.bonusEnergy); // drain to 0 then apply any ability energy gain
+          ws.playerHp     = Math.min(ws.playerHpMax, ws.playerHp + ar_u.healHp);
           ws.playerHp     = applyLifesteal(bonuses.lifesteal, playerDmg, ws.playerHp, ws.playerHpMax);
           if (bonuses.set5pc?.type === "POST_ULT_SKILL") ws.skillCooldown = 0;
         }
 
-        // Ability on-hit effects (heal on crit, crit momentum)
-        if (playerDmg > 0) {
-          const healHp = compositeHealOnHit(bonuses.abilityEffects, abilCrit, ws.playerHpMax);
-          const enRgy  = compositeEnergyOnHit(bonuses.abilityEffects, abilCrit);
-          if (healHp > 0) ws.playerHp     = Math.min(ws.playerHpMax, ws.playerHp + healHp);
-          if (enRgy  > 0) ws.playerEnergy = Math.min(100, ws.playerEnergy + enRgy);
-        }
+        // V2 turn-start regen (applied each enemy counter phase = start of next player turn)
+        const v2Regen = abilityV2TurnRegen(bonuses, ws.playerHpMax);
+        if (v2Regen.healHp  > 0) ws.playerHp     = Math.min(ws.playerHpMax, ws.playerHp + v2Regen.healHp);
+        if (v2Regen.energy  > 0) ws.playerEnergy = Math.min(100, ws.playerEnergy + v2Regen.energy);
 
         ws.firstActionDone = true;
         enemyHp = Math.max(0, enemyHp - playerDmg);

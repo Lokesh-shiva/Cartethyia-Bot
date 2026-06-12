@@ -552,6 +552,7 @@ export interface AbilityAttackResult {
   healHp:      number;
   bonusEnergy: number;
   tag:         string;   // joined effect tags for the combat log
+  newStacks?:  number;   // updated V2 stack count (STACK_DMG); undefined for V1
 }
 
 // Apply all damage-modifying + on-hit ability primitives for a single attack.
@@ -577,6 +578,7 @@ export function applyAbilityAttack(
       healHp:      r.healHp + compositeHealOnHit(bonuses.abilityEffects, isCrit, ctx.maxHp),
       bonusEnergy: r.bonusEnergy + compositeEnergyOnHit(bonuses.abilityEffects, isCrit),
       tag:         [r.tag, ...wTags].filter(Boolean).join("·"),
+      newStacks:   r.newStacks,
     };
   }
   const { mult, tags } = compositeDamageMult(bonuses.abilityEffects, ctx);
