@@ -79,6 +79,7 @@ export interface WeaponData {
   weaponType:    string;
   rarity:        number;
   baseAtk:       number;
+  level?:        number;   // used to compute effective ATK for display
   userId?:       string;   // for unique forged weapons → assets/weapons/unique/{userId}.png
   isUnique?:     boolean;
   awakened?:     boolean;
@@ -474,7 +475,10 @@ export async function generateProfileCard(input: ProfileCardInput): Promise<Buff
     // Type · ATK
     ctx.fillStyle = "rgba(255,255,255,0.35)";
     ctx.font = `bold 10px Rajdhani, 'Noto Sans', 'Noto Sans CJK SC', 'Noto Sans JP', Arial, sans-serif`;
-    ctx.fillText(`${typeFolder}  ·  ${input.weapon.baseAtk} ATK`, TX, weapY + (input.weapon.awakened ? 32 : 24));
+    const wLevel = input.weapon.level ?? 1;
+    const wMult  = { 1: 2.5, 2: 3.0, 3: 3.5, 4: 4.2, 5: 5.0 }[input.weapon.rarity] ?? 2.5;
+    const effAtk = Math.round(input.weapon.baseAtk * (1 + (wLevel - 1) * (wMult - 1) / 89));
+    ctx.fillText(`${typeFolder}  ·  ${effAtk} ATK`, TX, weapY + (input.weapon.awakened ? 32 : 24));
 
     if (input.weapon.awakened) {
       const bond = Math.min(10, Math.max(0, input.weapon.weaponBond ?? 0));
