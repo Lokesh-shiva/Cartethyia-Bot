@@ -9,8 +9,12 @@
   min-height: 240px;
   position: relative;
   overflow: hidden;
-  transition: transform 0.3s;
+  background: rgba(255,255,255,0.04);
+  backdrop-filter: blur(20px);
+  border: 1px solid rgba(255,255,255,0.07);
+  transition: transform 0.3s, border-color 0.3s;
 }
+.elem-card:hover { border-color: color-mix(in srgb, var(--elem-color) 30%, transparent); }
 
 .elem-card::before {
   content: '';
@@ -23,7 +27,7 @@
 
 .elem-card:hover { transform: translateY(-4px); }
 
-.elem-inner { display: flex; flex-direction: column; gap: 0.6rem; width: 100%; }
+.elem-inner { display: flex; flex-direction: column; gap: 0.6rem; width: 100%; padding: 1.5rem; }
 
 .elem-header { display: flex; align-items: center; gap: 0.6rem; margin-bottom: 0.25rem; }
 .elem-emoji  { font-size: 1.5rem; }

@@ -1,4 +1,3 @@
-import GlassSurface from '../components/GlassSurface/GlassSurface';
 import useReveal from '../hooks/useReveal';
 import './Vote.css';
 
@@ -39,14 +38,12 @@ function RewardCard({ reward, delay }) {
   const ref = useReveal('up');
   return (
     <div ref={ref} className="vote-reward will-reveal" style={{ animationDelay: `${delay}s` }}>
-      <GlassSurface height="100%" borderRadius={20} distortionScale={-150}>
-        <div className="reward-inner">
-          <span className="reward-emoji">{reward.emoji}</span>
-          <span className="reward-amount">{reward.amount}</span>
-          <span className="reward-label">{reward.label}</span>
-          <p className="reward-desc">{reward.desc}</p>
-        </div>
-      </GlassSurface>
+      <div className="reward-inner">
+        <span className="reward-emoji">{reward.emoji}</span>
+        <span className="reward-amount">{reward.amount}</span>
+        <span className="reward-label">{reward.label}</span>
+        <p className="reward-desc">{reward.desc}</p>
+      </div>
     </div>
   );
 }

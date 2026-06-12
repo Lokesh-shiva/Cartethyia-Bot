@@ -57,10 +57,13 @@
 .mc-desc  { font-size: 0.88rem; color: var(--dim); line-height: 1.65; font-weight: 300; }
 
 .mc-card-wrap {
-  aspect-ratio: 3/2;
   width: 100%;
   margin-top: 0.5rem;
 }
+
+.mc-card-wrap .tilted-card-figure { height: auto; }
+.mc-card-wrap .tilted-card-inner  { width: 100%; height: auto; }
+.mc-card-wrap .tilted-card-img    { width: 100%; height: auto; object-fit: contain; position: static; }
 
 @media (max-width: 760px) {
   .milestone-grid { grid-template-columns: 1fr; }

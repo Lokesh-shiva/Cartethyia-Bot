@@ -1,5 +1,4 @@
 import useReveal from '../hooks/useReveal';
-import GlassSurface from '../components/GlassSurface/GlassSurface';
 import './Commands.css';
 
 const COMMANDS = [
@@ -32,12 +31,10 @@ function CmdRow({ item, delay }) {
   const ref = useReveal('up');
   return (
     <div ref={ref} className="cmd-row will-reveal" style={{ animationDelay: `${delay}s` }}>
-      <GlassSurface height="100%" borderRadius={12} distortionScale={-140} brightness={46}>
-        <div className="cmd-inner">
-          <span className="cmd-name">{item.cmd}</span>
-          <span className="cmd-desc">{item.desc}</span>
-        </div>
-      </GlassSurface>
+      <div className="cmd-inner">
+        <span className="cmd-name">{item.cmd}</span>
+        <span className="cmd-desc">{item.desc}</span>
+      </div>
     </div>
   );
 }

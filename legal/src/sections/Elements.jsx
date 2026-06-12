@@ -1,5 +1,4 @@
 import { useEffect, useRef } from 'react';
-import GlassSurface from '../components/GlassSurface/GlassSurface';
 import useReveal from '../hooks/useReveal';
 import './Elements.css';
 
@@ -58,7 +57,6 @@ function ElemCard({ elem, delay }) {
 
   return (
     <div ref={ref} className="elem-card will-reveal" style={{ '--elem-color': elem.color, animationDelay: `${delay}s` }}>
-      <GlassSurface height="100%" borderRadius={20} distortionScale={-150}>
         <div className="elem-inner">
           <div className="elem-header">
             <span className="elem-emoji">{elem.emoji}</span>
@@ -80,7 +78,6 @@ function ElemCard({ elem, delay }) {
             ))}
           </div>
         </div>
-      </GlassSurface>
     </div>
   );
 }

@@ -25,8 +25,25 @@
 
 .preview-card {
   position: relative;
-  aspect-ratio: 4/3;
   width: 100%;
+  /* let the image determine height — Discord embeds vary */
+}
+
+.preview-card .tilted-card-figure {
+  height: auto;
+  min-height: 200px;
+}
+
+.preview-card .tilted-card-inner {
+  width: 100%;
+  height: auto;
+}
+
+.preview-card .tilted-card-img {
+  width: 100%;
+  height: auto;
+  object-fit: contain;
+  position: static;
 }
 
 @media (max-width: 860px) {
