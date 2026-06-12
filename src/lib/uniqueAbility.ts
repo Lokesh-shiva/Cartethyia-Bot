@@ -150,8 +150,8 @@ export function deriveDedication(dailyStreak: number, worldLevel: number, level:
 }
 
 // â”€â”€ Main generation function â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-export async function generateUniqueAbility(userId: string): Promise<{
-  name: string; effect: string; lore: string;
+export async function generateUniqueAbility(userId: string, persist = true): Promise<{
+  name: string; effect: string; lore: string; effects: AbilityEffect[];
 } | null> {
   // Fetch all relevant player data in parallel
   const [user, bonds] = await Promise.all([
@@ -181,16 +181,17 @@ export async function generateUniqueAbility(userId: string): Promise<{
 
   if (!user) return null;
 
-  // Already generated â€” don't overwrite
-  if (user.uniqueAbilityName) {
+  // Already generated -- don't overwrite (unless persist=false for dry-run preview)
+  if (user.uniqueAbilityName && persist) {
     const full = await prisma.user.findUnique({
       where:  { id: userId },
-      select: { uniqueAbilityEffect: true, uniqueAbilityLore: true },
+      select: { uniqueAbilityEffect: true, uniqueAbilityLore: true, uniqueAbilityEffects: true },
     });
     return {
-      name:   user.uniqueAbilityName,
-      effect: full?.uniqueAbilityEffect ?? "",
-      lore:   full?.uniqueAbilityLore   ?? "",
+      name:    user.uniqueAbilityName,
+      effect:  full?.uniqueAbilityEffect ?? '',
+      lore:    full?.uniqueAbilityLore   ?? '',
+      effects: sanitizeEffects(full?.uniqueAbilityEffects),
     };
   }
 
@@ -263,16 +264,18 @@ export async function generateUniqueAbility(userId: string): Promise<{
     effects = composeFallbackEffects(element, userId);
   }
 
-  // Persist
-  await prisma.user.update({
-    where: { id: userId },
-    data:  {
-      uniqueAbilityName:    ability.name,
-      uniqueAbilityEffect:  ability.effect,
-      uniqueAbilityLore:    ability.lore,
-      uniqueAbilityEffects: effects as any,
-    },
-  });
+  // Persist only when requested (persist=false is used for dry-run preview)
+  if (persist) {
+    await prisma.user.update({
+      where: { id: userId },
+      data:  {
+        uniqueAbilityName:    ability.name,
+        uniqueAbilityEffect:  ability.effect,
+        uniqueAbilityLore:    ability.lore,
+        uniqueAbilityEffects: effects as any,
+      },
+    });
+  }
 
-  return ability;
+  return { ...ability, effects };
 }
