@@ -135,8 +135,8 @@ export async function generateAbilityCard(d: AbilityCardData): Promise<Buffer> {
   ctx.textAlign = "center";
   ctx.fillStyle = rgba(ec, 0.75); ctx.font = `italic 16px Rajdhani, 'Noto Sans', 'Noto Sans CJK SC', 'Noto Sans JP', Arial, sans-serif`;
   const loreLines = wrap(ctx, `“${d.lore}”`, W - 160);
-  let lly = d.evolved ? 452 : 392;
-  for (const l of loreLines.slice(0, 2)) { ctx.fillText(l, W / 2, lly); lly += 22; }
+  let lly = d.evolved ? 448 : 378;
+  for (const l of loreLines.slice(0, 3)) { ctx.fillText(l, W / 2, lly); lly += 22; }
   ctx.textAlign = "left";
 
   // ── Owner footer (avatar + name) ──────────────────────────────────────────

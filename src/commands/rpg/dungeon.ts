@@ -620,42 +620,35 @@ async function grantRewards(
   const totalExp = Math.floor(r.resonanceExp * r.resonanceExpMult * wlMult);
   if (totalExp > 0) { gained.resonanceExp = totalExp; lines.push(`✨ ${totalExp} Resonance EXP${r.resonanceExpMult > 1 ? ` (${r.resonanceExpMult}×)` : ""}${worldLevel > 0 ? ` (+${Math.round((wlMult - 1) * 100)}% WL bonus)` : ""}`); }
 
-  await awardUser(userId, gained);
-
-  // Echo drops for echo dungeons
-  const echoLines: string[] = [];
+  // Echo drops for echo dungeons — build all data first, then atomic write
+  const echoLines:    string[] = [];
+  const echoPayloads: any[]    = [];
   if (dungeon.type === "ECHO" && r.echoElement && r.echoWeights) {
     const isBossTrial = dungeon.id.startsWith("boss_");
-    // Boss trials: always 1 (4-cost). Regular echo dungeons: 2–6 scaling with WL
     const dropCount   = isBossTrial ? 1 : 2 + Math.floor(worldLevel * 0.5);
 
-    // At higher WL shift rarity weights toward 4★/5★
-    // WL0: base weights  WL4: +20% 4★ bonus  WL8: +40% 4★ bonus
     const baseWeights = r.echoWeights as [number, number, number];
-    const wlRarityShift = Math.floor(worldLevel * 5);   // 0–40 shift from 3★ → 4★/5★
+    const wlRarityShift = Math.floor(worldLevel * 5);
     const scaledWeights: [number, number, number] = [
       Math.max(0, baseWeights[0] - wlRarityShift * 1.5),
       Math.min(95, baseWeights[1] + wlRarityShift),
       Math.min(95, baseWeights[2] + wlRarityShift * 0.5),
     ];
 
+    const { ECHO_DEFINITIONS, BOSS_ECHO_DEFINITIONS } = await import("../../lib/echoes");
+
     for (let i = 0; i < dropCount; i++) {
       const rarity  = rollRarity(scaledWeights);
       const element = r.echoElement;
-
-      // Boss trials always drop 4-cost echoes; regular echo dungeons use enemy cost
-      const { ECHO_DEFINITIONS, BOSS_ECHO_DEFINITIONS } = await import("../../lib/echoes");
 
       let echoName: string;
       let cost: number;
 
       if (isBossTrial) {
-        // Use the boss echo definition matching this element
         const bossEcho = BOSS_ECHO_DEFINITIONS.find(e => e.element === element);
         echoName = bossEcho?.name ?? element;
         cost     = 4;
       } else {
-        // Pick a random enemy of this element
         const candidates = ECHO_DEFINITIONS.filter(e => e.element === element);
         const enemy      = candidates[Math.floor(Math.random() * candidates.length)];
         echoName = enemy?.name ?? "Echo";
@@ -675,10 +668,29 @@ async function grantRewards(
         echoData[`substat${idx + 1}Type`]  = s;
         echoData[`substat${idx + 1}Value`] = rollSubstatValue(s);
       });
-      await prisma.echo.create({ data: echoData });
+      echoPayloads.push(echoData);
       echoLines.push(`${elementEmoji(element)} **${echoName}**  ${RARITY_STARS[rarity]}  (${cost}-cost)`);
     }
   }
+
+  // Atomic: award currency + all echo drops in one transaction
+  const txOps: any[] = [
+    prisma.user.update({
+      where: { id: userId },
+      data:  {
+        credits:          { increment: gained.credits          ?? 0 },
+        tuningModules:    { increment: gained.tuningModules    ?? 0 },
+        sealingTubes:     { increment: gained.sealingTubes     ?? 0 },
+        forgingOres:      { increment: gained.forgingOres      ?? 0 },
+        paradoxCores:     { increment: gained.paradoxCores     ?? 0 },
+        resonanceRecords: { increment: gained.resonanceRecords ?? 0 },
+        fractureKeys:     { increment: gained.fractureKeys     ?? 0 },
+        resonanceExp:     { increment: gained.resonanceExp     ?? 0 },
+      },
+    }),
+    ...echoPayloads.map(data => prisma.echo.create({ data })),
+  ];
+  await prisma.$transaction(txOps);
 
   const evoLine    = await trackEvolutionProgress(userId, { kind: "dungeon" }).catch(() => null);
   const bondResult = await incrementWeaponBond(userId).catch(() => null);

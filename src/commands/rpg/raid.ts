@@ -18,6 +18,7 @@ import {
   elemWindstrideMult, elemVoidSurgeHeal, elemRadianceRegen, elemRadianceCrit,
 } from "../../lib/setBonus";
 import { compositeHasSecondWind } from "../../lib/abilityEffects";
+import { incrementWeaponBond }    from "../../lib/weaponAwakening";
 import { generateRaidCard }       from "../../lib/versusCard";
 import { isOwner }                from "../../lib/owner";
 
@@ -600,6 +601,11 @@ async function launchRaid(
       await Promise.all(
         raid.participants.filter(p => !p.isDefeated).map(p =>
           prisma.user.update({ where: { id: p.userId }, data: { raidWins: { increment: 1 } } }).catch(() => {})
+        )
+      );
+      await Promise.all(
+        raid.participants.filter(p => !p.isDefeated).map(p =>
+          incrementWeaponBond(p.userId).catch(() => null)
         )
       );
 

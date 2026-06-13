@@ -16,6 +16,7 @@ import {
   elemWindstrideMult, elemRadianceRegen, elemRadianceCrit,
 } from "../../lib/setBonus";
 import { compositeHasSecondWind, abilityLabel } from "../../lib/abilityEffects";
+import { incrementWeaponBond } from "../../lib/weaponAwakening";
 import { generateVersusCard, Fighter } from "../../lib/versusCard";
 import { AttachmentBuilder } from "discord.js";
 
@@ -301,6 +302,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
         await awardUser(winnerId, { credits: WIN_CREDITS, resonanceExp: WIN_EXP });
         await prisma.user.update({ where: { id: winnerId }, data: { duelWins:   { increment: 1 } } }).catch(() => {});
         await prisma.user.update({ where: { id: loserId },  data: { duelLosses: { increment: 1 } } }).catch(() => {});
+        await incrementWeaponBond(winnerId).catch(() => null);
       }
       // Post outcome back to the original channel
       await interaction.editReply({

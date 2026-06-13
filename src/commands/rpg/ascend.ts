@@ -18,6 +18,7 @@ import { resolvePlayerBonuses, applyBonuses, apply4pcSkillBonus, apply4pcUltBonu
 import { compositeVibMult, compositeHasSecondWind } from "../../lib/abilityEffects";
 import { formatV2Effects } from "../../lib/abilityEngineV2";
 import { generateAbilityCard } from "../../lib/abilityCard";
+import { incrementWeaponBond } from "../../lib/weaponAwakening";
 import prisma from "../../lib/prisma";
 
 const ELEMENT_HEX: Record<string, number> = {
@@ -369,6 +370,7 @@ const command: Command = {
             where: { id: interaction.user.id },
             data:  { worldLevel: { increment: 1 }, ascensionWins: { increment: 1 }, fractureKeys: { increment: 2 } },
           });
+          await incrementWeaponBond(interaction.user.id).catch(() => null);
 
           await thread.send({
             embeds: [new EmbedBuilder()
