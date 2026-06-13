@@ -154,7 +154,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
       const canReroll = dbUser!.paradoxCores >= 1 && dbUser!.stasisLocks >= pendingSL;
 
       const rerollLabel = pendingSL > 0
-        ? `Reroll  (1 ${CE.pc} + ${pendingSL} ${CE.sl})`
+        ? `Reroll  (1 PC + ${pendingSL} SL)`
         : `Reroll Unlocked  (1 PC)`;
 
       const lockBtn = new ButtonBuilder()
