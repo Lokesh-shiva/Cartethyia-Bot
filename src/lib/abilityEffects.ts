@@ -167,9 +167,9 @@ export function clampEffectValue(type: string, value: number): number {
 
 // Validate + clamp a raw effect list from the AI. Drops unknown types, caps at 3.
 // Evolved abilities get a 4th slot and values up to 1.3× the registry max.
-export function sanitizeEffects(raw: any, evolved = false): AbilityEffect[] {
+export function sanitizeEffects(raw: any, evolved = false, maxOverride?: number): AbilityEffect[] {
   if (!Array.isArray(raw)) return [];
-  const maxCount = evolved ? 4 : 3;
+  const maxCount = maxOverride ?? (evolved ? 4 : 3);
   const seen = new Set<string>();
   const out: AbilityEffect[] = [];
   for (const e of raw) {

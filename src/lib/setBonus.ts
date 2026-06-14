@@ -344,7 +344,7 @@ export async function resolvePlayerBonuses(userId: string): Promise<PlayerBonuse
     if (weapon.awakened && weapon.awakenedPassive) {
       const ap = weapon.awakenedPassive as any;
       if (ap.elemDmg) bonuses.elemDmgBonus += Number(ap.elemDmg) || 0;
-      if (Array.isArray(ap.effects)) bonuses.abilityEffects.push(...sanitizeEffects(ap.effects, true));
+      if (Array.isArray(ap.effects)) bonuses.abilityEffects.push(...sanitizeEffects(ap.effects, true, 7));
     } else {
       const passive = WEAPON_PASSIVES[weapon.name];
       if (passive) {
