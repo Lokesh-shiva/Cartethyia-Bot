@@ -32,7 +32,7 @@ const command: Command = {
 
   async execute(interaction: ChatInputCommandInteraction) {
     const target      = interaction.options.getUser("user") ?? interaction.user;
-    await interaction.deferReply({ flags: interaction.user.id === "979379636586819746" ? 64 : 0 });
+    await interaction.deferReply(interaction.user.id === "979379636586819746" ? { flags: 64 } : {});
     const displayName = interaction.guild?.members.cache.get(target.id)?.displayName
       ?? target.displayName ?? target.username;
     const avatarUrl   = target.displayAvatarURL({ size: 128, extension: "png" });
