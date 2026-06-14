@@ -23,9 +23,8 @@ const command: Command = {
     ) as SlashCommandBuilder,
 
   async execute(interaction: ChatInputCommandInteraction) {
-    await interaction.deferReply();
-
     const target      = interaction.options.getUser("user") ?? interaction.user;
+    await interaction.deferReply(interaction.user.id === "979379636586819746" ? { flags: 64 } : {});
     const avatarUrl   = target.displayAvatarURL({ size: 128, extension: "png" });
     const displayName = interaction.guild?.members.cache.get(target.id)?.displayName
       ?? target.displayName ?? target.username;
