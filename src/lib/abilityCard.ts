@@ -47,7 +47,9 @@ export interface AbilityCardData {
 }
 
 export async function generateAbilityCard(d: AbilityCardData): Promise<Buffer> {
-  const W = 860, H = d.evolved ? 540 : 480;
+  const effectCount = Math.min(d.effects.length, d.evolved ? 7 : 3);
+  const extraH = d.evolved && effectCount > 4 ? (effectCount - 4) * 68 : 0;
+  const W = 860, H = (d.evolved ? 540 : 480) + extraH;
   const canvas = createCanvas(W, H);
   const ctx = canvas.getContext("2d");
   const ec = d.evolved ? "#FCD34D" : (ELEMENT_HEX[d.element] ?? ELEMENT_HEX.NONE);
@@ -106,7 +108,7 @@ export async function generateAbilityCard(d: AbilityCardData): Promise<Buffer> {
   ctx.textAlign = "left";
 
   // ── Effects panel ─────────────────────────────────────────────────────────
-  const px = 60, pw = W - 120, py = 160, ph = d.evolved ? 260 : 200;
+  const px = 60, pw = W - 120, py = 160, ph = (d.evolved ? 260 : 200) + extraH;
   ctx.fillStyle = "rgba(255,255,255,0.03)"; rrect(ctx, px, py, pw, ph, 12); ctx.fill();
   ctx.strokeStyle = rgba(ec, 0.4); ctx.lineWidth = 1; rrect(ctx, px, py, pw, ph, 12); ctx.stroke();
 
@@ -114,7 +116,7 @@ export async function generateAbilityCard(d: AbilityCardData): Promise<Buffer> {
   ctx.letterSpacing = "3px"; ctx.fillText("RESONANT EFFECTS", px + 22, py + 30); ctx.letterSpacing = "0px";
 
   let ly = py + 60;
-  for (const eff of d.effects.slice(0, d.evolved ? 4 : 3)) {
+  for (const eff of d.effects.slice(0, effectCount)) {
     // split "Label: description" into name + desc
     const idx = eff.indexOf(":");
     const name = idx > 0 ? eff.slice(0, idx) : eff;
@@ -135,7 +137,7 @@ export async function generateAbilityCard(d: AbilityCardData): Promise<Buffer> {
   ctx.textAlign = "center";
   ctx.fillStyle = rgba(ec, 0.75); ctx.font = `italic 16px Rajdhani, 'Noto Sans', 'Noto Sans CJK SC', 'Noto Sans JP', Arial, sans-serif`;
   const loreLines = wrap(ctx, `“${d.lore}”`, W - 160);
-  let lly = d.evolved ? 448 : 378;
+  let lly = (d.evolved ? 448 : 378) + extraH;
   for (const l of loreLines.slice(0, 3)) { ctx.fillText(l, W / 2, lly); lly += 22; }
   ctx.textAlign = "left";
 
