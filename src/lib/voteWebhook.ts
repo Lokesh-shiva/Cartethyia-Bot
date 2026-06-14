@@ -89,6 +89,9 @@ export function startVoteWebhook(client: Client) {
 
   // ── Top.gg ─────────────────────────────────────────────────────────────────
   if (TOPGG_WEBHOOK_AUTH) {
+    // GET handler for top.gg URL validation probe
+    app.get("/topgg-vote", (_req, res) => { res.sendStatus(200); });
+
     app.post("/topgg-vote", (req, res) => {
       if (req.headers.authorization !== TOPGG_WEBHOOK_AUTH) { res.sendStatus(401); return; }
       // Top.gg sends { user, type, isWeekend }
