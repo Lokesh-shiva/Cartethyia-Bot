@@ -194,7 +194,7 @@ const command: Command = {
         newName   = evo?.name   ?? evolvedName(user.uniqueAbilityName!, element);
         newLore   = evo?.lore   ?? (user.uniqueAbilityLore ? `${user.uniqueAbilityLore} ${loreLine}` : loreLine);
         newEffect = evo?.effect;
-        effectLines = formatV2Effects(sanitizeV2Effects(newFx))
+        effectLines = formatV2Effects(sanitizeV2Effects(newFx, true))
           .replace(/\*\*/g, "").replace(/\*([^*]+)\*/g, "$1")
           .split("\n").filter(Boolean);
       } else {

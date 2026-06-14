@@ -146,9 +146,9 @@ function getRange(trigger: V2Trigger, effect: V2EffectKind): V2Range {
   );
 }
 
-export function clampV2Value(trigger: V2Trigger, effect: V2EffectKind, value: number): number {
+export function clampV2Value(trigger: V2Trigger, effect: V2EffectKind, value: number, capMult = 1.0): number {
   const r = getRange(trigger, effect);
-  return Math.max(r.min, Math.min(r.max, value));
+  return Math.max(r.min, Math.min(r.max * capMult, value));
 }
 
 // ── Validation ─────────────────────────────────────────────────────────────────
@@ -164,9 +164,11 @@ const VALID_EFFECTS = new Set<string>([
   "VIB_DRAIN","LIFESTEAL","ELEM_DMG","STACK_DMG","SECOND_WIND",
 ]);
 
-export function sanitizeV2Effects(raw: any): V2EffectEntry[] {
+export function sanitizeV2Effects(raw: any, evolved = false): V2EffectEntry[] {
   if (!Array.isArray(raw)) return [];
   const out: V2EffectEntry[] = [];
+  const capMult = evolved ? 1.3 : 1.0;
+  const maxSlots = evolved ? 4 : 3;
 
   for (const e of raw) {
     const trigger = String(e?.trigger ?? "").toUpperCase() as V2Trigger;
@@ -174,7 +176,7 @@ export function sanitizeV2Effects(raw: any): V2EffectEntry[] {
 
     if (!VALID_TRIGGERS.has(trigger) || !VALID_EFFECTS.has(effect)) continue;
 
-    const value = clampV2Value(trigger, effect, Number(e?.value) || 0);
+    const value = clampV2Value(trigger, effect, Number(e?.value) || 0, capMult);
 
     const entry: V2EffectEntry = {
       trigger,
@@ -203,7 +205,7 @@ export function sanitizeV2Effects(raw: any): V2EffectEntry[] {
     }
 
     out.push(entry);
-    if (out.length >= 3) break;
+    if (out.length >= maxSlots) break;
   }
   return out;
 }

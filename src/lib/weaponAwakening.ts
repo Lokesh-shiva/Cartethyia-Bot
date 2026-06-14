@@ -278,7 +278,7 @@ export async function generateAwakening(userId: string): Promise<AwakeningResult
     .join(", ");
 
   const abilityMechanics = user.abilityVersion === 2
-    ? formatV2Effects(sanitizeV2Effects(user.uniqueAbilityEffects)).replace(/\*\*/g, "").replace(/\*([^*]+)\*/g, "$1").replace(/\n/g, " | ")
+    ? formatV2Effects(sanitizeV2Effects(user.uniqueAbilityEffects, user.abilityEvolved)).replace(/\*\*/g, "").replace(/\*([^*]+)\*/g, "$1").replace(/\n/g, " | ")
     : formatEffects(sanitizeEffects(user.uniqueAbilityEffects, user.abilityEvolved)).replace(/\n/g, " | ");
 
   const hiddenSubInstruction = (needsHidden1 || needsHidden2) ? [

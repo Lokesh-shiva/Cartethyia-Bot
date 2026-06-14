@@ -69,7 +69,7 @@ const command: Command = {
 
     const isV2        = user.abilityVersion === 2;
     const effectLines = isV2
-      ? formatV2Effects(sanitizeV2Effects(user.uniqueAbilityEffects))
+      ? formatV2Effects(sanitizeV2Effects(user.uniqueAbilityEffects, user.abilityEvolved))
           .replace(/\*\*/g, "").replace(/\*([^*]+)\*/g, "$1")
           .split("\n").filter(Boolean)
       : formatEffects(sanitizeEffects(user.uniqueAbilityEffects, user.abilityEvolved)).split("\n").filter(Boolean);

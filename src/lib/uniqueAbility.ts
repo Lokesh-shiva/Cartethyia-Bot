@@ -331,7 +331,7 @@ export async function generateUniqueAbilityV2(userId: string, persist = true): P
       name:      user.uniqueAbilityName,
       effect:    user.uniqueAbilityEffect ?? "",
       lore:      user.uniqueAbilityLore   ?? "",
-      v2Effects: sanitizeV2Effects(user.uniqueAbilityEffects),
+      v2Effects: sanitizeV2Effects(user.uniqueAbilityEffects, user.abilityEvolved),
     };
   }
 

@@ -85,7 +85,7 @@ const command: Command = {
       const user = await prisma.user.findUnique({
         where:  { id: targetId },
         select: { element: true, uniqueAbilityName: true, uniqueAbilityEffect: true,
-                  uniqueAbilityLore: true, uniqueAbilityEffects: true, abilityVersion: true },
+                  uniqueAbilityLore: true, uniqueAbilityEffects: true, abilityVersion: true, abilityEvolved: true },
       });
       if (!user || !user.uniqueAbilityName) {
         await interaction.editReply({ content: `${displayName} has no ability saved yet. Use \`reroll:true\` to generate one.` });
@@ -93,7 +93,7 @@ const command: Command = {
       }
       const isV2   = user.abilityVersion === 2;
       const effList = isV2
-        ? formatV2Effects(sanitizeV2Effects(user.uniqueAbilityEffects))
+        ? formatV2Effects(sanitizeV2Effects(user.uniqueAbilityEffects, user.abilityEvolved))
             .replace(/\*\*/g, "").replace(/\*([^*]+)\*/g, "$1")
             .split("\n").filter(Boolean)
         : formatEffects(sanitizeEffects(user.uniqueAbilityEffects)).split("\n").filter(Boolean);

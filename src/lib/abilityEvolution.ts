@@ -284,11 +284,19 @@ const V2_EVO_4TH: Record<string, V2EffectEntry[]> = {
   ],
 };
 
+function boostDesc(desc: string, oldVal: number, newVal: number): string {
+  if (oldVal === newVal) return desc;
+  const oldDisplay = oldVal < 2 ? Math.round(oldVal * 100) : Math.round(oldVal);
+  const newDisplay = newVal < 2 ? Math.round(newVal * 100) : Math.round(newVal);
+  if (oldDisplay === newDisplay) return desc;
+  return desc.replace(new RegExp(`\\b${oldDisplay}\\b`), String(newDisplay));
+}
+
 export function evolveEffectsV2(effects: V2EffectEntry[], element: string, userId: string): V2EffectEntry[] {
-  const boosted: V2EffectEntry[] = effects.map(e => ({
-    ...e,
-    value: clampV2Value(e.trigger, e.effect, e.value * 1.3),
-  }));
+  const boosted: V2EffectEntry[] = effects.map(e => {
+    const newValue = clampV2Value(e.trigger, e.effect, e.value * 1.3, 1.3);
+    return { ...e, value: newValue, desc: boostDesc(e.desc, e.value, newValue) };
+  });
 
   const usedTriggers = new Set(boosted.map(e => e.trigger));
   const pool = V2_EVO_4TH[element] ?? V2_EVO_4TH.NONE;
