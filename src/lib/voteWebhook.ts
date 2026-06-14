@@ -100,23 +100,21 @@ export function startVoteWebhook(client: Client) {
     app.get("/topgg-vote", (_req, res) => { res.sendStatus(200); });
 
     app.post("/topgg-vote", (req, res) => {
-      res.sendStatus(200); // ack immediately — top.gg test pings have no auth header
-      console.log(`[vote:topgg] body=${JSON.stringify(req.body)} ct=${req.headers["content-type"]}`);
-      const auth   = req.headers.authorization;
-      const userId = req.body?.user as string | undefined;
+      res.sendStatus(200);
+      // top.gg format: { type: "vote.create"|"webhook.test", data: { user: { id }, ... } }
       const type   = req.body?.type as string | undefined;
-      // Ignore test pings (no userId or type=test)
-      if (!userId || type === "test") {
-        console.log(`[vote:topgg] Test ping — ignored`);
+      const userId = req.body?.data?.user?.id as string | undefined;
+      if (!userId || type !== "vote.create") {
+        console.log(`[vote:topgg] Ignored (type=${type})`);
         return;
       }
-      // Only process real votes with matching auth
-      if (auth !== TOPGG_WEBHOOK_AUTH) {
+      // Only process with matching auth
+      if (req.headers.authorization !== TOPGG_WEBHOOK_AUTH) {
         console.warn(`[vote:topgg] Auth mismatch — ignoring vote from ${userId}`);
         return;
       }
-      const weekend = req.body?.isWeekend === true || isWeekend();
-      processVote(client, userId, weekend, "topgg");
+      console.log(`[vote:topgg] Real vote from ${userId}`);
+      processVote(client, userId, isWeekend(), "topgg");
     });
   }
 
