@@ -93,6 +93,7 @@ export function startVoteWebhook(client: Client) {
     app.get("/topgg-vote", (_req, res) => { res.sendStatus(200); });
 
     app.post("/topgg-vote", (req, res) => {
+      console.log(`[topgg:debug] auth received: "${req.headers.authorization}"`);
       if (req.headers.authorization !== TOPGG_WEBHOOK_AUTH) { res.sendStatus(401); return; }
       // Top.gg sends { user, type, isWeekend }
       const userId = req.body?.user as string | undefined;
