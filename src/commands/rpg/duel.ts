@@ -32,12 +32,12 @@ interface DuelState {
   cHp:     number; cHpMax: number; cEnergy: number; cSkillCd: number;
   cAtk:    number; cDef:   number; cCritRate: number; cCritDmg: number; cElement: string;
   cElemDmg: number; cLifesteal: number; cBonuses: PlayerBonuses;
-  cFirstAction: boolean; cSecondWindUsed: boolean;
+  cFirstAction: boolean; cSecondWindUsed: boolean; cV2Stacks: number;
   // Challenged stats
   dHp:     number; dHpMax: number; dEnergy:  number; dSkillCd: number;
   dAtk:    number; dDef:   number; dCritRate: number; dCritDmg: number; dElement: string;
   dElemDmg: number; dLifesteal: number; dBonuses: PlayerBonuses;
-  dFirstAction: boolean; dSecondWindUsed: boolean;
+  dFirstAction: boolean; dSecondWindUsed: boolean; dV2Stacks: number;
   // Turn tracking
   currentTurn: string; // userId
   turn:        number;
@@ -241,13 +241,13 @@ export async function execute(interaction: ChatInputCommandInteraction) {
       cCritRate: cStats.critRate, cCritDmg: cStats.critDmg,
       cElement: challengerDb.element,
       cElemDmg: cStats.elemDmgBonus, cLifesteal: cStats.lifesteal, cBonuses,
-      cFirstAction: true, cSecondWindUsed: false,
+      cFirstAction: true, cSecondWindUsed: false, cV2Stacks: 0,
       dHp: dStats.hp, dHpMax: dStats.hp, dEnergy: 0, dSkillCd: 0,
       dAtk: dStats.atk, dDef: dStats.def,
       dCritRate: dStats.critRate, dCritDmg: dStats.critDmg,
       dElement: challengedDb.element,
       dElemDmg: dStats.elemDmgBonus, dLifesteal: dStats.lifesteal, dBonuses,
-      dFirstAction: true, dSecondWindUsed: false,
+      dFirstAction: true, dSecondWindUsed: false, dV2Stacks: 0,
       currentTurn: interaction.user.id, // challenger goes first
       turn: 1,
     };
@@ -417,11 +417,17 @@ export async function execute(interaction: ChatInputCommandInteraction) {
         }
 
         // Apply unique ability effects
+        const myV2Stacks = isChallenger ? state.cV2Stacks : state.dV2Stacks;
         const ar = applyAbilityAttack(myBonus, damage, isCrit, {
           moveType, currentHp: myHp, maxHp: myHpMax,
           enemyHpPct: oppHp / oppHpMax, turn: state.turn, isFirstAction: firstAct,
+          isWeak, isShattered: false, v2Stacks: myV2Stacks,
         });
         damage = ar.dmg;
+        if (ar.newStacks !== undefined) {
+          if (isChallenger) state.cV2Stacks = ar.newStacks;
+          else              state.dV2Stacks = ar.newStacks;
+        }
         if (ar.tag) moveLine += `  ✦${ar.tag}`;
         moveLine += ` — **${damage} DMG**`;
 
