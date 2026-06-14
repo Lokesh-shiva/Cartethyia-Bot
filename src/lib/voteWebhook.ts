@@ -101,6 +101,7 @@ export function startVoteWebhook(client: Client) {
 
     app.post("/topgg-vote", (req, res) => {
       res.sendStatus(200); // ack immediately — top.gg test pings have no auth header
+      console.log(`[vote:topgg] body=${JSON.stringify(req.body)} ct=${req.headers["content-type"]}`);
       const auth   = req.headers.authorization;
       const userId = req.body?.user as string | undefined;
       const type   = req.body?.type as string | undefined;
