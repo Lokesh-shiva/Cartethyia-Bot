@@ -3,6 +3,8 @@ import {
   EmbedBuilder, ActionRowBuilder, StringSelectMenuBuilder,
   StringSelectMenuInteraction, ButtonBuilder, ButtonStyle,
   ComponentType, ButtonInteraction,
+  ModalBuilder, TextInputBuilder, TextInputStyle,
+  ModalSubmitInteraction, Events, Interaction,
 } from "discord.js";
 import prisma from "../../lib/prisma";
 import { replyNotStarted } from "../../lib/economy";
@@ -213,14 +215,18 @@ async function showQuantityPicker(
       .setStyle(ButtonStyle.Secondary)
   );
 
+  const customBtn = new ButtonBuilder()
+    .setCustomId("shop_custom")
+    .setLabel("Custom Amount")
+    .setStyle(ButtonStyle.Primary);
+
   const cancelBtn = new ButtonBuilder()
     .setCustomId("shop_cancel")
     .setLabel("Cancel")
     .setStyle(ButtonStyle.Danger);
 
   const rows: ActionRowBuilder<ButtonBuilder>[] = [];
-  // Discord allows max 5 buttons per row; split if needed
-  const allBtns = [...qtyButtons, cancelBtn];
+  const allBtns = [...qtyButtons, customBtn, cancelBtn];
   for (let i = 0; i < allBtns.length; i += 5) {
     rows.push(new ActionRowBuilder<ButtonBuilder>().addComponents(allBtns.slice(i, i + 5)));
   }
@@ -245,68 +251,133 @@ async function showQuantityPicker(
 
   const btnCollector = sel.channel?.createMessageComponentCollector({
     componentType: ComponentType.Button,
-    filter: b => b.user.id === sel.user.id && (b.customId.startsWith("shop_qty_") || b.customId === "shop_cancel"),
+    filter: b => b.user.id === sel.user.id && (b.customId.startsWith("shop_qty_") || b.customId === "shop_cancel" || b.customId === "shop_custom"),
     time:   60_000,
     max:    1,
   });
 
   btnCollector?.on("collect", async (btn: ButtonInteraction) => {
-    await btn.deferUpdate();
     if (btn.customId === "shop_cancel") {
+      await btn.deferUpdate();
       await btn.editReply({ embeds: [new EmbedBuilder().setColor(color).setDescription("Purchase cancelled.")], components: [] });
       return;
     }
 
-    const qty      = parseInt(btn.customId.replace("shop_qty_", ""));
-    const total    = item.price * qty;
-    const freshUser = await prisma.user.findUnique({
-      where:  { id: btn.user.id },
-      select: { credits: true, lunakite: true },
-    });
+    if (btn.customId === "shop_custom") {
+      const modal = new ModalBuilder()
+        .setCustomId("shop_qty_modal")
+        .setTitle(`Buy ${item.name}`)
+        .addComponents(
+          new ActionRowBuilder<TextInputBuilder>().addComponents(
+            new TextInputBuilder()
+              .setCustomId("shop_qty_input")
+              .setLabel(`Quantity (${item.price.toLocaleString()} ${currencyLabel(item.currency)} each)`)
+              .setStyle(TextInputStyle.Short)
+              .setPlaceholder("e.g. 50")
+              .setMinLength(1).setMaxLength(6).setRequired(true)
+          )
+        );
+      await btn.showModal(modal);
 
-    const balance = item.currency === "credits" ? (freshUser?.credits ?? 0) : (freshUser?.lunakite ?? 0);
-    if (balance < total) {
-      await btn.editReply({
-        embeds: [new EmbedBuilder()
-          .setColor(0xFF4F6D)
-          .setDescription(`⚠  Not enough ${currencyLabel(item.currency)}.\nNeed **${total.toLocaleString()}**, have **${balance.toLocaleString()}**.`)
-          .setFooter({ text: "CARTETHYIA  ·  Shop" })],
-        components: [],
+      // Listen for modal submit via client event
+      const submitted = await new Promise<ModalSubmitInteraction | null>((resolve) => {
+        const tid = setTimeout(() => {
+          btn.client.off(Events.InteractionCreate, handler);
+          resolve(null);
+        }, 60_000);
+        const handler = (intr: Interaction) => {
+          if (
+            intr.isModalSubmit() &&
+            intr.customId === "shop_qty_modal" &&
+            intr.user.id === btn.user.id
+          ) {
+            clearTimeout(tid);
+            btn.client.off(Events.InteractionCreate, handler);
+            resolve(intr as ModalSubmitInteraction);
+          }
+        };
+        btn.client.on(Events.InteractionCreate, handler);
       });
+
+      if (!submitted) { await sel.editReply({ components: [] }).catch(() => {}); return; }
+
+      try { await (submitted as any).deferUpdate(); } catch {}
+
+      const qtyStr = submitted.fields.getTextInputValue("shop_qty_input").trim();
+      const qty    = parseInt(qtyStr);
+      if (isNaN(qty) || qty < 1) {
+        await sel.editReply({
+          embeds: [new EmbedBuilder().setColor(0xFF4F6D).setDescription("⚠  Enter a valid number greater than 0.")],
+          components: [],
+        });
+        return;
+      }
+      await processPurchase(sel, item, qty, color);
       return;
     }
 
-    // Build update object
-    const deduct: Record<string, any> = { [item.currency]: { decrement: total } };
-    const gains:  Record<string, any> = {};
-    for (const [field, amt] of Object.entries(item.gives)) {
-      gains[field] = { increment: (amt ?? 0) * qty };
-    }
-
-    await prisma.user.update({
-      where: { id: btn.user.id },
-      data:  { ...deduct, ...gains },
-    });
-
-    const givesLines = Object.entries(item.gives)
-      .map(([k, v]) => `› +${(v ?? 0) * qty} ${k.replace(/([A-Z])/g, ' $1').trim()}`)
-      .join("\n");
-
-    await btn.editReply({
-      embeds: [new EmbedBuilder()
-        .setColor(color)
-        .setTitle(`${item.emoji}  Purchase Complete`)
-        .setDescription(
-          `**${item.name} × ${qty}** purchased for **${total.toLocaleString()} ${currencyEmoji(item.currency)}**.\n\n` +
-          `${givesLines}\n\n` +
-          `Remaining balance: **${(balance - total).toLocaleString()} ${currencyEmoji(item.currency)}**`
-        )
-        .setFooter({ text: "CARTETHYIA  ·  Shop" })],
-      components: [],
-    });
+    // Fixed quantity buttons
+    await btn.deferUpdate();
+    const qty = parseInt(btn.customId.replace("shop_qty_", ""));
+    await processPurchase(sel, item, qty, color);
   });
 
   btnCollector?.on("end", async (col) => {
     if (col.size === 0) await sel.editReply({ components: [] }).catch(() => {});
+  });
+}
+
+async function processPurchase(
+  interaction: StringSelectMenuInteraction,
+  item: ShopItem,
+  qty: number,
+  color: number,
+) {
+  const total     = item.price * qty;
+  const freshUser = await prisma.user.findUnique({
+    where:  { id: interaction.user.id },
+    select: { credits: true, lunakite: true },
+  });
+
+  const balance = item.currency === "credits" ? (freshUser?.credits ?? 0) : (freshUser?.lunakite ?? 0);
+  if (balance < total) {
+    const maxAffordable = Math.floor(balance / item.price);
+    await interaction.editReply({
+      embeds: [new EmbedBuilder()
+        .setColor(0xFF4F6D)
+        .setDescription(
+          `⚠  Not enough ${currencyLabel(item.currency)}.\n` +
+          `Need **${total.toLocaleString()}**, have **${balance.toLocaleString()}**.\n` +
+          (maxAffordable > 0 ? `You can afford up to **×${maxAffordable}**.` : "")
+        )
+        .setFooter({ text: "CARTETHYIA  ·  Shop" })],
+      components: [],
+    });
+    return;
+  }
+
+  const deduct: Record<string, any> = { [item.currency]: { decrement: total } };
+  const gains:  Record<string, any> = {};
+  for (const [field, amt] of Object.entries(item.gives)) {
+    gains[field] = { increment: (amt ?? 0) * qty };
+  }
+
+  await prisma.user.update({ where: { id: interaction.user.id }, data: { ...deduct, ...gains } });
+
+  const givesLines = Object.entries(item.gives)
+    .map(([k, v]) => `› +${(v ?? 0) * qty} ${k.replace(/([A-Z])/g, ' $1').trim()}`)
+    .join("\n");
+
+  await interaction.editReply({
+    embeds: [new EmbedBuilder()
+      .setColor(color)
+      .setTitle(`${item.emoji}  Purchase Complete`)
+      .setDescription(
+        `**${item.name} × ${qty}** purchased for **${total.toLocaleString()} ${currencyEmoji(item.currency)}**.\n\n` +
+        `${givesLines}\n\n` +
+        `Remaining balance: **${(balance - total).toLocaleString()} ${currencyEmoji(item.currency)}**`
+      )
+      .setFooter({ text: "CARTETHYIA  ·  Shop" })],
+    components: [],
   });
 }
