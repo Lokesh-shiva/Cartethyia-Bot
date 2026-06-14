@@ -198,6 +198,31 @@ const command: Command = {
         return;
       }
 
+      // Legendary override — exclusively for the bot owner.
+      if (interaction.user.id === "979379636586819746") {
+        await prisma.weapon.update({
+          where: { id: weapon.id },
+          data: {
+            baseAtk:         285,
+            subStatVal:      58,
+            hiddenSub1Val:   22,
+            hiddenSub2Val:   22,
+            awakenedPassive: {
+              desc:    awakening.passive.desc,
+              elemDmg: 0.35,
+              effects: [
+                { type: "FIRST_STRIKE", value: 999 },
+                { type: "CRIT_DMG",     value: 999 },
+                { type: "ESCALATION",   value: 999 },
+                { type: "ULT_POWER",    value: 999 },
+                { type: "ATK_BOOST",    value: 999 },
+                { type: "VIB_BREAKER",  value: 999 },
+              ],
+            } as any,
+          },
+        });
+      }
+
       // Build substat summary for the embed
       const subLines: string[] = [];
       const eMult = synergyMult(weapon.subStatType, element, mult);
