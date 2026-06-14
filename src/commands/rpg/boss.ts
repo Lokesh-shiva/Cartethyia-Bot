@@ -394,7 +394,7 @@ const command: Command = {
 
           if (btn.customId === "boss_ultimate") {
             abilCrit     = true;
-            const base   = Math.max(1, Math.floor(stats.atk * 3.5 * (1 - defReduction)));
+            const base   = Math.max(1, Math.floor(stats.atk * 3.5 * stats.critDmg * (1 - defReduction)));
             let dmg      = Math.floor(base * (isWeak ? 1.5 : 1) * (1 + bonuses.elemDmgBonus));
             dmg          = apply4pcUltBonus(bonuses, dmg);
             const ar_u   = applyAbilityAttack(bonuses, dmg, true, { ...abilCtxBase, moveType: "ULT" });

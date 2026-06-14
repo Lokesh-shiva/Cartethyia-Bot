@@ -507,7 +507,7 @@ async function runWave(
 
         if (btn.customId === "dg_ultimate") {
           abilCrit  = true;
-          let dmg   = Math.max(1, Math.floor(stats.atk * 3.5 * (isWeak ? 1.5 : 1) * (1 + bonuses.elemDmgBonus)));
+          let dmg   = Math.max(1, Math.floor(stats.atk * 3.5 * stats.critDmg * (isWeak ? 1.5 : 1) * (1 + bonuses.elemDmgBonus)));
           dmg       = apply4pcUltBonus(bonuses, dmg);
           const ar_u = applyAbilityAttack(bonuses, dmg, true, { ...abilCtxBase, moveType: "ULT" });
           dmg        = ar_u.dmg;
