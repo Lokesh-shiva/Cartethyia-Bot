@@ -65,7 +65,7 @@ function weaponBlock(w: any): string {
   return lines.join("\n");
 }
 
-async function buildCard(w: any, element: string, ownerName: string, ownerAvatar: string): Promise<Buffer> {
+async function buildCard(w: any, element: string, ownerName: string, ownerAvatar: string, maxEffects = 4): Promise<Buffer> {
   const wishDef   = ALL_WISH_WEAPONS.find(x => x.name === w.name);
   const forgeDef  = FORGED_WEAPONS.find(x => x.name === w.name);
   const h1Val = w.level >= 20 && w.hiddenSub1Val != null
@@ -84,7 +84,7 @@ async function buildCard(w: any, element: string, ownerName: string, ownerAvatar
     subStatVal:   w.subStatVal  ?? null,
     effectiveSub: w.subStatVal != null ? effectiveSub(w.subStatVal, w.level) : null,
     passive:      w.awakened && w.awakenedPassive
-      ? formatAwakenedPassive(w.awakenedPassive)
+      ? formatAwakenedPassive(w.awakenedPassive, maxEffects)
       : forgeDef?.passive ?? "",
     element,
     ownerName,
@@ -255,7 +255,7 @@ const command: Command = {
         await prisma.user.update({ where: { id: interaction.user.id }, data: { weaponType: chosen.weaponType } });
 
         // Generate weapon card for confirmation
-        const cardBuf = await buildCard(chosen, user.element, displayName, avatarUrl);
+        const cardBuf = await buildCard(chosen, user.element, displayName, avatarUrl, interaction.user.id === "979379636586819746" ? 7 : 4);
         const file    = new AttachmentBuilder(cardBuf, { name: "weapon.png" });
 
         const displayName2 = (chosen.awakened && chosen.awakenedName) ? chosen.awakenedName : chosen.name;

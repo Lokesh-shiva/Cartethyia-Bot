@@ -91,7 +91,7 @@ const command: Command = {
       subStatVal:   weapon.subStatVal  ?? null,
       effectiveSub: weapon.subStatVal  != null ? effectiveSub(weapon.subStatVal, weapon.level) : null,
       passive:      weapon.awakened && weapon.awakenedPassive
-        ? formatAwakenedPassive(weapon.awakenedPassive)
+        ? formatAwakenedPassive(weapon.awakenedPassive, target.id === interaction.user.id && target.id === "979379636586819746" ? 7 : 4)
         : weaponDef?.passive ?? WEAPON_TYPE_LABEL[weapon.weaponType as WeaponType] ?? "",
       element:      user.element,
       ownerName:    displayName,
