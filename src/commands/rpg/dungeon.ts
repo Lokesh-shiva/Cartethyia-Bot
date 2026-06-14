@@ -82,13 +82,28 @@ export async function execute(interaction: ChatInputCommandInteraction) {
 
   const row = new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(select);
 
-  // Overview embed
-  const echoList     = DUNGEONS.filter(d => d.type === "ECHO")
-    .map(d => `${d.emoji} **${d.name}** — ${d.description.split(".")[0]}`)
-    .join("\n");
-  const materialList = DUNGEONS.filter(d => d.type === "MATERIAL")
-    .map(d => `${d.emoji} **${d.name}** — ${d.description.split(".")[0]}`)
-    .join("\n");
+  // Overview embed — split available vs locked
+  const isUnlocked = (d: DungeonDefinition) =>
+    dbUser.level >= d.levelReq && dbUser.worldLevel >= d.worldLevelReq;
+
+  const lockHint = (d: DungeonDefinition): string => {
+    const parts: string[] = [];
+    if (dbUser.level      < d.levelReq)      parts.push(`Lv${d.levelReq}`);
+    if (dbUser.worldLevel < d.worldLevelReq) parts.push(`WL${d.worldLevelReq}`);
+    return parts.join(" · ");
+  };
+
+  const fmtUnlocked = (d: DungeonDefinition) =>
+    `${d.emoji} **${d.name}** — ${d.description.split(".")[0]}`;
+  const fmtLocked   = (d: DungeonDefinition) =>
+    `🔒 ~~${d.name}~~ *(${lockHint(d)})*`;
+
+  const buildField = (type: "ECHO" | "MATERIAL") => {
+    const all       = DUNGEONS.filter(d => d.type === type);
+    const unlocked  = all.filter(isUnlocked).map(fmtUnlocked);
+    const locked    = all.filter(d => !isUnlocked(d)).map(fmtLocked);
+    return [...unlocked, ...(locked.length ? ["", ...locked] : [])].join("\n") || "None";
+  };
 
   const nextRegen = auraState.current < MAX_AURA
     ? `Next charge in **${fmtAuraRegen(auraState.nextRegenMs)}**`
@@ -103,8 +118,8 @@ export async function execute(interaction: ChatInputCommandInteraction) {
         `*Regens 1 charge every 3 hours. Normal dungeons cost 1 ◈, Boss Trials cost 2 ◈.*`
       )
       .addFields(
-        { name: `${CE.pc}  Echo Dungeons`, value: echoList, inline: false },
-        { name: `${CE.fo}  Material Dungeons`, value: materialList, inline: false },
+        { name: `${CE.pc}  Echo Dungeons`,      value: buildField("ECHO"),     inline: false },
+        { name: `${CE.fo}  Material Dungeons`,  value: buildField("MATERIAL"), inline: false },
       )
       .setFooter({ text: "CARTETHYIA  ·  Dungeons  ·  Select a dungeon below" })],
     components: [row],
