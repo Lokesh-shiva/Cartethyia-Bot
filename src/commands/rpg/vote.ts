@@ -4,7 +4,8 @@ import { CE } from "../../lib/emojiManager";
 import { communityFooter } from "../../lib/communityFooter";
 import prisma from "../../lib/prisma";
 
-const VOTE_URL         = "https://discordbotlist.com/bots/cartethyia/upvote";
+const DBL_VOTE_URL   = "https://discordbotlist.com/bots/cartethyia/upvote";
+const TOPGG_VOTE_URL = "https://top.gg/bot/1510163339177623642/vote";
 const VOTE_COOLDOWN_MS = 12 * 60 * 60 * 1000;
 
 function isWeekend(): boolean {
@@ -21,7 +22,7 @@ function fmtMs(ms: number): string {
 const command: Command = {
   data: new SlashCommandBuilder()
     .setName("vote")
-    .setDescription("Upvote Cartethyia on discordbotlist.com and earn rewards."),
+    .setDescription("Upvote Cartethyia on top.gg or discordbotlist.com and earn rewards."),
 
   async execute(interaction: ChatInputCommandInteraction) {
     await interaction.deferReply({ flags: 64 });
@@ -35,9 +36,9 @@ const command: Command = {
       select: { lastVoted: true },
     });
 
-    const lastVoted    = dbUser?.lastVoted;
-    const msRemaining  = lastVoted ? VOTE_COOLDOWN_MS - (Date.now() - lastVoted.getTime()) : 0;
-    const onCooldown   = msRemaining > 0;
+    const lastVoted   = dbUser?.lastVoted;
+    const msRemaining = lastVoted ? VOTE_COOLDOWN_MS - (Date.now() - lastVoted.getTime()) : 0;
+    const onCooldown  = msRemaining > 0;
 
     if (onCooldown) {
       await interaction.editReply({
@@ -58,18 +59,19 @@ const command: Command = {
         .setColor(0xa78bfa)
         .setTitle("🗳️  Upvote Cartethyia")
         .setDescription(
-          `Support the bot by upvoting on **discordbotlist.com** — it helps more players find Cartethyia!\n` +
+          `Support the bot by upvoting — it helps more players find Cartethyia!\n` +
           weekendNote +
-          `**Rewards per upvote:**\n` +
+          `**Rewards per upvote (per site, every 12 hours):**\n` +
           `${CE.cr} **${rewards.credits}** Credits\n` +
           `${CE.fk} **${rewards.fractureKeys}** Fracture Key${rewards.fractureKeys !== 1 ? "s" : ""}\n\n` +
-          `Rewards are sent automatically via DM once your upvote is confirmed.\n` +
-          `You can upvote every **12 hours**.\n\n` +
-          `**[→ Upvote here](${VOTE_URL})**`
+          `Rewards arrive automatically via DM after your vote is confirmed.\n\n` +
+          `**[→ Upvote on top.gg](${TOPGG_VOTE_URL})**\n` +
+          `**[→ Upvote on discordbotlist.com](${DBL_VOTE_URL})**`
         )
         .addFields(
-          { name: "🌐  Community", value: "[Join our server](https://discord.gg/HwkdQbN3Ec)", inline: true },
-          { name: "📋  Bot listing", value: `[discordbotlist.com](https://discordbotlist.com/bots/cartethyia)`, inline: true },
+          { name: "🌐  Community",   value: "[Join our server](https://discord.gg/HwkdQbN3Ec)", inline: true },
+          { name: "📋  top.gg",      value: `[top.gg/bot/cartethyia](https://top.gg/bot/1510163339177623642)`, inline: true },
+          { name: "📋  DBL",         value: `[discordbotlist.com](https://discordbotlist.com/bots/cartethyia)`, inline: true },
         )
         .setFooter(communityFooter(interaction.guildId, "CARTETHYIA  ·  Voting"))],
     });

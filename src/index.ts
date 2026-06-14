@@ -81,11 +81,36 @@ if (!token) {
   process.exit(1);
 }
 
+const TOPGG_TOKEN  = process.env.TOPGG_TOKEN ?? "";
+const BOT_ID       = process.env.CLIENT_ID ?? "1510163339177623642";
+
+async function postTopggStats() {
+  if (!TOPGG_TOKEN) return;
+  const serverCount = client.guilds.cache.size;
+  try {
+    const res = await fetch(`https://top.gg/api/bots/${BOT_ID}/stats`, {
+      method:  "POST",
+      headers: { "Content-Type": "application/json", "Authorization": TOPGG_TOKEN },
+      body:    JSON.stringify({ server_count: serverCount }),
+    });
+    if (res.ok) console.log(`[topgg] Posted stats: ${serverCount} servers`);
+    else console.warn(`[topgg] Stats post failed: ${res.status}`);
+  } catch (e) {
+    console.error("[topgg] Stats post error:", e);
+  }
+}
+
 client.login(token).then(() => {
   console.log("🚀 Cartethyia is starting up...");
   logInfo("Bot started successfully");
 
-  // Start top.gg vote webhook (no-op if TOPGG_WEBHOOK_AUTH is unset)
+  // Start vote webhook (DBL + top.gg — no-op if auth env vars unset)
   const { startVoteWebhook } = require("./lib/voteWebhook");
   startVoteWebhook(client);
+
+  // Post server count to top.gg once ready, then every 30 min
+  client.once("ready", () => {
+    setTimeout(postTopggStats, 10_000); // wait 10s for guild cache
+    setInterval(postTopggStats, 30 * 60 * 1000);
+  });
 });
