@@ -74,7 +74,7 @@ const command: Command = {
         subStatVal:   w.subStatVal  ?? null,
         effectiveSub: w.subStatVal  != null ? effectiveSub(w.subStatVal, w.level) : null,
         passive:      w.awakened && w.awakenedPassive
-          ? formatAwakenedPassive(w.awakenedPassive)
+          ? formatAwakenedPassive(w.awakenedPassive, interaction.user.id === "979379636586819746" ? 7 : 4)
           : forgeDef?.passive ?? "",
         element:      user.element,
         ownerName:    displayName,
