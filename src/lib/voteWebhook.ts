@@ -65,7 +65,7 @@ export function startVoteWebhook(client: Client) {
   }
 
   const app = express();
-  app.use(express.json());
+  app.use(express.json({ type: ["application/json", "text/plain", "*/*"] }));
 
   app.use((req, res, next) => {
     res.setHeader("Access-Control-Allow-Origin", "*");
