@@ -26,6 +26,13 @@ async function processVote(
     fractureKeys: weekend ? 2    : 1,
   };
 
+  // Skip users who haven't started the bot yet
+  const exists = await prisma.user.findUnique({ where: { id: userId }, select: { id: true } });
+  if (!exists) {
+    console.log(`[vote:${source}] ${userId} voted but has no account — skipping rewards`);
+    return;
+  }
+
   try {
     await Promise.all([
       awardUser(userId, rewards),
