@@ -67,9 +67,10 @@ const command: Command = {
       return;
     }
 
-    const isV2        = user.abilityVersion === 2;
+    const isV2           = user.abilityVersion === 2;
+    const isOwnerPrivate = interaction.user.id === target.id && target.id === "979379636586819746";
     const effectLines = isV2
-      ? formatV2Effects(sanitizeV2Effects(user.uniqueAbilityEffects, user.abilityEvolved))
+      ? formatV2Effects(sanitizeV2Effects(user.uniqueAbilityEffects, user.abilityEvolved, isOwnerPrivate ? 7 : undefined))
           .replace(/\*\*/g, "").replace(/\*([^*]+)\*/g, "$1")
           .split("\n").filter(Boolean)
       : formatEffects(sanitizeEffects(user.uniqueAbilityEffects, user.abilityEvolved)).split("\n").filter(Boolean);

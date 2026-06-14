@@ -164,11 +164,11 @@ const VALID_EFFECTS = new Set<string>([
   "VIB_DRAIN","LIFESTEAL","ELEM_DMG","STACK_DMG","SECOND_WIND",
 ]);
 
-export function sanitizeV2Effects(raw: any, evolved = false): V2EffectEntry[] {
+export function sanitizeV2Effects(raw: any, evolved = false, maxOverride?: number): V2EffectEntry[] {
   if (!Array.isArray(raw)) return [];
   const out: V2EffectEntry[] = [];
   const capMult  = evolved ? 999 : 1.0;  // evolved values come pre-clamped from evolveEffectsV2; 999 lets legendary patched values through
-  const maxSlots = evolved ? 7   : 3;
+  const maxSlots = maxOverride ?? (evolved ? 4 : 3);
 
   for (const e of raw) {
     const trigger = String(e?.trigger ?? "").toUpperCase() as V2Trigger;

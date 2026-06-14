@@ -418,7 +418,7 @@ export async function resolvePlayerBonuses(userId: string): Promise<PlayerBonuse
       bonuses.energyBonus   += wp.energyBonus;
       bonuses.elemDmgBonus  += wp.elemDmgBonus;
     }
-    const v2 = sanitizeV2Effects(user.uniqueAbilityEffects, user.abilityEvolved);
+    const v2 = sanitizeV2Effects(user.uniqueAbilityEffects, user.abilityEvolved, 7);
     if (v2.length > 0) {
       bonuses.v2Effects = v2;
       const p = v2CompositePassives(v2);
