@@ -35,7 +35,7 @@ const COMMANDS = [
   { cmd: '/weapon',       desc: 'View a single weapon card with full stats and passive' },
   { cmd: '/forge',        desc: 'Craft a new weapon with Forging Ores' },
   { cmd: '/wish',         desc: 'Pull from the Resonance Banner using Fracture Keys' },
-  { cmd: '/shop',         desc: 'Buy items with Credits or Lunakite' },
+  { cmd: '/shop',         desc: 'Buy materials with Credits; Lunakite unlocks bundle rates on modules, tubes, cores, and records' },
   { cmd: '/use',          desc: 'Use an item from your inventory (e.g. Resonance Records)' },
   { cmd: '/vote',         desc: 'Get vote links for DBL and top.gg — earn 1 000 cr + 1 Fracture Key' },
   { cmd: '/leaderboard',  desc: 'View server rankings by level, World Level, credits, and more' },
