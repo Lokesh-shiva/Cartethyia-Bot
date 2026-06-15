@@ -29,6 +29,12 @@ export async function execute(client: Client) {
   // Application emojis — uploaded to the bot itself, usable in every server
   await loadEmojis(client);
 
+  // Pre-fetch all guild channels so they appear in slash command dropdowns
+  // without requiring the bot to have seen activity in each channel first.
+  for (const guild of client.guilds.cache.values()) {
+    await guild.channels.fetch().catch(() => {});
+  }
+
   // Per-guild config for ALL servers (multi-server ready)
   await loadAllGuildSettings();
   await loadAllPrefixes();
