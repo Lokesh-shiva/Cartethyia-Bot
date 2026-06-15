@@ -480,7 +480,7 @@ async function runWave(
           vibBar           = Math.max(0, vibBar - Math.floor(playerDmg * 0.3 * totalVibMult));
           ws.playerEnergy  = Math.min(100, ws.playerEnergy + Math.floor(stats.energyPerTurn) + elemDischargeEnergy(bonuses.elementPassive, crit) + ar_b.bonusEnergy);
           ws.playerHp      = Math.min(ws.playerHpMax, ws.playerHp + ar_b.healHp);
-          ws.playerHp      = applyLifesteal(bonuses.lifesteal, playerDmg, ws.playerHp, ws.playerHpMax);
+          ws.playerHp      = applyLifesteal(bonuses.lifesteal + (ar_b.lifesteal ?? 0), playerDmg, ws.playerHp, ws.playerHpMax);
         }
 
         if (btn.customId === "dg_skill") {
@@ -501,7 +501,7 @@ async function runWave(
           ws.skillCooldown  = SKILL_CD;
           ws.playerEnergy   = Math.min(100, ws.playerEnergy + Math.floor(stats.energyPerTurn) + elemDischargeEnergy(bonuses.elementPassive, crit) + ar_s.bonusEnergy);
           ws.playerHp       = Math.min(ws.playerHpMax, ws.playerHp + ar_s.healHp);
-          ws.playerHp       = applyLifesteal(bonuses.lifesteal, playerDmg, ws.playerHp, ws.playerHpMax);
+          ws.playerHp       = applyLifesteal(bonuses.lifesteal + (ar_s.lifesteal ?? 0), playerDmg, ws.playerHp, ws.playerHpMax);
           ws.firstSkillUsed = true;
         }
 
@@ -518,7 +518,7 @@ async function runWave(
           vibBar    = Math.max(0, vibBar - Math.floor(playerDmg * 0.8 * totalVibMult));
           ws.playerEnergy = Math.min(100, ar_u.bonusEnergy); // drain to 0 then apply any ability energy gain
           ws.playerHp     = Math.min(ws.playerHpMax, ws.playerHp + ar_u.healHp);
-          ws.playerHp     = applyLifesteal(bonuses.lifesteal, playerDmg, ws.playerHp, ws.playerHpMax);
+          ws.playerHp     = applyLifesteal(bonuses.lifesteal + (ar_u.lifesteal ?? 0), playerDmg, ws.playerHp, ws.playerHpMax);
           if (bonuses.set5pc?.type === "POST_ULT_SKILL") ws.skillCooldown = 0;
         }
 

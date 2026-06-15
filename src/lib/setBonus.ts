@@ -553,6 +553,7 @@ export interface AbilityAttackResult {
   bonusEnergy: number;
   tag:         string;   // joined effect tags for the combat log
   newStacks?:  number;   // updated V2 stack count (STACK_DMG); undefined for V1
+  lifesteal?:  number;   // V2 ON_HIT lifesteal fraction (additive with bonuses.lifesteal)
 }
 
 // Apply all damage-modifying + on-hit ability primitives for a single attack.
@@ -571,14 +572,19 @@ export function applyAbilityAttack(
     const r = bonuses.v2Effects.length > 0
       ? applyV2Attack(bonuses.v2Effects, baseDmg, isCrit, v2ctx)
       : { dmg: baseDmg, healHp: 0, bonusEnergy: 0, tag: "", newStacks: 0, critDmgBonus: 0, lifesteal: 0, vibMult: 1 };
+    // ON_CRIT:CRIT_DMG — apply extra crit multiplier on top of base critDmg
+    const dmgAfterCrit = (isCrit && r.critDmgBonus > 0)
+      ? Math.floor(r.dmg * (1 + r.critDmgBonus))
+      : r.dmg;
     // Weapon passive combat hooks (EXECUTE, CRIT_MOMENTUM, etc.) still apply via V1 path
     const { mult: wMult, tags: wTags } = compositeDamageMult(bonuses.abilityEffects, ctx);
     return {
-      dmg:         Math.floor(r.dmg * wMult),
+      dmg:         Math.floor(dmgAfterCrit * wMult),
       healHp:      r.healHp + compositeHealOnHit(bonuses.abilityEffects, isCrit, ctx.maxHp),
       bonusEnergy: r.bonusEnergy + compositeEnergyOnHit(bonuses.abilityEffects, isCrit),
       tag:         [r.tag, ...wTags].filter(Boolean).join("·"),
       newStacks:   r.newStacks,
+      lifesteal:   r.lifesteal,
     };
   }
   const { mult, tags } = compositeDamageMult(bonuses.abilityEffects, ctx);

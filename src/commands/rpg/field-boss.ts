@@ -366,7 +366,7 @@ const command: Command = {
             if (ign.tag) moveName += `  ✦${ign.tag}`;
             state.bossVibNow   = Math.max(0, state.bossVibNow - Math.floor(playerDmg * 0.3 * totalVibMult));
             state.playerEnergy = Math.min(100, state.playerEnergy + ENERGY_PER_TURN + elemDischargeEnergy(bonuses.elementPassive, crit) + ar_b.bonusEnergy);
-            state.playerHp     = Math.min(state.playerHpMax, applyLifesteal(bonuses.lifesteal, playerDmg, state.playerHp, state.playerHpMax) + ar_b.healHp);
+            state.playerHp     = Math.min(state.playerHpMax, applyLifesteal(bonuses.lifesteal + (ar_b.lifesteal ?? 0), playerDmg, state.playerHp, state.playerHpMax) + ar_b.healHp);
           }
 
           if (btn.customId === "fb_skill") {
@@ -385,7 +385,7 @@ const command: Command = {
             state.bossVibNow    = Math.max(0, state.bossVibNow - Math.floor(playerDmg * 0.6 * totalVibMult));
             state.skillCooldown = SKILL_COOLDOWN;
             state.playerEnergy  = Math.min(100, state.playerEnergy + ENERGY_PER_TURN + elemDischargeEnergy(bonuses.elementPassive, crit) + ar_s.bonusEnergy);
-            state.playerHp      = Math.min(state.playerHpMax, applyLifesteal(bonuses.lifesteal, playerDmg, state.playerHp, state.playerHpMax) + ar_s.healHp);
+            state.playerHp      = Math.min(state.playerHpMax, applyLifesteal(bonuses.lifesteal + (ar_s.lifesteal ?? 0), playerDmg, state.playerHp, state.playerHpMax) + ar_s.healHp);
             if (bonuses.set5pc?.type === "POST_ULT_SKILL") state.skillCooldown = 0;
           }
 
@@ -401,7 +401,7 @@ const command: Command = {
             moveName   = `⚡ ULTIMATE — ${playerDmg} DMG`;
             state.bossVibNow   = Math.max(0, state.bossVibNow - Math.floor(playerDmg * 0.8 * totalVibMult));
             state.playerEnergy = Math.min(100, ar_u.bonusEnergy);
-            state.playerHp     = Math.min(state.playerHpMax, applyLifesteal(bonuses.lifesteal, playerDmg, state.playerHp, state.playerHpMax) + ar_u.healHp);
+            state.playerHp     = Math.min(state.playerHpMax, applyLifesteal(bonuses.lifesteal + (ar_u.lifesteal ?? 0), playerDmg, state.playerHp, state.playerHpMax) + ar_u.healHp);
             if (bonuses.set5pc?.type === "POST_ULT_SKILL") state.skillCooldown = 0;
           }
 

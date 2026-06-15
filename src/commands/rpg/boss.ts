@@ -366,7 +366,7 @@ const command: Command = {
             state.bossVibNow   = Math.max(0, state.bossVibNow - Math.floor(playerDmg * 0.3 * totalVibMult));
             state.playerEnergy = Math.min(100, state.playerEnergy + ENERGY_PER_TURN + elemDischargeEnergy(bonuses.elementPassive, crit) + ar_b.bonusEnergy);
             state.playerHp     = Math.min(state.playerHpMax, state.playerHp + ar_b.healHp);
-            state.playerHp     = applyLifesteal(bonuses.lifesteal, playerDmg, state.playerHp, state.playerHpMax);
+            state.playerHp     = applyLifesteal(bonuses.lifesteal + (ar_b.lifesteal ?? 0), playerDmg, state.playerHp, state.playerHpMax);
           }
 
           if (btn.customId === "boss_skill") {
@@ -388,7 +388,7 @@ const command: Command = {
             state.skillCooldown = SKILL_COOLDOWN;
             state.playerEnergy  = Math.min(100, state.playerEnergy + ENERGY_PER_TURN + elemDischargeEnergy(bonuses.elementPassive, crit) + ar_s.bonusEnergy);
             state.playerHp      = Math.min(state.playerHpMax, state.playerHp + ar_s.healHp);
-            state.playerHp      = applyLifesteal(bonuses.lifesteal, playerDmg, state.playerHp, state.playerHpMax);
+            state.playerHp      = applyLifesteal(bonuses.lifesteal + (ar_s.lifesteal ?? 0), playerDmg, state.playerHp, state.playerHpMax);
             firstSkillUsed = true;
           }
 
@@ -406,7 +406,7 @@ const command: Command = {
             state.bossVibNow   = Math.max(0, state.bossVibNow - Math.floor(playerDmg * 0.8 * totalVibMult));
             state.playerEnergy = Math.min(100, ar_u.bonusEnergy);
             state.playerHp     = Math.min(state.playerHpMax, state.playerHp + ar_u.healHp);
-            state.playerHp     = applyLifesteal(bonuses.lifesteal, playerDmg, state.playerHp, state.playerHpMax);
+            state.playerHp     = applyLifesteal(bonuses.lifesteal + (ar_u.lifesteal ?? 0), playerDmg, state.playerHp, state.playerHpMax);
             if (bonuses.set5pc?.type === "POST_ULT_SKILL") state.skillCooldown = 0;
           }
 
