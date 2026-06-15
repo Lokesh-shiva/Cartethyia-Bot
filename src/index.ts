@@ -109,7 +109,7 @@ client.login(token).then(() => {
   startVoteWebhook(client);
 
   // Post server count to top.gg once ready, then every 30 min
-  client.once("ready", () => {
+  client.once("clientReady", () => {
     setTimeout(postTopggStats, 10_000); // wait 10s for guild cache
     setInterval(postTopggStats, 30 * 60 * 1000);
   });
