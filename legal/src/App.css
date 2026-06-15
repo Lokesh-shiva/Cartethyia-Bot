@@ -101,6 +101,13 @@ hr.section-rule {
 }
 .btn-primary:hover { background: #c4b5fd; transform: translateY(-2px); box-shadow: 0 8px 32px rgba(167,139,250,0.35); }
 
+.btn-secondary {
+  background: transparent;
+  color: var(--primary);
+  border: 1.5px solid var(--primary);
+}
+.btn-secondary:hover { background: rgba(167,139,250,0.12); transform: translateY(-2px); }
+
 .btn-ghost {
   background: transparent;
   color: var(--text);

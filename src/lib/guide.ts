@@ -662,6 +662,37 @@ export const GUIDE_SECTIONS: Record<string, GuideSection> = {
       .setFooter({ text: "CARTETHYIA  ·  /awaken — permanent · one-time · Lv60+" }),
   },
 
+  voting: {
+    label: "Voting for Rewards",
+    description: "Support the bot on DBL / top.gg and earn free resources",
+    emoji: "🗳️",
+    embed: () => new EmbedBuilder()
+      .setColor(C.gold)
+      .setTitle("🗳️  Voting for Rewards")
+      .setDescription(
+        `Vote for Cartethyia on Discord Bot List or top.gg to earn free resources.\n` +
+        `Use \`/vote\` to get both links in one place.`
+      )
+      .addFields(
+        {
+          name: "Rewards per vote",
+          value: "💠 **1,000 Credits** + 🗝️ **1 Fracture Key**\nWeekend bonus (Sat/Sun): **2,000 Credits + 2 Fracture Keys**",
+          inline: false,
+        },
+        {
+          name: "Where to vote",
+          value: "› **Discord Bot List** — discordbotlist.com/bots/cartethyia/upvote\n› **top.gg** — top.gg/bot/1510163339177623642/vote",
+          inline: false,
+        },
+        {
+          name: "Cooldown",
+          value: "Each platform resets every **12 hours** — you can vote on both for double the rewards.",
+          inline: false,
+        },
+      )
+      .setFooter({ text: "CARTETHYIA  ·  /vote — links sent as a DM-able embed" }),
+  },
+
   admin: {
     label: "Admin & Setup",
     description: "For server admins — the interactive /setup panel (Manage Server)",
@@ -671,7 +702,8 @@ export const GUIDE_SECTIONS: Record<string, GuideSection> = {
       .setTitle("🛠️  Admin & Setup")
       .setDescription(
         `Run \`/setup\` — a single interactive panel covering every server setting.\n` +
-        `Requires **Manage Server**. All changes apply instantly.\n​`
+        `Requires **Manage Server**, **Administrator**, or a **Setup Manager Role** (configurable inside /setup → 🛡️ Managers).\n` +
+        `All changes apply instantly.\n​`
       )
       .addFields(
         {

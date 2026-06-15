@@ -3,7 +3,7 @@ import './Vote.css';
 
 const REWARDS = [
   { emoji: '💎', amount: '1 000', label: 'Credits', desc: 'Spend in the shop on records, materials, and upgrades' },
-  { emoji: '🔑', amount: '1',     label: 'Resonance Key', desc: 'Instant dungeon entry — no Aura required' },
+  { emoji: '🗝️', amount: '1',     label: 'Fracture Key', desc: 'Use at /wish for a weapon pull from the Resonance Banner' },
   { emoji: '✖️2', amount: '2×',   label: 'Weekend bonus', desc: 'Double rewards every Saturday and Sunday' },
 ];
 
@@ -20,14 +20,24 @@ export default function Vote() {
         {REWARDS.map((r, i) => <RewardCard key={r.label} reward={r} delay={i * 0.1} />)}
       </div>
       <div className="vote-cta">
-        <a
-          href="https://discordbotlist.com/bots/cartethyia/upvote"
-          className="btn btn-primary vote-btn"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          Vote on Discord Bot List
-        </a>
+        <div className="vote-buttons">
+          <a
+            href="https://discordbotlist.com/bots/cartethyia/upvote"
+            className="btn btn-primary vote-btn"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            Vote on Discord Bot List
+          </a>
+          <a
+            href="https://top.gg/bot/1510163339177623642/vote"
+            className="btn btn-secondary vote-btn"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            Vote on top.gg
+          </a>
+        </div>
         <p className="vote-note">Resets every 12 hours · 2× rewards on weekends</p>
       </div>
     </section>

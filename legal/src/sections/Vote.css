@@ -30,7 +30,8 @@
 .reward-label  { font-weight: 600; font-size: 0.95rem; color: var(--text); }
 .reward-desc   { font-size: 0.82rem; color: var(--dim); line-height: 1.5; font-weight: 300; max-width: 200px; }
 
-.vote-cta { text-align: center; }
+.vote-cta { display: flex; flex-direction: column; align-items: center; gap: 0.75rem; }
+.vote-buttons { display: flex; gap: 1rem; flex-wrap: wrap; justify-content: center; }
 .vote-btn { font-size: 1.05rem; padding: 0.9rem 2.5rem; }
 .vote-note { margin-top: 1rem; font-size: 0.82rem; color: var(--dim); }
 
