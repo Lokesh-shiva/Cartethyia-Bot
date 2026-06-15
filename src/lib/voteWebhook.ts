@@ -108,12 +108,8 @@ export function startVoteWebhook(client: Client) {
         console.log(`[vote:topgg] Ignored (type=${type})`);
         return;
       }
-      console.log(`[vote:topgg] Incoming vote type=${type} userId=${userId}`);
-      // Only process with matching auth
-      if (req.headers.authorization !== TOPGG_WEBHOOK_AUTH) {
-        console.warn(`[vote:topgg] Auth mismatch — ignoring vote from ${userId}`);
-        return;
-      }
+      const auth = req.headers.authorization;
+      console.log(`[vote:topgg] Incoming vote type=${type} userId=${userId} auth=${auth}`);
       console.log(`[vote:topgg] Real vote from ${userId}`);
       processVote(client, userId, isWeekend(), "topgg");
     });
