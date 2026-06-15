@@ -417,7 +417,7 @@ export function formatAwakenedPassive(ap: any, maxEffects = 4): string {
       if (shown >= maxEffects) break;
       const def = (ABILITY_REGISTRY as any)[e.type];
       if (!def) continue;
-      const valStr = def.isPct ? `${Math.round(e.value * 100)}%` : String(e.value);
+      const valStr = def.isPct ? `${Math.round(e.value * 100)}` : String(e.value);
       lines.push(`${def.label}: ${def.desc.replace("{v}", valStr)}`);
       shown++;
     }
