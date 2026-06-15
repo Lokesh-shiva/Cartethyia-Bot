@@ -2,11 +2,11 @@ import {
   SlashCommandBuilder, ChatInputCommandInteraction,
   EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle,
   ChannelSelectMenuBuilder, ChannelSelectMenuInteraction,
+  RoleSelectMenuBuilder, RoleSelectMenuInteraction,
   StringSelectMenuBuilder, StringSelectMenuInteraction,
   ModalBuilder, TextInputBuilder, TextInputStyle,
   ChannelType, PermissionFlagsBits,
   ButtonInteraction, Interaction, Events, ModalSubmitInteraction,
-  TextChannel,
 } from "discord.js";
 import { Command } from "../../types";
 import prisma from "../../lib/prisma";
@@ -41,7 +41,7 @@ async function getSettings(guildId: string) {
 
 // ── Panel page definitions ────────────────────────────────────────────────────
 
-type Page = "main" | "encounters" | "output" | "commands" | "general";
+type Page = "main" | "encounters" | "output" | "commands" | "general" | "managers";
 
 // ── MAIN PAGE ─────────────────────────────────────────────────────────────────
 
@@ -93,7 +93,14 @@ function mainEmbed(s: any, prefix: string, guildName: string, saved = false) {
       {
         name:  "⚙️  General",
         value: `⌨️ Prefix: \`${pfx}!\`  —  e.g. \`${pfx}!profile\`  \`${pfx}!daily\``,
-        inline: false,
+        inline: true,
+      },
+      {
+        name:  "🛡️  Managers",
+        value: s.setupManagerRoleIds?.length
+          ? s.setupManagerRoleIds.map((id: string) => `<@&${id}>`).join(" ")
+          : "Only users with Manage Server",
+        inline: true,
       },
     )
     .setFooter({ text: saved
@@ -108,6 +115,7 @@ function mainComponents(s: any) {
       new ButtonBuilder().setCustomId("setup_nav_out").setLabel("📢  Output Channels").setStyle(ButtonStyle.Primary),
       new ButtonBuilder().setCustomId("setup_nav_cmd").setLabel("🤖  Commands").setStyle(ButtonStyle.Primary),
       new ButtonBuilder().setCustomId("setup_nav_gen").setLabel("⚙️  General").setStyle(ButtonStyle.Primary),
+      new ButtonBuilder().setCustomId("setup_nav_mgr").setLabel("🛡️  Managers").setStyle(ButtonStyle.Secondary),
     ),
     new ActionRowBuilder<ButtonBuilder>().addComponents(
       new ButtonBuilder()
@@ -176,8 +184,14 @@ function encounterComponents(s: any) {
     new ActionRowBuilder<ChannelSelectMenuBuilder>().addComponents(blackMenu),
     new ActionRowBuilder<ChannelSelectMenuBuilder>().addComponents(exploreMenu),
     new ActionRowBuilder<ButtonBuilder>().addComponents(
-      new ButtonBuilder().setCustomId("setup_blk_add_id").setLabel("➕ Add to Blacklist by ID").setStyle(ButtonStyle.Secondary),
-      new ButtonBuilder().setCustomId("setup_blk_clear_id").setLabel("🗑️ Remove from Blacklist by ID").setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder().setCustomId("setup_allow_add_id").setLabel("➕ Allowlist by ID").setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder().setCustomId("setup_allow_clear_id").setLabel("🗑️ Remove Allowlist ID").setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder().setCustomId("setup_exp_add_id").setLabel("➕ Explore by ID").setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder().setCustomId("setup_exp_clear_id").setLabel("🗑️ Remove Explore ID").setStyle(ButtonStyle.Secondary),
+    ),
+    new ActionRowBuilder<ButtonBuilder>().addComponents(
+      new ButtonBuilder().setCustomId("setup_blk_add_id").setLabel("➕ Blacklist by ID").setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder().setCustomId("setup_blk_clear_id").setLabel("🗑️ Remove Blacklist ID").setStyle(ButtonStyle.Secondary),
       new ButtonBuilder().setCustomId("setup_back").setLabel("← Back").setStyle(ButtonStyle.Secondary),
     ),
   ];
@@ -338,6 +352,67 @@ function generalComponents(prefix: string) {
   ];
 }
 
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+function parseIds(raw: string): string[] {
+  return raw.split(/[\s,]+/).map(x => x.trim()).filter(x => /^\d{17,20}$/.test(x));
+}
+
+async function waitForModal(
+  interaction: ChatInputCommandInteraction,
+  customId: string,
+): Promise<{ raw: string } | null> {
+  return new Promise((resolve) => {
+    const tid = setTimeout(() => {
+      interaction.client.off(Events.InteractionCreate, handler);
+      resolve(null);
+    }, 60_000);
+    const handler = async (intr: Interaction) => {
+      if (!intr.isModalSubmit() || intr.customId !== customId || intr.user.id !== interaction.user.id) return;
+      clearTimeout(tid);
+      interaction.client.off(Events.InteractionCreate, handler);
+      const raw = intr.fields.getTextInputValue("channel_ids");
+      try { await (intr as any).deferUpdate(); }
+      catch { try { await (intr as any).reply({ content: "◈ Updating...", flags: 64 }); } catch {} }
+      resolve({ raw });
+    };
+    interaction.client.on(Events.InteractionCreate, handler);
+  });
+}
+
+// ── MANAGERS PAGE ─────────────────────────────────────────────────────────────
+
+function managersEmbed(s: any, guildName: string) {
+  const roles = s.setupManagerRoleIds?.length
+    ? s.setupManagerRoleIds.map((id: string) => `<@&${id}>`).join(" ")
+    : "None — only users with **Manage Server** can use /setup";
+
+  return new EmbedBuilder()
+    .setColor(0x8B5CF6)
+    .setAuthor({ name: `⚙️  ${guildName}  ·  Setup Managers` })
+    .addFields({
+      name: "🛡️  Manager Roles",
+      value: `${roles}\n-# Roles listed here can use \`/setup\` even without Manage Server. Only admins with Manage Server can change this list.`,
+      inline: false,
+    })
+    .setFooter({ text: "CARTETHYIA  ·  Manager Roles  ·  Clear the menu to restrict to Manage Server only" });
+}
+
+function managersComponents(s: any) {
+  const roleMenu = new RoleSelectMenuBuilder()
+    .setCustomId("setup_mgr_roles")
+    .setPlaceholder("🛡️  Manager Roles — who can use /setup (clear = Manage Server only)")
+    .setMinValues(0).setMaxValues(10);
+  if (s.setupManagerRoleIds?.length) roleMenu.setDefaultRoles(s.setupManagerRoleIds);
+
+  return [
+    new ActionRowBuilder<RoleSelectMenuBuilder>().addComponents(roleMenu),
+    new ActionRowBuilder<ButtonBuilder>().addComponents(
+      new ButtonBuilder().setCustomId("setup_back").setLabel("← Back to Overview").setStyle(ButtonStyle.Secondary),
+    ),
+  ];
+}
+
 // ── Command ───────────────────────────────────────────────────────────────────
 
 const command: Command = {
@@ -352,10 +427,32 @@ const command: Command = {
       await interaction.reply({ content: "Server only.", flags: 64 });
       return;
     }
-    await interaction.deferReply({ flags: 64 });
 
     const guildId   = interaction.guildId;
     const guildName = interaction.guild?.name ?? "This Server";
+
+    // Allow users with Manage Guild OR a configured manager role
+    const hasManageGuild = (interaction.memberPermissions?.has(PermissionFlagsBits.ManageGuild)) ?? false;
+    if (!hasManageGuild) {
+      const settings = await getSettings(guildId);
+      const managerRoles: string[] = (settings as any).setupManagerRoleIds ?? [];
+      const memberRoles = interaction.member?.roles;
+      const roleIds: string[] = Array.isArray(memberRoles)
+        ? memberRoles
+        : memberRoles && "cache" in (memberRoles as any)
+          ? [...(memberRoles as any).cache.keys()]
+          : [];
+      const hasManagerRole = managerRoles.some(r => roleIds.includes(r));
+      if (!hasManagerRole) {
+        await interaction.reply({ content: "◈ You need **Manage Server** permission or a setup manager role to use this.", flags: 64 });
+        return;
+      }
+    }
+
+    // Only ManageGuild holders can change manager roles
+    const canEditManagers = hasManageGuild;
+
+    await interaction.deferReply({ flags: 64 });
     let s           = await getSettings(guildId);
     let prefix      = getPrefix(guildId);
     let page: Page  = "main";
@@ -384,6 +481,10 @@ const command: Command = {
         case "general":
           embed      = generalEmbed(prefix, guildName);
           components = generalComponents(prefix);
+          break;
+        case "managers":
+          embed      = managersEmbed(s, guildName);
+          components = managersComponents(s);
           break;
         default:
           embed      = mainEmbed(s, prefix, guildName, done);
@@ -422,6 +523,7 @@ const command: Command = {
       if (id === "setup_nav_out")  { page = "output";     await i.deferUpdate(); await render(); return; }
       if (id === "setup_nav_cmd")  { page = "commands";   await i.deferUpdate(); await render(); return; }
       if (id === "setup_nav_gen")  { page = "general";    await i.deferUpdate(); await render(); return; }
+      if (id === "setup_nav_mgr")  { page = "managers";   await i.deferUpdate(); await render(); return; }
       if (id === "setup_back")     { page = "main";       await i.deferUpdate(); await render(); return; }
 
       // ── Done ─────────────────────────────────────────────────────────────────
@@ -455,59 +557,89 @@ const command: Command = {
         await save(i, { exploreChannelIds: (i as ChannelSelectMenuInteraction).values }); return;
       }
 
-      // ── Blacklist add/remove by ID (for threads the picker can't see) ─────────
+      // ── Manager roles ─────────────────────────────────────────────────────────
+      if (id === "setup_mgr_roles") {
+        if (!canEditManagers) {
+          await i.reply({ content: "◈ Only users with **Manage Server** can change manager roles.", flags: 64 });
+          return;
+        }
+        await save(i, { setupManagerRoleIds: (i as RoleSelectMenuInteraction).values }); return;
+      }
+
+      // ── Add/remove channels by ID (for channels the picker can't see) ─────────
+      if (id === "setup_allow_add_id" || id === "setup_allow_clear_id") {
+        const isAdd = id === "setup_allow_add_id";
+        const modal = new ModalBuilder()
+          .setCustomId(`setup_allow_id_modal_${isAdd ? "add" : "remove"}`)
+          .setTitle(isAdd ? "Add to Allowlist by ID" : "Remove from Allowlist by ID")
+          .addComponents(new ActionRowBuilder<TextInputBuilder>().addComponents(
+            new TextInputBuilder()
+              .setCustomId("channel_ids")
+              .setLabel("Channel IDs (comma separated)")
+              .setStyle(TextInputStyle.Paragraph)
+              .setPlaceholder("Right-click channel → Copy Channel ID\ne.g. 1234567890, 9876543210")
+              .setMinLength(1).setMaxLength(1000).setRequired(true)
+          ));
+        await (i as ButtonInteraction).showModal(modal);
+        const submitted = await waitForModal(interaction, `setup_allow_id_modal_${isAdd ? "add" : "remove"}`);
+        if (submitted) {
+          const ids = parseIds(submitted.raw);
+          const fresh = await getSettings(guildId);
+          const current: string[] = fresh.encounterChannelIds ?? [];
+          const updated = isAdd ? [...new Set([...current, ...ids])] : current.filter(x => !ids.includes(x));
+          await prisma.guildSettings.update({ where: { guildId }, data: { encounterChannelIds: updated } });
+          await loadExploreChannels(guildId);
+        }
+        await render(); return;
+      }
+
+      if (id === "setup_exp_add_id" || id === "setup_exp_clear_id") {
+        const isAdd = id === "setup_exp_add_id";
+        const modal = new ModalBuilder()
+          .setCustomId(`setup_exp_id_modal_${isAdd ? "add" : "remove"}`)
+          .setTitle(isAdd ? "Add to Explore Channels by ID" : "Remove from Explore by ID")
+          .addComponents(new ActionRowBuilder<TextInputBuilder>().addComponents(
+            new TextInputBuilder()
+              .setCustomId("channel_ids")
+              .setLabel("Channel IDs (comma separated)")
+              .setStyle(TextInputStyle.Paragraph)
+              .setPlaceholder("Right-click channel → Copy Channel ID\ne.g. 1234567890, 9876543210")
+              .setMinLength(1).setMaxLength(1000).setRequired(true)
+          ));
+        await (i as ButtonInteraction).showModal(modal);
+        const submitted = await waitForModal(interaction, `setup_exp_id_modal_${isAdd ? "add" : "remove"}`);
+        if (submitted) {
+          const ids = parseIds(submitted.raw);
+          const fresh = await getSettings(guildId);
+          const current: string[] = fresh.exploreChannelIds ?? [];
+          const updated = isAdd ? [...new Set([...current, ...ids])] : current.filter(x => !ids.includes(x));
+          await prisma.guildSettings.update({ where: { guildId }, data: { exploreChannelIds: updated } });
+          await loadExploreChannels(guildId);
+        }
+        await render(); return;
+      }
+
+      // ── Blacklist add/remove by ID ────────────────────────────────────────────
       if (id === "setup_blk_add_id" || id === "setup_blk_clear_id") {
         const isAdd = id === "setup_blk_add_id";
         const modal = new ModalBuilder()
           .setCustomId(`setup_blk_id_modal_${isAdd ? "add" : "remove"}`)
-          .setTitle(isAdd ? "Add Channels/Threads by ID" : "Remove Channels/Threads by ID")
-          .addComponents(
-            new ActionRowBuilder<TextInputBuilder>().addComponents(
-              new TextInputBuilder()
-                .setCustomId("channel_ids")
-                .setLabel("Channel / Thread IDs (comma separated)")
-                .setStyle(TextInputStyle.Paragraph)
-                .setPlaceholder("e.g.  1234567890  or  1234567890, 9876543210\n\nRight-click a channel/thread → Copy Channel ID")
-                .setMinLength(1).setMaxLength(1000).setRequired(true)
-            )
-          );
+          .setTitle(isAdd ? "Add to Blacklist by ID" : "Remove from Blacklist by ID")
+          .addComponents(new ActionRowBuilder<TextInputBuilder>().addComponents(
+            new TextInputBuilder()
+              .setCustomId("channel_ids")
+              .setLabel("Channel / Thread IDs (comma separated)")
+              .setStyle(TextInputStyle.Paragraph)
+              .setPlaceholder("Right-click channel/thread → Copy Channel ID\ne.g. 1234567890, 9876543210")
+              .setMinLength(1).setMaxLength(1000).setRequired(true)
+          ));
         await (i as ButtonInteraction).showModal(modal);
-
-        const submitted = await new Promise<{ intr: ModalSubmitInteraction; raw: string } | null>((resolve) => {
-          const tid = setTimeout(() => { interaction.client.off(Events.InteractionCreate, mHandler); resolve(null); }, 60_000);
-          const mHandler = async (intr: Interaction) => {
-            if (
-              intr.isModalSubmit() &&
-              intr.customId === `setup_blk_id_modal_${isAdd ? "add" : "remove"}` &&
-              intr.user.id === interaction.user.id
-            ) {
-              clearTimeout(tid);
-              interaction.client.off(Events.InteractionCreate, mHandler);
-              const raw = (intr as ModalSubmitInteraction).fields.getTextInputValue("channel_ids");
-              // Acknowledge the modal — deferUpdate for component-triggered modals, fall back to reply
-              try {
-                await (intr as any).deferUpdate();
-              } catch (e1: any) {
-                console.error("[Setup] deferUpdate failed on modal:", e1?.message ?? e1);
-                try {
-                  await (intr as any).reply({ content: "◈ Updating...", flags: 64 });
-                } catch (e2: any) {
-                  console.error("[Setup] reply fallback also failed:", e2?.message ?? e2);
-                }
-              }
-              resolve({ intr: intr as ModalSubmitInteraction, raw });
-            }
-          };
-          interaction.client.on(Events.InteractionCreate, mHandler);
-        });
-
+        const submitted = await waitForModal(interaction, `setup_blk_id_modal_${isAdd ? "add" : "remove"}`);
         if (submitted) {
-          const ids     = submitted.raw.split(/[\s,]+/).map(x => x.trim()).filter(x => /^\d{17,20}$/.test(x));
-          const fresh   = await getSettings(guildId);
+          const ids = parseIds(submitted.raw);
+          const fresh = await getSettings(guildId);
           const current: string[] = (fresh as any).encounterBlacklist ?? [];
-          const updated = isAdd
-            ? [...new Set([...current, ...ids])]
-            : current.filter(x => !ids.includes(x));
+          const updated = isAdd ? [...new Set([...current, ...ids])] : current.filter(x => !ids.includes(x));
           await prisma.guildSettings.update({ where: { guildId }, data: { encounterBlacklist: updated } });
           await loadExploreChannels(guildId);
         }

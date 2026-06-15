@@ -335,6 +335,7 @@ model GuildSettings {
   expEnabled          Boolean  @default(true) // toggle chat EXP gain on/off server-wide
   botChannelIds       String[] @default([])   // if set, commands only respond in these channels
   prefix              String?                 // optional prefix for text commands e.g. "c" or "cart"
+  setupManagerRoleIds String[] @default([])   // roles that can use /setup (in addition to ManageGuild)
 
   @@map("guild_settings")
 }
