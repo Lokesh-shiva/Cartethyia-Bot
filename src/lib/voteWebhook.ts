@@ -101,14 +101,14 @@ export function startVoteWebhook(client: Client) {
 
     app.post("/topgg-vote", (req, res) => {
       res.sendStatus(200);
-      console.log(`[vote:topgg] raw body: ${JSON.stringify(req.body)}`);
-      // top.gg format: { type: "vote.create"|"webhook.test", data: { user: { id }, ... } }
       const type   = req.body?.type as string | undefined;
       const userId = req.body?.data?.user?.id as string | undefined;
-      if (!userId || type !== "vote.create") {
-        console.log(`[vote:topgg] Ignored (type=${type}, userId=${userId})`);
+      // Ignore test pings, require a userId for everything else
+      if (type === "webhook.test" || !userId) {
+        console.log(`[vote:topgg] Ignored (type=${type})`);
         return;
       }
+      console.log(`[vote:topgg] Incoming vote type=${type} userId=${userId}`);
       // Only process with matching auth
       if (req.headers.authorization !== TOPGG_WEBHOOK_AUTH) {
         console.warn(`[vote:topgg] Auth mismatch — ignoring vote from ${userId}`);
