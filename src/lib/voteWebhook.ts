@@ -102,15 +102,13 @@ export function startVoteWebhook(client: Client) {
     app.post("/topgg-vote", (req, res) => {
       res.sendStatus(200);
       const type   = req.body?.type as string | undefined;
-      const userId = req.body?.data?.user?.id as string | undefined;
+      const userId = req.body?.data?.user?.platform_id as string | undefined;
       // Ignore test pings, require a userId for everything else
       if (type === "webhook.test" || !userId) {
         console.log(`[vote:topgg] Ignored (type=${type})`);
         return;
       }
-      const auth = req.headers.authorization;
-      console.log(`[vote:topgg] RAW BODY:`, JSON.stringify(req.body, null, 2));
-      console.log(`[vote:topgg] Incoming vote type=${type} userId=${userId} auth=${auth}`);
+      console.log(`[vote:topgg] Incoming vote type=${type} userId=${userId}`);
       processVote(client, userId, isWeekend(), "topgg");
     });
   }
