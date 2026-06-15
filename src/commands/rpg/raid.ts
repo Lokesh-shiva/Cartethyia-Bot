@@ -97,12 +97,15 @@ function computeRaidBossStats(
   const avgHp    = totalHp  / n;
 
   // ── HP ──────────────────────────────────────────────────────────────────────
-  // Target ~18 skill-cycle turns of the full party to clear the boss.
+  // Target ~28 skill-cycle turns of the full party to clear the boss.
   // Per turn, an average player deals avgAtk * ~2.2 (basic/skill/ult average).
-  // We want total HP ≈ totalAtk * 2.2 * 18 * 0.80 (not too long but not trivial).
-  // Clamp to min of the boss's own intended base so low-gear raids still feel epic.
-  const targetHp = Math.floor(totalAtk * 2.2 * 18 * 0.80);
-  const bossHp   = Math.max(boss.baseHp * (1 + n * 0.25), targetHp);
+  // We want total HP ≈ totalAtk * 2.2 * 28 * 0.80 so geared parties still feel pressure.
+  // Floor = base * party-size factor * gear multiplier so high-ATK squads face proportionally
+  // more HP even when the base would otherwise dominate (prevents HP flatline at WL5+).
+  const targetHp  = Math.floor(totalAtk * 2.2 * 28 * 0.80);
+  const gearMult2 = Math.min(2.5, Math.sqrt(avgAtk / 300));
+  const floorHp   = Math.floor(boss.baseHp * (1 + n * 0.25) * gearMult2);
+  const bossHp    = Math.max(floorHp, targetHp);
 
   // ── ATK ─────────────────────────────────────────────────────────────────────
   // Each AoE round should drain ~12–18% of a player's HP after their DEF.

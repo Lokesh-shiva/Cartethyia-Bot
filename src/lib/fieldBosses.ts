@@ -24,7 +24,7 @@ export const FIELD_BOSSES: FieldBoss[] = [
     element: "FUSION",
     weakness:"GLACIO",
     artFile: "Ignis Behemoth.png",
-    baseHp:  1800, baseAtk: 110, baseDef: 55, vibBar: 80,
+    baseHp:  3200, baseAtk: 170, baseDef: 85, vibBar: 105,
     moves: [
       { name: "Magma Fist",      damage: 1.0, effect: "slams you with a fist wreathed in molten rock"  },
       { name: "Cinder Burst",    damage: 1.4, effect: "detonates with a spray of superheated slag"     },
@@ -38,7 +38,7 @@ export const FIELD_BOSSES: FieldBoss[] = [
     element: "GLACIO",
     weakness:"FUSION",
     artFile: "Permafrost Sovereign.png",
-    baseHp:  2000, baseAtk: 95, baseDef: 80, vibBar: 85,
+    baseHp:  3600, baseAtk: 148, baseDef: 120, vibBar: 110,
     moves: [
       { name: "Frost Grasp",     damage: 1.0, effect: "locks you in place with crystalline ice"        },
       { name: "Blizzard Rush",   damage: 1.3, effect: "charges through you on a wave of frozen wind"   },
@@ -52,7 +52,7 @@ export const FIELD_BOSSES: FieldBoss[] = [
     element: "ELECTRO",
     weakness:"AERO",
     artFile: "Voltaic Aberrant.png",
-    baseHp:  1700, baseAtk: 125, baseDef: 45, vibBar: 75,
+    baseHp:  3000, baseAtk: 190, baseDef: 72, vibBar: 100,
     moves: [
       { name: "Arc Strike",      damage: 1.0, effect: "discharges a raw bolt of plasma through you"    },
       { name: "Thunder Coil",    damage: 1.5, effect: "wraps you in a spiral of electro current"       },
@@ -66,7 +66,7 @@ export const FIELD_BOSSES: FieldBoss[] = [
     element: "AERO",
     weakness:"ELECTRO",
     artFile: "Tempest Ancient.png",
-    baseHp:  1900, baseAtk: 115, baseDef: 50, vibBar: 78,
+    baseHp:  3400, baseAtk: 178, baseDef: 78, vibBar: 103,
     moves: [
       { name: "Wind Slash",      damage: 1.0, effect: "cuts through your guard on an invisible current" },
       { name: "Gale Sweep",      damage: 1.4, effect: "hurls you with a concentrated burst of aero"    },
@@ -80,7 +80,7 @@ export const FIELD_BOSSES: FieldBoss[] = [
     element: "HAVOC",
     weakness:"SPECTRO",
     artFile: "Null Ravager.png",
-    baseHp:  2100, baseAtk: 105, baseDef: 65, vibBar: 82,
+    baseHp:  3800, baseAtk: 165, baseDef: 100, vibBar: 108,
     moves: [
       { name: "Shade Claw",      damage: 1.0, effect: "tears at your resonance field from the inside"  },
       { name: "Void Pulse",      damage: 1.5, effect: "sends a shockwave of null-energy through you"   },
@@ -94,7 +94,7 @@ export const FIELD_BOSSES: FieldBoss[] = [
     element: "SPECTRO",
     weakness:"HAVOC",
     artFile: "Luminal Specter.png",
-    baseHp:  1950, baseAtk: 100, baseDef: 70, vibBar: 80,
+    baseHp:  3500, baseAtk: 158, baseDef: 106, vibBar: 106,
     moves: [
       { name: "Light Lance",     damage: 1.0, effect: "pierces you with a focused beam of spectro energy" },
       { name: "Radiant Burst",   damage: 1.4, effect: "detonates in blinding resonant light"            },
