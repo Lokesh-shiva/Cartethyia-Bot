@@ -113,6 +113,11 @@ export function startVoteWebhook(client: Client) {
     });
   }
 
+  // Silently drop malformed requests (PHP probes, scanners, etc.)
+  app.use((err: any, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+    res.sendStatus(400);
+  });
+
   app.listen(WEBHOOK_PORT, () => {
     const active = [DBL_WEBHOOK_AUTH && "/dbl-vote", TOPGG_WEBHOOK_AUTH && "/topgg-vote"].filter(Boolean).join(", ");
     console.log(`🗳️  Vote webhook server on port ${WEBHOOK_PORT} — endpoints: ${active}`);
