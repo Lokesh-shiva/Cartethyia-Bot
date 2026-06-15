@@ -109,8 +109,8 @@ export function startVoteWebhook(client: Client) {
         return;
       }
       const auth = req.headers.authorization;
+      console.log(`[vote:topgg] RAW BODY:`, JSON.stringify(req.body, null, 2));
       console.log(`[vote:topgg] Incoming vote type=${type} userId=${userId} auth=${auth}`);
-      console.log(`[vote:topgg] Real vote from ${userId}`);
       processVote(client, userId, isWeekend(), "topgg");
     });
   }
