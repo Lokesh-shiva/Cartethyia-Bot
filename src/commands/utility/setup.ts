@@ -419,7 +419,7 @@ const command: Command = {
   data: new SlashCommandBuilder()
     .setName("setup")
     .setDescription("Interactive server configuration — encounters, channels, commands, prefix and more.")
-    .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
+    .setDefaultMemberPermissions(0)
     .setDMPermission(false) as SlashCommandBuilder,
 
   async execute(interaction: ChatInputCommandInteraction) {

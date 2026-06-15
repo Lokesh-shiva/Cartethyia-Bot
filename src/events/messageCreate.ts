@@ -187,13 +187,14 @@ function buildPrefixInteraction(message: Message, commandName: string, rawArgs: 
 
   return {
     // Core identity
-    user:       message.author,
-    member:     message.member,
-    guild:      message.guild,
-    channel:    message.channel,
-    client:     message.client,
-    guildId:    message.guildId,
-    channelId:  message.channelId,
+    user:              message.author,
+    member:            message.member,
+    memberPermissions: message.member?.permissions ?? null,
+    guild:             message.guild,
+    channel:           message.channel,
+    client:            message.client,
+    guildId:           message.guildId,
+    channelId:         message.channelId,
     commandName,
 
     // Type guards (some commands check these)
