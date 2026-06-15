@@ -146,23 +146,24 @@ interface RaidParticipant {
 }
 
 interface ActiveRaid {
-  bossChoice:   string;
-  bossHp:       number;
-  bossHpMax:    number;
-  bossAtk:      number;   // scaled after party is known
-  bossDef:      number;   // scaled after party is known
-  bossVib:      number;
-  bossVibMax:   number;
-  isShattered:  boolean;
-  shatterLeft:  number;
-  phase:        "RECRUITING" | "FIGHTING";
-  participants: RaidParticipant[];
-  currentIdx:   number;
-  turn:         number;
-  channelId:    string;
-  guildId:      string;
-  organizerId:  string;
-  recruitMsg?:  any;      // reference to the recruiting embed message for live updates
+  bossChoice:    string;
+  bossHp:        number;
+  bossHpMax:     number;
+  bossAtk:       number;   // scaled after party is known
+  bossDef:       number;   // scaled after party is known
+  bossVib:       number;
+  bossVibMax:    number;
+  isShattered:   boolean;
+  shatterLeft:   number;
+  phase:         "RECRUITING" | "FIGHTING";
+  participants:  RaidParticipant[];
+  currentIdx:    number;
+  turn:          number;
+  channelId:     string;
+  guildId:       string;
+  organizerId:   string;
+  recruitMsg?:   any;      // reference to the recruiting embed message for live updates
+  joinCollector?: any;     // stopped when the raid ends so stale collectors don't bleed into new raids
 }
 
 const activeRaids  = new Map<string, ActiveRaid>(); // channelId → raid
@@ -343,9 +344,10 @@ async function startRaid(interaction: ChatInputCommandInteraction) {
 
   const joinCollector = (interaction.channel as TextChannel).createMessageComponentCollector({
     componentType: ComponentType.Button,
-    filter: b => b.customId === "raid_join_btn",
+    filter: b => b.customId === "raid_join_btn" && b.message.id === recruitMsg.id,
     time: JOIN_WINDOW_MS,
   });
+  raid.joinCollector = joinCollector;
 
   joinCollector.on("collect", async (btn: ButtonInteraction) => {
     const r = activeRaids.get(interaction.channelId);
@@ -521,6 +523,7 @@ async function launchRaid(
   const raid = activeRaids.get(channelId);
   if (!raid) return;
 
+  raid.joinCollector?.stop();
   raid.phase      = "FIGHTING";
   raid.currentIdx = 0;
 
@@ -584,6 +587,7 @@ async function launchRaid(
   });
 
   const finishRaid = async (won: boolean) => {
+    raid.joinCollector?.stop();
     activeRaids.delete(channelId);
 
     if (won) {
