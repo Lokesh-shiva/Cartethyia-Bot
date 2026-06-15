@@ -431,8 +431,12 @@ const command: Command = {
     const guildId   = interaction.guildId;
     const guildName = interaction.guild?.name ?? "This Server";
 
-    // Allow users with Manage Guild OR a configured manager role
-    const hasManageGuild = (interaction.memberPermissions?.has(PermissionFlagsBits.ManageGuild)) ?? false;
+    // Allow server owner, Administrator, ManageGuild, OR a configured manager role
+    const isOwner        = interaction.guild?.ownerId === interaction.user.id;
+    const hasManageGuild = isOwner
+      || (interaction.memberPermissions?.has(PermissionFlagsBits.Administrator) ?? false)
+      || (interaction.memberPermissions?.has(PermissionFlagsBits.ManageGuild)   ?? false);
+
     if (!hasManageGuild) {
       const settings = await getSettings(guildId);
       const managerRoles: string[] = (settings as any).setupManagerRoleIds ?? [];
@@ -449,7 +453,7 @@ const command: Command = {
       }
     }
 
-    // Only ManageGuild holders can change manager roles
+    // Only ManageGuild/owner holders can change manager roles
     const canEditManagers = hasManageGuild;
 
     await interaction.deferReply({ flags: 64 });
