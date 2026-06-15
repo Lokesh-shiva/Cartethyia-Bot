@@ -19,7 +19,7 @@ const FEATURES = [
   },
   {
     id: 'wish', label: 'Wish System', emoji: '✨',
-    desc: 'Spend Lunakite to pull from the weapon and echo banner. Pity is tracked — guaranteed 5★ within 90 pulls.',
+    desc: 'Spend Fracture Keys to pull weapons from the Resonance Banner. Soft pity at 65, guaranteed 5★ by pull 80.',
     accent: 'rgba(99,102,241,0.18)', reveal: 'up',
   },
   {
