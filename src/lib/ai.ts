@@ -59,14 +59,23 @@ export async function askAI(options: AIPromptOptions): Promise<string | null> {
           { role: "system" as const, content: options.systemPrompt + " Do not use <thought>, <thinking>, or any reasoning tags. Respond directly with only the final sentence." },
           { role: "user" as const, content: options.userPrompt },
         ];
+        console.log(`[AI] Trying Gemini model: ${GEMINI_MODEL}`);
         const response = await geminiClient.chat.completions.create({
           model: GEMINI_MODEL,
           messages: geminiMessages,
           max_tokens: options.maxTokens ?? 40,
           temperature: 0.85,
         });
-        return sanitize(response.choices[0]?.message?.content ?? "");
-      } catch (e) { console.error("[AI] Gemini error:", (e as any)?.message ?? e); }
+        const raw = response.choices[0]?.message?.content ?? "";
+        console.log(`[AI] Gemini raw response: ${JSON.stringify(raw)}`);
+        const result = sanitize(raw);
+        console.log(`[AI] Gemini sanitized: ${JSON.stringify(result)}`);
+        return result;
+      } catch (e: any) {
+        console.error("[AI] Gemini error status:", e?.status);
+        console.error("[AI] Gemini error message:", e?.message);
+        console.error("[AI] Gemini error body:", JSON.stringify(e?.error ?? e?.body ?? ""));
+      }
     }
 
     const now = Date.now();
