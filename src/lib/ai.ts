@@ -53,7 +53,7 @@ export async function askAI(options: AIPromptOptions): Promise<string | null> {
           temperature: 0.85,
         });
         return response.choices[0]?.message?.content?.trim() ?? null;
-      } catch { /* fall through to null */ }
+      } catch (e) { console.error("[AI] Gemini error:", (e as any)?.message ?? e); }
     }
 
     const now = Date.now();
