@@ -56,14 +56,14 @@ export async function askAI(options: AIPromptOptions): Promise<string | null> {
     if (geminiClient) {
       try {
         const geminiMessages = [
-          { role: "system" as const, content: options.systemPrompt + " Do not use <thought>, <thinking>, or any reasoning tags. Respond directly with only the final sentence." },
+          { role: "system" as const, content: options.systemPrompt },
           { role: "user" as const, content: options.userPrompt },
         ];
         console.log(`[AI] Trying Gemini model: ${GEMINI_MODEL}`);
         const response = await geminiClient.chat.completions.create({
           model: GEMINI_MODEL,
           messages: geminiMessages,
-          max_tokens: options.maxTokens ?? 40,
+          max_tokens: 300,
           temperature: 0.85,
         });
         const raw = response.choices[0]?.message?.content ?? "";
