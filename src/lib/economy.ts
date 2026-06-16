@@ -72,18 +72,25 @@ export async function awardUser(
  * Award EXP from chatting (1-minute cooldown enforced).
  * Returns the EXP awarded (0 if on cooldown).
  */
-export async function tryAwardChatExp(userId: string): Promise<number> {
-  const user = await prisma.user.findUnique({ where: { id: userId } });
-  if (!user) return 0;
+// In-memory EXP cooldown — avoids a full DB fetch on every chat message just
+// to check if 3s have elapsed. Survives restarts gracefully (falls back to DB).
+const expCooldowns = new Map<string, number>();
 
-  const now  = new Date();
-  const diff = now.getTime() - user.lastExpGain.getTime();
-  if (diff < 3_000) return 0;
+export async function tryAwardChatExp(userId: string, lastExpGain: Date): Promise<number> {
+  const now = Date.now();
 
-  const expGain = Math.floor(Math.random() * 6) + 3; // 3–8 EXP per message
+  // Fast path: in-memory cooldown check (no DB hit)
+  const cached = expCooldowns.get(userId) ?? 0;
+  if (now - cached < 3_000) return 0;
+
+  // DB-backed check as fallback (handles bot restarts)
+  if (now - lastExpGain.getTime() < 3_000) return 0;
+
+  expCooldowns.set(userId, now);
+  const expGain = Math.floor(Math.random() * 6) + 3;
   await prisma.user.update({
     where: { id: userId },
-    data:  { resonanceExp: { increment: expGain }, lastExpGain: now },
+    data:  { resonanceExp: { increment: expGain }, lastExpGain: new Date(now) },
   });
 
   return expGain;

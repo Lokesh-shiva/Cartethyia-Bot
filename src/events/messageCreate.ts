@@ -59,14 +59,16 @@ export async function execute(message: Message) {
   // Do NOT auto-create users here — that let anyone gain chat EXP, level up and
   // fight encounters without ever running /start. Only onboarded players
   // earn EXP or trigger encounter spawns.
+  // Single fetch — includes everything needed for EXP cooldown, encounter, and
+  // level-up card theming so we never hit the DB more than once per message.
   const chatUser = await prisma.user.findUnique({
     where:  { id: message.author.id },
-    select: { isOnboarded: true, worldLevel: true },
+    select: { isOnboarded: true, worldLevel: true, lastExpGain: true, element: true },
   });
   if (!chatUser?.isOnboarded) return;
 
   // ── Chat EXP ─────────────────────────────────────────────────────────────────
-  const expGained = isExpEnabled(message.guildId!) && await tryAwardChatExp(message.author.id);
+  const expGained = isExpEnabled(message.guildId!) && await tryAwardChatExp(message.author.id, chatUser.lastExpGain);
 
   // Encounter check — runs regardless of exp cooldown
   if (shouldSpawnEncounter(message.guildId!, message.channelId)) {
@@ -77,12 +79,6 @@ export async function execute(message: Message) {
 
   const result = await checkLevelUp(message.author.id);
   if (!result.didLevelUp) return;
-
-  // Fetch element for theming
-  const dbUser = await prisma.user.findUnique({
-    where:  { id: message.author.id },
-    select: { element: true },
-  });
 
   const avatarUrl = message.author.displayAvatarURL({ size: 256, extension: "png" });
   const isCapped  = result.hitCapAt !== null;
@@ -101,7 +97,7 @@ export async function execute(message: Message) {
       avatarUrl,
       oldLevel:  result.oldLevel,
       newLevel:  result.newLevel,
-      element:   dbUser?.element ?? "NONE",
+      element:   chatUser.element ?? "NONE",
       isCapped,
     });
     const attachment = new AttachmentBuilder(cardBuffer, { name: "levelup.png" });
@@ -116,7 +112,7 @@ export async function execute(message: Message) {
   await sendMilestoneNotifications(notifCh, result.oldLevel, result.newLevel, result.hitCapAt);
 
   // If player just hit level 20 and hasn't chosen an element — trigger element selection
-  if (result.newLevel === 20 && (!dbUser?.element || dbUser.element === "NONE")) {
+  if (result.newLevel === 20 && (!chatUser.element || chatUser.element === "NONE")) {
     await new Promise((r) => setTimeout(r, 1500));
     await sendElementSelection(
       message.author.id,

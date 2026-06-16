@@ -346,14 +346,16 @@ export async function execute(interaction: ChatInputCommandInteraction) {
       try { await btn.deferUpdate(); } catch { return; }
 
       if (btn.customId === "equip_confirm") {
-        await prisma.echo.updateMany({
-          where: { userId: interaction.user.id, equippedSlot: slot, isEquipped: true },
-          data:  { isEquipped: false, equippedSlot: null },
-        });
-        await prisma.echo.update({
-          where: { id: incoming.id },
-          data:  { isEquipped: true, equippedSlot: slot },
-        });
+        await prisma.$transaction([
+          prisma.echo.updateMany({
+            where: { userId: interaction.user.id, equippedSlot: slot, isEquipped: true },
+            data:  { isEquipped: false, equippedSlot: null },
+          }),
+          prisma.echo.update({
+            where: { id: incoming.id },
+            data:  { isEquipped: true, equippedSlot: slot },
+          }),
+        ]);
 
         const mainVal   = calcMainStatValue(incoming.mainStatType, incoming.level, incoming.rarity);
         const mainLabel = MAIN_STAT_LABELS[incoming.mainStatType] ?? incoming.mainStatType;

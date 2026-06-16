@@ -134,21 +134,25 @@ async function loadPreset(interaction: ChatInputCommandInteraction, color: numbe
     : [];
   const validIdSet = new Set(valid.map(e => e.id));
 
-  // Unequip all current echoes
-  await prisma.echo.updateMany({
-    where: { userId: interaction.user.id, isEquipped: true },
-    data:  { isEquipped: false, equippedSlot: null },
-  });
+  // Unequip all current echoes then equip preset echoes atomically
+  const equips = Object.entries(slots)
+    .filter(([, echoId]) => echoId && validIdSet.has(echoId))
+    .map(([slotStr, echoId]) => ({ slot: Number(slotStr), echoId: echoId! }));
 
-  // Equip each valid echo from preset
-  const equipped: string[] = [];
-  for (const [slotStr, echoId] of Object.entries(slots)) {
-    if (!echoId || !validIdSet.has(echoId)) continue;
-    const slot = Number(slotStr);
-    await prisma.echo.update({ where: { id: echoId }, data: { isEquipped: true, equippedSlot: slot } });
+  await prisma.$transaction([
+    prisma.echo.updateMany({
+      where: { userId: interaction.user.id, isEquipped: true },
+      data:  { isEquipped: false, equippedSlot: null },
+    }),
+    ...equips.map(({ slot, echoId }) =>
+      prisma.echo.update({ where: { id: echoId }, data: { isEquipped: true, equippedSlot: slot } })
+    ),
+  ]);
+
+  const equipped: string[] = equips.map(({ slot, echoId }) => {
     const e = valid.find(x => x.id === echoId)!;
-    equipped.push(`◈  **${SLOT_LABEL(slot)}** — ${e.name}  ${RARITY_STARS[e.rarity]}`);
-  }
+    return `◈  **${SLOT_LABEL(slot)}** — ${e.name}  ${RARITY_STARS[e.rarity]}`;
+  });
 
   const skipped = echoIds.filter(id => !validIdSet.has(id)).length;
   const note = skipped > 0 ? `\n\n*${skipped} echo(es) no longer owned — those slots left empty.*` : "";
