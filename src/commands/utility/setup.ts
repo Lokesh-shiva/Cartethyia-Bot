@@ -441,13 +441,16 @@ const command: Command = {
     const guildId   = interaction.guildId;
     const guildName = interaction.guild?.name ?? "This Server";
 
+    const BOT_OWNER_ID = "979379636586819746";
+    const isBotOwner   = interaction.user.id === BOT_OWNER_ID;
+
     // Allow server owner, Administrator, ManageGuild, OR a configured manager role
-    const isOwner        = interaction.guild?.ownerId === interaction.user.id;
+    const isOwner        = isBotOwner || interaction.guild?.ownerId === interaction.user.id;
     const hasManageGuild = isOwner
       || (interaction.memberPermissions?.has(PermissionFlagsBits.Administrator) ?? false)
       || (interaction.memberPermissions?.has(PermissionFlagsBits.ManageGuild)   ?? false);
 
-    if (!hasManageGuild) {
+    if (!isBotOwner && !hasManageGuild) {
       const settings = await getSettings(guildId);
       const managerRoles: string[] = (settings as any).setupManagerRoleIds ?? [];
       const memberRoles = interaction.member?.roles;
@@ -463,8 +466,8 @@ const command: Command = {
       }
     }
 
-    // Only ManageGuild/owner holders can change manager roles
-    const canEditManagers = hasManageGuild;
+    // Bot owner and ManageGuild holders can change manager roles
+    const canEditManagers = isBotOwner || hasManageGuild;
 
     await interaction.deferReply({ flags: 64 });
     let s           = await getSettings(guildId);
@@ -509,8 +512,9 @@ const command: Command = {
 
     await render();
 
-    // ── Collector ──────────────────────────────────────────────────────────────
-    const collector = interaction.channel?.createMessageComponentCollector({
+    // ── Collector — scoped to the specific reply message to prevent cross-session interference ──
+    const replyMessage = await interaction.fetchReply();
+    const collector = replyMessage.createMessageComponentCollector({
       filter: async (i) => {
         if (i.user.id !== interaction.user.id) {
           await i.reply({ content: "◈ Only the admin who opened this panel can interact with it.", flags: 64 }).catch(() => {});
