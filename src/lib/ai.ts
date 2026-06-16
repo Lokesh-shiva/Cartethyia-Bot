@@ -6,10 +6,18 @@ const client = new OpenAI({
   apiKey: "lm-studio",
 });
 
+const geminiClient = process.env.GEMINI_API_KEY
+  ? new OpenAI({
+      baseURL: "https://generativeai.googleapis.com/v1beta/openai/",
+      apiKey: process.env.GEMINI_API_KEY,
+    })
+  : null;
+
 const aiQueue = new PQueue({ concurrency: 1 });
 let lastErrorLog = 0;
 
-const MODEL = process.env.LM_STUDIO_MODEL || "local-model";
+const MODEL        = process.env.LM_STUDIO_MODEL || "local-model";
+const GEMINI_MODEL = process.env.GEMINI_MODEL    || "gemma-4-31b-it";
 
 export interface AIPromptOptions {
   systemPrompt: string;
@@ -19,25 +27,41 @@ export interface AIPromptOptions {
 
 export async function askAI(options: AIPromptOptions): Promise<string | null> {
   return aiQueue.add(async () => {
+    const messages: { role: "system" | "user"; content: string }[] = [
+      { role: "system", content: options.systemPrompt },
+      { role: "user",   content: options.userPrompt   },
+    ];
+
+    // Primary: LM Studio (self-hosted) — 3s timeout so Gemini kicks in fast if offline
     try {
       const response = await client.chat.completions.create({
         model: MODEL,
-        messages: [
-          { role: "system", content: options.systemPrompt },
-          { role: "user",   content: options.userPrompt   },
-        ],
+        messages,
         max_tokens: options.maxTokens ?? 40,
         temperature: 0.85,
-      });
+      }, { signal: AbortSignal.timeout(3_000) });
       return response.choices[0]?.message?.content?.trim() ?? null;
-    } catch {
-      const now = Date.now();
-      if (now - lastErrorLog > 60_000) {
-        console.warn("[AI] LM Studio unreachable — AI narration disabled until it starts.");
-        lastErrorLog = now;
-      }
-      return null;
+    } catch { /* fall through to Gemini */ }
+
+    // Fallback: Gemini
+    if (geminiClient) {
+      try {
+        const response = await geminiClient.chat.completions.create({
+          model: GEMINI_MODEL,
+          messages,
+          max_tokens: options.maxTokens ?? 40,
+          temperature: 0.85,
+        });
+        return response.choices[0]?.message?.content?.trim() ?? null;
+      } catch { /* fall through to null */ }
     }
+
+    const now = Date.now();
+    if (now - lastErrorLog > 60_000) {
+      console.warn("[AI] LM Studio and Gemini both unreachable — AI narration disabled.");
+      lastErrorLog = now;
+    }
+    return null;
   }) as Promise<string | null>;
 }
 

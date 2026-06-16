@@ -1,5 +1,6 @@
 import "dotenv/config";
 import { attachProcessHandlers, logInfo } from "./lib/logger";
+import { prisma } from "./lib/prisma";
 attachProcessHandlers(); // must be first — catches everything from this point on
 
 import {
@@ -112,5 +113,10 @@ client.login(token).then(() => {
   client.once("clientReady", () => {
     setTimeout(postTopggStats, 10_000); // wait 10s for guild cache
     setInterval(postTopggStats, 30 * 60 * 1000);
+
+    // Keep Neon compute warm — free tier suspends after 5 min idle, causing 500-2000ms cold starts
+    setInterval(async () => {
+      try { await prisma.$queryRaw`SELECT 1`; } catch {}
+    }, 4 * 60 * 1000);
   });
 });
