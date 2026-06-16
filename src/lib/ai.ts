@@ -26,12 +26,22 @@ export interface AIPromptOptions {
 }
 
 function sanitize(text: string): string | null {
+  // Strip closed thought/thinking blocks, keep text outside them
   const clean = text
     .replace(/<thought>[\s\S]*?<\/thought>/gi, "")
     .replace(/<thinking>[\s\S]*?<\/thinking>/gi, "")
     .replace(/\*+$/, "")
     .trim();
-  return clean || null;
+
+  if (clean) return clean;
+
+  // Gemma thinking model: thought block consumed all tokens — extract last quoted
+  // candidate from inside the thought (the model quotes its chosen response)
+  const inner = text.replace(/<\/?thought>/gi, "").replace(/<\/?thinking>/gi, "");
+  const quotes = [...inner.matchAll(/"([^"]{8,120})"/g)];
+  if (quotes.length) return quotes[quotes.length - 1][1].trim() || null;
+
+  return null;
 }
 
 export async function askAI(options: AIPromptOptions): Promise<string | null> {
@@ -63,7 +73,7 @@ export async function askAI(options: AIPromptOptions): Promise<string | null> {
         const response = await geminiClient.chat.completions.create({
           model: GEMINI_MODEL,
           messages: geminiMessages,
-          max_tokens: 300,
+          max_tokens: 1000,
           temperature: 0.85,
         });
         const raw = response.choices[0]?.message?.content ?? "";
