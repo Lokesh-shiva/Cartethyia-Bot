@@ -25,6 +25,15 @@ export interface AIPromptOptions {
   maxTokens?: number;
 }
 
+function sanitize(text: string): string | null {
+  const clean = text
+    .replace(/<thought>[\s\S]*?<\/thought>/gi, "")
+    .replace(/<thinking>[\s\S]*?<\/thinking>/gi, "")
+    .replace(/\*+$/, "")
+    .trim();
+  return clean || null;
+}
+
 export async function askAI(options: AIPromptOptions): Promise<string | null> {
   return aiQueue.add(async () => {
     const messages: { role: "system" | "user"; content: string }[] = [
@@ -40,7 +49,7 @@ export async function askAI(options: AIPromptOptions): Promise<string | null> {
         max_tokens: options.maxTokens ?? 40,
         temperature: 0.85,
       }, { signal: AbortSignal.timeout(3_000) });
-      return response.choices[0]?.message?.content?.trim() ?? null;
+      return sanitize(response.choices[0]?.message?.content ?? "");
     } catch { /* fall through to Gemini */ }
 
     // Fallback: Gemini
@@ -52,7 +61,7 @@ export async function askAI(options: AIPromptOptions): Promise<string | null> {
           max_tokens: options.maxTokens ?? 40,
           temperature: 0.85,
         });
-        return response.choices[0]?.message?.content?.trim() ?? null;
+        return sanitize(response.choices[0]?.message?.content ?? "");
       } catch (e) { console.error("[AI] Gemini error:", (e as any)?.message ?? e); }
     }
 
