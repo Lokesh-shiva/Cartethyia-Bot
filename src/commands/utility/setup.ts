@@ -158,27 +158,36 @@ function encounterEmbed(s: any, guildName: string) {
     .setFooter({ text: "CARTETHYIA  ·  Threads not visible in picker? Use ➕ Add by ID  ·  Right-click channel → Copy ID" });
 }
 
-function encounterComponents(s: any) {
+function encounterComponents(s: any, guild: import("discord.js").Guild | null) {
+  // Categories are valid for encounter matching but can't be set as select menu defaults
+  const textOnly = (ids: string[]) => ids.filter(id => {
+    const ch = guild?.channels.cache.get(id);
+    return ch && ch.type !== ChannelType.GuildCategory;
+  });
+
   const allowMenu = new ChannelSelectMenuBuilder()
     .setCustomId("setup_enc_allow")
     .setPlaceholder("📍  Encounter Allowlist — where enemies can spawn (clear = everywhere)")
     .setChannelTypes(...TEXT_CHANNEL_TYPES)
     .setMinValues(0).setMaxValues(20);
-  if (s.encounterChannelIds.length) allowMenu.setDefaultChannels(s.encounterChannelIds);
+  const allowDefaults = textOnly(s.encounterChannelIds);
+  if (allowDefaults.length) allowMenu.setDefaultChannels(allowDefaults);
 
   const blackMenu = new ChannelSelectMenuBuilder()
     .setCustomId("setup_enc_block")
     .setPlaceholder("🚫  Encounter Blacklist — enemies NEVER spawn here (includes threads)")
     .setChannelTypes(...TEXT_CHANNEL_TYPES)
     .setMinValues(0).setMaxValues(20);
-  if (s.encounterBlacklist?.length) blackMenu.setDefaultChannels(s.encounterBlacklist);
+  const blackDefaults = textOnly(s.encounterBlacklist ?? []);
+  if (blackDefaults.length) blackMenu.setDefaultChannels(blackDefaults);
 
   const exploreMenu = new ChannelSelectMenuBuilder()
     .setCustomId("setup_enc_explore")
     .setPlaceholder("🗺️  Explore Channels — high-rate grind zones (38% spawn, 30s cooldown)")
     .setChannelTypes(...TEXT_CHANNEL_TYPES)
     .setMinValues(0).setMaxValues(10);
-  if (s.exploreChannelIds.length) exploreMenu.setDefaultChannels(s.exploreChannelIds);
+  const exploreDefaults = textOnly(s.exploreChannelIds);
+  if (exploreDefaults.length) exploreMenu.setDefaultChannels(exploreDefaults);
 
   return [
     new ActionRowBuilder<ChannelSelectMenuBuilder>().addComponents(allowMenu),
@@ -473,7 +482,7 @@ const command: Command = {
       switch (page) {
         case "encounters":
           embed      = encounterEmbed(s, guildName);
-          components = encounterComponents(s);
+          components = encounterComponents(s, interaction.guild);
           break;
         case "output":
           embed      = outputEmbed(s, guildName);
