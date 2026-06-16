@@ -1,4 +1,5 @@
 import { createCanvas, loadImage, GlobalFonts, SKRSContext2D } from "@napi-rs/canvas";
+import { loadCachedImage } from "./canvas";
 import path from "path";
 import { Boss } from "./bosses";
 
@@ -114,7 +115,7 @@ export async function generateBattleCard(state: BattleCardState): Promise<Buffer
     ? state.boss.artFile
     : path.join(process.cwd(), "Bosses", state.boss.artFile);
   try {
-    const art = await loadImage(bossArtPath);
+    const art = await loadCachedImage(bossArtPath);
     const isPortrait = art.height > art.width;
 
     if (isPortrait) {

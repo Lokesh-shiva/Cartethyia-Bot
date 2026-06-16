@@ -97,17 +97,23 @@ export async function tryAwardChatExp(userId: string, lastExpGain: Date): Promis
 }
 
 /**
- * Returns true if the user is currently on an active dispatch expedition.
- * Use this to block combat commands (/ascend, /boss, /dungeon, /field-boss, /duel).
+ * Sync check against an already-fetched user object. Use this when the command
+ * already called getOrCreateUser() — avoids a redundant DB round-trip.
  */
+export function isDispatchBlocked(user: { dispatchStatus: string; dispatchEndsAt: Date | null }): boolean {
+  return user.dispatchStatus === "ON_DISPATCH"
+    && !!user.dispatchEndsAt
+    && user.dispatchEndsAt.getTime() > Date.now();
+}
+
+/** @deprecated Use isDispatchBlocked(user) when you already have the user row. */
 export async function isOnDispatch(userId: string): Promise<boolean> {
   const user = await prisma.user.findUnique({
     where:  { id: userId },
     select: { dispatchStatus: true, dispatchEndsAt: true },
   });
-  if (!user || user.dispatchStatus !== "ON_DISPATCH") return false;
-  if (!user.dispatchEndsAt) return false;
-  return user.dispatchEndsAt.getTime() > Date.now();
+  if (!user) return false;
+  return isDispatchBlocked(user);
 }
 
 /**

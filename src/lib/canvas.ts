@@ -1,7 +1,22 @@
-import { createCanvas, loadImage, GlobalFonts, SKRSContext2D } from "@napi-rs/canvas";
+import { createCanvas, loadImage, GlobalFonts, SKRSContext2D, Image } from "@napi-rs/canvas";
 import path from "path";
 import fs   from "fs";
 import { isOwner } from "./owner";
+
+// Cache static images (backgrounds, boss art, icons) by absolute path.
+// Each file is read from disk once per process lifetime.
+const imageCache = new Map<string, Image>();
+
+export async function loadCachedImage(filePath: string): Promise<Image> {
+  const cached = imageCache.get(filePath);
+  if (cached) return cached;
+  const img = await loadImage(filePath);
+  imageCache.set(filePath, img);
+  return img;
+}
+
+// Internal alias for background loading
+const loadBg = loadCachedImage;
 
 // ── Fonts ─────────────────────────────────────────────────────────────────────
 // Load all system fonts first — this makes Noto CJK, emoji, etc. available as
@@ -252,7 +267,7 @@ export async function generateProfileCard(input: ProfileCardInput): Promise<Buff
   for (const bgPath of bgPaths) {
     if (fs.existsSync(bgPath)) {
       try {
-        const bg    = await loadImage(bgPath);
+        const bg    = await loadBg(bgPath);
         const scale = Math.max(W / bg.width, H / bg.height);
         const sw = bg.width * scale, sh = bg.height * scale;
         ctx.drawImage(bg, (W - sw) / 2, (H - sh) / 2, sw, sh);

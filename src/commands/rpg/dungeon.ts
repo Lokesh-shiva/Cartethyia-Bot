@@ -11,7 +11,7 @@ import { compositeVibMult, compositeHasSecondWind } from "../../lib/abilityEffec
 import { hpBar, energyBar, baselineAtk } from "../../lib/combat";
 import { voteNudge } from "../../lib/voteNudge";
 import { rollRarity, rollMainStat, rollSubstats, rollSubstatValue, calcMainStatValue, substatCount, RARITY_STARS, ELEMENT_EMOJI } from "../../lib/echoes";
-import { awardUser, isOnDispatch, replyNotStarted } from "../../lib/economy";
+import { awardUser, isDispatchBlocked, replyNotStarted } from "../../lib/economy";
 import { acquireLock, releaseLock, alreadyInCombatMsg } from "../../lib/combatLock";
 import { registerFight, clearFight } from "../../lib/fightTracker";
 import { checkLevelUp } from "../../lib/progression";
@@ -43,11 +43,12 @@ export async function execute(interaction: ChatInputCommandInteraction) {
     select: { level: true, worldLevel: true, element: true,
               baseHp: true, baseAtk: true, baseDef: true,
               critRate: true, critDmg: true,
-              resonanceAura: true, auraUpdatedAt: true },
+              resonanceAura: true, auraUpdatedAt: true,
+              dispatchStatus: true, dispatchEndsAt: true },
   });
 
   if (!dbUser) { await replyNotStarted(interaction); return; }
-  if (await isOnDispatch(interaction.user.id)) {
+  if (isDispatchBlocked(dbUser)) {
     await interaction.editReply({ content: "◈ You are on an expedition. Use **/dispatch claim** first before entering combat." });
     return;
   }

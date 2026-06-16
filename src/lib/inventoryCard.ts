@@ -1,4 +1,5 @@
 import { createCanvas, loadImage, GlobalFonts, SKRSContext2D } from "@napi-rs/canvas";
+import { loadCachedImage } from "./canvas";
 import path from "path";
 import { User } from "@prisma/client";
 
@@ -137,7 +138,7 @@ export async function generateInventoryCard(user: User, displayName: string, ava
     const iconSize = 32;
     if (curr.file) {
       try {
-        const img = await loadImage(path.join(ICONS_DIR, curr.file));
+        const img = await loadCachedImage(path.join(ICONS_DIR, curr.file));
         ctx.drawImage(img, cx + 12, cy + (CELL_H - iconSize) / 2, iconSize, iconSize);
       } catch {
         ctx.fillStyle = curr.color;

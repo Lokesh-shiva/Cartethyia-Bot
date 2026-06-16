@@ -1,4 +1,5 @@
 import { createCanvas, loadImage, GlobalFonts, SKRSContext2D } from "@napi-rs/canvas";
+import { loadCachedImage } from "./canvas";
 import path from "path";
 
 try {
@@ -167,7 +168,7 @@ export async function generateRaidCard(
   // Boss art (top, centered)
   if (bossArtPath) {
     try {
-      const art = await loadImage(bossArtPath);
+      const art = await loadCachedImage(bossArtPath);
       const scale = Math.min(220 / art.width, 200 / art.height);
       const sw = art.width * scale, sh = art.height * scale;
       ctx.globalAlpha = 0.95;

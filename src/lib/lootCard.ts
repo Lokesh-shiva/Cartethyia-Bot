@@ -1,4 +1,5 @@
 import { createCanvas, loadImage, GlobalFonts, SKRSContext2D } from "@napi-rs/canvas";
+import { loadCachedImage } from "./canvas";
 import path from "path";
 import { LootResult } from "./loot";
 
@@ -173,7 +174,7 @@ export async function generateLootCard(opts: LootCardOptions): Promise<Buffer> {
 
       // Icon image
       try {
-        const img = await loadImage(path.join(ICONS_DIR, ICON_FILES[key]));
+        const img = await loadCachedImage(path.join(ICONS_DIR, ICON_FILES[key]));
         const pad = 6;
         const iix = ix + (ITEM_W - ICON_SIZE) / 2 + pad;
         const iiy = iy + pad;

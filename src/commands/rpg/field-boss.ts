@@ -6,7 +6,7 @@ import {
   StringSelectMenuBuilder, StringSelectMenuInteraction,
 } from "discord.js";
 import { Command } from "../../types";
-import { getOrCreateUser, awardUser, isOnDispatch } from "../../lib/economy";
+import { getOrCreateUser, awardUser, isDispatchBlocked } from "../../lib/economy";
 import { acquireLock, releaseLock, alreadyInCombatMsg } from "../../lib/combatLock";
 import { registerFight, clearFight } from "../../lib/fightTracker";
 import { checkLevelUp } from "../../lib/progression";
@@ -116,7 +116,7 @@ const command: Command = {
       return;
     }
 
-    if (await isOnDispatch(interaction.user.id)) {
+    if (isDispatchBlocked(user)) {
       await interaction.editReply({ content: "◈ You are on an expedition. Use **/dispatch claim** first before entering combat." });
       return;
     }

@@ -6,7 +6,7 @@ import {
 } from "discord.js";
 import prisma from "../../lib/prisma";
 import { calcPlayerDamage, calcEnemyDamage, hpBar, energyBar, COUNTER_ELEMENT } from "../../lib/combat";
-import { awardUser, isOnDispatch, replyNotStarted } from "../../lib/economy";
+import { awardUser, isDispatchBlocked, replyNotStarted } from "../../lib/economy";
 import { CE } from "../../lib/emojiManager";
 import { acquireLock, releaseLock, alreadyInCombatMsg } from "../../lib/combatLock";
 import {
@@ -150,15 +150,10 @@ export async function execute(interaction: ChatInputCommandInteraction) {
     releaseLock(interaction.user.id);
     await interaction.editReply({ content: `◈ **${target.displayName}** is already in combat and can't duel right now.` }); return;
   }
-  if (await isOnDispatch(interaction.user.id)) {
-    await interaction.editReply({ content: "◈ You are on an expedition. Use **/dispatch claim** first before duelling." });
-    return;
-  }
-
   const [challengerDb, challengedDb] = await Promise.all([
     prisma.user.findUnique({
       where:  { id: interaction.user.id },
-      select: { baseHp: true, baseAtk: true, baseDef: true, critRate: true, critDmg: true, element: true, level: true },
+      select: { baseHp: true, baseAtk: true, baseDef: true, critRate: true, critDmg: true, element: true, level: true, dispatchStatus: true, dispatchEndsAt: true },
     }),
     prisma.user.findUnique({
       where:  { id: target.id },
@@ -168,6 +163,10 @@ export async function execute(interaction: ChatInputCommandInteraction) {
 
   if (!challengerDb) { await replyNotStarted(interaction); return; }
   if (!challengedDb) { await interaction.editReply({ content: `${target.displayName} hasn't started yet.` }); return; }
+  if (isDispatchBlocked(challengerDb)) {
+    await interaction.editReply({ content: "◈ You are on an expedition. Use **/dispatch claim** first before duelling." });
+    return;
+  }
 
   // Resolve full combat stats (echoes + weapon + set bonuses + unique ability) for both
   const [cBonuses, dBonuses] = await Promise.all([
