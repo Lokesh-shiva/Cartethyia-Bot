@@ -140,8 +140,10 @@ export async function restoreEncounters(client: import("discord.js").Client): Pr
   }
 }
 
-export function isExploreChannel(guildId: string, channelId: string): boolean {
-  return exploreChannels.get(guildId)?.has(channelId) ?? false;
+export function isExploreChannel(guildId: string, channelId: string, parentId?: string | null): boolean {
+  const set = exploreChannels.get(guildId);
+  if (!set) return false;
+  return set.has(channelId) || (!!parentId && set.has(parentId));
 }
 
 // channelId → timestamp of last encounter spawn
@@ -171,19 +173,20 @@ const ENCOUNTER_TTL_MS    = 3 * 60 * 1000;   // encounter expires after 3 min
 
 // ── Spawn check ──────────────────────────────────────────────────────────────
 
-export function shouldSpawnEncounter(guildId: string, channelId: string): boolean {
+export function shouldSpawnEncounter(guildId: string, channelId: string, parentId?: string | null): boolean {
   // Master toggle — admins can disable chat encounters entirely
   if (encountersEnabled.get(guildId) === false) return false;
 
-  // Blacklist overrides everything — channel is always silent
-  if (encounterBlacklist.get(guildId)?.has(channelId)) return false;
+  // Blacklist overrides everything — channel or its category is always silent
+  const blacklist = encounterBlacklist.get(guildId);
+  if (blacklist?.has(channelId) || (parentId && blacklist?.has(parentId))) return false;
 
-  const explore = isExploreChannel(guildId, channelId);
+  const explore = isExploreChannel(guildId, channelId, parentId);
 
-  // Allowlist: if encounter channels are configured, only fire there (+ explore channels).
-  // Empty allowlist = fire everywhere (good for small/test servers).
+  // Allowlist: if configured, only fire in listed channels/categories (+ explore channels).
+  // Empty allowlist = fire everywhere.
   const allow = encounterChannels.get(guildId);
-  if (allow && allow.size > 0 && !allow.has(channelId) && !explore) return false;
+  if (allow && allow.size > 0 && !allow.has(channelId) && !(parentId && allow.has(parentId)) && !explore) return false;
 
   const cooldown = explore ? COOLDOWN_EXPLORE_MS : COOLDOWN_NORMAL_MS;
   const chance   = explore ? CHANCE_EXPLORE      : CHANCE_NORMAL;

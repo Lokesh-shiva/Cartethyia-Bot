@@ -71,7 +71,7 @@ export async function execute(message: Message) {
   const expGained = isExpEnabled(message.guildId!) && await tryAwardChatExp(message.author.id, chatUser.lastExpGain);
 
   // Encounter check — runs regardless of exp cooldown
-  if (shouldSpawnEncounter(message.guildId!, message.channelId)) {
+  if (shouldSpawnEncounter(message.guildId!, message.channelId, (channel as any).parentId)) {
     await spawnEncounter(channel, chatUser.worldLevel ?? 0);
   }
 

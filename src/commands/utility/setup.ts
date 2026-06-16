@@ -29,6 +29,16 @@ const OUTPUT_CHANNEL_TYPES = [
   ChannelType.GuildAnnouncement,
 ] as const;
 
+// Encounter pickers also include categories — selecting a category covers all channels under it
+const ENCOUNTER_CHANNEL_TYPES = [
+  ChannelType.GuildCategory,
+  ChannelType.GuildText,
+  ChannelType.GuildAnnouncement,
+  ChannelType.PublicThread,
+  ChannelType.PrivateThread,
+  ChannelType.AnnouncementThread,
+] as const;
+
 // ── DB helpers ────────────────────────────────────────────────────────────────
 
 async function getSettings(guildId: string) {
@@ -140,7 +150,7 @@ function encounterEmbed(s: any, guildName: string) {
     .addFields(
       {
         name: "📍  Encounter Allowlist",
-        value: `${enc}\n-# **Empty = enemies spawn everywhere.** Set channels = only those channels get encounters.`,
+        value: `${enc}\n-# **Empty = enemies spawn everywhere.** Select channels or a **category** — all channels under that category are included.`,
         inline: false,
       },
       {
@@ -160,22 +170,22 @@ function encounterEmbed(s: any, guildName: string) {
 function encounterComponents(s: any) {
   const allowMenu = new ChannelSelectMenuBuilder()
     .setCustomId("setup_enc_allow")
-    .setPlaceholder("📍  Encounter Allowlist — where enemies can spawn (clear = everywhere)")
-    .setChannelTypes(...TEXT_CHANNEL_TYPES)
+    .setPlaceholder("📍  Encounter Allowlist — channels or categories (clear = everywhere)")
+    .setChannelTypes(...ENCOUNTER_CHANNEL_TYPES)
     .setMinValues(0).setMaxValues(20);
   if (s.encounterChannelIds.length) allowMenu.setDefaultChannels(s.encounterChannelIds);
 
   const blackMenu = new ChannelSelectMenuBuilder()
     .setCustomId("setup_enc_block")
-    .setPlaceholder("🚫  Encounter Blacklist — enemies NEVER spawn here (includes threads)")
-    .setChannelTypes(...TEXT_CHANNEL_TYPES)
+    .setPlaceholder("🚫  Encounter Blacklist — channels or categories always silent")
+    .setChannelTypes(...ENCOUNTER_CHANNEL_TYPES)
     .setMinValues(0).setMaxValues(20);
   if (s.encounterBlacklist?.length) blackMenu.setDefaultChannels(s.encounterBlacklist);
 
   const exploreMenu = new ChannelSelectMenuBuilder()
     .setCustomId("setup_enc_explore")
-    .setPlaceholder("🗺️  Explore Channels — high-rate grind zones (38% spawn, 30s cooldown)")
-    .setChannelTypes(...TEXT_CHANNEL_TYPES)
+    .setPlaceholder("🗺️  Explore Channels/Categories — high-rate grind zones (38% spawn, 30s cooldown)")
+    .setChannelTypes(...ENCOUNTER_CHANNEL_TYPES)
     .setMinValues(0).setMaxValues(10);
   if (s.exploreChannelIds.length) exploreMenu.setDefaultChannels(s.exploreChannelIds);
 
