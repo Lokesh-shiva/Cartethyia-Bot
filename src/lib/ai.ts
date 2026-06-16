@@ -8,7 +8,7 @@ const client = new OpenAI({
 
 const geminiClient = process.env.GEMINI_API_KEY
   ? new OpenAI({
-      baseURL: "https://generativeai.googleapis.com/v1beta/openai/",
+      baseURL: "https://generativelanguage.googleapis.com/v1beta/openai/",
       apiKey: process.env.GEMINI_API_KEY,
     })
   : null;
