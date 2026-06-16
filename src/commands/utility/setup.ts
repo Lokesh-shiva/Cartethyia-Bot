@@ -170,7 +170,7 @@ function encounterComponents(s: any, guild: import("discord.js").Guild | null) {
     .setPlaceholder("📍  Encounter Allowlist — where enemies can spawn (clear = everywhere)")
     .setChannelTypes(...TEXT_CHANNEL_TYPES)
     .setMinValues(0).setMaxValues(20);
-  const allowDefaults = textOnly(s.encounterChannelIds);
+  const allowDefaults = textOnly(s.encounterChannelIds).slice(0, 20);
   if (allowDefaults.length) allowMenu.setDefaultChannels(allowDefaults);
 
   const blackMenu = new ChannelSelectMenuBuilder()
@@ -178,7 +178,7 @@ function encounterComponents(s: any, guild: import("discord.js").Guild | null) {
     .setPlaceholder("🚫  Encounter Blacklist — enemies NEVER spawn here (includes threads)")
     .setChannelTypes(...TEXT_CHANNEL_TYPES)
     .setMinValues(0).setMaxValues(20);
-  const blackDefaults = textOnly(s.encounterBlacklist ?? []);
+  const blackDefaults = textOnly(s.encounterBlacklist ?? []).slice(0, 20);
   if (blackDefaults.length) blackMenu.setDefaultChannels(blackDefaults);
 
   const exploreMenu = new ChannelSelectMenuBuilder()
@@ -186,7 +186,7 @@ function encounterComponents(s: any, guild: import("discord.js").Guild | null) {
     .setPlaceholder("🗺️  Explore Channels — high-rate grind zones (38% spawn, 30s cooldown)")
     .setChannelTypes(...TEXT_CHANNEL_TYPES)
     .setMinValues(0).setMaxValues(10);
-  const exploreDefaults = textOnly(s.exploreChannelIds);
+  const exploreDefaults = textOnly(s.exploreChannelIds).slice(0, 10);
   if (exploreDefaults.length) exploreMenu.setDefaultChannels(exploreDefaults);
 
   return [
