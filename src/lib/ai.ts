@@ -52,12 +52,16 @@ export async function askAI(options: AIPromptOptions): Promise<string | null> {
       return sanitize(response.choices[0]?.message?.content ?? "");
     } catch { /* fall through to Gemini */ }
 
-    // Fallback: Gemini
+    // Fallback: Gemini — prepend instruction to suppress thought/reasoning tags
     if (geminiClient) {
       try {
+        const geminiMessages = [
+          { role: "system" as const, content: options.systemPrompt + " Do not use <thought>, <thinking>, or any reasoning tags. Respond directly with only the final sentence." },
+          { role: "user" as const, content: options.userPrompt },
+        ];
         const response = await geminiClient.chat.completions.create({
           model: GEMINI_MODEL,
-          messages,
+          messages: geminiMessages,
           max_tokens: options.maxTokens ?? 40,
           temperature: 0.85,
         });
