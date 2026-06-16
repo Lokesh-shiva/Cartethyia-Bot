@@ -17,7 +17,7 @@ const aiQueue = new PQueue({ concurrency: 1 });
 let lastErrorLog = 0;
 
 const MODEL        = process.env.LM_STUDIO_MODEL || "local-model";
-const GEMINI_MODEL = process.env.GEMINI_MODEL    || "gemma-4-31b-it";
+const GEMINI_MODEL = process.env.GEMINI_MODEL    || "gemini-2.0-flash";
 
 export interface AIPromptOptions {
   systemPrompt: string;
