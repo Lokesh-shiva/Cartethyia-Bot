@@ -80,27 +80,31 @@ export async function askAI(options: AIPromptOptions): Promise<string | null> {
 
     // Fallback: Gemini — prepend instruction to suppress thought/reasoning tags
     if (geminiClient) {
-      try {
-        const geminiMessages = [
-          { role: "system" as const, content: options.systemPrompt },
-          { role: "user" as const, content: options.userPrompt },
-        ];
-        console.log(`[AI] Trying Gemini model: ${GEMINI_MODEL}`);
-        const response = await geminiClient.chat.completions.create({
-          model: GEMINI_MODEL,
-          messages: geminiMessages,
-          max_tokens: Math.max(options.maxTokens ?? 40, 1000),
-          temperature: 0.85,
-        });
-        const raw = response.choices[0]?.message?.content ?? "";
-        console.log(`[AI] Gemini raw response: ${JSON.stringify(raw)}`);
-        const result = sanitize(raw);
-        console.log(`[AI] Gemini sanitized: ${JSON.stringify(result)}`);
-        return result;
-      } catch (e: any) {
-        console.error("[AI] Gemini error status:", e?.status);
-        console.error("[AI] Gemini error message:", e?.message);
-        console.error("[AI] Gemini error body:", JSON.stringify(e?.error ?? e?.body ?? ""));
+      const geminiMessages = [
+        { role: "system" as const, content: options.systemPrompt },
+        { role: "user" as const, content: options.userPrompt },
+      ];
+      for (let attempt = 1; attempt <= 2; attempt++) {
+        try {
+          if (attempt > 1) await new Promise(r => setTimeout(r, 2000));
+          console.log(`[AI] Trying Gemini model: ${GEMINI_MODEL}${attempt > 1 ? ` (retry ${attempt})` : ""}`);
+          const response = await geminiClient.chat.completions.create({
+            model: GEMINI_MODEL,
+            messages: geminiMessages,
+            max_tokens: Math.max(options.maxTokens ?? 40, 1000),
+            temperature: 0.85,
+          });
+          const raw = response.choices[0]?.message?.content ?? "";
+          console.log(`[AI] Gemini raw response: ${JSON.stringify(raw)}`);
+          const result = sanitize(raw);
+          console.log(`[AI] Gemini sanitized: ${JSON.stringify(result)}`);
+          return result;
+        } catch (e: any) {
+          const status = e?.status as number | undefined;
+          console.error(`[AI] Gemini error status: ${status}, message: ${e?.message}`);
+          // Only retry on 5xx (transient server errors); bail immediately on 4xx
+          if (!status || status < 500) break;
+        }
       }
     }
 
