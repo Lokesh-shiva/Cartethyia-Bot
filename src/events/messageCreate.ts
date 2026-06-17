@@ -63,12 +63,19 @@ export async function execute(message: Message) {
   // level-up card theming so we never hit the DB more than once per message.
   const chatUser = await prisma.user.findUnique({
     where:  { id: message.author.id },
-    select: { isOnboarded: true, worldLevel: true, lastExpGain: true, element: true },
+    select: { isOnboarded: true, worldLevel: true, lastExpGain: true, element: true, tutorialStep: true },
   });
   if (!chatUser?.isOnboarded) return;
 
   // ── Chat EXP ─────────────────────────────────────────────────────────────────
   const expGained = isExpEnabled(message.guildId!) && await tryAwardChatExp(message.author.id, chatUser.lastExpGain);
+
+  // Tutorial guaranteed fight — bypasses channel restrictions, fires once, then done
+  if (chatUser.tutorialStep === 2) {
+    await prisma.user.update({ where: { id: message.author.id }, data: { tutorialStep: 3 } });
+    await spawnEncounter(channel, chatUser.worldLevel ?? 0);
+    return;
+  }
 
   // Encounter check — runs regardless of exp cooldown
   if (shouldSpawnEncounter(message.guildId!, message.channelId, (channel as any).parentId)) {

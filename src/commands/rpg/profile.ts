@@ -145,6 +145,15 @@ const command: Command = {
       .setFooter({ text: `CARTETHYIA  ·  ${displayName}'s Profile${extraBonds}`, iconURL: avatarUrl });
 
     await interaction.editReply({ embeds: [embed], files: [attachment] });
+
+    // Tutorial: viewing own profile at step 1 → advance to step 2 (fight pending)
+    if (target.id === interaction.user.id && (user as any).tutorialStep === 1) {
+      await prisma.user.update({ where: { id: user.id }, data: { tutorialStep: 2 } });
+      await interaction.followUp({
+        content: `◈ **${displayName}** — your resonance is live.\nJust **send a message** anywhere and your first encounter will spark. Good luck.`,
+        flags: 64,
+      });
+    }
   },
 };
 

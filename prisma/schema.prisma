@@ -90,6 +90,7 @@ model User {
 
   // Onboarding & personality
   isOnboarded      Boolean        @default(false)
+  tutorialStep     Int            @default(0)  // 0=none 1=needs /profile 2=fight pending 3=done
   resonanceProfile Json?          // onboarding answers + playstyle tracking
   uniqueAbilityName   String?
   uniqueAbilityEffect String?

@@ -179,6 +179,7 @@ export async function sendOnboarding(member: GuildMember, channel: TextChannel) 
       // Only mark fully onboarded if all questions were answered —
       // partial/timeout lets them restart with /start
       isOnboarded:      answered === total,
+      tutorialStep:     answered === total ? 1 : 0,
       resonanceProfile: {
         answers,
         dominantVibe:       "mixed",
@@ -204,14 +205,14 @@ export async function sendOnboarding(member: GuildMember, channel: TextChannel) 
       )
       .addFields(
         {
-          name:  "First steps — do these now:",
+          name:  "► Start here:",
           value: [
-            `**1.** \`/daily\` — claim your first daily reward right now`,
-            `**2.** Chat anywhere — every message earns Resonance EXP toward your next level`,
-            `**3.** Watch for **⚔ Fight** buttons — enemies spawn while you chat, defeat them to collect Echoes`,
-            `**4.** \`/vibe pat @someone\` — earn Tuning Modules + build Affinity with your first interaction`,
-            `**5.** \`/dungeon\` — fight 3-wave runs for echoes and materials`,
-            `**6.** \`/profile\` — see your character card`,
+            `**1.** \`/profile\` — see your character card  *(do this first — your first encounter spawns right after)*`,
+            `**2.** \`/daily\` — claim your first daily reward`,
+            `**3.** Chat anywhere — every message earns Resonance EXP toward your next level`,
+            `**4.** Watch for **⚔ Fight** buttons — defeat enemies to collect Echoes`,
+            `**5.** \`/vibe pat @someone\` — earn Tuning Modules + build Affinity`,
+            `**6.** \`/dungeon\` — fight 3-wave runs for echoes and materials`,
           ].join("\n"),
         },
         {
