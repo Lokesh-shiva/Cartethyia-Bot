@@ -4,8 +4,9 @@ import { CE } from "../../lib/emojiManager";
 import { communityFooter } from "../../lib/communityFooter";
 import prisma from "../../lib/prisma";
 
-const DBL_VOTE_URL   = "https://discordbotlist.com/bots/cartethyia/upvote";
-const TOPGG_VOTE_URL = "https://top.gg/bot/1510163339177623642/vote";
+const DBL_VOTE_URL     = "https://discordbotlist.com/bots/cartethyia/upvote";
+const TOPGG_VOTE_URL   = "https://top.gg/bot/1510163339177623642/vote";
+const RANKTOP_VOTE_URL = "https://rank.top/bot/cartethyia";
 const VOTE_COOLDOWN_MS = 12 * 60 * 60 * 1000;
 
 function isWeekend(): boolean {
@@ -66,12 +67,14 @@ const command: Command = {
           `${CE.fk} **${rewards.fractureKeys}** Fracture Key${rewards.fractureKeys !== 1 ? "s" : ""}\n\n` +
           `Rewards arrive automatically via DM after your vote is confirmed.\n\n` +
           `**[→ Upvote on top.gg](${TOPGG_VOTE_URL})**\n` +
-          `**[→ Upvote on discordbotlist.com](${DBL_VOTE_URL})**`
+          `**[→ Upvote on discordbotlist.com](${DBL_VOTE_URL})**\n` +
+          `**[→ Upvote on rank.top](${RANKTOP_VOTE_URL})**`
         )
         .addFields(
           { name: "🌐  Community",   value: "[Join our server](https://discord.gg/vgVmRMc2Gb)", inline: true },
           { name: "📋  top.gg",      value: `[top.gg/bot/cartethyia](https://top.gg/bot/1510163339177623642)`, inline: true },
           { name: "📋  DBL",         value: `[discordbotlist.com](https://discordbotlist.com/bots/cartethyia)`, inline: true },
+          { name: "📋  rank.top",    value: `[rank.top/bot/cartethyia](https://rank.top/bot/cartethyia)`, inline: true },
         )
         .setFooter(communityFooter(interaction.guildId, "CARTETHYIA  ·  Voting"))],
     });
