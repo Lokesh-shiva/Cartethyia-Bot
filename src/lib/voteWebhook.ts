@@ -41,7 +41,7 @@ async function processVote(
                    : source === "topgg" ? { topggVotes: { increment: 1 } }
                    : { ranktopVotes: { increment: 1 } };
     await Promise.all([
-      awardUser(userId, rewards),
+      awardUser(userId, rewards, source),
       prisma.user.update({
         where: { id: userId },
         data:  { lastVoted: new Date(), ...voteField },

@@ -112,7 +112,7 @@ export async function sendOnboarding(member: GuildMember, channel: TextChannel) 
   });
 
   if (isFirstTime) {
-    await awardUser(member.id, { credits: 500, tuningModules: 3, resonanceRecords: 5 });
+    await awardUser(member.id, { credits: 500, tuningModules: 3, resonanceRecords: 5 }, "onboarding");
   }
 
   await new Promise(r => setTimeout(r, 1500));

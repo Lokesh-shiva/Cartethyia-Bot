@@ -278,7 +278,7 @@ const command: Command = {
             resonanceExp:  Math.floor(boss.defeatLoot.resonanceExp  * LOOT_MULT),
             fractureKeys:  bossKeys,
           };
-          await awardUser(interaction.user.id, loot);
+          await awardUser(interaction.user.id, loot, "boss");
           const lvlResult  = await checkLevelUp(interaction.user.id);
           const evoLine    = await trackEvolutionProgress(interaction.user.id, { kind: "boss", worldLevel: boss.worldLevel }).catch(() => null);
           const bondResult = await incrementWeaponBond(interaction.user.id).catch(() => null);

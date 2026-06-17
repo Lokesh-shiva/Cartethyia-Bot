@@ -604,7 +604,7 @@ async function launchRaid(
         resonanceExp:  Math.floor(loot.resonanceExp    / n * 1.5),
       };
 
-      await Promise.all(raid.participants.map(p => awardUser(p.userId, perPlayer)));
+      await Promise.all(raid.participants.map(p => awardUser(p.userId, perPlayer, "raid")));
       await Promise.all(
         raid.participants.filter(p => !p.isDefeated).map(p =>
           prisma.user.update({ where: { id: p.userId }, data: { raidWins: { increment: 1 } } }).catch(() => {})

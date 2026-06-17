@@ -365,7 +365,7 @@ const command: Command = {
           const newCap           = WORLD_LEVEL_CAPS[newWL] ?? 90;
 
           // Award loot + raise WL
-          await awardUser(interaction.user.id, boss.defeatLoot);
+          await awardUser(interaction.user.id, boss.defeatLoot, "ascend");
           await prisma.user.update({
             where: { id: interaction.user.id },
             data:  { worldLevel: { increment: 1 }, ascensionWins: { increment: 1 }, fractureKeys: { increment: 2 } },

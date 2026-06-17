@@ -116,6 +116,11 @@ client.login(token).then(() => {
     setTimeout(postTopggStats, 10_000); // wait 10s for guild cache
     setInterval(postTopggStats, 30 * 60 * 1000);
 
+    // Anti-cheat: wire up audit client + run balance sweep every 12h
+    const { setAuditClient, runBalanceSweep } = require("./lib/antiCheat");
+    setAuditClient(client);
+    setInterval(() => runBalanceSweep(client), 12 * 60 * 60 * 1000);
+
     // Rank.top autoposter
     if (RANKTOP_API_KEY) {
       const { RankTopClient } = require("@rank-top/sdk");

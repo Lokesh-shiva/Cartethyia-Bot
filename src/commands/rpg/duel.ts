@@ -298,7 +298,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
       releaseLock(target.id);
       if (won && winnerId) {
         const loserId = winnerId === interaction.user.id ? target.id : interaction.user.id;
-        await awardUser(winnerId, { credits: WIN_CREDITS, resonanceExp: WIN_EXP });
+        await awardUser(winnerId, { credits: WIN_CREDITS, resonanceExp: WIN_EXP }, "duel");
         await prisma.user.update({ where: { id: winnerId }, data: { duelWins:   { increment: 1 } } }).catch(() => {});
         await prisma.user.update({ where: { id: loserId },  data: { duelLosses: { increment: 1 } } }).catch(() => {});
         await incrementWeaponBond(winnerId).catch(() => null);

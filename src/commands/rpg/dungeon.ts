@@ -12,6 +12,7 @@ import { hpBar, energyBar, baselineAtk } from "../../lib/combat";
 import { voteNudge } from "../../lib/voteNudge";
 import { rollRarity, rollMainStat, rollSubstats, rollSubstatValue, calcMainStatValue, substatCount, RARITY_STARS, ELEMENT_EMOJI } from "../../lib/echoes";
 import { awardUser, isDispatchBlocked, replyNotStarted } from "../../lib/economy";
+import { auditAward } from "../../lib/antiCheat";
 import { acquireLock, releaseLock, alreadyInCombatMsg } from "../../lib/combatLock";
 import { registerFight, clearFight } from "../../lib/fightTracker";
 import { checkLevelUp } from "../../lib/progression";
@@ -707,6 +708,15 @@ async function grantRewards(
     ...echoPayloads.map(data => prisma.echo.create({ data })),
   ];
   await prisma.$transaction(txOps);
+  auditAward(userId, {
+    credits:          gained.credits          ?? 0,
+    tuningModules:    gained.tuningModules    ?? 0,
+    sealingTubes:     gained.sealingTubes     ?? 0,
+    forgingOres:      gained.forgingOres      ?? 0,
+    paradoxCores:     gained.paradoxCores     ?? 0,
+    resonanceRecords: gained.resonanceRecords ?? 0,
+    fractureKeys:     gained.fractureKeys     ?? 0,
+  }, "dungeon").catch(() => {});
 
   const evoLine    = await trackEvolutionProgress(userId, { kind: "dungeon" }).catch(() => null);
   const bondResult = await incrementWeaponBond(userId).catch(() => null);

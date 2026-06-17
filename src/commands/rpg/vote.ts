@@ -69,7 +69,7 @@ const command: Command = {
           `**[→ Upvote on discordbotlist.com](${DBL_VOTE_URL})**`
         )
         .addFields(
-          { name: "🌐  Community",   value: "[Join our server](https://discord.gg/HwkdQbN3Ec)", inline: true },
+          { name: "🌐  Community",   value: "[Join our server](https://discord.gg/vgVmRMc2Gb)", inline: true },
           { name: "📋  top.gg",      value: `[top.gg/bot/cartethyia](https://top.gg/bot/1510163339177623642)`, inline: true },
           { name: "📋  DBL",         value: `[discordbotlist.com](https://discordbotlist.com/bots/cartethyia)`, inline: true },
         )

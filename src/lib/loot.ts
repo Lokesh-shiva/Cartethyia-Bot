@@ -69,7 +69,7 @@ export async function applyLoot(userId: string, loot: LootResult): Promise<strin
     forgingOres:      loot.forgingOres,
     resonanceExp:     loot.resonanceExp,
     resonanceRecords: loot.resonanceRecords,
-  });
+  }, "encounter");
 
   const parts: string[] = [];
   if (loot.credits          > 0) parts.push(`${CE.cr} ${loot.credits} Credits`);

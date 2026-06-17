@@ -247,7 +247,7 @@ async function handleClaim(interaction: ChatInputCommandInteraction) {
   const loot: LootResult = { ...raw, isMultiplied: false };
 
   // Award and reset dispatch
-  await awardUser(interaction.user.id, loot);
+  await awardUser(interaction.user.id, loot, "dispatch");
   await prisma.user.update({
     where: { id: interaction.user.id },
     data:  { dispatchStatus: "IDLE", dispatchEndsAt: null, dispatchHours: null },

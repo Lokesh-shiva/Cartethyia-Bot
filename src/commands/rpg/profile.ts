@@ -140,7 +140,7 @@ const command: Command = {
     const extraBonds = totalBonds > 3 ? `  ·  +${totalBonds - 3} more bond${totalBonds - 3 !== 1 ? "s" : ""} — use /bonds` : "";
     const embed      = new EmbedBuilder()
       .setColor(0x0D1117)
-      .setDescription(`-# [Vote on top.gg](https://top.gg/bot/1510163339177623642/vote) · [Vote on DBL](https://discordbotlist.com/bots/cartethyia/upvote) · [Join community](https://discord.gg/HwkdQbN3Ec)`)
+      .setDescription(`-# [Vote on top.gg](https://top.gg/bot/1510163339177623642/vote) · [Vote on DBL](https://discordbotlist.com/bots/cartethyia/upvote) · [Join community](https://discord.gg/vgVmRMc2Gb)`)
       .setImage("attachment://profile.png")
       .setFooter({ text: `CARTETHYIA  ·  ${displayName}'s Profile${extraBonds}`, iconURL: avatarUrl });
 

@@ -1,5 +1,6 @@
 import prisma from "./prisma";
 import { EmbedBuilder, ChatInputCommandInteraction } from "discord.js";
+import { auditAward } from "./antiCheat";
 
 /** Standard "not registered" reply for commands that require a DB user. */
 export async function replyNotStarted(interaction: ChatInputCommandInteraction): Promise<void> {
@@ -35,6 +36,7 @@ export async function getOrCreateUser(discordId: string, username: string, avata
 
 /**
  * Award currency or items to a user.
+ * @param source  Label for audit logs (e.g. "dungeon", "vote", "boss")
  */
 export async function awardUser(
   userId: string,
@@ -49,9 +51,10 @@ export async function awardUser(
     resonanceRecords?:number;
     fractureKeys?:    number;
     resonanceExp?:    number;
-  }
+  },
+  source = "unknown",
 ) {
-  return prisma.user.update({
+  const result = await prisma.user.update({
     where: { id: userId },
     data: {
       credits:          { increment: rewards.credits          ?? 0 },
@@ -66,6 +69,18 @@ export async function awardUser(
       resonanceExp:     { increment: rewards.resonanceExp     ?? 0 },
     },
   });
+  auditAward(userId, {
+    credits:          rewards.credits          ?? 0,
+    lunakite:         rewards.lunakite         ?? 0,
+    tuningModules:    rewards.tuningModules    ?? 0,
+    sealingTubes:     rewards.sealingTubes     ?? 0,
+    forgingOres:      rewards.forgingOres      ?? 0,
+    paradoxCores:     rewards.paradoxCores     ?? 0,
+    stasisLocks:      rewards.stasisLocks      ?? 0,
+    resonanceRecords: rewards.resonanceRecords ?? 0,
+    fractureKeys:     rewards.fractureKeys     ?? 0,
+  }, source).catch(() => {});
+  return result;
 }
 
 /**

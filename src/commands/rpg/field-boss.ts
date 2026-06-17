@@ -283,7 +283,7 @@ const command: Command = {
           }
 
           const credits = 300 + user.worldLevel * 120;
-          await awardUser(interaction.user.id, { credits, resonanceExp: 100 + user.worldLevel * 40, fractureKeys: 1 });
+          await awardUser(interaction.user.id, { credits, resonanceExp: 100 + user.worldLevel * 40, fractureKeys: 1 }, "field-boss");
           const lvl        = await checkLevelUp(interaction.user.id);
           const bondResult = await incrementWeaponBond(interaction.user.id).catch(() => null);
 
