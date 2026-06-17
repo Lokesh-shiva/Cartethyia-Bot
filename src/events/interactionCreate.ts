@@ -1,5 +1,4 @@
-import { Events, Interaction, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, TextChannel } from "discord.js";
-import { sendOnboarding } from "../lib/onboarding";
+import { Events, Interaction, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } from "discord.js";
 import { ExtendedClient } from "../types";
 import { handleEncounterFight, getBotChannelIds } from "../lib/encounter";
 import { logError } from "../lib/logger";
@@ -58,11 +57,8 @@ export async function execute(interaction: Interaction) {
         return;
       }
 
-      const member = interaction.guild?.members.cache.get(interaction.user.id)
-                  ?? await interaction.guild?.members.fetch(interaction.user.id).catch(() => null);
-      if (!member || !interaction.channel?.isTextBased()) return;
+      const START_CHANNEL_ID = process.env.START_CHANNEL_ID ?? "1516683590140690502";
 
-      // Disable the button so it can't be clicked twice
       const disabledRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
         new ButtonBuilder()
           .setCustomId(customId)
@@ -72,13 +68,12 @@ export async function execute(interaction: Interaction) {
       );
       await interaction.update({ components: [disabledRow] }).catch(() => {});
 
-      const DRIFTER_ROLE_ID = process.env.DRIFTER_ROLE_ID ?? "1516691155104829523";
-      const onComplete = async () => {
-        const drifterRole = interaction.guild?.roles.cache.get(DRIFTER_ROLE_ID);
-        if (drifterRole) await member.roles.add(drifterRole).catch(() => {});
-      };
-
-      await sendOnboarding(member, interaction.channel as TextChannel, onComplete).catch(console.error);
+      await interaction.followUp({
+        flags: 64,
+        content:
+          `◈ Head over to <#${START_CHANNEL_ID}> and run \`/start\` (or \`c!start\`) to begin your resonance calibration and unlock the server.\n\n` +
+          `Run \`/help\` or \`c!guide\` anytime for a full tutorial.`,
+      }).catch(() => {});
       return;
     }
 

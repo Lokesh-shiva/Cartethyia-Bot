@@ -1,8 +1,11 @@
 import {
   EmbedBuilder, ButtonBuilder, ButtonStyle,
-  ActionRowBuilder, GuildMember, TextChannel,
+  ActionRowBuilder, GuildMember, TextChannel, DMChannel,
   ComponentType, ButtonInteraction, AttachmentBuilder,
 } from "discord.js";
+
+type AnyTextChannel = TextChannel | DMChannel;
+
 import { getOrCreateUser, awardUser } from "./economy";
 import { generateOnboardingQuestions, PersonalityQuestion } from "./personalityQuestions";
 import { generateWelcomeCard } from "./welcomeCard";
@@ -27,7 +30,7 @@ const C = {
 
 // ── Personality question ──────────────────────────────────────────────────────
 async function askQuestion(
-  channel: TextChannel,
+  channel: AnyTextChannel,
   userId:  string,
   q:       PersonalityQuestion,
   qIndex:  number,
@@ -83,7 +86,7 @@ async function askQuestion(
 // ── Main onboarding flow ──────────────────────────────────────────────────────
 export async function sendOnboarding(
   member: GuildMember,
-  channel: TextChannel,
+  channel: AnyTextChannel,
   onComplete?: () => Promise<void>,
 ) {
   const displayName = member.displayName;
