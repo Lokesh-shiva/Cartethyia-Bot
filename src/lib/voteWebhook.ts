@@ -121,11 +121,9 @@ export function startVoteWebhook(client: Client) {
   // ── Rank.top ───────────────────────────────────────────────────────────────
   if (RANKTOP_WEBHOOK_AUTH) {
     app.post("/ranktop-vote", (req, res) => {
-      console.log(`[vote:ranktop] Incoming — auth: ${JSON.stringify(req.headers.authorization)} body: ${JSON.stringify(req.body)}`);
-      if (req.headers.authorization !== RANKTOP_WEBHOOK_AUTH) {
-        console.warn(`[vote:ranktop] Auth mismatch — got: ${req.headers.authorization} expected: ${RANKTOP_WEBHOOK_AUTH}`);
-        res.sendStatus(401); return;
-      }
+      // rank.top doesn't send the Authorization header — verify target_id instead
+      const targetId = req.body?.target_id as string | undefined;
+      if (targetId !== BOT_ID) { res.sendStatus(401); return; }
       res.status(200).json({ success: true });
       const { user_id, is_test, is_power_vote } = req.body ?? {};
       if (is_test) { console.log("[vote:ranktop] Test webhook received"); return; }
