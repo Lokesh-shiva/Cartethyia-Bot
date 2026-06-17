@@ -83,7 +83,8 @@ if (!token) {
 }
 
 const TOPGG_TOKEN    = process.env.TOPGG_TOKEN ?? "";
-const RANKTOP_API_KEY = process.env.RANKTOP_API_KEY ?? "";
+const RANKTOP_API_KEY  = process.env.RANKTOP_API_KEY  ?? "";
+const RANKTOP_AUTH     = process.env.RANKTOP_AUTH     ?? "";
 const BOT_ID         = process.env.CLIENT_ID ?? "1510163339177623642";
 
 async function postTopggStats() {
@@ -122,7 +123,7 @@ client.login(token).then(() => {
       rankTop.on("autoposter/posted",   (stats: any) => console.log("[ranktop] Stats posted:", stats));
       rankTop.on("autoposter/error",    (err: any)   => console.error("[ranktop] Post error:", err));
       rankTop.on("autoposter/stopped",  ()           => console.log("[ranktop] Autoposter stopped"));
-      rankTop.startAutopost({ client, authorization: process.env.DISCORD_TOKEN! });
+      rankTop.startAutopost({ client, authorization: RANKTOP_AUTH || process.env.DISCORD_TOKEN! });
       console.log("[ranktop] Autoposter started");
     }
 
