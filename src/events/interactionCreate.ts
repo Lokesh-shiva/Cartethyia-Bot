@@ -1,4 +1,5 @@
-import { Events, Interaction, EmbedBuilder } from "discord.js";
+import { Events, Interaction, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, TextChannel } from "discord.js";
+import { sendOnboarding } from "../lib/onboarding";
 import { ExtendedClient } from "../types";
 import { handleEncounterFight, getBotChannelIds } from "../lib/encounter";
 import { logError } from "../lib/logger";
@@ -42,12 +43,44 @@ export async function execute(interaction: Interaction) {
   // ── Button interactions ────────────────────────────────────────────────────
   if (interaction.isButton()) {
     const { customId } = interaction;
+
     if (customId === "encounter_fight") {
       await handleEncounterFight(interaction).catch((e: any) => {
         if (e?.code !== 10062) console.error(e);
       });
       return;
     }
+
+    if (customId.startsWith("welcome_start_")) {
+      const targetId = customId.replace("welcome_start_", "");
+      if (interaction.user.id !== targetId) {
+        await interaction.reply({ content: "◈ This invitation isn't yours.", flags: 64 });
+        return;
+      }
+
+      const member = interaction.guild?.members.cache.get(interaction.user.id)
+                  ?? await interaction.guild?.members.fetch(interaction.user.id).catch(() => null);
+      if (!member || !interaction.channel?.isTextBased()) return;
+
+      // Disable the button so it can't be clicked twice
+      const disabledRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
+        new ButtonBuilder()
+          .setCustomId(customId)
+          .setLabel("Journey Begun")
+          .setStyle(ButtonStyle.Secondary)
+          .setDisabled(true),
+      );
+      await interaction.update({ components: [disabledRow] }).catch(() => {});
+
+      const onComplete = async () => {
+        const drifterRole = interaction.guild?.roles.cache.find(r => r.name.toLowerCase() === "drifter");
+        if (drifterRole) await member.roles.add(drifterRole).catch(() => {});
+      };
+
+      await sendOnboarding(member, interaction.channel as TextChannel, onComplete).catch(console.error);
+      return;
+    }
+
     // All other buttons (vibe return, ascend, bond) handled by collectors in their commands
     return;
   }

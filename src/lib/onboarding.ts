@@ -81,7 +81,11 @@ async function askQuestion(
 }
 
 // ── Main onboarding flow ──────────────────────────────────────────────────────
-export async function sendOnboarding(member: GuildMember, channel: TextChannel) {
+export async function sendOnboarding(
+  member: GuildMember,
+  channel: TextChannel,
+  onComplete?: () => Promise<void>,
+) {
   const displayName = member.displayName;
   const avatarUrl   = member.user.displayAvatarURL({ size: 256, extension: "png" });
 
@@ -137,6 +141,7 @@ export async function sendOnboarding(member: GuildMember, channel: TextChannel) 
         })
         .setFooter({ text: "CARTETHYIA  ·  Welcome back." })],
     });
+    await onComplete?.().catch(() => {});
     return;
   }
 
@@ -179,7 +184,7 @@ export async function sendOnboarding(member: GuildMember, channel: TextChannel) 
       // Only mark fully onboarded if all questions were answered —
       // partial/timeout lets them restart with /start
       isOnboarded:      answered === total,
-      tutorialStep:     answered === total ? 1 : 0,
+      tutorialStep:     answered === total ? 1  : 0,
       resonanceProfile: {
         answers,
         dominantVibe:       "mixed",
@@ -246,4 +251,6 @@ export async function sendOnboarding(member: GuildMember, channel: TextChannel) 
       )
       .setFooter({ text: "CARTETHYIA  ·  The world is watching." })],
   });
+
+  if (answered === total) await onComplete?.().catch(() => {});
 }
