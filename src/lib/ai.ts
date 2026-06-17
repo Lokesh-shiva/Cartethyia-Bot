@@ -16,6 +16,12 @@ const geminiClient = process.env.GEMINI_API_KEY
 const aiQueue = new PQueue({ concurrency: 1 });
 let lastErrorLog = 0;
 
+// Circuit breaker: skip LM Studio after repeated timeouts, retry after 30 min
+let lmFailStreak   = 0;
+let lmOpenUntil    = 0;
+const LM_FAIL_THRESHOLD = 3;
+const LM_COOLDOWN_MS    = 30 * 60 * 1000;
+
 const MODEL        = process.env.LM_STUDIO_MODEL || "local-model";
 const GEMINI_MODEL = process.env.GEMINI_MODEL    || "gemini-2.0-flash";
 
@@ -51,16 +57,26 @@ export async function askAI(options: AIPromptOptions): Promise<string | null> {
       { role: "user",   content: options.userPrompt   },
     ];
 
-    // Primary: LM Studio (self-hosted) — 3s timeout so Gemini kicks in fast if offline
-    try {
-      const response = await client.chat.completions.create({
-        model: MODEL,
-        messages,
-        max_tokens: options.maxTokens ?? 40,
-        temperature: 0.85,
-      }, { signal: AbortSignal.timeout(3_000) });
-      return sanitize(response.choices[0]?.message?.content ?? "");
-    } catch { /* fall through to Gemini */ }
+    // Primary: LM Studio — skip while circuit is open (repeated timeouts)
+    if (Date.now() >= lmOpenUntil) {
+      try {
+        const response = await client.chat.completions.create({
+          model: MODEL,
+          messages,
+          max_tokens: options.maxTokens ?? 40,
+          temperature: 0.85,
+        }, { signal: AbortSignal.timeout(3_000) });
+        lmFailStreak = 0; // success — reset breaker
+        return sanitize(response.choices[0]?.message?.content ?? "");
+      } catch {
+        lmFailStreak++;
+        if (lmFailStreak >= LM_FAIL_THRESHOLD) {
+          lmOpenUntil = Date.now() + LM_COOLDOWN_MS;
+          console.warn(`[AI] LM Studio unreachable ${lmFailStreak}× — bypassing for 30 min`);
+          lmFailStreak = 0;
+        }
+      }
+    }
 
     // Fallback: Gemini — prepend instruction to suppress thought/reasoning tags
     if (geminiClient) {
@@ -73,7 +89,7 @@ export async function askAI(options: AIPromptOptions): Promise<string | null> {
         const response = await geminiClient.chat.completions.create({
           model: GEMINI_MODEL,
           messages: geminiMessages,
-          max_tokens: 1000,
+          max_tokens: Math.max(options.maxTokens ?? 40, 1000),
           temperature: 0.85,
         });
         const raw = response.choices[0]?.message?.content ?? "";
