@@ -23,6 +23,7 @@
     "@prisma/adapter-neon": "^7.8.0",
     "@prisma/adapter-pg": "^7.8.0",
     "@prisma/client": "^7.8.0",
+    "@rank-top/sdk": "^1.0.7",
     "@top-gg/sdk": "^3.1.6",
     "@types/ws": "^8.18.1",
     "discord.js": "^14.26.4",
