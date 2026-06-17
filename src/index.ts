@@ -123,7 +123,7 @@ client.login(token).then(() => {
       rankTop.on("autoposter/posted",   (stats: any) => console.log("[ranktop] Stats posted:", stats));
       rankTop.on("autoposter/error",    (err: any)   => console.error("[ranktop] Post error:", err));
       rankTop.on("autoposter/stopped",  ()           => console.log("[ranktop] Autoposter stopped"));
-      rankTop.startAutopost({ client, authorization: RANKTOP_AUTH || process.env.DISCORD_TOKEN! });
+      rankTop.startAutopost({ client, authorization: RANKTOP_AUTH || RANKTOP_API_KEY });
       console.log("[ranktop] Autoposter started");
     }
 
