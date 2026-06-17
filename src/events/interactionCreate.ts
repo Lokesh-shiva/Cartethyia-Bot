@@ -72,8 +72,9 @@ export async function execute(interaction: Interaction) {
       );
       await interaction.update({ components: [disabledRow] }).catch(() => {});
 
+      const DRIFTER_ROLE_ID = process.env.DRIFTER_ROLE_ID ?? "1516691155104829523";
       const onComplete = async () => {
-        const drifterRole = interaction.guild?.roles.cache.find(r => r.name.toLowerCase() === "drifter");
+        const drifterRole = interaction.guild?.roles.cache.get(DRIFTER_ROLE_ID);
         if (drifterRole) await member.roles.add(drifterRole).catch(() => {});
       };
 

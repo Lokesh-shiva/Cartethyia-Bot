@@ -3,7 +3,8 @@ import { sendOnboarding } from "../lib/onboarding";
 import { generateWelcomeCard } from "../lib/welcomeCard";
 import prisma from "../lib/prisma";
 
-const MAIN_GUILD_ID = process.env.MAIN_GUILD_ID ?? "1410663578624725045";
+const MAIN_GUILD_ID   = process.env.MAIN_GUILD_ID   ?? "1516679873438027776";
+const DRIFTER_ROLE_ID = process.env.DRIFTER_ROLE_ID ?? "1516691155104829523";
 
 export const name = Events.GuildMemberAdd;
 export const once = false;
