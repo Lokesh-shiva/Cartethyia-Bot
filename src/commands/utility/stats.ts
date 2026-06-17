@@ -52,7 +52,7 @@ const command: Command = {
         { name: "🗳️  Top.gg Votes", value: `**${totalTopggVotes.toLocaleString()}**`, inline: true },
         { name: "​", value: "​", inline: true },
       )
-      .setFooter({ text: "CARTETHYIA  ·  discord.gg/HwkdQbN3Ec" })
+      .setFooter({ text: "CARTETHYIA  ·  Bot Statistics" })
       .setTimestamp();
 
     await interaction.editReply({ embeds: [embed] });
