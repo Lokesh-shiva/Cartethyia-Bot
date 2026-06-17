@@ -282,7 +282,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
     );
     await thread.send({
       content: `<@${interaction.user.id}> <@${target.id}>`,
-      files: [new AttachmentBuilder(introCard, { name: "duel-intro.png" })],
+      files: [new AttachmentBuilder(introCard, { name: "duel-intro.webp" })],
     });
 
     let battleMsg = await thread.send({
@@ -493,7 +493,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
             { name: dName, avatarUrl: dAvatar, element: state.dElement, level: challengedDb.level, hp: state.dHpMax, atk: state.dAtk },
             { winner: winnerId === state.challengerId ? "left" : "right" },
           );
-          await thread.send({ files: [new AttachmentBuilder(resultCard, { name: "duel-result.png" })] }).catch(() => {});
+          await thread.send({ files: [new AttachmentBuilder(resultCard, { name: "duel-result.webp" })] }).catch(() => {});
 
           await cleanup(true, winnerId,
             `🏆 **${winnerName}** defeats **${winnerId === state.challengerId ? state.challengedName : state.challengerName}**!\n+${WIN_CREDITS} ${CE.cr}  +${WIN_EXP} EXP`);

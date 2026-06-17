@@ -285,7 +285,7 @@ const command: Command = {
     });
 
     await interaction.followUp({
-      files: [new AttachmentBuilder(lootCardBuffer, { name: "yield.png" })],
+      files: [new AttachmentBuilder(lootCardBuffer, { name: "yield.webp" })],
       flags: 64,
     });
 
@@ -367,7 +367,7 @@ const command: Command = {
       });
 
       await btn.followUp({
-        files: [new AttachmentBuilder(returnCardBuffer, { name: "yield.png" })],
+        files: [new AttachmentBuilder(returnCardBuffer, { name: "yield.webp" })],
         flags: 64,
       });
     });

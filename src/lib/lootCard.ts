@@ -240,5 +240,5 @@ export async function generateLootCard(opts: LootCardOptions): Promise<Buffer> {
   ctx.textAlign = "left";
   ctx.letterSpacing = "0px";
 
-  return canvas.toBuffer("image/png");
+  return canvas.toBuffer("image/webp");
 }

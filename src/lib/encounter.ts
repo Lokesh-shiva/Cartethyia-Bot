@@ -400,7 +400,7 @@ export async function handleEncounterFight(
   // Send the battle card as a new message
   let battleMsg = await (async () => {
     const buf    = await generateBattleCard(state);
-    const attach = new AttachmentBuilder(buf, { name: "encounter.png" });
+    const attach = new AttachmentBuilder(buf, { name: "encounter.webp" });
     const embed  = new EmbedBuilder()
       .setColor(ELEMENT_COLORS[enc.enemy.element])
       .setImage("attachment://encounter.png");
@@ -529,7 +529,7 @@ export async function handleEncounterFight(
         const cardBuf = await generateEchoCard({
           ...echoRowToCard(echoData), revealedSubstats: 0,
         });
-        const cardAttach = new AttachmentBuilder(cardBuf, { name: "echo.png" });
+        const cardAttach = new AttachmentBuilder(cardBuf, { name: "echo.webp" });
 
         const winEmbed = new EmbedBuilder()
           .setColor(ELEMENT_COLORS[enc.enemy.element])
@@ -538,7 +538,7 @@ export async function handleEncounterFight(
             `**${displayName}** defeated the **${enc.enemy.name}**!\n\n` +
             `› ${subCount} substats sealed — reveal with \`/echo-reveal\`. View all with \`/echoes\`.`
           )
-          .setImage("attachment://echo.png")
+          .setImage("attachment://echo.webp")
           .setFooter({ text: "CARTETHYIA  ·  Echo Acquired" });
 
         await battleMsg!.edit({ embeds: [winEmbed], components: [], files: [cardAttach] }).catch(() => {});
@@ -590,7 +590,7 @@ export async function handleEncounterFight(
 
       // ── Next turn: update battle card ──────────────────────────────────────
       const buf    = await generateBattleCard(state);
-      const attach = new AttachmentBuilder(buf, { name: "encounter.png" });
+      const attach = new AttachmentBuilder(buf, { name: "encounter.webp" });
       const embed  = new EmbedBuilder()
         .setColor(ELEMENT_COLORS[enc.enemy.element])
         .setImage("attachment://encounter.png");

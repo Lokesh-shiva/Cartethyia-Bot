@@ -75,7 +75,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
     gridPoints,
     bonusLabels: bonuses.activeLabels.flatMap(l => l.split("\n")).map(l => l.replace(/^\s*[›✦]\s*/, "").trim()).filter(Boolean),
   });
-  const gridAttach = new AttachmentBuilder(gridBuf, { name: "grid.png" });
+  const gridAttach = new AttachmentBuilder(gridBuf, { name: "grid.webp" });
 
   // Inventory list (first 12)
   const invLines: string[] = unequipped.slice(0, 12).map(e => {

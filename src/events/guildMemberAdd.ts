@@ -23,7 +23,7 @@ export async function execute(member: GuildMember) {
   if (member.guild.id === MAIN_GUILD_ID) {
     const avatarUrl = member.user.displayAvatarURL({ size: 256, extension: "png" });
     const cardBuf   = await generateWelcomeCard(member.displayName, avatarUrl, true).catch(() => null);
-    const files     = cardBuf ? [new AttachmentBuilder(cardBuf, { name: "welcome.png" })] : [];
+    const files     = cardBuf ? [new AttachmentBuilder(cardBuf, { name: "welcome.webp" })] : [];
 
     const embed = new EmbedBuilder()
       .setColor(0x6366F1)

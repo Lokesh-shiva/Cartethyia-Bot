@@ -174,5 +174,5 @@ export async function generateInventoryCard(user: User, displayName: string, ava
   ctx.fillText("CARTETHYIA", W - PAD, H - 8);
   ctx.textAlign = "left"; ctx.letterSpacing = "0px";
 
-  return canvas.toBuffer("image/png");
+  return canvas.toBuffer("image/webp");
 }

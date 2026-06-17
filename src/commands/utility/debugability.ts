@@ -72,7 +72,7 @@ const command: Command = {
       await interaction.editReply({
         embeds: [new EmbedBuilder().setColor(0x8B7FF5).setImage("attachment://ability.png")
           .setFooter({ text: `🛠️ ${previewElement} preview (not saved) · run again for a different roll` })],
-        files: [new AttachmentBuilder(cardBuf, { name: "ability.png" })],
+        files: [new AttachmentBuilder(cardBuf, { name: "ability.webp" })],
       });
       return;
     }
@@ -110,7 +110,7 @@ const command: Command = {
           .setImage("attachment://ability.png")
           .setDescription(`**${user.uniqueAbilityName}** — *${user.uniqueAbilityEffect}*`)
           .setFooter({ text: `🛠️ Current saved ability (${isV2 ? "V2" : "V1"}) · use reroll:true to generate a new one` })],
-        files: [new AttachmentBuilder(cardBuf, { name: "ability.png" })],
+        files: [new AttachmentBuilder(cardBuf, { name: "ability.webp" })],
       });
       return;
     }
@@ -170,7 +170,7 @@ const command: Command = {
           .setImage("attachment://ability.png")
           .setDescription(`**${ability.name}** — *${ability.effect}*`)
           .setFooter({ text: `🛠️ ${useV2 ? "V2" : "V1"} dry-run${isReroll ? " (rerolled)" : ""} · not saved yet` })],
-        files:      [new AttachmentBuilder(cardBuf, { name: "ability.png" })],
+        files:      [new AttachmentBuilder(cardBuf, { name: "ability.webp" })],
         components: [row],
       });
 

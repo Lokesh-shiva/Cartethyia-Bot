@@ -227,5 +227,5 @@ export async function generateGridCard(d: GridCardData): Promise<Buffer> {
   ctx.letterSpacing = "3px"; ctx.textAlign = "right";
   ctx.fillText("CARTETHYIA", W - 14, H - 12); ctx.textAlign = "left"; ctx.letterSpacing = "0px";
 
-  return canvas.toBuffer("image/png");
+  return canvas.toBuffer("image/webp");
 }

@@ -260,5 +260,5 @@ export async function generateBattleCard(state: BattleCardState): Promise<Buffer
   ctx.fillText("CARTETHYIA  ·  ASCENSION TRIAL", W - 12, H - 8);
   ctx.textAlign = "left"; ctx.letterSpacing = "0px";
 
-  return canvas.toBuffer("image/png");
+  return canvas.toBuffer("image/webp");
 }

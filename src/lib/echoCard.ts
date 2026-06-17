@@ -124,11 +124,11 @@ export async function generateEchoCard(e: EchoCardData): Promise<Buffer> {
       const img = await loadImage(artPath);
       const scale = Math.max(artW / img.width, artH / img.height);
       const sw = img.width * scale, sh = img.height * scale;
-      // 4-cost boss art is 9:16 portrait — top-align so the head is always visible.
-      // 1/3-cost echo art is icon-like — center it.
-      const drawY = e.cost === 4
-        ? artY                          // anchor top of image to top of panel
-        : artY + (artH - sh) / 2;      // center vertically
+      // 3/4-cost art is portrait — top-align so the head is always visible.
+      // 1-cost echoes are small icons — center them.
+      const drawY = e.cost === 1
+        ? artY + (artH - sh) / 2       // center for small icons
+        : artY;                         // top-anchor for 3/4-cost portraits
       ctx.drawImage(img, artX + (artW - sw) / 2, drawY, sw, sh);
     } catch { /* glyph fallback below */ }
   } else {
@@ -226,7 +226,7 @@ export async function generateEchoCard(e: EchoCardData): Promise<Buffer> {
   ctx.letterSpacing = "2px"; ctx.textAlign = "right";
   ctx.fillText("CARTETHYIA  ·  ECHO", W - 14, H - 12); ctx.textAlign = "left"; ctx.letterSpacing = "0px";
 
-  return canvas.toBuffer("image/png");
+  return canvas.toBuffer("image/webp");
 }
 
 // Build EchoCardData from a Prisma echo row — substats scaled by current level

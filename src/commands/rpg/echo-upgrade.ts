@@ -268,7 +268,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
           .setImage("attachment://echo.png")
           .setDescription(desc)
           .setFooter({ text: `CARTETHYIA  ·  Echo Upgrade  ·  ${footerParts.join("  ·  ")}` })],
-        files:      [new AttachmentBuilder(cardBuf, { name: "echo.png" })],
+        files:      [new AttachmentBuilder(cardBuf, { name: "echo.webp" })],
         components: [],
       });
     });

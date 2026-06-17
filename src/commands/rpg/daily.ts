@@ -156,7 +156,7 @@ const command: Command = {
       isReturn:     false,
     });
 
-    const attachment = new AttachmentBuilder(card, { name: "daily.png" });
+    const attachment = new AttachmentBuilder(card, { name: "daily.webp" });
     const sLabel = streakLabel(streak);
     const shieldLine = shieldUsed
       ? `\n🛡️ *Streak Shield used — streak preserved!*`

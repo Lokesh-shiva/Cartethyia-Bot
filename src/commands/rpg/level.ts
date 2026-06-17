@@ -54,7 +54,7 @@ const command: Command = {
       critDmg:      stats.critDmg,
     });
 
-    const attachment = new AttachmentBuilder(cardBuffer, { name: "level.png" });
+    const attachment = new AttachmentBuilder(cardBuffer, { name: "level.webp" });
 
     const embed = new EmbedBuilder()
       .setColor(color)

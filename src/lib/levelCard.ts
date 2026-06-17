@@ -320,5 +320,5 @@ export async function generateLevelCard(input: LevelCardInput): Promise<Buffer> 
   ctx.fillStyle = rgba("#FFFFFF", 0.12);
   ctx.fillText("CARTETHYIA  ◇  RESONANCE SYSTEM", W - 260, H - 14);
 
-  return canvas.toBuffer("image/png");
+  return canvas.toBuffer("image/webp");
 }

@@ -163,5 +163,5 @@ export async function generateWelcomeCard(
   ctx.fillText("CARTETHYIA", W - 16, H - 14);
   ctx.textAlign = "left"; ctx.letterSpacing = "0px";
 
-  return canvas.toBuffer("image/png");
+  return canvas.toBuffer("image/webp");
 }

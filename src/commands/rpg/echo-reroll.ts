@@ -340,7 +340,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
             .setImage("attachment://echo.png")
             .setDescription(`${ELEMENT_EMOJI[echoElem]}  **${freshEcho.name}** — substats rerolled.`)
             .setFooter({ text: `CARTETHYIA  ·  Echo Reroll  ·  Charged: 1 ${CE.pc}${slNote}` })],
-          files: [new AttachmentBuilder(cardBuf, { name: "echo.png" })],
+          files: [new AttachmentBuilder(cardBuf, { name: "echo.webp" })],
           components: [],
         });
       }

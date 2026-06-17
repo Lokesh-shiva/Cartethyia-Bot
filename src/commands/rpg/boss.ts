@@ -45,7 +45,7 @@ async function sendBattleCard(
   buttons: ActionRowBuilder<ButtonBuilder>,
 ) {
   const buffer = await generateBattleCard(state);
-  const attach = new AttachmentBuilder(buffer, { name: "battle.png" });
+  const attach = new AttachmentBuilder(buffer, { name: "battle.webp" });
   const embed  = new EmbedBuilder()
     .setColor(ELEMENT_HEX[state.playerElement] ?? 0x6366F1)
     .setImage("attachment://battle.png");

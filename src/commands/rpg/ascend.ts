@@ -39,7 +39,7 @@ async function sendBattleCard(
   buttons: ActionRowBuilder<ButtonBuilder>
 ) {
   const buffer = await generateBattleCard(state);
-  const attach = new AttachmentBuilder(buffer, { name: "battle.png" });
+  const attach = new AttachmentBuilder(buffer, { name: "battle.webp" });
   const embed  = new EmbedBuilder()
     .setColor(ELEMENT_HEX[state.playerElement] ?? 0x6366F1)
     .setImage("attachment://battle.png");
@@ -419,7 +419,7 @@ const command: Command = {
                   .setImage("attachment://ability.png")
                   .setDescription(`**${ability.name}** — *${ability.effect}*`)
                   .setFooter({ text: "CARTETHYIA  ·  This ability is yours alone." })],
-                files: [new AttachmentBuilder(abilityCardBuf, { name: "ability.png" })],
+                files: [new AttachmentBuilder(abilityCardBuf, { name: "ability.webp" })],
               });
             }
           }

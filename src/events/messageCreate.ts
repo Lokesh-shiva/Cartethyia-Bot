@@ -107,7 +107,7 @@ export async function execute(message: Message) {
       element:   chatUser.element ?? "NONE",
       isCapped,
     });
-    const attachment = new AttachmentBuilder(cardBuffer, { name: "levelup.png" });
+    const attachment = new AttachmentBuilder(cardBuffer, { name: "levelup.webp" });
     const embed = new EmbedBuilder()
       .setColor(0x6366F1)
       .setImage("attachment://levelup.png")

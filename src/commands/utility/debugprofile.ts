@@ -84,7 +84,7 @@ const command: Command = {
       displayName, bonds: [], echoes: [], weapon: null,
       overrideElement: element,
     });
-    const attachment = new AttachmentBuilder(buffer, { name: "debug-profile.png" });
+    const attachment = new AttachmentBuilder(buffer, { name: "debug-profile.webp" });
 
     const embed = new EmbedBuilder()
       .setColor(0x1E293B)

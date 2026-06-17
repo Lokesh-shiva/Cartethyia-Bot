@@ -333,5 +333,5 @@ export async function generateWeaponCard(input: WeaponCardInput): Promise<Buffer
   ctx.fillText("CARTETHYIA  ·  ARSENAL", W-12, H-6);
   ctx.textAlign = "left";
 
-  return canvas.toBuffer("image/png");
+  return canvas.toBuffer("image/webp");
 }

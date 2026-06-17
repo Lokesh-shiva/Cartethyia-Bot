@@ -33,7 +33,7 @@ const command: Command = {
     const color = ELEMENT_HEX[user.element] ?? ELEMENT_HEX.NONE;
 
     const card       = await generateInventoryCard(user, displayName, avatarUrl);
-    const attachment = new AttachmentBuilder(card, { name: "inventory.png" });
+    const attachment = new AttachmentBuilder(card, { name: "inventory.webp" });
 
     const embed = new EmbedBuilder()
       .setColor(color)

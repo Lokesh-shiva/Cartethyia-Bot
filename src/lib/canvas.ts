@@ -758,5 +758,5 @@ export async function generateProfileCard(input: ProfileCardInput): Promise<Buff
   ctx.textAlign = "left";
   ctx.letterSpacing = "0px";
 
-  return canvas.toBuffer("image/png");
+  return canvas.toBuffer("image/webp");
 }

@@ -240,7 +240,7 @@ const command: Command = {
           .setDescription(`*${newLore}*\n\n**${user.uniqueAbilityName}** has become **${newName}**.\nAll effects strengthened — and a fourth, dormant power awakens.`)
           .setImage("attachment://ability.png")
           .setFooter({ text: "CARTETHYIA  ·  This awakened form is yours alone." })],
-        files:      [new AttachmentBuilder(cardBuffer, { name: "ability.png" })],
+        files:      [new AttachmentBuilder(cardBuffer, { name: "ability.webp" })],
         components: [],
       });
     });

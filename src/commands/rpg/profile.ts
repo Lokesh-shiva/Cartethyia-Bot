@@ -136,7 +136,7 @@ const command: Command = {
       weapon,
     });
 
-    const attachment = new AttachmentBuilder(buffer, { name: "profile.png" });
+    const attachment = new AttachmentBuilder(buffer, { name: "profile.webp" });
     const extraBonds = totalBonds > 3 ? `  ·  +${totalBonds - 3} more bond${totalBonds - 3 !== 1 ? "s" : ""} — use /bonds` : "";
     const embed      = new EmbedBuilder()
       .setColor(0x0D1117)

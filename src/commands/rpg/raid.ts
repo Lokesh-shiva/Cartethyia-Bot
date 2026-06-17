@@ -581,7 +581,7 @@ async function launchRaid(
   );
   await thread.send({
     content: raid.participants.map(p => `<@${p.userId}>`).join(" "),
-    files:   [new AttachmentBuilder(introCard, { name: "raid-intro.png" })],
+    files:   [new AttachmentBuilder(introCard, { name: "raid-intro.webp" })],
   });
 
   let battleMsg = await thread.send({
@@ -637,7 +637,7 @@ async function launchRaid(
           )
           .setImage("attachment://raid-victory.png")
           .setFooter({ text: "CARTETHYIA  ·  Calamity Raid" })],
-        files:      [new AttachmentBuilder(winCard, { name: "raid-victory.png" })],
+        files:      [new AttachmentBuilder(winCard, { name: "raid-victory.webp" })],
         components: [],
       }).catch(() => {});
     } else {
@@ -653,7 +653,7 @@ async function launchRaid(
           .setDescription(`All Resonators fell before **${boss.name}**.\n*The Calamity retreats… for now.*`)
           .setImage("attachment://raid-defeat.png")
           .setFooter({ text: "CARTETHYIA  ·  Calamity Raid" })],
-        files:      [new AttachmentBuilder(loseCard, { name: "raid-defeat.png" })],
+        files:      [new AttachmentBuilder(loseCard, { name: "raid-defeat.webp" })],
         components: [],
       }).catch(() => {});
     }

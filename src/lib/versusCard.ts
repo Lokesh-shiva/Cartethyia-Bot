@@ -146,7 +146,7 @@ export async function generateVersusCard(
   ctx.fillText("CARTETHYIA", W - 12, H - 8);
   ctx.textAlign = "left";
 
-  return canvas.toBuffer("image/png");
+  return canvas.toBuffer("image/webp");
 }
 
 // ── Raid roster card (boss + participants) ────────────────────────────────────
@@ -214,5 +214,5 @@ export async function generateRaidCard(
   ctx.fillText("CARTETHYIA  ·  CALAMITY RAID", W - 12, H - 8);
   ctx.textAlign = "left";
 
-  return canvas.toBuffer("image/png");
+  return canvas.toBuffer("image/webp");
 }

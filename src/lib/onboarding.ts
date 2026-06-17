@@ -98,7 +98,7 @@ export async function sendOnboarding(
   // ── 1. Dramatic welcome ───────────────────────────────────────────────────
   // Visual welcome banner (canvas)
   const welcomeCard = await generateWelcomeCard(displayName, avatarUrl, isFirstTime);
-  const welcomeAttach = new AttachmentBuilder(welcomeCard, { name: "welcome.png" });
+  const welcomeAttach = new AttachmentBuilder(welcomeCard, { name: "welcome.webp" });
 
   await channel.send({
     content: `<@${member.id}>`,

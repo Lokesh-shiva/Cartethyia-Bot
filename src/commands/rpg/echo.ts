@@ -83,7 +83,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
 
   const renderCard = async (echo: any) => {
     const buf = await generateEchoCard(echoRowToCard(echo));
-    return new AttachmentBuilder(buf, { name: "echo.png" });
+    return new AttachmentBuilder(buf, { name: "echo.webp" });
   };
 
   const buildEmbed = (echo: any) => new EmbedBuilder()

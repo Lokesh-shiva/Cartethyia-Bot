@@ -98,7 +98,7 @@ const command: Command = {
 
     await interaction.editReply({
       embeds: [embed],
-      files:  [new AttachmentBuilder(cardBuffer, { name: "ability.png" })],
+      files:  [new AttachmentBuilder(cardBuffer, { name: "ability.webp" })],
     });
   },
 };

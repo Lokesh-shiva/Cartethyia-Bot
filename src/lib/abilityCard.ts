@@ -167,5 +167,5 @@ export async function generateAbilityCard(d: AbilityCardData): Promise<Buffer> {
   ctx.strokeStyle = rgba(ec, 0.45); ctx.lineWidth = 1.5; rrect(ctx, 3, 3, W - 6, H - 6, 0); ctx.stroke();
   ctx.shadowBlur = 0;
 
-  return canvas.toBuffer("image/png");
+  return canvas.toBuffer("image/webp");
 }

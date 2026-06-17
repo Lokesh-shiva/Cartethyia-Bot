@@ -257,7 +257,7 @@ async function handleClaim(interaction: ChatInputCommandInteraction) {
 
   // Generate loot card
   const card       = await generateLootCard({ loot, actorName: displayName, elementColor: elHex, affinity: null, isReturn: false });
-  const attachment = new AttachmentBuilder(card, { name: "dispatch.png" });
+  const attachment = new AttachmentBuilder(card, { name: "dispatch.webp" });
 
   const dispatch_meta = DISPATCHES.find((d) => d.hours === user.dispatchHours)!;
 

@@ -154,7 +154,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
           `**${newLabel}** +${formatStatValue(newType, newValue)}`
         )
         .setFooter({ text: `CARTETHYIA  ·  Echo Reveal  ·  ${remaining} still sealed  ·  ${(fresh?.sealingTubes ?? 1) - 1} ${CE.st} remaining` })],
-      files: [new AttachmentBuilder(cardBuf, { name: "echo.png" })],
+      files: [new AttachmentBuilder(cardBuf, { name: "echo.webp" })],
       components: [],
     });
   });
