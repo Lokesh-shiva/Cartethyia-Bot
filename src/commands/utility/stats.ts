@@ -20,14 +20,16 @@ const command: Command = {
       prisma.weapon.count(),
     ]);
 
-    // Aggregate combat records
+    // Aggregate combat records + vote counts
     const combatAgg = await prisma.user.aggregate({
-      _sum: { ascensionWins: true, dungeonClears: true, duelWins: true, duelLosses: true },
+      _sum: { ascensionWins: true, dungeonClears: true, duelWins: true, duelLosses: true, dblVotes: true, topggVotes: true },
     });
 
     const totalAscensions = combatAgg._sum.ascensionWins ?? 0;
     const totalDungeons   = combatAgg._sum.dungeonClears ?? 0;
     const totalDuels      = (combatAgg._sum.duelWins ?? 0) + (combatAgg._sum.duelLosses ?? 0);
+    const totalDblVotes   = combatAgg._sum.dblVotes   ?? 0;
+    const totalTopggVotes = combatAgg._sum.topggVotes ?? 0;
 
     const client    = interaction.client as ExtendedClient;
     const guildCount = client.guilds.cache.size;
@@ -46,6 +48,9 @@ const command: Command = {
         { name: "🏰  Dungeon Clears", value: `**${totalDungeons.toLocaleString()}**`, inline: true },
         { name: "👑  Ascension Wins", value: `**${totalAscensions.toLocaleString()}**`, inline: true },
         { name: "🥊  Duels Fought", value: `**${totalDuels.toLocaleString()}**`, inline: true },
+        { name: "🗳️  DBL Votes", value: `**${totalDblVotes.toLocaleString()}**`, inline: true },
+        { name: "🗳️  Top.gg Votes", value: `**${totalTopggVotes.toLocaleString()}**`, inline: true },
+        { name: "​", value: "​", inline: true },
       )
       .setFooter({ text: "CARTETHYIA  ·  discord.gg/HwkdQbN3Ec" })
       .setTimestamp();

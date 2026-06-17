@@ -34,11 +34,12 @@ async function processVote(
   }
 
   try {
+    const voteField = source === "dbl" ? { dblVotes: { increment: 1 } } : { topggVotes: { increment: 1 } };
     await Promise.all([
       awardUser(userId, rewards),
       prisma.user.update({
         where: { id: userId },
-        data:  { lastVoted: new Date() },
+        data:  { lastVoted: new Date(), ...voteField },
       }).catch(() => {}),
     ]);
 

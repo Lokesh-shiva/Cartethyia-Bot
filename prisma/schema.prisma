@@ -120,6 +120,8 @@ model User {
 
   // Voting
   lastVoted             DateTime?
+  dblVotes              Int       @default(0)
+  topggVotes            Int       @default(0)
 
   // Daily
   lastDaily             DateTime?
