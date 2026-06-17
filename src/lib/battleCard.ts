@@ -114,16 +114,26 @@ export async function generateBattleCard(state: BattleCardState): Promise<Buffer
   const bossArtPath = path.isAbsolute(state.boss.artFile)
     ? state.boss.artFile
     : path.join(process.cwd(), "Bosses", state.boss.artFile);
+  // Echo art paths are absolute and contain /echoes/ — use contain-fit so the
+  // creature is never cropped. Boss art from /Bosses/ uses cover-fit (portrait
+  // images fit height; landscape fills width and centers vertically).
+  const isEchoArt = bossArtPath.includes(`${path.sep}echoes${path.sep}`) ||
+                    bossArtPath.includes("/echoes/");
   try {
     const art = await loadCachedImage(bossArtPath);
-    const isPortrait = art.height > art.width;
 
-    if (isPortrait) {
-      // Fit to height, centre horizontally
+    if (isEchoArt) {
+      // Contain-fit: scale to fit entirely within the panel, top-anchored
+      const scale = Math.min(W / art.width, ART_H / art.height);
+      const sw    = art.width * scale, sh = art.height * scale;
+      ctx.drawImage(art, (W - sw) / 2, 0, sw, sh);
+    } else if (art.height > art.width) {
+      // Portrait boss art — fit to height, centre horizontally
       const scale = ART_H / art.height;
       const sw    = art.width * scale;
       ctx.drawImage(art, (W - sw) / 2, 0, sw, ART_H);
     } else {
+      // Landscape boss art — cover-fit, centre vertically
       const scale = Math.max(W / art.width, ART_H / art.height);
       const sw    = art.width * scale, sh = art.height * scale;
       ctx.drawImage(art, (W - sw) / 2, (ART_H - sh) / 2, sw, sh);
