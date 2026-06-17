@@ -83,8 +83,6 @@ if (!token) {
 }
 
 const TOPGG_TOKEN    = process.env.TOPGG_TOKEN ?? "";
-const RANKTOP_API_KEY  = process.env.RANKTOP_API_KEY  ?? "";
-const RANKTOP_AUTH     = process.env.RANKTOP_AUTH     ?? "";
 const BOT_ID         = process.env.CLIENT_ID ?? "1510163339177623642";
 
 async function postTopggStats() {
@@ -120,17 +118,6 @@ client.login(token).then(() => {
     const { setAuditClient, runBalanceSweep } = require("./lib/antiCheat");
     setAuditClient(client);
     setInterval(() => runBalanceSweep(client), 12 * 60 * 60 * 1000);
-
-    // Rank.top autoposter
-    if (RANKTOP_API_KEY) {
-      const { RankTopClient } = require("@rank-top/sdk");
-      const rankTop = new RankTopClient({ apiKey: RANKTOP_API_KEY });
-      rankTop.on("autoposter/posted",   (stats: any) => console.log("[ranktop] Stats posted:", stats));
-      rankTop.on("autoposter/error",    (err: any)   => console.warn(`[ranktop] Stats post failed: ${err?.response?.data?.error ?? err?.message}`));
-      rankTop.on("autoposter/stopped",  ()           => console.log("[ranktop] Autoposter stopped"));
-      rankTop.startAutopost({ client, authorization: RANKTOP_AUTH || RANKTOP_API_KEY });
-      console.log("[ranktop] Autoposter started");
-    }
 
     // Keep Neon compute warm — free tier suspends after 5 min idle, causing 500-2000ms cold starts
     setInterval(async () => {

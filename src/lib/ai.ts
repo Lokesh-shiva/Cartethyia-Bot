@@ -1,10 +1,12 @@
 import OpenAI from "openai";
 import PQueue from "p-queue";
 
-const client = new OpenAI({
-  baseURL: process.env.LM_STUDIO_URL || "http://localhost:1234/v1",
-  apiKey: "lm-studio",
-});
+// Only enable LM Studio if LM_STUDIO_URL is explicitly set — avoids spamming
+// "unreachable" errors when the bot runs on a remote server without it.
+const LM_STUDIO_URL = process.env.LM_STUDIO_URL ?? "";
+const client = LM_STUDIO_URL
+  ? new OpenAI({ baseURL: LM_STUDIO_URL, apiKey: "lm-studio" })
+  : null;
 
 const geminiClient = process.env.GEMINI_API_KEY
   ? new OpenAI({
@@ -57,8 +59,8 @@ export async function askAI(options: AIPromptOptions): Promise<string | null> {
       { role: "user",   content: options.userPrompt   },
     ];
 
-    // Primary: LM Studio — skip while circuit is open (repeated timeouts)
-    if (Date.now() >= lmOpenUntil) {
+    // Primary: LM Studio — skip if not configured or while circuit is open
+    if (client && Date.now() >= lmOpenUntil) {
       try {
         const response = await client.chat.completions.create({
           model: MODEL,
