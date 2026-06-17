@@ -122,7 +122,7 @@ export function startVoteWebhook(client: Client) {
   if (RANKTOP_WEBHOOK_AUTH) {
     app.post("/ranktop-vote", (req, res) => {
       if (req.headers.authorization !== RANKTOP_WEBHOOK_AUTH) { res.sendStatus(401); return; }
-      res.sendStatus(200);
+      res.status(200).json({ success: true });
       const { user_id, is_test, is_power_vote } = req.body ?? {};
       if (is_test) { console.log("[vote:ranktop] Test webhook received"); return; }
       if (!user_id) { console.warn("[vote:ranktop] Missing user_id"); return; }
