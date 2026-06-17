@@ -11,6 +11,7 @@ const WEBHOOK_PORT          = parseInt(process.env.WEBHOOK_PORT ?? "3000", 10);
 const DBL_VOTE_URL     = "https://discordbotlist.com/bots/cartethyia/upvote";
 const TOPGG_VOTE_URL   = "https://top.gg/bot/1510163339177623642/vote";
 const RANKTOP_VOTE_URL = "https://rank.top/bot/1510163339177623642/vote";
+const BOT_ID           = process.env.CLIENT_ID ?? "1510163339177623642";
 
 function isWeekend(): boolean {
   const day = new Date().getDay();
