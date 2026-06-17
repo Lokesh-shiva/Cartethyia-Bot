@@ -12,6 +12,18 @@ const RATE_LIMIT                  = 12;      // max awards in window
 const SINGLE_CREDITS_THRESHOLD    = 6_000;   // flag any single award above this
 const BALANCE_CREDITS_THRESHOLD   = 600_000; // flag users whose total exceeds this
 
+export function auditSpend(
+  userId: string,
+  spent: Record<string, number>,
+  source: string,
+) {
+  const parts = Object.entries(spent)
+    .filter(([, v]) => v > 0)
+    .map(([k, v]) => `${k}=-${v}`)
+    .join(" ");
+  if (parts) console.log(`[economy] userId=${userId} source=${source} ${parts}`);
+}
+
 export function setAuditClient(client: Client) {
   auditClient = client;
 }

@@ -6,6 +6,7 @@ import {
 } from "discord.js";
 import prisma from "../../lib/prisma";
 import { replyNotStarted } from "../../lib/economy";
+import { auditSpend } from "../../lib/antiCheat";
 import {
   ELEMENT_COLORS, ELEMENT_EMOJI, RARITY_STARS,
   MAIN_STAT_LABELS, SUBSTAT_LABELS, calcMainStatValue, upgradeCost,
@@ -243,6 +244,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
           },
         }),
       ]);
+      auditSpend(interaction.user.id, { tuningModules: totalCost, sealingTubes: tubesSpent }, "echo-upgrade");
 
       const cardBuf    = await generateEchoCard(echoRowToCard({ ...latest, level: endLevel, mainStatValue: newMainVal, revealedSubstats: revealedCount }));
       const oldMainVal = calcMainStatValue(latest.mainStatType, startLevel, latest.rarity);

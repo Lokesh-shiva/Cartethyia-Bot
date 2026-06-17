@@ -6,6 +6,7 @@ import {
 import { Command } from "../../types";
 import prisma from "../../lib/prisma";
 import { replyNotStarted } from "../../lib/economy";
+import { auditSpend } from "../../lib/antiCheat";
 import { CE } from "../../lib/emojiManager";
 import { formatEffects } from "../../lib/abilityEffects";
 import { RARITY_STARS, WEAPON_TYPE_EMOJI } from "../../lib/weapons";
@@ -135,6 +136,7 @@ const command: Command = {
         await interaction.editReply({ components: [] }).catch(() => {});
         return;
       }
+      auditSpend(interaction.user.id, { forgingOres: EGO_COST.forgingOres, paradoxCores: EGO_COST.paradoxCores, credits: EGO_COST.credits }, "awaken");
 
       await interaction.editReply({
         embeds: [new EmbedBuilder().setColor(EGO_GOLD)

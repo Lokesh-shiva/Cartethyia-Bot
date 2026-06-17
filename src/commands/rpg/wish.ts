@@ -7,6 +7,7 @@ import {
 import { Command } from "../../types";
 import prisma from "../../lib/prisma";
 import { replyNotStarted } from "../../lib/economy";
+import { auditSpend } from "../../lib/antiCheat";
 import {
   WISH_WEAPONS_4STAR, WISH_WEAPONS_5STAR,
   WishWeapon, calcWishAtk, calcWishSubStat,
@@ -341,6 +342,7 @@ const command: Command = {
             prisma.weapon.create({ data: weaponCreateData(interaction.user.id, res.weapon) }),
           ]);
         }
+        auditSpend(interaction.user.id, { fractureKeys: 1 }, `wish:1pull:${res.tier}star`);
 
         await runSuspense(interaction, res.tier);
 
@@ -388,6 +390,7 @@ const command: Command = {
                   forgingOres: { increment: matTotals.forgingOres }, tuningModules: { increment: matTotals.tuningModules }, credits: { increment: matTotals.credits } } }),
         ...weaponResults.map(r => prisma.weapon.create({ data: weaponCreateData(interaction.user.id, r.weapon) })),
       ]);
+      auditSpend(interaction.user.id, { fractureKeys: 10 }, `wish:10pull:${weaponResults.length}weapons`);
 
       const has5 = results.some(r => r.tier === 5), has4 = results.some(r => r.tier === 4);
       await runSuspense(interaction, has5 ? 5 : has4 ? 4 : 3);

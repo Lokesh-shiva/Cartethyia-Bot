@@ -6,6 +6,7 @@ import {
 } from "discord.js";
 import prisma from "../../lib/prisma";
 import { replyNotStarted } from "../../lib/economy";
+import { auditSpend } from "../../lib/antiCheat";
 import { WEAPON_TYPE_EMOJI, RARITY_STARS, getWeaponImagePath } from "../../lib/weapons";
 import { CE } from "../../lib/emojiManager";
 import { WeaponType } from "@prisma/client";
@@ -221,6 +222,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
         prisma.weapon.update({ where: { id: weapon.id }, data: { level: endLevel } }),
         prisma.user.update({ where: { id: interaction.user.id }, data: { forgingOres: { decrement: totalCost } } }),
       ]);
+      auditSpend(interaction.user.id, { forgingOres: totalCost }, "weapon-upgrade");
 
       const newAtk = effectiveAtk(latest.baseAtk, latest.rarity, endLevel);
       const oldAtk = effectiveAtk(latest.baseAtk, latest.rarity, startLevel);

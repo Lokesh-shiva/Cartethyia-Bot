@@ -5,6 +5,7 @@ import {
 } from "discord.js";
 import { Command } from "../../types";
 import { getOrCreateUser } from "../../lib/economy";
+import { auditSpend, auditAward } from "../../lib/antiCheat";
 import { checkLevelUp, expToNextLevel, WORLD_LEVEL_CAPS, sendMilestoneNotifications } from "../../lib/progression";
 import { sendElementSelection } from "../../lib/elementSelect";
 import prisma from "../../lib/prisma";
@@ -125,6 +126,8 @@ async function handleRecord(interaction: ChatInputCommandInteraction) {
         resonanceExp:     { increment: expGain },
       },
     });
+    auditSpend(interaction.user.id, { resonanceRecords: amount }, "use:record");
+    auditAward(interaction.user.id, { resonanceExp: expGain }, "use:record").catch(() => {});
 
     // Check level ups + send milestone notifications (same as chat EXP path)
     const result = await checkLevelUp(interaction.user.id);

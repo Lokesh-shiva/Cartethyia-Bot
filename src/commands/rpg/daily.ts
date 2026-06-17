@@ -11,6 +11,7 @@ import {
 } from "discord.js";
 import { Command } from "../../types";
 import { getOrCreateUser } from "../../lib/economy";
+import { auditAward } from "../../lib/antiCheat";
 import { generateLootCard } from "../../lib/lootCard";
 import { checkLevelUp } from "../../lib/progression";
 import prisma from "../../lib/prisma";
@@ -125,6 +126,13 @@ const command: Command = {
     });
 
     await checkLevelUp(interaction.user.id);
+    auditAward(interaction.user.id, {
+      credits:       base.credits,
+      tuningModules: base.tuningModules,
+      sealingTubes:  base.sealingTubes,
+      forgingOres:   base.forgingOres,
+      lunakite:      base.lunakite,
+    }, `daily:streak${streak}`).catch(() => {});
 
     // Loot card
     const lootResult = {

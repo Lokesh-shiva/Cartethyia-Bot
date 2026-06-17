@@ -6,6 +6,7 @@ import {
 } from "discord.js";
 import prisma from "../../lib/prisma";
 import { replyNotStarted } from "../../lib/economy";
+import { auditSpend } from "../../lib/antiCheat";
 import {
   ELEMENT_COLORS, ELEMENT_EMOJI, RARITY_STARS,
   MAIN_STAT_LABELS, SUBSTAT_LABELS, FLAT_STATS,
@@ -327,6 +328,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
           }}),
         ];
         await prisma.$transaction(txOps);
+        auditSpend(interaction.user.id, { paradoxCores: 1, stasisLocks: pendingSL }, "echo-reroll");
 
         const finalEcho = await prisma.echo.findUnique({ where: { id: freshEcho.id } });
         const cardBuf   = await generateEchoCard(echoRowToCard(finalEcho!));

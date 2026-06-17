@@ -6,6 +6,7 @@ import {
 import { Command } from "../../types";
 import prisma from "../../lib/prisma";
 import { replyNotStarted } from "../../lib/economy";
+import { auditSpend } from "../../lib/antiCheat";
 import { CE } from "../../lib/emojiManager";
 import { sanitizeEffects, formatEffects } from "../../lib/abilityEffects";
 import { sanitizeV2Effects, formatV2Effects } from "../../lib/abilityEngineV2";
@@ -176,6 +177,7 @@ const command: Command = {
         await interaction.editReply({ components: [] }).catch(() => {});
         return;
       }
+      auditSpend(interaction.user.id, { paradoxCores: EVO_COST.paradoxCores, stasisLocks: EVO_COST.stasisLocks }, "evolve");
 
       const element = (user.element as string) ?? "NONE";
       const loreLine = EVOLVED_LORE_LINE[element] ?? EVOLVED_LORE_LINE.NONE;

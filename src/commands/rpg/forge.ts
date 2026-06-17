@@ -5,6 +5,7 @@ import {
 } from "discord.js";
 import { Command } from "../../types";
 import { getOrCreateUser } from "../../lib/economy";
+import { auditSpend } from "../../lib/antiCheat";
 import {
   FORGED_WEAPONS, RARITY_STARS, WEAPON_TYPE_LABEL,
   WEAPON_TYPE_EMOJI, WeaponDefinition, getWeaponImagePath,
@@ -186,6 +187,7 @@ const command: Command = {
           where: { id: interaction.user.id },
           data:  { forgingOres: { decrement: chosen.forgeCost } },
         });
+        auditSpend(interaction.user.id, { forgingOres: chosen.forgeCost }, `forge:${chosen.name}`);
 
         // Unequip all current weapons
         await prisma.weapon.updateMany({
