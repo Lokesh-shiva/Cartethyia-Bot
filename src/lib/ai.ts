@@ -16,11 +16,11 @@ const geminiClient = process.env.GEMINI_API_KEY
 const aiQueue = new PQueue({ concurrency: 1 });
 let lastErrorLog = 0;
 
-// Circuit breaker: skip LM Studio after repeated timeouts, retry after 30 min
+// Circuit breaker: skip LM Studio after repeated timeouts, retry after 10 min
 let lmFailStreak   = 0;
 let lmOpenUntil    = 0;
 const LM_FAIL_THRESHOLD = 3;
-const LM_COOLDOWN_MS    = 30 * 60 * 1000;
+const LM_COOLDOWN_MS    = 10 * 60 * 1000;
 
 const MODEL        = process.env.LM_STUDIO_MODEL || "local-model";
 const GEMINI_MODEL = process.env.GEMINI_MODEL    || "gemini-2.0-flash";
@@ -72,7 +72,7 @@ export async function askAI(options: AIPromptOptions): Promise<string | null> {
         lmFailStreak++;
         if (lmFailStreak >= LM_FAIL_THRESHOLD) {
           lmOpenUntil = Date.now() + LM_COOLDOWN_MS;
-          console.warn(`[AI] LM Studio unreachable ${lmFailStreak}× — bypassing for 30 min`);
+          console.warn(`[AI] LM Studio unreachable ${lmFailStreak}× — bypassing for 10 min`);
           lmFailStreak = 0;
         }
       }
