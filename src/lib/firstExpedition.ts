@@ -37,7 +37,7 @@ function hpBar(now: number, max: number, len = 14): string {
 
 async function dropEcho(userId: string, wave: typeof WAVES[number]): Promise<Buffer> {
   const rarity   = rollRarity([92, 8, 0] as [number, number, number]);
-  const mainStat = rollMainStat(wave.cost as 1 | 3 | 4, null);
+  const mainStat = rollMainStat(wave.cost as 1 | 3 | 4, undefined);
   const subCount = substatCount(rarity);
   const substats = rollSubstats(subCount, mainStat);
 
@@ -101,7 +101,7 @@ export async function runFirstExpedition(member: GuildMember, channel: TextChann
   // ── 3 waves ───────────────────────────────────────────────────────────────
   for (let waveIdx = 0; waveIdx < WAVES.length; waveIdx++) {
     const wave    = WAVES[waveIdx];
-    let   enemyHp = wave.hp;
+    let   enemyHp: number = wave.hp;
 
     const buildEmbed = (log: string) =>
       new EmbedBuilder()
