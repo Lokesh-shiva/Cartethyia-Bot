@@ -1,6 +1,7 @@
-import { Events, Interaction, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } from "discord.js";
+import { Events, Interaction, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, TextChannel } from "discord.js";
 import { ExtendedClient } from "../types";
 import { handleEncounterFight, getBotChannelIds } from "../lib/encounter";
+import { runFirstExpedition } from "../lib/firstExpedition";
 import { logError } from "../lib/logger";
 
 export const name = Events.InteractionCreate;
@@ -74,6 +75,30 @@ export async function execute(interaction: Interaction) {
           `◈ Head over to <#${START_CHANNEL_ID}> and run \`/start\` (or \`c!start\`) to begin your resonance calibration and unlock the server.\n\n` +
           `Run \`/help\` or \`c!guide\` anytime for a full tutorial.`,
       }).catch(() => {});
+      return;
+    }
+
+    if (customId.startsWith("expedition_start_")) {
+      const targetId = customId.replace("expedition_start_", "");
+      if (interaction.user.id !== targetId) {
+        await interaction.reply({ content: "◈ This isn't your expedition.", flags: 64 });
+        return;
+      }
+
+      const disabledRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
+        new ButtonBuilder()
+          .setCustomId(customId)
+          .setLabel("Expedition Started")
+          .setStyle(ButtonStyle.Secondary)
+          .setDisabled(true),
+      );
+      await interaction.update({ components: [disabledRow] }).catch(() => {});
+
+      const member = interaction.guild?.members.cache.get(interaction.user.id)
+        ?? await interaction.guild?.members.fetch(interaction.user.id).catch(() => null);
+      if (!member || !interaction.channel?.isTextBased()) return;
+
+      runFirstExpedition(member, interaction.channel as TextChannel).catch(console.error);
       return;
     }
 

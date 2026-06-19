@@ -3,6 +3,7 @@ import {
   ActionRowBuilder, GuildMember, TextChannel, DMChannel,
   ComponentType, ButtonInteraction, AttachmentBuilder,
 } from "discord.js";
+import { runFirstExpedition } from "./firstExpedition";
 
 type AnyTextChannel = TextChannel | DMChannel;
 
@@ -253,6 +254,14 @@ export async function sendOnboarding(
         },
       )
       .setFooter({ text: "CARTETHYIA  ·  The world is watching." })],
+    ...(answered === total ? {
+      components: [new ActionRowBuilder<ButtonBuilder>().addComponents(
+        new ButtonBuilder()
+          .setCustomId(`expedition_start_${member.id}`)
+          .setLabel("⚔️  Begin First Expedition")
+          .setStyle(ButtonStyle.Success),
+      )],
+    } : {}),
   });
 
   if (answered === total) await onComplete?.().catch(() => {});

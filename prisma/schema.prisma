@@ -111,6 +111,9 @@ model User {
   vibeEmotionalCount  Int @default(0)
   uniqueTargetCount   Int @default(0) // how many different people interacted with
 
+  // First Expedition (one-time tutorial run)
+  firstExpeditionDone Boolean @default(false)
+
   // Combat record
   duelWins        Int @default(0)
   duelLosses      Int @default(0)
