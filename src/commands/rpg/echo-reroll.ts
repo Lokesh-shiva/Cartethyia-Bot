@@ -337,7 +337,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
         await interaction.editReply({
           embeds: [new EmbedBuilder()
             .setColor(ELEMENT_COLORS[echoElem])
-            .setImage("attachment://echo.png")
+            .setImage("attachment://echo.webp")
             .setDescription(`${ELEMENT_EMOJI[echoElem]}  **${freshEcho.name}** — substats rerolled.`)
             .setFooter({ text: `CARTETHYIA  ·  Echo Reroll  ·  Charged: 1 ${CE.pc}${slNote}` })],
           files: [new AttachmentBuilder(cardBuf, { name: "echo.webp" })],

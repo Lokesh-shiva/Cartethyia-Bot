@@ -403,7 +403,7 @@ export async function handleEncounterFight(
     const attach = new AttachmentBuilder(buf, { name: "encounter.webp" });
     const embed  = new EmbedBuilder()
       .setColor(ELEMENT_COLORS[enc.enemy.element])
-      .setImage("attachment://encounter.png");
+      .setImage("attachment://encounter.webp");
     return (interaction.channel as TextChannel).send({ embeds: [embed], files: [attach], components: [buildEncounterButtons()] });
   })();
 
@@ -593,7 +593,7 @@ export async function handleEncounterFight(
       const attach = new AttachmentBuilder(buf, { name: "encounter.webp" });
       const embed  = new EmbedBuilder()
         .setColor(ELEMENT_COLORS[enc.enemy.element])
-        .setImage("attachment://encounter.png");
+        .setImage("attachment://encounter.webp");
       await battleMsg!.edit({
         embeds: [embed], files: [attach],
         components: [buildEncounterButtons()],

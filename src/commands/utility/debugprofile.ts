@@ -101,7 +101,7 @@ const command: Command = {
             .join("\n"),
         }
       )
-      .setImage("attachment://debug-profile.png")
+      .setImage("attachment://debug-profile.webp")
       .setFooter({ text: "Only visible to you • /debugprofile" });
 
     await interaction.editReply({ embeds: [embed], files: [attachment] });

@@ -111,7 +111,7 @@ export async function execute(message: Message) {
     const attachment = new AttachmentBuilder(cardBuffer, { name: "levelup.webp" });
     const embed = new EmbedBuilder()
       .setColor(0x6366F1)
-      .setImage("attachment://levelup.png")
+      .setImage("attachment://levelup.webp")
       .setFooter({ text: "CARTETHYIA  ·  Resonance System" });
     await lvUpCh.send({ embeds: [embed], files: [attachment] }).catch(() => {});
   }

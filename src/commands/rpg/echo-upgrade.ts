@@ -265,7 +265,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
       await btn.editReply({
         embeds: [new EmbedBuilder()
           .setColor(ELEMENT_COLORS[latest.element as Element])
-          .setImage("attachment://echo.png")
+          .setImage("attachment://echo.webp")
           .setDescription(desc)
           .setFooter({ text: `CARTETHYIA  ·  Echo Upgrade  ·  ${footerParts.join("  ·  ")}` })],
         files:      [new AttachmentBuilder(cardBuf, { name: "echo.webp" })],

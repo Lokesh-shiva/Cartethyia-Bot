@@ -635,7 +635,7 @@ async function launchRaid(
             `**Rewards per player:**\n${buildRewardText(perPlayer)}\n\n` +
             `**Damage Standings:**\n${contribLines.join("\n")}`
           )
-          .setImage("attachment://raid-victory.png")
+          .setImage("attachment://raid-victory.webp")
           .setFooter({ text: "CARTETHYIA  ·  Calamity Raid" })],
         files:      [new AttachmentBuilder(winCard, { name: "raid-victory.webp" })],
         components: [],
@@ -651,7 +651,7 @@ async function launchRaid(
         embeds: [new EmbedBuilder().setColor(0x4A4A5A)
           .setTitle("☄️  Raid — Defeated")
           .setDescription(`All Resonators fell before **${boss.name}**.\n*The Calamity retreats… for now.*`)
-          .setImage("attachment://raid-defeat.png")
+          .setImage("attachment://raid-defeat.webp")
           .setFooter({ text: "CARTETHYIA  ·  Calamity Raid" })],
         files:      [new AttachmentBuilder(loseCard, { name: "raid-defeat.webp" })],
         components: [],

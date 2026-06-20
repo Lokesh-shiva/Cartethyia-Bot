@@ -148,7 +148,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
     await sel.editReply({
       embeds: [new EmbedBuilder()
         .setColor(ELEMENT_COLORS[echoElem])
-        .setImage("attachment://echo.png")
+        .setImage("attachment://echo.webp")
         .setDescription(
           `${ELEMENT_EMOJI[echoElem]}  **Substat ${newRevealed}/${total} revealed:**  ` +
           `**${newLabel}** +${formatStatValue(newType, newValue)}`

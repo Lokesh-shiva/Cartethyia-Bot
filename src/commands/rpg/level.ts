@@ -58,7 +58,7 @@ const command: Command = {
 
     const embed = new EmbedBuilder()
       .setColor(color)
-      .setImage("attachment://level.png")
+      .setImage("attachment://level.webp")
       .setFooter({ text: `CARTETHYIA  ·  ${displayName}'s Resonance Level` });
 
     await interaction.editReply({ embeds: [embed], files: [attachment] });

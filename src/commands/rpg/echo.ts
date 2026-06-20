@@ -88,7 +88,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
 
   const buildEmbed = (echo: any) => new EmbedBuilder()
     .setColor(ELEMENT_COLORS[echo.element as Element])
-    .setImage("attachment://echo.png")
+    .setImage("attachment://echo.webp")
     .setFooter({ text: `CARTETHYIA  ·  Echo${echo.isEquipped ? "  ·  EQUIPPED" : ""}${filterDesc ? `  ·  Filter: ${filterDesc}` : ""}` });
 
   const options = shown.map(e => {

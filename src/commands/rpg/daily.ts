@@ -173,7 +173,7 @@ const command: Command = {
         shieldLine,
         shields > 0 && !shieldUsed ? `\n🛡️ Shields remaining: **${shields}**` : "",
       ].filter(Boolean).join(""))
-      .setImage("attachment://daily.png")
+      .setImage("attachment://daily.webp")
       .setFooter({ text: "CARTETHYIA  ·  Come back tomorrow to keep your streak!" });
 
     // Reminder toggle button

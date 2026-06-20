@@ -113,7 +113,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
 
   const embed = new EmbedBuilder()
     .setColor(color)
-    .setImage("attachment://grid.png")
+    .setImage("attachment://grid.webp")
     .addFields(
       {
         name:   "◈  Equipped Grid",

@@ -240,7 +240,7 @@ const command: Command = {
           .setColor(EVOLVED_GOLD)
           .setTitle("✦  ABILITY EVOLVED")
           .setDescription(`*${newLore}*\n\n**${user.uniqueAbilityName}** has become **${newName}**.\nAll effects strengthened — and a fourth, dormant power awakens.`)
-          .setImage("attachment://ability.png")
+          .setImage("attachment://ability.webp")
           .setFooter({ text: "CARTETHYIA  ·  This awakened form is yours alone." })],
         files:      [new AttachmentBuilder(cardBuffer, { name: "ability.webp" })],
         components: [],

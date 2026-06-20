@@ -266,7 +266,7 @@ async function handleClaim(interaction: ChatInputCommandInteraction) {
       .setAuthor({ name: `${displayName}  ·  Expedition Complete`, iconURL: avatarUrl })
       .setTitle(`${dispatch_meta?.emoji ?? "🌿"}  ${dispatch_meta?.label ?? "Expedition"} — Returned`)
       .setDescription(`Your character has returned from a **${user.dispatchHours}-hour** expedition.\n\nHere's what they brought back:`)
-      .setImage("attachment://dispatch.png")
+      .setImage("attachment://dispatch.webp")
       .setFooter({ text: "CARTETHYIA  ·  Dispatch System  ·  Send another with /dispatch send" })],
     files: [attachment],
   });

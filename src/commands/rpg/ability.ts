@@ -89,7 +89,7 @@ const command: Command = {
 
     const embed = new EmbedBuilder()
       .setColor(user.abilityEvolved ? 0xFCD34D : color)
-      .setImage("attachment://ability.png")
+      .setImage("attachment://ability.webp")
       .setFooter({ text: user.abilityEvolved ? "CARTETHYIA  ·  ✦ Evolved — this awakened form is yours alone." : "CARTETHYIA  ·  This ability is yours alone." });
 
     if (loreText) {

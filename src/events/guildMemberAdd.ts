@@ -37,7 +37,7 @@ export async function execute(member: GuildMember) {
       )
       .setFooter({ text: "CARTETHYIA  ·  The world is watching." });
 
-    if (cardBuf) embed.setImage("attachment://welcome.png");
+    if (cardBuf) embed.setImage("attachment://welcome.webp");
 
     const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
       new ButtonBuilder()

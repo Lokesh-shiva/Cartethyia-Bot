@@ -70,7 +70,7 @@ const command: Command = {
         lore:        "A glimpse of what the Grid might forge for one such as you.",
       });
       await interaction.editReply({
-        embeds: [new EmbedBuilder().setColor(0x8B7FF5).setImage("attachment://ability.png")
+        embeds: [new EmbedBuilder().setColor(0x8B7FF5).setImage("attachment://ability.webp")
           .setFooter({ text: `🛠️ ${previewElement} preview (not saved) · run again for a different roll` })],
         files: [new AttachmentBuilder(cardBuf, { name: "ability.webp" })],
       });
@@ -107,7 +107,7 @@ const command: Command = {
       });
       await interaction.editReply({
         embeds: [new EmbedBuilder().setColor(isV2 ? 0xA78BFA : 0x8B7FF5)
-          .setImage("attachment://ability.png")
+          .setImage("attachment://ability.webp")
           .setDescription(`**${user.uniqueAbilityName}** — *${user.uniqueAbilityEffect}*`)
           .setFooter({ text: `🛠️ Current saved ability (${isV2 ? "V2" : "V1"}) · use reroll:true to generate a new one` })],
         files: [new AttachmentBuilder(cardBuf, { name: "ability.webp" })],
@@ -167,7 +167,7 @@ const command: Command = {
 
       await interaction.editReply({
         embeds: [new EmbedBuilder().setColor(useV2 ? 0xA78BFA : 0x8B7FF5)
-          .setImage("attachment://ability.png")
+          .setImage("attachment://ability.webp")
           .setDescription(`**${ability.name}** — *${ability.effect}*`)
           .setFooter({ text: `🛠️ ${useV2 ? "V2" : "V1"} dry-run${isReroll ? " (rerolled)" : ""} · not saved yet` })],
         files:      [new AttachmentBuilder(cardBuf, { name: "ability.webp" })],

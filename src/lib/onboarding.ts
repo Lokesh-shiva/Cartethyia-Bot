@@ -108,7 +108,7 @@ export async function sendOnboarding(
     files: [welcomeAttach],
     embeds: [new EmbedBuilder()
       .setColor(C.primary)
-      .setImage("attachment://welcome.png")
+      .setImage("attachment://welcome.webp")
       .setDescription(
         `**CARTETHYIA** is a social RPG where **interaction is power**.\n` +
         `Here's the loop:\n\n` +

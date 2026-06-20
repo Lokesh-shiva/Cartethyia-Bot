@@ -37,7 +37,7 @@ const command: Command = {
 
     const embed = new EmbedBuilder()
       .setColor(color)
-      .setImage("attachment://inventory.png")
+      .setImage("attachment://inventory.webp")
       .setFooter({ text: "CARTETHYIA  ·  Material Inventory" });
 
     await interaction.editReply({ embeds: [embed], files: [attachment] });

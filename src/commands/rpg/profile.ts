@@ -141,7 +141,7 @@ const command: Command = {
     const embed      = new EmbedBuilder()
       .setColor(0x0D1117)
       .setDescription(`-# [Vote on top.gg](https://top.gg/bot/1510163339177623642/vote) · [Vote on DBL](https://discordbotlist.com/bots/cartethyia/upvote) · [Vote on rank.top](https://rank.top/bot/cartethyia) · [Join community](https://discord.gg/vgVmRMc2Gb)`)
-      .setImage("attachment://profile.png")
+      .setImage("attachment://profile.webp")
       .setFooter({ text: `CARTETHYIA  ·  ${displayName}'s Profile${extraBonds}`, iconURL: avatarUrl });
 
     await interaction.editReply({ embeds: [embed], files: [attachment] });
