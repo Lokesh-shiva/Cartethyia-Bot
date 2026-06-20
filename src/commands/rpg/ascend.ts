@@ -19,6 +19,7 @@ import { compositeVibMult, compositeHasSecondWind } from "../../lib/abilityEffec
 import { formatV2Effects } from "../../lib/abilityEngineV2";
 import { generateAbilityCard } from "../../lib/abilityCard";
 import { incrementWeaponBond } from "../../lib/weaponAwakening";
+import { grantReferralMilestone } from "../../lib/referral";
 import prisma from "../../lib/prisma";
 
 const ELEMENT_HEX: Record<string, number> = {
@@ -371,6 +372,9 @@ const command: Command = {
             data:  { worldLevel: { increment: 1 }, ascensionWins: { increment: 1 }, fractureKeys: { increment: 2 } },
           });
           await incrementWeaponBond(interaction.user.id).catch(() => null);
+          if (isFirstAscension) {
+            grantReferralMilestone(interaction.user.id, "ascend", interaction.client).catch(() => {});
+          }
 
           await thread.send({
             embeds: [new EmbedBuilder()

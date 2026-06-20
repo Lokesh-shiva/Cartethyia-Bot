@@ -5,6 +5,7 @@ import { generateLevelUpCard } from "../lib/levelUpCard";
 import { sendElementSelection } from "../lib/elementSelect";
 import { shouldSpawnEncounter, spawnEncounter, getLevelUpChannelId, getNotifChannelId, isLevelUpEnabled, isExpEnabled, getBotChannelIds } from "../lib/encounter";
 import { getPrefix } from "../lib/prefixManager";
+import { grantReferralMilestone } from "../lib/referral";
 import { ExtendedClient } from "../types";
 import prisma from "../lib/prisma";
 
@@ -117,6 +118,11 @@ export async function execute(message: Message) {
 
   // Milestone unlocks + level cap notification
   await sendMilestoneNotifications(notifCh, result.oldLevel, result.newLevel, result.hitCapAt);
+
+  // Referral milestone — fires once when recruit crosses Lv20
+  if (result.oldLevel < 20 && result.newLevel >= 20) {
+    grantReferralMilestone(message.author.id, "lv20", message.client).catch(() => {});
+  }
 
   // If player just hit level 20 and hasn't chosen an element — trigger element selection
   if (result.newLevel === 20 && (!chatUser.element || chatUser.element === "NONE")) {

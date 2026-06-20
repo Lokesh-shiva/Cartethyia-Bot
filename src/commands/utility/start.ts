@@ -6,7 +6,12 @@ import { GuildMember } from "discord.js";
 const command: Command = {
   data: new SlashCommandBuilder()
     .setName("start")
-    .setDescription("Begin your Cartethyia journey — shows the welcome guide."),
+    .setDescription("Begin your Cartethyia journey — shows the welcome guide.")
+    .addStringOption(opt =>
+      opt.setName("referral")
+        .setDescription("Referral code from a friend (optional)")
+        .setRequired(false)
+    ) as SlashCommandBuilder,
 
   async execute(interaction: ChatInputCommandInteraction) {
     if (!(interaction.member instanceof GuildMember)) {
@@ -14,11 +19,14 @@ const command: Command = {
       return;
     }
 
+    const referralCode = interaction.options.getString("referral") ?? undefined;
     await interaction.reply({ content: "◈ Initialising your Resonance...", flags: 64 });
 
     await sendOnboarding(
       interaction.member,
-      interaction.channel as TextChannel
+      interaction.channel as TextChannel,
+      undefined,
+      referralCode,
     );
   },
 };

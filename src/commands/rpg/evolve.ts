@@ -16,6 +16,7 @@ import {
   evolveEffectsV2, generateEvolutionV2,
 } from "../../lib/abilityEvolution";
 import { generateAbilityCard } from "../../lib/abilityCard";
+import { grantReferralMilestone } from "../../lib/referral";
 
 const ELEMENT_HEX: Record<string, number> = {
   FUSION: 0xFF6B35, GLACIO: 0x38BDF8, ELECTRO: 0xA855F7,
@@ -220,6 +221,7 @@ const command: Command = {
           ...(isV2 ? { abilityVersion: 2 } : {}),
         },
       });
+      grantReferralMilestone(interaction.user.id, "evolved", interaction.client).catch(() => {});
       const displayName = interaction.guild?.members.cache.get(interaction.user.id)?.displayName
         ?? interaction.user.displayName ?? interaction.user.username;
 

@@ -122,6 +122,11 @@ model User {
   ascensionWins   Int @default(0)
   encountersWon   Int @default(0)
 
+  // Referral system
+  referralCode              String?  @unique
+  referredBy                String?
+  referralMilestonesGranted String[] @default([])
+
   // Voting
   lastVoted             DateTime?
   dblVotes              Int       @default(0)

@@ -14,6 +14,7 @@ import {
   EGO_LEVEL_REQUIRED, EGO_COST, AWAKEN_STAT_MULT, generateAwakening,
   synergyMult, awakenHiddenBase, SUB_LABELS,
 } from "../../lib/weaponAwakening";
+import { grantReferralMilestone } from "../../lib/referral";
 import { WeaponType } from "@prisma/client";
 
 const EGO_GOLD = 0xFCD34D;
@@ -199,6 +200,7 @@ const command: Command = {
         await fail("The weapon has already awakened.");
         return;
       }
+      grantReferralMilestone(interaction.user.id, "awakened", interaction.client).catch(() => {});
 
       // Legendary override — exclusively for the bot owner.
       if (interaction.user.id === "979379636586819746") {

@@ -10,6 +10,7 @@ type AnyTextChannel = TextChannel | DMChannel;
 import { getOrCreateUser, awardUser } from "./economy";
 import { generateOnboardingQuestions, PersonalityQuestion } from "./personalityQuestions";
 import { generateWelcomeCard } from "./welcomeCard";
+import { claimReferralJoin } from "./referral";
 import prisma from "./prisma";
 
 // ── Colours ───────────────────────────────────────────────────────────────────
@@ -89,6 +90,7 @@ export async function sendOnboarding(
   member: GuildMember,
   channel: AnyTextChannel,
   onComplete?: () => Promise<void>,
+  referralCode?: string,
 ) {
   const displayName = member.displayName;
   const avatarUrl   = member.user.displayAvatarURL({ size: 256, extension: "png" });
@@ -199,6 +201,11 @@ export async function sendOnboarding(
       },
     },
   });
+
+  // Claim referral join bonus (first time, all questions answered, code provided)
+  if (isFirstTime && answered === total && referralCode) {
+    await claimReferralJoin(member.id, referralCode, (channel as any).client).catch(() => {});
+  }
 
   // ── 6. First steps closing ────────────────────────────────────────────────
 
