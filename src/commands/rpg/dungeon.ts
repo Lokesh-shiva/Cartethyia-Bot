@@ -9,7 +9,7 @@ import { DUNGEONS, getDungeon, getScaledWaveEnemy, DungeonDefinition } from "../
 import { resolvePlayerBonuses, applyBonuses, apply4pcSkillBonus, apply4pcUltBonus, roll4pcDoubleHit, roll4pcBlock, apply5pcLowHpCrit, apply5pcFirstHit, apply5pcFullHpDmg, get5pcVibDrainMult, applyLifesteal, elemIgniteProc, elemFrostShield, elemDischargeEnergy, elemWindstrideMult, elemVoidSurgeHeal, elemRadianceRegen, elemRadianceCrit, applyAbilityAttack, abilityV2TurnRegen } from "../../lib/setBonus";
 import { compositeVibMult, compositeHasSecondWind } from "../../lib/abilityEffects";
 import { hpBar, energyBar, baselineAtk } from "../../lib/combat";
-import { voteNudge } from "../../lib/voteNudge";
+import { voteNudge, supportNudge } from "../../lib/voteNudge";
 import { rollRarity, rollMainStat, rollSubstats, rollSubstatValue, calcMainStatValue, substatCount, RARITY_STARS, ELEMENT_EMOJI } from "../../lib/echoes";
 import { awardUser, isDispatchBlocked, replyNotStarted } from "../../lib/economy";
 import { auditAward } from "../../lib/antiCheat";
@@ -728,7 +728,7 @@ async function grantRewards(
       .setDescription(
         `**${displayName}** conquered all 3 waves of **${dungeon.name}**!\n\n` +
         (echoLines.length ? `**Echoes Dropped:**\n${echoLines.join("\n")}\n\n` : "") +
-        `**Materials Earned:**\n${lines.join("\n")}` + voteNudge() +
+        `**Materials Earned:**\n${lines.join("\n")}` + voteNudge() + supportNudge() +
         (evoLine ? `\n\n${evoLine}` : "") +
         (bondResult ? `\n✦ Weapon Bond **${bondResult.bond}/10**${bondResult.milestone ? ` — *${bondResult.milestone}*` : ""}` : "")
       )
