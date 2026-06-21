@@ -49,7 +49,7 @@ function rrect(ctx: SKRSContext2D, x: number, y: number, w: number, h: number, r
 }
 
 export async function generateInventoryCard(user: User, displayName: string, avatarUrl: string | null): Promise<Buffer> {
-  const COLS = 3, ROWS = 3;
+  const COLS = 3, ROWS = Math.ceil(CURRENCIES.length / 3);
   const CELL_W = 200, CELL_H = 80;
   const PAD = 20, GAP = 10;
   const HEADER_H = 72;
