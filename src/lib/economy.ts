@@ -50,6 +50,8 @@ export async function awardUser(
     stasisLocks?:     number;
     resonanceRecords?:number;
     fractureKeys?:    number;
+    fractonite?:      number;
+    auraPrisms?:      number;
     resonanceExp?:    number;
   },
   source = "unknown",
@@ -66,6 +68,8 @@ export async function awardUser(
       stasisLocks:      { increment: rewards.stasisLocks      ?? 0 },
       resonanceRecords: { increment: rewards.resonanceRecords ?? 0 },
       fractureKeys:     { increment: rewards.fractureKeys     ?? 0 },
+      fractonite:       { increment: rewards.fractonite       ?? 0 },
+      auraPrisms:       { increment: rewards.auraPrisms       ?? 0 },
       resonanceExp:     { increment: rewards.resonanceExp     ?? 0 },
     },
   });
@@ -79,6 +83,8 @@ export async function awardUser(
     stasisLocks:      rewards.stasisLocks      ?? 0,
     resonanceRecords: rewards.resonanceRecords ?? 0,
     fractureKeys:     rewards.fractureKeys     ?? 0,
+    fractonite:       rewards.fractonite       ?? 0,
+    auraPrisms:       rewards.auraPrisms       ?? 0,
   }, source).catch(() => {});
   return result;
 }

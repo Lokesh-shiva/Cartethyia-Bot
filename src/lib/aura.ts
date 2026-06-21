@@ -1,22 +1,28 @@
 import prisma from "./prisma";
 
-export const MAX_AURA            = 5;
-export const REGEN_INTERVAL_MS   = 3 * 60 * 60 * 1000; // 1 charge per 3 hours
+export const MAX_AURA          = 5;  // base cap (no patron)
+export const REGEN_INTERVAL_MS = 3 * 60 * 60 * 1000; // 1 charge per 3 hours
 
 export interface AuraState {
-  current:    number;   // charges available right now
-  max:        number;   // always MAX_AURA
-  nextRegenMs: number;  // ms until next charge (Infinity if full)
+  current:     number;
+  max:         number;
+  nextRegenMs: number;
+}
+
+export function getMaxAura(patronTier: number): number {
+  if (patronTier >= 3) return 8;
+  if (patronTier >= 2) return 6;
+  return 5;
 }
 
 /** Compute current aura from stored value + elapsed time (no DB write). */
-export function computeAura(stored: number, updatedAt: Date): AuraState {
-  const msPassed   = Date.now() - updatedAt.getTime();
-  const regenCount = Math.min(MAX_AURA - stored, Math.floor(msPassed / REGEN_INTERVAL_MS));
-  const current    = Math.min(MAX_AURA, stored + regenCount);
-  const msInto     = msPassed % REGEN_INTERVAL_MS;
-  const nextRegenMs = current >= MAX_AURA ? Infinity : REGEN_INTERVAL_MS - msInto;
-  return { current, max: MAX_AURA, nextRegenMs };
+export function computeAura(stored: number, updatedAt: Date, maxAura = MAX_AURA): AuraState {
+  const msPassed    = Date.now() - updatedAt.getTime();
+  const regenCount  = Math.min(maxAura - stored, Math.floor(msPassed / REGEN_INTERVAL_MS));
+  const current     = Math.min(maxAura, stored + regenCount);
+  const msInto      = msPassed % REGEN_INTERVAL_MS;
+  const nextRegenMs = current >= maxAura ? Infinity : REGEN_INTERVAL_MS - msInto;
+  return { current, max: maxAura, nextRegenMs };
 }
 
 /** Format time until next regen for display. */
@@ -28,8 +34,8 @@ export function fmtAuraRegen(ms: number): string {
 }
 
 /** Aura bar string like ◈◈◈◇◇ */
-export function auraBar(current: number): string {
-  return "◈".repeat(current) + "◇".repeat(MAX_AURA - current);
+export function auraBar(current: number, max = MAX_AURA): string {
+  return "◈".repeat(current) + "◇".repeat(Math.max(0, max - current));
 }
 
 /**
@@ -40,11 +46,12 @@ export function auraBar(current: number): string {
 export async function consumeAura(userId: string, cost: number): Promise<number | null> {
   const user = await prisma.user.findUnique({
     where:  { id: userId },
-    select: { resonanceAura: true, auraUpdatedAt: true },
+    select: { resonanceAura: true, auraUpdatedAt: true, patronTier: true },
   });
   if (!user) return null;
 
-  const { current } = computeAura(user.resonanceAura, user.auraUpdatedAt);
+  const maxAura     = getMaxAura(user.patronTier);
+  const { current } = computeAura(user.resonanceAura, user.auraUpdatedAt, maxAura);
   if (current < cost) return null;
 
   const newAura = current - cost;
@@ -59,8 +66,8 @@ export async function consumeAura(userId: string, cost: number): Promise<number 
 export async function getAura(userId: string): Promise<AuraState | null> {
   const user = await prisma.user.findUnique({
     where:  { id: userId },
-    select: { resonanceAura: true, auraUpdatedAt: true },
+    select: { resonanceAura: true, auraUpdatedAt: true, patronTier: true },
   });
   if (!user) return null;
-  return computeAura(user.resonanceAura, user.auraUpdatedAt);
+  return computeAura(user.resonanceAura, user.auraUpdatedAt, getMaxAura(user.patronTier));
 }

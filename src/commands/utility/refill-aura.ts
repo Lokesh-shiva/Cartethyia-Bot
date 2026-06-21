@@ -1,7 +1,7 @@
 import { SlashCommandBuilder, ChatInputCommandInteraction, EmbedBuilder } from "discord.js";
 import { Command } from "../../types";
 import prisma from "../../lib/prisma";
-import { MAX_AURA } from "../../lib/aura";
+import { getMaxAura } from "../../lib/aura";
 import { isOwner } from "../../lib/owner";
 
 const command: Command = {
@@ -33,15 +33,16 @@ const command: Command = {
       return;
     }
 
+    const maxAura = getMaxAura(user.patronTier ?? 0);
     await prisma.user.update({
       where: { id: target.id },
-      data:  { resonanceAura: MAX_AURA, auraUpdatedAt: new Date() },
+      data:  { resonanceAura: maxAura, auraUpdatedAt: new Date() },
     });
 
     await interaction.editReply({
       embeds: [new EmbedBuilder()
         .setColor(0x6366F1)
-        .setDescription(`◈◈◈◈◈  **${displayName}'s** Resonance Aura refilled to **${MAX_AURA}/${MAX_AURA}**.`)
+        .setDescription(`${"◈".repeat(maxAura)}  **${displayName}'s** Resonance Aura refilled to **${maxAura}/${maxAura}**.`)
         .setFooter({ text: "CARTETHYIA  ·  Dev" })],
     });
   },

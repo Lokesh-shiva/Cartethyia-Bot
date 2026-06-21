@@ -29,7 +29,7 @@ const command: Command = {
     await interaction.deferReply({ flags: 64 });
 
     const weekend    = isWeekend();
-    const rewards    = { credits: weekend ? 2000 : 1000, fractureKeys: weekend ? 2 : 1 };
+    const rewards    = { credits: weekend ? 2000 : 1000, fractonite: weekend ? 40 : 20 };
     const weekendNote = weekend ? "\n> 🎉 **Weekend bonus active — rewards are doubled!**\n" : "\n";
 
     const dbUser = await prisma.user.findUnique({
@@ -64,7 +64,7 @@ const command: Command = {
           weekendNote +
           `**Rewards per upvote (per site, every 12 hours):**\n` +
           `${CE.cr} **${rewards.credits}** Credits\n` +
-          `${CE.fk} **${rewards.fractureKeys}** Fracture Key${rewards.fractureKeys !== 1 ? "s" : ""}\n\n` +
+          `${CE.ft} **${rewards.fractonite}** Fractonite\n\n` +
           `Rewards arrive automatically via DM after your vote is confirmed.\n\n` +
           `**[→ Upvote on top.gg](${TOPGG_VOTE_URL})**\n` +
           `**[→ Upvote on discordbotlist.com](${DBL_VOTE_URL})**\n` +

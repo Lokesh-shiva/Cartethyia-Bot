@@ -27,7 +27,7 @@ import {
   applyAbilityAttack, abilityV2TurnRegen,
 } from "../../lib/setBonus";
 import { compositeVibMult, compositeHasSecondWind } from "../../lib/abilityEffects";
-import { computeAura, consumeAura, auraBar, fmtAuraRegen, MAX_AURA } from "../../lib/aura";
+import { computeAura, consumeAura, auraBar, fmtAuraRegen, getMaxAura } from "../../lib/aura";
 
 const ELEMENT_HEX: Record<string, number> = {
   FUSION: 0xFF6B35, GLACIO: 0x38BDF8, ELECTRO: 0xA855F7,
@@ -81,7 +81,7 @@ const command: Command = {
     const avatarUrl = interaction.user.displayAvatarURL({ size: 128, extension: "png" });
 
     const user    = await getOrCreateUser(interaction.user.id, displayName, avatarUrl);
-    const auraState = computeAura(user.resonanceAura ?? MAX_AURA, user.auraUpdatedAt ?? new Date());
+    const auraState = computeAura(user.resonanceAura ?? 5, user.auraUpdatedAt ?? new Date(), getMaxAura(user.patronTier ?? 0));
     const bonuses = await resolvePlayerBonuses(interaction.user.id);
     const stats   = applyBonuses(user, bonuses);
 
@@ -141,8 +141,8 @@ const command: Command = {
         .setTitle("⚔️  Boss Challenge")
         .setDescription(
           `Re-fight any boss you've already defeated.\n\n` +
-          `**Resonance Aura:** ${auraBar(auraState.current)}  ${auraState.current}/${MAX_AURA}` +
-          (auraState.current < MAX_AURA ? `  ·  next in **${fmtAuraRegen(auraState.nextRegenMs)}**` : "") + `\n\n` +
+          `**Resonance Aura:** ${auraBar(auraState.current, auraState.max)}  ${auraState.current}/${auraState.max}` +
+          (auraState.current < auraState.max ? `  ·  next in **${fmtAuraRegen(auraState.nextRegenMs)}**` : "") + `\n\n` +
           `› Costs **1 ◈ Aura** per fight — no additional cooldown\n` +
           `› Loot: **70%** of ascension rewards\n` +
           `› Difficulty: scales harder the more overleveled you are (**Veteran ×** multiplier)\n` +
@@ -168,7 +168,7 @@ const command: Command = {
       // lock was already acquired at command entry — no re-check needed
 
       // Aura check
-      const freshAura = computeAura(user.resonanceAura ?? MAX_AURA, user.auraUpdatedAt ?? new Date());
+      const freshAura = computeAura(user.resonanceAura ?? 5, user.auraUpdatedAt ?? new Date(), getMaxAura(user.patronTier ?? 0));
       if (freshAura.current < 1) {
         releaseLock(interaction.user.id);
         await sel.editReply({
@@ -267,8 +267,6 @@ const command: Command = {
         releaseLock(interaction.user.id);
         await clearFight(interaction.user.id);
         if (won) {
-          // 1–3 Fracture Keys based on world level (WL0-2 → 1, WL3-5 → 2, WL6+ → 3)
-          const bossKeys = boss.worldLevel >= 6 ? 3 : boss.worldLevel >= 3 ? 2 : 1;
           const loot = {
             credits:       Math.floor(boss.defeatLoot.credits       * LOOT_MULT),
             tuningModules: Math.floor(boss.defeatLoot.tuningModules * LOOT_MULT),
@@ -276,7 +274,7 @@ const command: Command = {
             forgingOres:   Math.floor(boss.defeatLoot.forgingOres   * LOOT_MULT),
             paradoxCores:  Math.floor(boss.defeatLoot.paradoxCores  * LOOT_MULT),
             resonanceExp:  Math.floor(boss.defeatLoot.resonanceExp  * LOOT_MULT),
-            fractureKeys:  bossKeys,
+            fractonite:    Math.floor(boss.defeatLoot.fractonite     * LOOT_MULT),
           };
           await awardUser(interaction.user.id, loot, "boss");
           const lvlResult  = await checkLevelUp(interaction.user.id);

@@ -369,7 +369,7 @@ const command: Command = {
           await awardUser(interaction.user.id, boss.defeatLoot, "ascend");
           await prisma.user.update({
             where: { id: interaction.user.id },
-            data:  { worldLevel: { increment: 1 }, ascensionWins: { increment: 1 }, fractureKeys: { increment: 2 } },
+            data:  { worldLevel: { increment: 1 }, ascensionWins: { increment: 1 }, fractonite: { increment: 60 } },
           });
           await incrementWeaponBond(interaction.user.id).catch(() => null);
           if (isFirstAscension) {

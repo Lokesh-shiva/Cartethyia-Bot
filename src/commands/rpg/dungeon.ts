@@ -16,7 +16,7 @@ import { auditAward } from "../../lib/antiCheat";
 import { acquireLock, releaseLock, alreadyInCombatMsg } from "../../lib/combatLock";
 import { registerFight, clearFight } from "../../lib/fightTracker";
 import { checkLevelUp } from "../../lib/progression";
-import { computeAura, consumeAura, auraBar, fmtAuraRegen, MAX_AURA } from "../../lib/aura";
+import { computeAura, consumeAura, auraBar, fmtAuraRegen, getMaxAura } from "../../lib/aura";
 import { CE } from "../../lib/emojiManager";
 import { trackEvolutionProgress } from "../../lib/abilityEvolution";
 import { incrementWeaponBond } from "../../lib/weaponAwakening";
@@ -44,7 +44,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
     select: { level: true, worldLevel: true, element: true,
               baseHp: true, baseAtk: true, baseDef: true,
               critRate: true, critDmg: true,
-              resonanceAura: true, auraUpdatedAt: true,
+              resonanceAura: true, auraUpdatedAt: true, patronTier: true,
               dispatchStatus: true, dispatchEndsAt: true },
   });
 
@@ -54,7 +54,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
     return;
   }
   // Aura check
-  const auraState = computeAura(dbUser.resonanceAura, dbUser.auraUpdatedAt);
+  const auraState = computeAura(dbUser.resonanceAura, dbUser.auraUpdatedAt, getMaxAura(dbUser.patronTier ?? 0));
 
   // Build select menu options
   const available = DUNGEONS.filter(d =>
@@ -107,7 +107,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
     return [...unlocked, ...(locked.length ? ["", ...locked] : [])].join("\n") || "None";
   };
 
-  const nextRegen = auraState.current < MAX_AURA
+  const nextRegen = auraState.current < auraState.max
     ? `Next charge in **${fmtAuraRegen(auraState.nextRegenMs)}**`
     : "Aura full";
 
@@ -116,7 +116,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
       .setColor(0x6366F1)
       .setTitle("◈  Dungeons")
       .setDescription(
-        `**Resonance Aura:** ${auraBar(auraState.current)}  ${auraState.current}/${MAX_AURA}  ·  ${nextRegen}\n` +
+        `**Resonance Aura:** ${auraBar(auraState.current, auraState.max)}  ${auraState.current}/${auraState.max}  ·  ${nextRegen}\n` +
         `*Regens 1 charge every 3 hours. Normal dungeons cost 1 ◈, Boss Trials cost 2 ◈.*`
       )
       .addFields(
@@ -141,13 +141,13 @@ export async function execute(interaction: ChatInputCommandInteraction) {
     }
 
     // Re-check aura at entry time
-    const freshAura = computeAura(dbUser.resonanceAura, dbUser.auraUpdatedAt);
+    const freshAura = computeAura(dbUser.resonanceAura, dbUser.auraUpdatedAt, getMaxAura(dbUser.patronTier ?? 0));
     if (freshAura.current < dungeon.auraCost) {
       await sel.update({
         embeds: [new EmbedBuilder().setColor(0x4A4A5A)
           .setDescription(
             `◈  Not enough **Resonance Aura**.\n` +
-            `**${dungeon.name}** costs **${dungeon.auraCost} ◈** — you have **${freshAura.current}/${MAX_AURA}**.\n` +
+            `**${dungeon.name}** costs **${dungeon.auraCost} ◈** — you have **${freshAura.current}/${freshAura.max}**.\n` +
             `Next charge in **${fmtAuraRegen(freshAura.nextRegenMs)}**.`
           )
           .setFooter({ text: "CARTETHYIA  ·  Dungeons" })],
@@ -332,7 +332,7 @@ async function runDungeon(
 
   // All 3 waves cleared — grant rewards
   await grantRewards(thread, interaction.user.id, dungeon, dbUser.worldLevel, displayName);
-  await prisma.user.update({ where: { id: interaction.user.id }, data: { dungeonClears: { increment: 1 }, fractureKeys: { increment: 1 } } }).catch(() => {});
+  await prisma.user.update({ where: { id: interaction.user.id }, data: { dungeonClears: { increment: 1 }, fractonite: { increment: 40 } } }).catch(() => {});
   await checkLevelUp(interaction.user.id);
   await thread.setArchived(true).catch(() => {});
 }
@@ -701,7 +701,7 @@ async function grantRewards(
         forgingOres:      { increment: gained.forgingOres      ?? 0 },
         paradoxCores:     { increment: gained.paradoxCores     ?? 0 },
         resonanceRecords: { increment: gained.resonanceRecords ?? 0 },
-        fractureKeys:     { increment: gained.fractureKeys     ?? 0 },
+        fractonite:       { increment: gained.fractonite        ?? 0 },
         resonanceExp:     { increment: gained.resonanceExp     ?? 0 },
       },
     }),
@@ -715,7 +715,7 @@ async function grantRewards(
     forgingOres:      gained.forgingOres      ?? 0,
     paradoxCores:     gained.paradoxCores     ?? 0,
     resonanceRecords: gained.resonanceRecords ?? 0,
-    fractureKeys:     gained.fractureKeys     ?? 0,
+    fractonite:       gained.fractonite        ?? 0,
   }, "dungeon").catch(() => {});
 
   const evoLine    = await trackEvolutionProgress(userId, { kind: "dungeon" }).catch(() => null);

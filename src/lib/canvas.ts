@@ -120,7 +120,8 @@ export interface ProfileCardInput {
   credits:         number;
   lunakite:        number;
   paradoxCores:    number;
-  resonanceAura:   number;   // current aura charges (0–5)
+  resonanceAura:   number;   // current aura charges
+  auraMax:         number;   // patron-aware max (5/6/8)
   auraNextRegenMs: number;   // ms until next charge (Infinity = full)
   uniqueAbilityName: string | null;
   // Extra
@@ -353,9 +354,10 @@ export async function generateProfileCard(input: ProfileCardInput): Promise<Buff
   ctx.fillText(t.label, pillX + pillW / 2, pillY + 13.5);
   ctx.textAlign = "left";
 
-  const auraFilled = Math.min(5, Math.max(0, input.resonanceAura));
-  const auraBar    = "◈".repeat(auraFilled) + "◇".repeat(5 - auraFilled);
-  const regenStr   = input.resonanceAura < 5 && isFinite(input.auraNextRegenMs)
+  const auraMax    = input.auraMax ?? 5;
+  const auraFilled = Math.min(auraMax, Math.max(0, input.resonanceAura));
+  const auraBar    = "◈".repeat(auraFilled) + "◇".repeat(auraMax - auraFilled);
+  const regenStr   = input.resonanceAura < auraMax && isFinite(input.auraNextRegenMs)
     ? (() => {
         const h = Math.floor(input.auraNextRegenMs / 3_600_000);
         const m = Math.floor((input.auraNextRegenMs % 3_600_000) / 60_000);
@@ -368,7 +370,7 @@ export async function generateProfileCard(input: ProfileCardInput): Promise<Buff
   // Aura on its own line below, with regen hint
   ctx.fillStyle = "rgba(255,255,255,0.55)";
   ctx.font = `bold 10px Rajdhani, 'Noto Sans', 'Noto Sans CJK SC', 'Noto Sans JP', Arial, sans-serif`;
-  ctx.fillText(`${auraBar}  ${auraFilled}/5 Aura${regenStr}`, pillX + pillW + 10, pillY + 27);
+  ctx.fillText(`${auraBar}  ${auraFilled}/${auraMax} Aura${regenStr}`, pillX + pillW + 10, pillY + 27);
 
   // ── EXP bar ───────────────────────────────────────────────────────────────
   const expNeeded = expToLevel(input.level);

@@ -8,6 +8,8 @@ import { getOrCreateUser } from "../../lib/economy";
 import { auditSpend, auditAward } from "../../lib/antiCheat";
 import { checkLevelUp, expToNextLevel, WORLD_LEVEL_CAPS, sendMilestoneNotifications } from "../../lib/progression";
 import { sendElementSelection } from "../../lib/elementSelect";
+import { computeAura, getMaxAura } from "../../lib/aura";
+import { CE } from "../../lib/emojiManager";
 import prisma from "../../lib/prisma";
 
 const ELEMENT_HEX: Record<string, number> = {
@@ -34,11 +36,35 @@ const command: Command = {
             .setMaxValue(10)
             .setRequired(false)
         )
+    )
+    .addSubcommand((s) =>
+      s.setName("fractonite")
+        .setDescription("Convert 100 Fractonite into 1 Fracture Key.")
+        .addIntegerOption((o) =>
+          o.setName("amount")
+            .setDescription("How many Fracture Keys to buy (default: 1).")
+            .setMinValue(1)
+            .setMaxValue(50)
+            .setRequired(false)
+        )
+    )
+    .addSubcommand((s) =>
+      s.setName("aura-prism")
+        .setDescription("Use an Aura Prism to restore 3 Resonance Aura charges.")
+        .addIntegerOption((o) =>
+          o.setName("amount")
+            .setDescription("How many prisms to use (default: 1).")
+            .setMinValue(1)
+            .setMaxValue(10)
+            .setRequired(false)
+        )
     ) as SlashCommandBuilder,
 
   async execute(interaction: ChatInputCommandInteraction) {
     const sub = interaction.options.getSubcommand();
-    if (sub === "record") await handleRecord(interaction);
+    if (sub === "record")     await handleRecord(interaction);
+    if (sub === "fractonite") await handleFractonite(interaction);
+    if (sub === "aura-prism") await handleAuraPrism(interaction);
   },
 };
 
@@ -175,6 +201,94 @@ async function handleRecord(interaction: ChatInputCommandInteraction) {
 
   collector.on("end", async (_, reason) => {
     if (reason === "time") await interaction.editReply({ components: [] }).catch(() => {});
+  });
+}
+
+async function handleFractonite(interaction: ChatInputCommandInteraction) {
+  await interaction.deferReply({ flags: 64 });
+  const amount = interaction.options.getInteger("amount") ?? 1;
+  const cost   = amount * 100;
+
+  const user = await getOrCreateUser(
+    interaction.user.id,
+    interaction.guild?.members.cache.get(interaction.user.id)?.displayName ?? interaction.user.username,
+    interaction.user.displayAvatarURL({ size: 64, extension: "png" }),
+  );
+  const color = ELEMENT_HEX[user.element] ?? ELEMENT_HEX.NONE;
+
+  if (user.fractonite < cost) {
+    await interaction.editReply({
+      embeds: [new EmbedBuilder().setColor(color)
+        .setDescription(`◈ Not enough Fractonite. Need **${cost}** — you have **${user.fractonite}**.`)
+        .setFooter({ text: "CARTETHYIA  ·  Items" })],
+    });
+    return;
+  }
+
+  await prisma.user.update({
+    where: { id: interaction.user.id },
+    data:  { fractonite: { decrement: cost }, fractureKeys: { increment: amount } },
+  });
+  auditSpend(interaction.user.id, { fractonite: cost }, "use:fractonite");
+  auditAward(interaction.user.id, { fractureKeys: amount }, "use:fractonite").catch(() => {});
+
+  await interaction.editReply({
+    embeds: [new EmbedBuilder().setColor(color)
+      .setDescription(
+        `✦ Converted **${cost}** ${CE.ft} Fractonite → **${amount}** ${CE.fk} Fracture Key${amount !== 1 ? "s" : ""}.\n\n` +
+        `Fractonite remaining: **${user.fractonite - cost}**`
+      )
+      .setFooter({ text: "CARTETHYIA  ·  Items" })],
+  });
+}
+
+async function handleAuraPrism(interaction: ChatInputCommandInteraction) {
+  await interaction.deferReply({ flags: 64 });
+  const amount = interaction.options.getInteger("amount") ?? 1;
+
+  const user = await getOrCreateUser(
+    interaction.user.id,
+    interaction.guild?.members.cache.get(interaction.user.id)?.displayName ?? interaction.user.username,
+    interaction.user.displayAvatarURL({ size: 64, extension: "png" }),
+  );
+  const color = ELEMENT_HEX[user.element] ?? ELEMENT_HEX.NONE;
+
+  if ((user as any).auraPrisms < amount) {
+    await interaction.editReply({
+      embeds: [new EmbedBuilder().setColor(color)
+        .setDescription(`◈ Not enough Aura Prisms. You have **${(user as any).auraPrisms ?? 0}**.`)
+        .setFooter({ text: "CARTETHYIA  ·  Items" })],
+    });
+    return;
+  }
+
+  const maxAura  = getMaxAura((user as any).patronTier ?? 0);
+  const auraState = computeAura((user as any).resonanceAura ?? 5, (user as any).auraUpdatedAt ?? new Date(), maxAura);
+  const restore  = Math.min(amount * 3, maxAura - auraState.current);
+
+  if (restore === 0) {
+    await interaction.editReply({
+      embeds: [new EmbedBuilder().setColor(color)
+        .setDescription(`◈ Your Resonance Aura is already full (**${auraState.current}/${maxAura}**).`)
+        .setFooter({ text: "CARTETHYIA  ·  Items" })],
+    });
+    return;
+  }
+
+  const newAura = auraState.current + restore;
+  await prisma.user.update({
+    where: { id: interaction.user.id },
+    data:  { auraPrisms: { decrement: amount }, resonanceAura: newAura, auraUpdatedAt: new Date() },
+  });
+  auditSpend(interaction.user.id, { auraPrisms: amount }, "use:aura-prism");
+
+  await interaction.editReply({
+    embeds: [new EmbedBuilder().setColor(color)
+      .setDescription(
+        `✦ Used **${amount}** ${CE.ap} Aura Prism${amount !== 1 ? "s" : ""} — restored **+${restore} ◈**.\n\n` +
+        `Resonance Aura: **${newAura}/${maxAura}** ${"◈".repeat(newAura)}${"◇".repeat(maxAura - newAura)}`
+      )
+      .setFooter({ text: "CARTETHYIA  ·  Items" })],
   });
 }
 

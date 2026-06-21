@@ -18,6 +18,8 @@ const CURRENCIES = [
   { key: "paradoxCores",     file: "Paradox Core.png",   label: "Paradox Core",   color: "#EC4899", desc: "Reroll substats"      },
   { key: "stasisLocks",      file: "Stasis Lock.png",    label: "Stasis Lock",    color: "#38BDF8", desc: "Lock a substat"       },
   { key: "fractureKeys",    file: "Fracture Key.png",   label: "Fracture Keys",  color: "#A855F7", desc: "Wish pulls"           },
+  { key: "fractonite",     file: "Fractonite.png",     label: "Fractonite",     color: "#6366F1", desc: "100 = 1 FK"           },
+  { key: "auraPrisms",     file: "Aura Prism.png",     label: "Aura Prisms",    color: "#38BDF8", desc: "Restores 3 ◈ Aura"    },
 ];
 
 const ELEMENT_COLORS: Record<string, string> = {

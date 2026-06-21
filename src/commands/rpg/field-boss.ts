@@ -31,7 +31,7 @@ import {
   ELEMENT_EMOJI, ELEMENT_COLORS,
 } from "../../lib/echoes";
 import { Boss } from "../../lib/bosses";
-import { computeAura, consumeAura, auraBar, fmtAuraRegen, MAX_AURA } from "../../lib/aura";
+import { computeAura, consumeAura, auraBar, fmtAuraRegen, getMaxAura } from "../../lib/aura";
 import { CE } from "../../lib/emojiManager";
 import prisma from "../../lib/prisma";
 import * as path from "path";
@@ -63,7 +63,7 @@ function fieldToBoss(fb: FieldBoss): Boss {
     baseHp: fb.baseHp, baseAtk: fb.baseAtk, baseDef: fb.baseDef,
     vibBar: fb.vibBar,
     moves: fb.moves,
-    defeatLoot: { credits: 0, tuningModules: 0, sealingTubes: 0, forgingOres: 0, paradoxCores: 0, fractureKeys: 0, stasisLocks: 0, resonanceExp: 0 },
+    defeatLoot: { credits: 0, tuningModules: 0, sealingTubes: 0, forgingOres: 0, paradoxCores: 0, fractonite: 0, stasisLocks: 0, resonanceExp: 0 },
   };
 }
 
@@ -109,7 +109,7 @@ const command: Command = {
     const user    = await getOrCreateUser(interaction.user.id, displayName, avatarUrl);
     const bonuses = await resolvePlayerBonuses(interaction.user.id);
     const stats   = applyBonuses(user, bonuses);
-    const auraState = computeAura(user.resonanceAura ?? MAX_AURA, user.auraUpdatedAt ?? new Date());
+    const auraState = computeAura(user.resonanceAura ?? 5, user.auraUpdatedAt ?? new Date(), getMaxAura(user.patronTier ?? 0));
 
     if (user.level < 5) {
       await interaction.editReply({ content: "◈ Reach **Level 5** to challenge field bosses." });
@@ -142,7 +142,7 @@ const command: Command = {
         .addOptions(options)
     );
 
-    const nextRegen = auraState.current < MAX_AURA
+    const nextRegen = auraState.current < auraState.max
       ? `  ·  next in **${fmtAuraRegen(auraState.nextRegenMs)}**` : "";
 
     await interaction.editReply({
@@ -151,7 +151,7 @@ const command: Command = {
         .setTitle("🌿  Field Bosses")
         .setDescription(
           `Field bosses appear across the world and scale to your strength — no World Level required.\n\n` +
-          `**Resonance Aura:** ${auraBar(auraState.current)}  ${auraState.current}/${MAX_AURA}${nextRegen}\n\n` +
+          `**Resonance Aura:** ${auraBar(auraState.current, auraState.max)}  ${auraState.current}/${auraState.max}${nextRegen}\n\n` +
           `› Costs **1 ◈ Aura** per fight — no cooldown\n` +
           `› Drops **1 guaranteed 4-cost echo** of that element\n` +
           `› No enrage — field bosses are fair fights`
@@ -172,7 +172,7 @@ const command: Command = {
       if (!fb) { await sel.editReply({ content: "Boss not found.", components: [], embeds: [] }); return; }
 
       // Aura check
-      const freshAura = computeAura(user.resonanceAura ?? MAX_AURA, user.auraUpdatedAt ?? new Date());
+      const freshAura = computeAura(user.resonanceAura ?? 5, user.auraUpdatedAt ?? new Date(), getMaxAura(user.patronTier ?? 0));
       if (freshAura.current < 1) {
         releaseLock(interaction.user.id);
         await sel.editReply({
@@ -283,7 +283,7 @@ const command: Command = {
           }
 
           const credits = 300 + user.worldLevel * 120;
-          await awardUser(interaction.user.id, { credits, resonanceExp: 100 + user.worldLevel * 40, fractureKeys: 1 }, "field-boss");
+          await awardUser(interaction.user.id, { credits, resonanceExp: 100 + user.worldLevel * 40, fractonite: 60 }, "field-boss");
           const lvl        = await checkLevelUp(interaction.user.id);
           const bondResult = await incrementWeaponBond(interaction.user.id).catch(() => null);
 

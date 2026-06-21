@@ -15,7 +15,9 @@ const EMOJI_ASSETS: { name: string; file: string }[] = [
   { name: "cc_paradox",  file: "assets/icons/Paradox Core.png"   },
   { name: "cc_stasis",   file: "assets/icons/Stasis Lock.png"    },
   { name: "cc_record",   file: "assets/icons/Resonance EXP.png"  },
-  { name: "cc_fracture", file: "assets/icons/Fracture Key.png"   },
+  { name: "cc_fracture",   file: "assets/icons/Fracture Key.png"   },
+  { name: "cc_fractonite", file: "assets/icons/Fractonite.png"     },
+  { name: "cc_prism",      file: "assets/icons/Aura Prism.png"     },
   // 1-cost echoes
   { name: "ec_ember",    file: "assets/echoes/1-cost/Ember Wisp.png"     },
   { name: "ec_frost",    file: "assets/echoes/1-cost/Frost Mote.png"     },
@@ -61,6 +63,8 @@ const CURRENCY_EMOJI_MAP: Record<string, string> = {
   stasisLocks:      "cc_stasis",
   resonanceRecords: "cc_record",
   fractureKeys:     "cc_fracture",
+  fractonite:       "cc_fractonite",
+  auraPrisms:       "cc_prism",
 };
 
 // ── Load / create APPLICATION emojis on startup ───────────────────────────────
@@ -154,5 +158,7 @@ export const CE = {
   get pc() { return getEmoji("cc_paradox",  "🔮"); },
   get sl() { return getEmoji("cc_stasis",   "🔒"); },
   get rr() { return getEmoji("cc_record",   "📀"); },
-  get fk() { return getEmoji("cc_fracture", "🗝️"); },
+  get fk() { return getEmoji("cc_fracture",   "🗝️"); },
+  get ft() { return getEmoji("cc_fractonite", "🔷"); },
+  get ap() { return getEmoji("cc_prism",      "🔆"); },
 };

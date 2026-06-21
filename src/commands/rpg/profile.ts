@@ -6,7 +6,7 @@ import { Command } from "../../types";
 import { getOrCreateUser } from "../../lib/economy";
 import { generateProfileCard, BondData, EchoSlotData, WeaponData } from "../../lib/canvas";
 import { resolvePlayerBonuses, applyBonuses } from "../../lib/setBonus";
-import { computeAura, MAX_AURA } from "../../lib/aura";
+import { computeAura, getMaxAura } from "../../lib/aura";
 import { communityFooter } from "../../lib/communityFooter";
 import prisma from "../../lib/prisma";
 
@@ -28,7 +28,7 @@ const command: Command = {
     const avatarUrl   = target.displayAvatarURL({ size: 256, extension: "png" });
 
     const user     = await getOrCreateUser(target.id, displayName, avatarUrl);
-    const auraState = computeAura(user.resonanceAura ?? MAX_AURA, user.auraUpdatedAt ?? new Date());
+    const auraState = computeAura(user.resonanceAura ?? 5, user.auraUpdatedAt ?? new Date(), getMaxAura((user as any).patronTier ?? 0));
 
     // ── Bonds (sorted by synchrony score descending) ────────────────────────
     const allRawBonds = await prisma.bond.findMany({
@@ -128,6 +128,7 @@ const command: Command = {
       lunakite:        user.lunakite,
       paradoxCores:    user.paradoxCores,
       resonanceAura:     auraState.current,
+      auraMax:           auraState.max,
       auraNextRegenMs:   auraState.nextRegenMs,
       uniqueAbilityName: user.uniqueAbilityName,
       displayName,

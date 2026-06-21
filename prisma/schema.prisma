@@ -157,8 +157,16 @@ model User {
   bossCooldowns    BossCooldown[]
 
   // Resonance Aura — shared stamina for dungeons & boss re-challenges
-  resonanceAura  Int      @default(5)   // current charges (max 5)
+  resonanceAura  Int      @default(5)   // current charges (patron-aware max)
   auraUpdatedAt  DateTime @default(now()) // last time aura was computed/stored
+
+  // Fractonite economy
+  fractonite    Int      @default(0)   // pre-FK currency (100 = 1 FK)
+  auraPrisms    Int      @default(0)   // Aura Prism items (each restores 3 aura)
+
+  // Patreon
+  patronTier    Int      @default(0)   // 0=none 1=Attuned($3) 2=Ascendant($5) 3=Calamity($10)
+  patronClaimed DateTime?              // last monthly claim timestamp
 
   @@map("users")
 }

@@ -79,6 +79,7 @@ const command: Command = {
       baseDef: user.baseDef, baseSpeed: user.baseSpeed, critRate: user.critRate, critDmg: user.critDmg,
       credits: user.credits, lunakite: user.lunakite, paradoxCores: user.paradoxCores,
       resonanceAura: user.resonanceAura ?? 5,
+      auraMax: 5,
       auraNextRegenMs: Infinity,
       uniqueAbilityName: user.uniqueAbilityName,
       displayName, bonds: [], echoes: [], weapon: null,
