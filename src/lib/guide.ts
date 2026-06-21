@@ -162,7 +162,9 @@ export const GUIDE_SECTIONS: Record<string, GuideSection> = {
         { name: "🔮  Paradox Cores",     value: "**Endgame.** Reroll all Echo substats. Earned from Ascension wins, WL1+ Dispatch, Paradox Crucible dungeon.", inline: false },
         { name: "🔒  Stasis Locks",      value: "Lock a substat before rerolling so it's protected. Cost per lock: 1 / 3 / 6. Earned from **Ascension wins** (WL0–2 → 1, WL3–5 → 2, WL6–8 → 3). Also buyable at `/shop` for 500 Credits each.", inline: false },
         { name: "📀  Resonance Records", value: "Instant EXP — one level's worth. Use with `/use record`. Earned from `/vibe`, `/daily`, milestones, Bonds, Memory Vault dungeon.", inline: false },
-        { name: "🗝️  Fracture Keys",     value: "Used for **Resonance Wishes** (`/wish`) — the gacha banner. Earned from: boss clears (1–3 keys by WL), dungeon clears (1), Ascension wins (2).", inline: false },
+        { name: "🔷  Fractonite",        value: "Pre-key currency — **100 Fractonite = 1 Fracture Key** via `/use fractonite`. Drops from dungeons (40), bosses/field-bosses/ascension (60), voting (20/40 weekends), and first expedition (300). Also buyable in `/shop`.", inline: false },
+        { name: "🔆  Aura Prism",        value: "Instantly restores **3 Resonance Aura** charges. Use with `/use aura-prism`. Obtainable from Patreon (Ascendant+) and the Lunakite shop.", inline: false },
+        { name: "🗝️  Fracture Keys",     value: "Used for **Resonance Wishes** (`/wish`) — the gacha banner. Convert Fractonite (100:1) via `/use fractonite`.", inline: false },
       )
       .setFooter({ text: "CARTETHYIA  ·  /inventory · /shop" }),
   },
@@ -551,9 +553,10 @@ export const GUIDE_SECTIONS: Record<string, GuideSection> = {
         {
           name: "Earning Fracture Keys",
           value: [
-            `› Boss clears: **1–3 keys** depending on World Level (WL0–4: 1 · WL5–7: 2 · WL8: 3)`,
-            `› Dungeon clears: **1 key** per clear`,
-            `› Ascension wins: **2 keys** per win`,
+            `Keys come from **Fractonite** — the intermediate currency (100 FT = 1 FK via \`/use fractonite\`).`,
+            `› Dungeon clear: **40 FT**  ·  Boss / Field-Boss / Ascension win: **60 FT**`,
+            `› Daily vote: **20 FT** (40 weekends)  ·  First expedition: **300 FT**`,
+            `› Buy in \`/shop\`: 8 Credits each or 1 Lunakite per 100`,
           ].join("\n"),
           inline: false,
         },
@@ -663,34 +666,47 @@ export const GUIDE_SECTIONS: Record<string, GuideSection> = {
   },
 
   voting: {
-    label: "Voting for Rewards",
-    description: "Support the bot on DBL / top.gg and earn free resources",
+    label: "Voting & Support",
+    description: "Vote for free rewards, or support on Patreon for monthly bundles",
     emoji: "🗳️",
     embed: () => new EmbedBuilder()
       .setColor(C.gold)
-      .setTitle("🗳️  Voting for Rewards")
+      .setTitle("🗳️  Voting & Support")
       .setDescription(
-        `Vote for Cartethyia on Discord Bot List or top.gg to earn free resources.\n` +
-        `Use \`/vote\` to get both links in one place.`
+        `Two ways to support the bot — and both reward you directly.`
       )
       .addFields(
         {
-          name: "Rewards per vote",
-          value: "💠 **1,000 Credits** + 🗝️ **1 Fracture Key**\nWeekend bonus (Sat/Sun): **2,000 Credits + 2 Fracture Keys**",
+          name: "🗳️ Free — Vote Daily  ·  \`/vote\`",
+          value: [
+            `Vote on any of the three platforms to earn instant in-game rewards:`,
+            `💠 **1,000 Credits** + 🔷 **20 Fractonite**`,
+            `Weekend bonus (Sat/Sun): **2,000 Credits + 40 Fractonite**`,
+            `Each platform resets every **12 hours** — you can vote on all three.`,
+            `› discordbotlist.com/bots/cartethyia/upvote`,
+            `› top.gg/bot/1510163339177623642/vote`,
+            `› rank.top/bot/cartethyia`,
+          ].join("\n"),
           inline: false,
         },
         {
-          name: "Where to vote",
-          value: "› **Discord Bot List** — discordbotlist.com/bots/cartethyia/upvote\n› **top.gg** — top.gg/bot/1510163339177623642/vote",
+          name: "✦ Patreon — Monthly Bundles + Permanent Perks  ·  \`/support\`",
+          value: [
+            `**Attuned — $3/mo:** 2 🌙 Lunakite · 80 🔷 Fractonite`,
+            `**Ascendant — $5/mo:** 5 🌙 · 200 🔷 · 1 🔆 Aura Prism · Aura cap → 6`,
+            `**Calamity — $10/mo:** 12 🌙 · 500 🔷 · 3 🔆 Aura Prisms · Aura cap → 8`,
+            `Pledge at patreon.com/c/Cartethyia_bot/membership`,
+            `You'll receive a personal code to redeem with \`/patron redeem <code>\`.`,
+          ].join("\n"),
           inline: false,
         },
         {
-          name: "Cooldown",
-          value: "Each platform resets every **12 hours** — you can vote on both for double the rewards.",
+          name: "📨 Invite Cartethyia to your server",
+          value: "discord.com/oauth2/authorize?client_id=1510163339177623642&permissions=277025459200&scope=bot+applications.commands",
           inline: false,
         },
       )
-      .setFooter({ text: "CARTETHYIA  ·  /vote — links sent as a DM-able embed" }),
+      .setFooter({ text: "CARTETHYIA  ·  /vote · /support · /patron redeem" }),
   },
 
   admin: {

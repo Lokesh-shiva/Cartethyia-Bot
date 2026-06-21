@@ -17,6 +17,7 @@ const NAV_ITEMS = [
   { label: 'Commands',   href: '#commands'   },
   { label: 'Milestones', href: '#milestones' },
   { label: 'Vote',       href: '#vote'       },
+  { label: 'Support',   href: 'https://www.patreon.com/c/Cartethyia_bot/membership', external: true },
 ];
 
 // Animated stat counters in the hero section
