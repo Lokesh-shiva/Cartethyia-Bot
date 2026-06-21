@@ -2,9 +2,9 @@ import useReveal from '../hooks/useReveal';
 import './Vote.css';
 
 const REWARDS = [
-  { emoji: '💠', amount: '1 000', label: 'Credits',    desc: 'Spend in the shop on records, materials, and upgrades' },
-  { emoji: '🔷', amount: '20',    label: 'Fractonite', desc: '100 Fractonite = 1 Fracture Key for /wish pulls (40 on weekends)' },
-  { emoji: '✖2', amount: '2×',    label: 'Weekend',    desc: 'Double credits and Fractonite every Saturday and Sunday' },
+  { emoji: '💠', amount: '1 000', label: 'Credits',      desc: 'Spend in the shop on records, materials, and upgrades' },
+  { emoji: '🗝️', amount: '1',     label: 'Fracture Key', desc: 'Spend at /wish for a weapon pull from the Resonance Banner' },
+  { emoji: '✖2', amount: '2×',    label: 'Weekend',      desc: 'Double credits and keys every Saturday and Sunday' },
 ];
 
 const PATRON_TIERS = [

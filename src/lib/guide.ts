@@ -555,7 +555,8 @@ export const GUIDE_SECTIONS: Record<string, GuideSection> = {
           value: [
             `Keys come from **Fractonite** — the intermediate currency (100 FT = 1 FK via \`/use fractonite\`).`,
             `› Dungeon clear: **40 FT**  ·  Boss / Field-Boss / Ascension win: **60 FT**`,
-            `› Daily vote: **20 FT** (40 weekends)  ·  First expedition: **300 FT**`,
+            `› Daily vote: **1 FK** (2 weekends, direct — no conversion needed)`,
+            `› First expedition: **300 FT** (Fractonite)`,
             `› Buy in \`/shop\`: 8 Credits each or 1 Lunakite per 100`,
           ].join("\n"),
           inline: false,
@@ -680,8 +681,8 @@ export const GUIDE_SECTIONS: Record<string, GuideSection> = {
           name: "🗳️ Free — Vote Daily  ·  \`/vote\`",
           value: [
             `Vote on any of the three platforms to earn instant in-game rewards:`,
-            `💠 **1,000 Credits** + 🔷 **20 Fractonite**`,
-            `Weekend bonus (Sat/Sun): **2,000 Credits + 40 Fractonite**`,
+            `💠 **1,000 Credits** + 🗝️ **1 Fracture Key**`,
+            `Weekend bonus (Sat/Sun): **2,000 Credits + 2 Fracture Keys**`,
             `Each platform resets every **12 hours** — you can vote on all three.`,
             `› discordbotlist.com/bots/cartethyia/upvote`,
             `› top.gg/bot/1510163339177623642/vote`,

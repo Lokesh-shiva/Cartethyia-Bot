@@ -25,8 +25,8 @@ async function processVote(
   source: "dbl" | "topgg" | "ranktop",
 ) {
   const rewards = {
-    credits:    weekend ? 2000 : 1000,
-    fractonite: weekend ? 40   : 20,
+    credits:      weekend ? 2000 : 1000,
+    fractureKeys: weekend ? 2    : 1,
   };
 
   // Skip users who haven't started the bot yet
@@ -56,7 +56,7 @@ async function processVote(
       `Your support on **${sourceName}** helps Cartethyia grow and reach more players.\n\n` +
       `**Rewards${weekendTag}:**\n` +
       `${CE.cr} **${rewards.credits}** Credits\n` +
-      `${CE.ft} **${rewards.fractonite}** Fractonite\n\n` +
+      `${CE.fk} **${rewards.fractureKeys}** Fracture Key${rewards.fractureKeys !== 1 ? "s" : ""}\n\n` +
       `You can upvote again in **12 hours** — [click here](${voteUrl})`;
 
     const user = await client.users.fetch(userId).catch(() => null);
@@ -65,7 +65,7 @@ async function processVote(
       if (dm) await dm.send(dmMsg).catch(() => {});
     }
 
-    console.log(`[vote:${source}] ${userId} upvoted — ${rewards.credits}cr + ${rewards.fractonite}ft (weekend=${weekend})`);
+    console.log(`[vote:${source}] ${userId} upvoted — ${rewards.credits}cr + ${rewards.fractureKeys}fk (weekend=${weekend})`);
   } catch (e) {
     console.error(`[vote:${source}] Failed to process upvote for`, userId, e);
   }
