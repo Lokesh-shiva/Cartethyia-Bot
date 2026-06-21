@@ -165,8 +165,9 @@ model User {
   auraPrisms    Int      @default(0)   // Aura Prism items (each restores 3 aura)
 
   // Patreon
-  patronTier    Int      @default(0)   // 0=none 1=Attuned($3) 2=Ascendant($5) 3=Calamity($10)
-  patronClaimed DateTime?              // last monthly claim timestamp
+  patronTier         Int       @default(0)   // 0=none 1=Attuned($3) 2=Ascendant($5) 3=Calamity($10)
+  patronClaimed      DateTime?               // last monthly bundle claim
+  patronDailyClaimed DateTime?               // last daily patron claim
 
   @@map("users")
 }

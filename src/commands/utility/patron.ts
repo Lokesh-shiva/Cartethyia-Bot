@@ -14,17 +14,16 @@ const ELEMENT_HEX: Record<string, number> = {
 
 const PATRON_GOLD = 0xFCD34D;
 const CLAIM_COOLDOWN_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
+const DAILY_COOLDOWN_MS = 20 * 60 * 60 * 1000;       // 20 hours (same as /daily)
 
 interface PatronTierDef {
   name:      string;
   price:     string;
   auraMax:   number;
   bundle:    string;
-  rewards:   {
-    lunakite:   number;
-    fractonite: number;
-    auraPrisms: number;
-  };
+  daily:     string;
+  rewards:   { lunakite: number; fractonite: number; auraPrisms: number; };
+  dailyRewards: { fractonite: number; credits: number; };
 }
 
 const PATRON_TIERS: Record<number, PatronTierDef> = {
@@ -33,21 +32,27 @@ const PATRON_TIERS: Record<number, PatronTierDef> = {
     price:   "$3/mo",
     auraMax: 5,
     bundle:  `${CE.lk} 2 Lunakite · 🔷 80 Fractonite`,
-    rewards: { lunakite: 2, fractonite: 80, auraPrisms: 0 },
+    daily:   `🔷 10 Fractonite · 💠 150 Credits`,
+    rewards:      { lunakite: 2, fractonite: 80,  auraPrisms: 0 },
+    dailyRewards: { fractonite: 10, credits: 150 },
   },
   2: {
     name:    "Ascendant",
     price:   "$5/mo",
     auraMax: 6,
     bundle:  `${CE.lk} 5 Lunakite · 🔷 200 Fractonite · 🔆 1 Aura Prism`,
-    rewards: { lunakite: 5, fractonite: 200, auraPrisms: 1 },
+    daily:   `🔷 20 Fractonite · 💠 300 Credits`,
+    rewards:      { lunakite: 5, fractonite: 200, auraPrisms: 1 },
+    dailyRewards: { fractonite: 20, credits: 300 },
   },
   3: {
     name:    "Calamity",
     price:   "$10/mo",
     auraMax: 8,
     bundle:  `${CE.lk} 12 Lunakite · 🔷 500 Fractonite · 🔆 3 Aura Prisms`,
-    rewards: { lunakite: 12, fractonite: 500, auraPrisms: 3 },
+    daily:   `🔷 40 Fractonite · 💠 500 Credits`,
+    rewards:      { lunakite: 12, fractonite: 500, auraPrisms: 3 },
+    dailyRewards: { fractonite: 40, credits: 500 },
   },
 };
 
@@ -68,6 +73,9 @@ const command: Command = {
       s.setName("claim").setDescription("Claim your monthly Patreon bundle.")
     )
     .addSubcommand(s =>
+      s.setName("daily").setDescription("Claim your daily Patreon reward.")
+    )
+    .addSubcommand(s =>
       s.setName("redeem")
         .setDescription("Activate your Patreon tier with a code sent by the owner.")
         .addStringOption(o =>
@@ -79,6 +87,7 @@ const command: Command = {
     const sub = interaction.options.getSubcommand();
     if (sub === "info")   await handleInfo(interaction);
     if (sub === "claim")  await handleClaim(interaction);
+    if (sub === "daily")  await handleDaily(interaction);
     if (sub === "redeem") await handleRedeem(interaction);
   },
 };
@@ -88,14 +97,18 @@ async function handleInfo(interaction: ChatInputCommandInteraction) {
 
   const user = await prisma.user.findUnique({
     where:  { id: interaction.user.id },
-    select: { patronTier: true, patronClaimed: true, element: true },
+    select: { patronTier: true, patronClaimed: true, patronDailyClaimed: true, element: true },
   });
   if (!user) { await replyNotStarted(interaction); return; }
 
-  const color    = user.patronTier > 0 ? PATRON_GOLD : (ELEMENT_HEX[user.element as string] ?? 0x6366F1);
-  const tierDef  = user.patronTier > 0 ? PATRON_TIERS[user.patronTier] : null;
-  const nextClaim = user.patronClaimed
+  const color   = user.patronTier > 0 ? PATRON_GOLD : (ELEMENT_HEX[user.element as string] ?? 0x6366F1);
+  const tierDef = user.patronTier > 0 ? PATRON_TIERS[user.patronTier] : null;
+
+  const nextBundle = user.patronClaimed
     ? Math.max(0, CLAIM_COOLDOWN_MS - (Date.now() - user.patronClaimed.getTime()))
+    : 0;
+  const nextDaily = user.patronDailyClaimed
+    ? Math.max(0, DAILY_COOLDOWN_MS - (Date.now() - user.patronDailyClaimed.getTime()))
     : 0;
 
   const tierLines = Object.entries(PATRON_TIERS).map(([t, d]) => {
@@ -103,12 +116,17 @@ async function handleInfo(interaction: ChatInputCommandInteraction) {
     return [
       `**✦ ${d.name}** — ${d.price}${active}`,
       `Monthly bundle: ${d.bundle}`,
-      d.auraMax > 5 ? `Aura cap raised to **${d.auraMax}**` : "No aura cap bonus",
+      `Daily pass: ${d.daily}`,
+      d.auraMax > 5 ? `Aura cap → **${d.auraMax}**` : "No aura cap bonus",
     ].join("\n");
   }).join("\n\n");
 
   const statusLine = tierDef
-    ? `You are **${tierDef.name}** — ${nextClaim > 0 ? `next claim in **${fmtMs(nextClaim)}**` : "bundle ready to claim!"}`
+    ? [
+        `You are **${tierDef.name}**`,
+        `Monthly bundle: ${nextBundle > 0 ? `ready in **${fmtMs(nextBundle)}**` : "**ready to claim!**"}`,
+        `Daily pass: ${nextDaily > 0 ? `ready in **${fmtMs(nextDaily)}**` : "**ready to claim!**"}`,
+      ].join("\n")
     : "You are not a Patreon supporter.";
 
   await interaction.editReply({
@@ -117,11 +135,11 @@ async function handleInfo(interaction: ChatInputCommandInteraction) {
       .setTitle("✦  CARTETHYIA Patreon")
       .setDescription(
         `${statusLine}\n\n` +
-        `Support the bot and get monthly bundles + permanent perks.\n\n` +
+        `Support the bot and get daily rewards + monthly bundles + permanent perks.\n\n` +
         tierLines + `\n\n` +
         `*To activate your tier, DM the server owner with proof of your Patreon pledge.*`
       )
-      .setFooter({ text: "CARTETHYIA  ·  Patreon  ·  /patron claim to collect your bundle" })],
+      .setFooter({ text: "CARTETHYIA  ·  /patron daily · /patron claim" })],
   });
 }
 
@@ -182,6 +200,67 @@ async function handleClaim(interaction: ChatInputCommandInteraction) {
         `Next claim available in **30 days**.`
       )
       .setFooter({ text: "CARTETHYIA  ·  Patreon  ·  Your support keeps this game alive." })],
+  });
+}
+
+async function handleDaily(interaction: ChatInputCommandInteraction) {
+  await interaction.deferReply({ flags: 64 });
+
+  const user = await prisma.user.findUnique({
+    where:  { id: interaction.user.id },
+    select: { patronTier: true, patronDailyClaimed: true, element: true },
+  });
+  if (!user) { await replyNotStarted(interaction); return; }
+
+  const color = user.patronTier > 0 ? PATRON_GOLD : (ELEMENT_HEX[user.element as string] ?? 0x6366F1);
+
+  if (user.patronTier === 0) {
+    await interaction.editReply({
+      embeds: [new EmbedBuilder().setColor(color)
+        .setDescription(
+          `◈ You don't have an active Patreon tier.\n` +
+          `Pledge at patreon.com/c/Cartethyia_bot/membership and DM the owner to activate.`
+        )
+        .setFooter({ text: "CARTETHYIA  ·  Patreon" })],
+    });
+    return;
+  }
+
+  const msRemaining = user.patronDailyClaimed
+    ? DAILY_COOLDOWN_MS - (Date.now() - user.patronDailyClaimed.getTime())
+    : 0;
+
+  if (msRemaining > 0) {
+    await interaction.editReply({
+      embeds: [new EmbedBuilder().setColor(color)
+        .setDescription(`◈ Daily already claimed. Come back in **${fmtMs(msRemaining)}**.`)
+        .setFooter({ text: "CARTETHYIA  ·  Patreon Daily" })],
+    });
+    return;
+  }
+
+  const tierDef = PATRON_TIERS[user.patronTier];
+  if (!tierDef) return;
+
+  await prisma.user.update({
+    where: { id: interaction.user.id },
+    data:  {
+      patronDailyClaimed: new Date(),
+      fractonite:         { increment: tierDef.dailyRewards.fractonite },
+      credits:            { increment: tierDef.dailyRewards.credits },
+    },
+  });
+
+  await interaction.editReply({
+    embeds: [new EmbedBuilder()
+      .setColor(PATRON_GOLD)
+      .setTitle(`✦  ${tierDef.name} Daily Claimed`)
+      .setDescription(
+        `${tierDef.daily}\n\n` +
+        `Come back in **20 hours** for your next daily.\n` +
+        `-# Use \`/patron claim\` for your monthly bundle too.`
+      )
+      .setFooter({ text: "CARTETHYIA  ·  Patreon Daily  ·  Thank you for supporting!" })],
   });
 }
 
