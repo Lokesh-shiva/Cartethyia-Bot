@@ -374,6 +374,18 @@ model EchoPreset {
   @@map("echo_presets")
 }
 
+// ─── Patron Code ─────────────────────────────────────────────────────────────
+
+model PatronCode {
+  code        String    @id               // e.g. "CALAMITY-X7K2-9QMP"
+  tier        Int                         // 1/2/3
+  usedBy      String?                     // Discord user ID who redeemed
+  usedAt      DateTime?
+  createdAt   DateTime  @default(now())
+
+  @@map("patron_codes")
+}
+
 // ─── Combat Session ───────────────────────────────────────────────────────────
 
 model CombatSession {

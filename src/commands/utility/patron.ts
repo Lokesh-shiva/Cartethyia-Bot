@@ -3,7 +3,7 @@ import {
   EmbedBuilder,
 } from "discord.js";
 import { Command } from "../../types";
-import { replyNotStarted } from "../../lib/economy";
+import { replyNotStarted, awardUser } from "../../lib/economy";
 import { CE } from "../../lib/emojiManager";
 import prisma from "../../lib/prisma";
 
@@ -66,12 +66,20 @@ const command: Command = {
     )
     .addSubcommand(s =>
       s.setName("claim").setDescription("Claim your monthly Patreon bundle.")
+    )
+    .addSubcommand(s =>
+      s.setName("redeem")
+        .setDescription("Activate your Patreon tier with a code sent by the owner.")
+        .addStringOption(o =>
+          o.setName("code").setDescription("Your activation code (e.g. CALAMITY-X7K2-9QMP).").setRequired(true)
+        )
     ) as SlashCommandBuilder,
 
   async execute(interaction: ChatInputCommandInteraction) {
     const sub = interaction.options.getSubcommand();
-    if (sub === "info")  await handleInfo(interaction);
-    if (sub === "claim") await handleClaim(interaction);
+    if (sub === "info")   await handleInfo(interaction);
+    if (sub === "claim")  await handleClaim(interaction);
+    if (sub === "redeem") await handleRedeem(interaction);
   },
 };
 
@@ -171,6 +179,82 @@ async function handleClaim(interaction: ChatInputCommandInteraction) {
         `Thank you for supporting CARTETHYIA!\n\n` +
         `**Monthly bundle:**\n${tierDef.bundle}\n\n` +
         (tierDef.auraMax > 5 ? `**Permanent perk:** Resonance Aura cap raised to **${tierDef.auraMax}**\n\n` : "") +
+        `Next claim available in **30 days**.`
+      )
+      .setFooter({ text: "CARTETHYIA  ·  Patreon  ·  Your support keeps this game alive." })],
+  });
+}
+
+const TIER_NAMES: Record<number, string> = { 1: "Attuned", 2: "Ascendant", 3: "Calamity" };
+
+async function handleRedeem(interaction: ChatInputCommandInteraction) {
+  await interaction.deferReply({ flags: 64 });
+  const code = interaction.options.getString("code", true).trim().toUpperCase();
+
+  const record = await prisma.patronCode.findUnique({ where: { code } });
+
+  if (!record) {
+    await interaction.editReply({
+      embeds: [new EmbedBuilder().setColor(0xEF4444)
+        .setDescription("◈ Invalid code. Double-check the code sent to you via Patreon messages.")
+        .setFooter({ text: "CARTETHYIA  ·  Patreon" })],
+    });
+    return;
+  }
+
+  if (record.usedBy) {
+    await interaction.editReply({
+      embeds: [new EmbedBuilder().setColor(0xEF4444)
+        .setDescription("◈ This code has already been redeemed.")
+        .setFooter({ text: "CARTETHYIA  ·  Patreon" })],
+    });
+    return;
+  }
+
+  const existing = await prisma.user.findUnique({
+    where:  { id: interaction.user.id },
+    select: { patronTier: true },
+  });
+  if (!existing) { await replyNotStarted(interaction); return; }
+
+  if (existing.patronTier >= record.tier) {
+    await interaction.editReply({
+      embeds: [new EmbedBuilder().setColor(0xEF4444)
+        .setDescription(`◈ You already have **${TIER_NAMES[existing.patronTier]}** (tier ${existing.patronTier}) — this code is for tier ${record.tier}.`)
+        .setFooter({ text: "CARTETHYIA  ·  Patreon" })],
+    });
+    return;
+  }
+
+  const tierDef = PATRON_TIERS[record.tier];
+
+  // Mark code used + set patron tier + grant first bundle immediately
+  await Promise.all([
+    prisma.patronCode.update({
+      where: { code },
+      data:  { usedBy: interaction.user.id, usedAt: new Date() },
+    }),
+    prisma.user.update({
+      where: { id: interaction.user.id },
+      data:  {
+        patronTier:    record.tier,
+        patronClaimed: new Date(),
+        lunakite:      { increment: tierDef.rewards.lunakite },
+        fractonite:    { increment: tierDef.rewards.fractonite },
+        ...(tierDef.rewards.auraPrisms > 0 ? { auraPrisms: { increment: tierDef.rewards.auraPrisms } } : {}),
+      },
+    }),
+  ]);
+
+  await interaction.editReply({
+    embeds: [new EmbedBuilder()
+      .setColor(PATRON_GOLD)
+      .setTitle(`✦  Welcome, ${TIER_NAMES[record.tier]} Patron!`)
+      .setDescription(
+        `Your tier is now active. Thank you for supporting CARTETHYIA!\n\n` +
+        `**First bundle granted:**\n${tierDef.bundle}\n\n` +
+        (tierDef.auraMax > 5 ? `**Permanent perk:** Resonance Aura cap raised to **${tierDef.auraMax}**\n\n` : "") +
+        `Use \`/patron claim\` each month for your ongoing bundle.\n` +
         `Next claim available in **30 days**.`
       )
       .setFooter({ text: "CARTETHYIA  ·  Patreon  ·  Your support keeps this game alive." })],
