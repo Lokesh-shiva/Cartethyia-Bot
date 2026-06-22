@@ -24,6 +24,9 @@ let lmOpenUntil    = 0;
 const LM_FAIL_THRESHOLD = 3;
 const LM_COOLDOWN_MS    = 10 * 60 * 1000;
 
+// Circuit breaker: skip Gemini after 429 rate-limit, retry after 60s
+let geminiOpenUntil = 0;
+
 const MODEL        = process.env.LM_STUDIO_MODEL || "local-model";
 const GEMINI_MODEL = process.env.GEMINI_MODEL    || "gemini-2.0-flash";
 
@@ -80,41 +83,46 @@ export async function askAI(options: AIPromptOptions): Promise<string | null> {
       }
     }
 
-    // Fallback: Gemini — prepend instruction to suppress thought/reasoning tags
-    if (geminiClient) {
+    // Fallback: Gemini — skip while rate-limited
+    if (geminiClient && Date.now() >= geminiOpenUntil) {
       const geminiMessages = [
         { role: "system" as const, content: options.systemPrompt },
         { role: "user" as const, content: options.userPrompt },
       ];
-      for (let attempt = 1; attempt <= 2; attempt++) {
-        try {
-          if (attempt > 1) await new Promise(r => setTimeout(r, 2000));
-          console.log(`[AI] Trying Gemini model: ${GEMINI_MODEL}${attempt > 1 ? ` (retry ${attempt})` : ""}`);
-          const response = await geminiClient.chat.completions.create({
-            model: GEMINI_MODEL,
-            messages: geminiMessages,
-            max_tokens: options.maxTokens ?? 80,
-            temperature: 0.85,
-          });
-          const raw = response.choices[0]?.message?.content ?? "";
-          console.log(`[AI] Gemini raw response: ${JSON.stringify(raw)}`);
-          const result = sanitize(raw);
-          console.log(`[AI] Gemini sanitized: ${JSON.stringify(result)}`);
-          return result;
-        } catch (e: any) {
-          const status = e?.status as number | undefined;
-          console.error(`[AI] Gemini error status: ${status}, message: ${e?.message}`);
-          // Only retry on 5xx (transient server errors); bail immediately on 4xx
-          if (!status || status < 500) break;
+      try {
+        const response = await geminiClient.chat.completions.create({
+          model: GEMINI_MODEL,
+          messages: geminiMessages,
+          max_tokens: options.maxTokens ?? 80,
+          temperature: 0.85,
+        });
+        const raw = response.choices[0]?.message?.content ?? "";
+        const result = sanitize(raw);
+        return result;
+      } catch (e: any) {
+        const status = e?.status as number | undefined;
+        if (status === 429) {
+          // Rate limited — back off 60s (one RPM window) silently
+          geminiOpenUntil = Date.now() + 60_000;
+        } else if (status && status >= 500) {
+          // Transient server error — log but don't open circuit
+          const now = Date.now();
+          if (now - lastErrorLog > 60_000) {
+            console.warn(`[AI] Gemini ${status} — falling back to static narration.`);
+            lastErrorLog = now;
+          }
+        }
+        // 4xx other than 429 (auth, bad request): log once
+        else if (status && status >= 400) {
+          const now = Date.now();
+          if (now - lastErrorLog > 300_000) {
+            console.error(`[AI] Gemini ${status}: ${e?.message}`);
+            lastErrorLog = now;
+          }
         }
       }
     }
 
-    const now = Date.now();
-    if (now - lastErrorLog > 60_000) {
-      console.warn("[AI] LM Studio and Gemini both unreachable — AI narration disabled.");
-      lastErrorLog = now;
-    }
     return null;
   }) as Promise<string | null>;
 }
