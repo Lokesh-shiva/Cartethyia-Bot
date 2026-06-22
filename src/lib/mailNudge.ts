@@ -1,7 +1,6 @@
 import prisma from "./prisma";
 
 export async function mailNudge(userId: string, userCreatedAt: Date): Promise<string> {
-  if (Math.random() > 0.35) return "";
 
   const now = new Date();
 
