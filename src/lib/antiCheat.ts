@@ -7,10 +7,15 @@ const AUDIT_CHANNEL_ID = process.env.AUDIT_CHANNEL_ID ?? "";
 // Per-user award rate tracking
 const awardHistory = new Map<string, number[]>();
 
-const RATE_WINDOW_MS              = 30_000;  // 30 second window
-const RATE_LIMIT                  = 12;      // max awards in window
-const SINGLE_CREDITS_THRESHOLD    = 6_000;   // flag any single award above this
-const BALANCE_CREDITS_THRESHOLD   = 600_000; // flag users whose total exceeds this
+const RATE_WINDOW_MS           = 30_000;  // 30 second window
+const RATE_LIMIT               = 12;      // max awards in window
+const BASE_CREDITS_THRESHOLD   = 6_000;   // WL0 baseline — scales with WL
+const BALANCE_CREDITS_THRESHOLD = 600_000; // flag users whose total exceeds this
+
+// Same multiplier used in dungeon/boss/ascend reward scaling
+function wlThreshold(worldLevel: number): number {
+  return Math.floor(BASE_CREDITS_THRESHOLD * (1 + worldLevel * 0.4));
+}
 
 export function auditSpend(
   userId: string,
@@ -26,6 +31,11 @@ export function auditSpend(
 
 export function setAuditClient(client: Client) {
   auditClient = client;
+  if (!AUDIT_CHANNEL_ID) {
+    console.warn("[anticheat] AUDIT_CHANNEL_ID not set — flags will log to console only, not Discord.");
+  } else {
+    console.log(`[anticheat] Audit channel: ${AUDIT_CHANNEL_ID}`);
+  }
 }
 
 export async function auditAward(
@@ -49,20 +59,22 @@ export async function auditAward(
   if (hist.length > RATE_LIMIT) {
     flags.push(`rate: ${hist.length} awards in ${RATE_WINDOW_MS / 1000}s`);
   }
-  if ((rewards.credits ?? 0) > SINGLE_CREDITS_THRESHOLD) {
-    flags.push(`large single award: ${rewards.credits} credits`);
-  }
-
-  if (flags.length === 0) return;
 
   const user = await prisma.user.findUnique({
     where:  { id: userId },
-    select: { credits: true, username: true },
+    select: { credits: true, username: true, worldLevel: true },
   }).catch(() => null);
+
+  const threshold = wlThreshold(user?.worldLevel ?? 0);
+  if ((rewards.credits ?? 0) > threshold) {
+    flags.push(`large single award: ${rewards.credits} credits (WL${user?.worldLevel ?? 0} threshold: ${threshold})`);
+  }
 
   if (user?.credits && user.credits > BALANCE_CREDITS_THRESHOLD) {
     flags.push(`total balance: ${user.credits.toLocaleString()} credits`);
   }
+
+  if (flags.length === 0) return;
 
   const username = user?.username ?? "unknown";
   console.warn(`[anticheat] FLAGGED userId=${userId} (${username}) source=${source} — ${flags.join("; ")}`);
