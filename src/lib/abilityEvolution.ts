@@ -189,7 +189,7 @@ export async function generateEvolution(userId: string): Promise<EvolutionResult
     `Evolve their ability. The new name and lore must feel like this exact player earned them.`,
   ].join("\n");
 
-  const raw = await askAI({ systemPrompt, userPrompt, maxTokens: 400 });
+  const raw = await askAI({ systemPrompt, userPrompt, maxTokens: 400, complex: true });
   if (!raw) return fallback;
 
   try {
@@ -401,7 +401,7 @@ export async function generateEvolutionV2(userId: string): Promise<EvolutionResu
     `Evolve their ability. The fourth power must feel like the inevitable next step for this build.`,
   ].join("\n");
 
-  const raw = await askAI({ systemPrompt, userPrompt, maxTokens: 400 });
+  const raw = await askAI({ systemPrompt, userPrompt, maxTokens: 400, complex: true });
   if (!raw) return fallback;
 
   try {

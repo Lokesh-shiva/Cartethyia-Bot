@@ -8,11 +8,16 @@ const client = LM_STUDIO_URL
   ? new OpenAI({ baseURL: LM_STUDIO_URL, apiKey: "lm-studio" })
   : null;
 
+const GEMINI_BASE = "https://generativelanguage.googleapis.com/v1beta/openai/";
+
 const geminiClient = process.env.GEMINI_API_KEY
-  ? new OpenAI({
-      baseURL: "https://generativelanguage.googleapis.com/v1beta/openai/",
-      apiKey: process.env.GEMINI_API_KEY,
-    })
+  ? new OpenAI({ baseURL: GEMINI_BASE, apiKey: process.env.GEMINI_API_KEY })
+  : null;
+
+// Optional second model for complex tasks (ability gen, weapon awakening).
+// Falls back to geminiClient/GEMINI_MODEL if not set.
+const geminiComplexClient = process.env.GEMINI_API_KEY
+  ? new OpenAI({ baseURL: GEMINI_BASE, apiKey: process.env.GEMINI_API_KEY })
   : null;
 
 const aiQueue = new PQueue({ concurrency: 1 });
@@ -24,21 +29,27 @@ let lmOpenUntil    = 0;
 const LM_FAIL_THRESHOLD = 3;
 const LM_COOLDOWN_MS    = 10 * 60 * 1000;
 
-// Circuit breaker: skip Gemini after 429 rate-limit, retry after 60s
-let geminiOpenUntil     = 0;
-let geminiCircuitLogged = 0; // last time we logged "circuit open"
+// Circuit breakers — skip after 429, reopen after 60s
+let geminiOpenUntil        = 0;
+let geminiCircuitLogged    = 0;
+let geminiCxOpenUntil      = 0;
+let geminiCxCircuitLogged  = 0;
 
-const MODEL        = process.env.LM_STUDIO_MODEL || "local-model";
-const GEMINI_MODEL = process.env.GEMINI_MODEL    || "gemini-2.0-flash";
+const MODEL               = process.env.LM_STUDIO_MODEL     || "local-model";
+const GEMINI_MODEL        = process.env.GEMINI_MODEL        || "gemini-2.0-flash";
+// Complex model: ability generation, weapon awakening. Falls back to GEMINI_MODEL if unset.
+const GEMINI_MODEL_COMPLEX = process.env.GEMINI_MODEL_COMPLEX || GEMINI_MODEL;
 
 // Startup diagnostics — printed once when the module loads
-console.log(`[AI] LM Studio: ${client ? `enabled (${LM_STUDIO_URL})` : "disabled (no LM_STUDIO_URL)"}`);
-console.log(`[AI] Gemini:    ${geminiClient ? `enabled (model: ${GEMINI_MODEL})` : "disabled (no GEMINI_API_KEY)"}`);
+console.log(`[AI] LM Studio:       ${client ? `enabled (${LM_STUDIO_URL})` : "disabled (no LM_STUDIO_URL)"}`);
+console.log(`[AI] Gemini (simple): ${geminiClient ? `enabled — ${GEMINI_MODEL}` : "disabled (no GEMINI_API_KEY)"}`);
+console.log(`[AI] Gemini (complex):${geminiComplexClient ? ` enabled — ${GEMINI_MODEL_COMPLEX}` : " disabled (no GEMINI_API_KEY)"}`);
 
 export interface AIPromptOptions {
   systemPrompt: string;
   userPrompt: string;
   maxTokens?: number;
+  complex?: boolean; // true → use GEMINI_MODEL_COMPLEX (larger model for ability/awakening tasks)
 }
 
 function sanitize(text: string): string | null {
@@ -88,45 +99,55 @@ export async function askAI(options: AIPromptOptions): Promise<string | null> {
       }
     }
 
-    // Fallback: Gemini — skip while rate-limited
-    if (!geminiClient) {
-      // already logged at startup — no repeat
-    } else if (Date.now() < geminiOpenUntil) {
-      const secsLeft = Math.ceil((geminiOpenUntil - Date.now()) / 1000);
-      if (Date.now() - geminiCircuitLogged > 15_000) {
-        console.warn(`[AI] Gemini circuit open — rate-limited, retrying in ${secsLeft}s`);
-        geminiCircuitLogged = Date.now();
+    // Gemini fallback — route simple calls to GEMINI_MODEL, complex to GEMINI_MODEL_COMPLEX
+    const isComplex   = options.complex === true;
+    const gClient     = isComplex ? geminiComplexClient : geminiClient;
+    const gModel      = isComplex ? GEMINI_MODEL_COMPLEX : GEMINI_MODEL;
+    const gOpenUntil  = isComplex ? geminiCxOpenUntil      : geminiOpenUntil;
+    const gCircuitLog = isComplex ? geminiCxCircuitLogged  : geminiCircuitLogged;
+    const label       = isComplex ? "Gemini(complex)" : "Gemini";
+
+    if (!gClient) {
+      // already logged at startup
+    } else if (Date.now() < gOpenUntil) {
+      const secsLeft = Math.ceil((gOpenUntil - Date.now()) / 1000);
+      if (Date.now() - gCircuitLog > 15_000) {
+        console.warn(`[AI] ${label} circuit open — rate-limited, retrying in ${secsLeft}s`);
+        if (isComplex) geminiCxCircuitLogged = Date.now();
+        else           geminiCircuitLogged   = Date.now();
       }
     } else {
-      const geminiMessages = [
+      const messages = [
         { role: "system" as const, content: options.systemPrompt },
-        { role: "user" as const, content: options.userPrompt },
+        { role: "user"   as const, content: options.userPrompt   },
       ];
+      // Complex/thinking models need headroom for reasoning tokens before the answer
+      const maxTok = isComplex
+        ? Math.max(options.maxTokens ?? 400, options.maxTokens ? options.maxTokens * 3 : 1200)
+        : (options.maxTokens ?? 80);
       try {
-        const response = await geminiClient.chat.completions.create({
-          model: GEMINI_MODEL,
-          messages: geminiMessages,
-          max_tokens: options.maxTokens ?? 80,
-          temperature: 0.85,
+        const response = await gClient.chat.completions.create({
+          model: gModel, messages, max_tokens: maxTok, temperature: 0.85,
         });
         const raw    = response.choices[0]?.message?.content ?? "";
         const result = sanitize(raw);
         if (result) {
-          console.log(`[AI] Gemini → "${result}"`);
+          const preview = result.length > 80 ? result.slice(0, 80) + "…" : result;
+          console.log(`[AI] ${label} → "${preview}"`);
         } else {
-          console.warn(`[AI] Gemini returned empty/unparseable: ${JSON.stringify(raw).slice(0, 120)}`);
+          console.warn(`[AI] ${label} empty/unparseable: ${JSON.stringify(raw).slice(0, 120)}`);
         }
         return result;
       } catch (e: any) {
         const status = e?.status as number | undefined;
         if (status === 429) {
-          geminiOpenUntil     = Date.now() + 60_000;
-          geminiCircuitLogged = Date.now();
-          console.warn(`[AI] Gemini 429 — rate-limited, circuit open for 60s`);
+          console.warn(`[AI] ${label} 429 — rate-limited, circuit open for 60s`);
+          if (isComplex) { geminiCxOpenUntil = Date.now() + 60_000; geminiCxCircuitLogged = Date.now(); }
+          else           { geminiOpenUntil   = Date.now() + 60_000; geminiCircuitLogged   = Date.now(); }
         } else {
           const now = Date.now();
           if (now - lastErrorLog > 60_000) {
-            console.error(`[AI] Gemini ${status ?? "?"}: ${e?.message}`);
+            console.error(`[AI] ${label} ${status ?? "?"}: ${e?.message}`);
             lastErrorLog = now;
           }
         }

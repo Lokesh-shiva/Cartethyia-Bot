@@ -328,7 +328,7 @@ export async function generateAwakening(userId: string): Promise<AwakeningResult
     `Awaken the weapon. Its new name and soul must feel forged from this exact wielder.`,
   ].join("\n");
 
-  const raw = await askAI({ systemPrompt, userPrompt, maxTokens: 1000 });
+  const raw = await askAI({ systemPrompt, userPrompt, maxTokens: 1000, complex: true });
   if (!raw) return fallback;
 
   try {
@@ -396,7 +396,7 @@ export async function regenerateArtPrompt(userId: string): Promise<string | null
     `Include: detailed metalwork/inscriptions, dramatic rim-lighting, particle effects, elemental aura. Wuthering Waves / Honkai Star Rail aesthetic. No humans, no text.`,
   ].join(" ");
 
-  const raw = await askAI({ systemPrompt, userPrompt, maxTokens: 400 });
+  const raw = await askAI({ systemPrompt, userPrompt, maxTokens: 400, complex: true });
   const prompt = raw?.trim() || fallback;
 
   await prisma.weapon.update({ where: { id: weapon.id }, data: { awakenedArtPrompt: prompt } });

@@ -126,6 +126,7 @@ C: [option 3]
 D: [option 4]`,
 
     maxTokens: 500,
+    complex: true,
   });
 
   if (!raw) {

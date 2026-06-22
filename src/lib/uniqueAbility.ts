@@ -245,7 +245,7 @@ export async function generateUniqueAbility(userId: string, persist = true): Pro
     `Compose their unique passive (2â€“3 primitives). Make it feel like it grew from who they are, not just what element they picked.`,
   ].join("\n");
 
-  const raw = await askAI({ systemPrompt, userPrompt, maxTokens: 400 });
+  const raw = await askAI({ systemPrompt, userPrompt, maxTokens: 400, complex: true });
 
   let ability: { name: string; effect: string; lore: string } | null = null;
   let effects: AbilityEffect[] = [];
@@ -452,7 +452,7 @@ export async function generateUniqueAbilityV2(userId: string, persist = true): P
     `Design their V2 ability (2–3 components). Amplify their strengths. A ${buildArchetype} player needs mechanics that COMPOUND what they already do — not plug gaps.`,
   ].join("\n");
 
-  const raw = await askAI({ systemPrompt, userPrompt, maxTokens: 600 });
+  const raw = await askAI({ systemPrompt, userPrompt, maxTokens: 600, complex: true });
 
   let ability: { name: string; effect: string; lore: string } | null = null;
   let v2Effects: V2EffectEntry[] = [];
