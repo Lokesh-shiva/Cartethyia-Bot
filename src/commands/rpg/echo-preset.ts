@@ -5,6 +5,7 @@ import prisma from "../../lib/prisma";
 import { replyNotStarted } from "../../lib/economy";
 import { ELEMENT_COLORS, RARITY_STARS } from "../../lib/echoes";
 import { Element } from "@prisma/client";
+import { invalidateBonusCache } from "../../lib/setBonus";
 
 const MAX_PRESETS = 10;
 
@@ -148,6 +149,7 @@ async function loadPreset(interaction: ChatInputCommandInteraction, color: numbe
       prisma.echo.update({ where: { id: echoId }, data: { isEquipped: true, equippedSlot: slot } })
     ),
   ]);
+  invalidateBonusCache(interaction.user.id);
 
   const equipped: string[] = equips.map(({ slot, echoId }) => {
     const e = valid.find(x => x.id === echoId)!;

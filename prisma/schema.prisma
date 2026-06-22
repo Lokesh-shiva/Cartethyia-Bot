@@ -247,6 +247,7 @@ model Echo {
   revealedSubstats Int   @default(0)
   createdAt        DateTime @default(now())
 
+  @@index([userId, isEquipped])
   @@map("echoes")
 }
 
@@ -264,6 +265,8 @@ model Bond {
   createdAt   DateTime @default(now())
 
   @@unique([initiatorId, receiverId])
+  @@index([initiatorId])
+  @@index([receiverId])
   @@map("bonds")
 }
 
@@ -294,6 +297,7 @@ model DungeonCooldown {
   user      User     @relation(fields: [userId], references: [id])
 
   @@id([userId, dungeonId])
+  @@index([userId])
   @@map("dungeon_cooldowns")
 }
 
@@ -307,6 +311,7 @@ model BossCooldown {
   user    User     @relation(fields: [userId], references: [id])
 
   @@id([userId, bossId])
+  @@index([userId])
   @@map("boss_cooldowns")
 }
 

@@ -12,6 +12,7 @@ import { formatAwakenedPassive } from "../../lib/weaponAwakening";
 import { ALL_WISH_WEAPONS, calcWishSubStat } from "../../lib/wishWeapons";
 import { WeaponType } from "@prisma/client";
 import prisma from "../../lib/prisma";
+import { invalidateBonusCache } from "../../lib/setBonus";
 
 const ELEMENT_HEX: Record<string, number> = {
   FUSION: 0xFF6B35, GLACIO: 0x38BDF8, ELECTRO: 0xA855F7,
@@ -253,6 +254,7 @@ const command: Command = {
         await prisma.weapon.updateMany({ where: { userId: interaction.user.id, isEquipped: true }, data: { isEquipped: false } });
         await prisma.weapon.update({ where: { id: chosenId }, data: { isEquipped: true } });
         await prisma.user.update({ where: { id: interaction.user.id }, data: { weaponType: chosen.weaponType } });
+        invalidateBonusCache(interaction.user.id);
 
         // Generate weapon card for confirmation
         const cardBuf = await buildCard(chosen, user.element, displayName, avatarUrl, interaction.user.id === "979379636586819746" ? 7 : 4);

@@ -193,8 +193,14 @@ export interface PlayerBonuses {
   activeLabels: string[];
 }
 
+// ── Bonus cache — 30s TTL, invalidated on any combat/equip write ──────────────
+const bonusCache = new Map<string, { val: PlayerBonuses; at: number }>();
+export function invalidateBonusCache(userId: string) { bonusCache.delete(userId); }
+
 // ── Main resolver ─────────────────────────────────────────────────────────────
 export async function resolvePlayerBonuses(userId: string): Promise<PlayerBonuses> {
+  const cached = bonusCache.get(userId);
+  if (cached && Date.now() - cached.at < 30_000) return cached.val;
   const [user, echoes, weapon] = await Promise.all([
     prisma.user.findUnique({
       where:  { id: userId },
@@ -459,6 +465,7 @@ export async function resolvePlayerBonuses(userId: string): Promise<PlayerBonuse
     }
   }
 
+  bonusCache.set(userId, { val: bonuses, at: Date.now() });
   return bonuses;
 }
 

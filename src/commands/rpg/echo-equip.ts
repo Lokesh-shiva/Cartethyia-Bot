@@ -11,6 +11,7 @@ import {
   calcMainStatValue, calcSubstatValue, formatStatValue,
 } from "../../lib/echoes";
 import { Element } from "@prisma/client";
+import { invalidateBonusCache } from "../../lib/setBonus";
 
 export const data = new SlashCommandBuilder()
   .setName("echo-equip")
@@ -259,6 +260,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
         try { await btn.deferUpdate(); } catch { return; }
         if (btn.customId === "clear_confirm") {
           await prisma.echo.update({ where: { id: currentEcho.id }, data: { isEquipped: false, equippedSlot: null } });
+          invalidateBonusCache(interaction.user.id);
           await btn.editReply({
             embeds: [new EmbedBuilder().setColor(color)
               .setTitle(`◈  Slot Cleared — ${slotName}`)
@@ -356,6 +358,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
             data:  { isEquipped: true, equippedSlot: slot },
           }),
         ]);
+        invalidateBonusCache(interaction.user.id);
 
         const mainVal   = calcMainStatValue(incoming.mainStatType, incoming.level, incoming.rarity);
         const mainLabel = MAIN_STAT_LABELS[incoming.mainStatType] ?? incoming.mainStatType;

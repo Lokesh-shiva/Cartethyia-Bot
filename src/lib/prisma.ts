@@ -6,10 +6,9 @@ import ws from "ws";
 // Neon serverless requires a WebSocket constructor in Node environments
 neonConfig.webSocketConstructor = ws;
 
-// Retry transient connection errors up to 3× with backoff (Neon cold-start,
-// dropped WebSocket). Skip retry for definitive query errors (validation,
-// constraint violations) — those will fail identically every time.
-const MAX_ATTEMPTS = 5;
+// Retry only true connection-level transient errors (Neon cold-start, WebSocket drop).
+// Never retry query/validation errors — they'll fail identically every time.
+const MAX_ATTEMPTS = 3;
 
 // Neon/pg errors bury the real reason in nested fields — surface whatever we can.
 function describeErr(err: any): string {
@@ -21,6 +20,16 @@ function describeErr(err: any): string {
     ?? (() => { try { return JSON.stringify(err); } catch { return String(err); } })();
 }
 
+// Only retry genuine connection/transport errors — not query errors
+function isTransient(err: any): boolean {
+  const code: string = err?.code ?? err?.cause?.code ?? "";
+  const msg:  string = (err?.message ?? err?.cause?.message ?? "").toLowerCase();
+  return (
+    ["ECONNREFUSED", "ECONNRESET", "ETIMEDOUT", "EHOSTUNREACH", "EPIPE"].includes(code) ||
+    msg.includes("connection") || msg.includes("timeout") || msg.includes("socket")
+  );
+}
+
 async function withRetry<T>(run: () => Promise<T>): Promise<T> {
   let lastErr: unknown;
   for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
@@ -30,10 +39,10 @@ async function withRetry<T>(run: () => Promise<T>): Promise<T> {
       lastErr = err;
       const isQueryError = err instanceof Prisma.PrismaClientKnownRequestError
         || err instanceof Prisma.PrismaClientValidationError;
-      if (isQueryError || attempt === MAX_ATTEMPTS - 1) throw err;
+      if (isQueryError || !isTransient(err) || attempt === MAX_ATTEMPTS - 1) throw err;
       console.warn(`[Prisma] transient error (attempt ${attempt + 1}/${MAX_ATTEMPTS}), retrying: ${describeErr(err)}`);
-      // Backoff: 0.4s, 0.8s, 1.6s, 3.2s — gives Neon time to wake from suspend
-      await new Promise(r => setTimeout(r, 400 * Math.pow(2, attempt)));
+      // Shorter backoff: 150ms, 400ms — Neon cold-starts resolve fast
+      await new Promise(r => setTimeout(r, attempt === 0 ? 150 : 400));
     }
   }
   throw lastErr;

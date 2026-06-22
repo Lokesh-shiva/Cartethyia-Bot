@@ -14,15 +14,17 @@ const ELEMENT_COLORS: Record<string, number> = {
 const RANK_MEDALS = ["🥇", "🥈", "🥉"];
 
 interface LeaderboardType {
-  id:      string;
-  label:   string;
-  emoji:   string;
-  desc:    string;
-  unit:    string;
-  orderBy: object;
-  select:  object;
-  getValue: (row: any) => number;
+  id:        string;
+  label:     string;
+  emoji:     string;
+  desc:      string;
+  unit:      string;
+  orderBy:   object;
+  select:    object;
+  getValue:  (row: any) => number;
   getExtra?: (row: any) => string;
+  // Returns count of onboarded users strictly ranked above the given value
+  countAbove: (value: number) => Promise<number>;
 }
 
 const LEADERBOARD_TYPES: LeaderboardType[] = [
@@ -34,6 +36,7 @@ const LEADERBOARD_TYPES: LeaderboardType[] = [
     select:  { id: true, username: true, level: true, worldLevel: true, element: true },
     getValue: r => r.level,
     getExtra: r => `WL${r.worldLevel}`,
+    countAbove: v => prisma.user.count({ where: { isOnboarded: true, level: { gt: v } } }),
   },
   {
     id: "world_level", label: "World Level", emoji: "⚡",
@@ -43,14 +46,13 @@ const LEADERBOARD_TYPES: LeaderboardType[] = [
     select:  { id: true, username: true, worldLevel: true, level: true, element: true },
     getValue: r => r.worldLevel,
     getExtra: r => `Lv ${r.level}`,
+    countAbove: v => prisma.user.count({ where: { isOnboarded: true, worldLevel: { gt: v } } }),
   },
   {
     id: "social", label: "Social Activity", emoji: "💬",
     desc: "Total /vibe interactions across all categories",
     unit: "Interactions",
-    orderBy: [
-      { vibePhysicalCount: "desc" },
-    ],
+    orderBy: [{ vibePhysicalCount: "desc" }],
     select: {
       id: true, username: true, element: true,
       vibePhysicalCount: true, vibeExpressiveCount: true, vibeEmotionalCount: true,
@@ -59,11 +61,14 @@ const LEADERBOARD_TYPES: LeaderboardType[] = [
     getExtra: r => {
       const total = r.vibePhysicalCount + r.vibeExpressiveCount + r.vibeEmotionalCount;
       if (total === 0) return "No interactions";
-      const dom = r.vibePhysicalCount >= r.vibeExpressiveCount && r.vibePhysicalCount >= r.vibeEmotionalCount
-        ? "Physical"
-        : r.vibeExpressiveCount >= r.vibeEmotionalCount ? "Expressive" : "Emotional";
-      return dom;
+      return r.vibePhysicalCount >= r.vibeExpressiveCount && r.vibePhysicalCount >= r.vibeEmotionalCount
+        ? "Physical" : r.vibeExpressiveCount >= r.vibeEmotionalCount ? "Expressive" : "Emotional";
     },
+    countAbove: v => prisma.$queryRaw<[{ c: bigint }]>`
+      SELECT COUNT(*) as c FROM users
+      WHERE "isOnboarded" = true
+      AND ("vibePhysicalCount" + "vibeExpressiveCount" + "vibeEmotionalCount") > ${v}
+    `.then(r => Number(r[0].c)),
   },
   {
     id: "echoes", label: "Echo Collection", emoji: "🎴",
@@ -72,10 +77,16 @@ const LEADERBOARD_TYPES: LeaderboardType[] = [
     orderBy: [{ echoes: { _count: "desc" } }],
     select:  { id: true, username: true, element: true, _count: { select: { echoes: true } } },
     getValue: r => r._count?.echoes ?? 0,
-    getExtra: r => {
-      const n = r._count?.echoes ?? 0;
-      return n === 1 ? "1 echo" : `${n} echoes`;
-    },
+    getExtra: r => { const n = r._count?.echoes ?? 0; return n === 1 ? "1 echo" : `${n} echoes`; },
+    countAbove: v => prisma.$queryRaw<[{ c: bigint }]>`
+      SELECT COUNT(*) as c FROM (
+        SELECT u.id FROM users u
+        LEFT JOIN echoes e ON e."userId" = u.id
+        WHERE u."isOnboarded" = true
+        GROUP BY u.id
+        HAVING COUNT(e.id) > ${v}
+      ) sub
+    `.then(r => Number(r[0].c)),
   },
   {
     id: "credits", label: "Credits", emoji: "💠",
@@ -85,6 +96,7 @@ const LEADERBOARD_TYPES: LeaderboardType[] = [
     select:  { id: true, username: true, element: true, credits: true },
     getValue: r => r.credits,
     getExtra: r => r.credits.toLocaleString() + " cr",
+    countAbove: v => prisma.user.count({ where: { isOnboarded: true, credits: { gt: v } } }),
   },
   {
     id: "streak", label: "Daily Streak", emoji: "🔥",
@@ -94,6 +106,7 @@ const LEADERBOARD_TYPES: LeaderboardType[] = [
     select:  { id: true, username: true, element: true, dailyStreak: true, streakShields: true },
     getValue: r => r.dailyStreak,
     getExtra: r => r.streakShields > 0 ? `${r.streakShields} 🛡️` : "",
+    countAbove: v => prisma.user.count({ where: { isOnboarded: true, dailyStreak: { gt: v } } }),
   },
   {
     id: "duels", label: "Duel Wins", emoji: "⚔️",
@@ -104,9 +117,9 @@ const LEADERBOARD_TYPES: LeaderboardType[] = [
     getValue: r => r.duelWins,
     getExtra: r => {
       const total = r.duelWins + r.duelLosses;
-      if (total === 0) return "no duels";
-      return `${Math.round((r.duelWins / total) * 100)}% WR`;
+      return total === 0 ? "no duels" : `${Math.round((r.duelWins / total) * 100)}% WR`;
     },
+    countAbove: v => prisma.user.count({ where: { isOnboarded: true, duelWins: { gt: v } } }),
   },
   {
     id: "dungeons", label: "Dungeon Clears", emoji: "🏯",
@@ -116,6 +129,7 @@ const LEADERBOARD_TYPES: LeaderboardType[] = [
     select:  { id: true, username: true, element: true, dungeonClears: true },
     getValue: r => r.dungeonClears,
     getExtra: () => "",
+    countAbove: v => prisma.user.count({ where: { isOnboarded: true, dungeonClears: { gt: v } } }),
   },
 ];
 
@@ -169,21 +183,26 @@ export async function execute(interaction: ChatInputCommandInteraction) {
 
     await sel.deferUpdate();
 
-    // Fetch top 10
-    const rows = await (prisma.user.findMany as any)({
-      orderBy: type.orderBy,
-      select:  type.select,
-      take:    10,
-      where:   { isOnboarded: true },
-    });
+    // Fetch top 10 + requester's own row in parallel
+    const [rows, myRow] = await Promise.all([
+      (prisma.user.findMany as any)({
+        orderBy: type.orderBy,
+        select:  type.select,
+        take:    10,
+        where:   { isOnboarded: true },
+      }),
+      (prisma.user.findUnique as any)({
+        where:  { id: interaction.user.id },
+        select: { id: true, ...type.select },
+      }),
+    ]);
 
-    // Find requester's rank
-    const allRows = await (prisma.user.findMany as any)({
-      orderBy: type.orderBy,
-      select:  { id: true, ...type.select },
-      where:   { isOnboarded: true },
-    });
-    const myRank = allRows.findIndex((r: any) => r.id === interaction.user.id) + 1;
+    // Count how many onboarded users rank above the requester (avoids full-table fetch)
+    let myRank = 0;
+    if (myRow) {
+      const myValue = type.getValue(myRow);
+      myRank = await type.countAbove(myValue) + 1;
+    }
 
     // Build member display name map
     const memberCache = interaction.guild?.members.cache;
@@ -207,12 +226,11 @@ export async function execute(interaction: ChatInputCommandInteraction) {
       lines.push("*No data yet — be the first!*");
     }
 
-    // Show requester's position if not in top 10
+    // Show requester's position
     let footerText = `CARTETHYIA  ·  ${type.label} Leaderboard`;
-    if (myRank > 10 && myRank > 0) {
-      const myRow   = allRows.find((r: any) => r.id === interaction.user.id);
+    if (myRank > 10 && myRow) {
       const myName  = memberCache?.get(interaction.user.id)?.displayName ?? interaction.user.displayName;
-      const myValue = myRow ? type.getValue(myRow) : 0;
+      const myValue = type.getValue(myRow);
       footerText += `  ·  Your rank: #${myRank} (${myValue} ${type.unit})`;
     } else if (myRank > 0 && myRank <= 10) {
       footerText += `  ·  You're #${myRank}!`;
