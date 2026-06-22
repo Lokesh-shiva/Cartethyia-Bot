@@ -93,7 +93,7 @@ export async function askAI(options: AIPromptOptions): Promise<string | null> {
           const response = await geminiClient.chat.completions.create({
             model: GEMINI_MODEL,
             messages: geminiMessages,
-            max_tokens: Math.max(options.maxTokens ?? 40, 3000),
+            max_tokens: options.maxTokens ?? 80,
             temperature: 0.85,
           });
           const raw = response.choices[0]?.message?.content ?? "";

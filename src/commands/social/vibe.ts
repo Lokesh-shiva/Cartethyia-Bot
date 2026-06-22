@@ -205,22 +205,14 @@ const command: Command = {
         : Promise.resolve(null),
     ]);
 
-    // Fetch GIF + affinity in parallel
-    const [gifUrl, affinityRecord] = await Promise.all([
+    // Fetch GIF + affinity + AI flavor all in parallel
+    const [gifUrl, affinityRecord, flavorText] = await Promise.all([
       fetchGif(action),
       targetUser ? getAffinity(interaction.user.id, targetUser.id) : Promise.resolve(null),
+      generateInteractionFlavor(action, actorDisplay, targetDisplay, 0, recentMessages),
     ]);
 
     const affinityScore = affinityRecord?.score ?? 0;
-
-    // AI flavor text — uses display names so narration feels personal
-    const flavorText = await generateInteractionFlavor(
-      action,
-      actorDisplay,
-      targetDisplay,
-      affinityScore,
-      recentMessages
-    );
 
     // Silently track playstyle for ability generation
     const vibeField = group === "physical"   ? "vibePhysicalCount"
