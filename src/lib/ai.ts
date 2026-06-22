@@ -25,10 +25,15 @@ const LM_FAIL_THRESHOLD = 3;
 const LM_COOLDOWN_MS    = 10 * 60 * 1000;
 
 // Circuit breaker: skip Gemini after 429 rate-limit, retry after 60s
-let geminiOpenUntil = 0;
+let geminiOpenUntil     = 0;
+let geminiCircuitLogged = 0; // last time we logged "circuit open"
 
 const MODEL        = process.env.LM_STUDIO_MODEL || "local-model";
 const GEMINI_MODEL = process.env.GEMINI_MODEL    || "gemini-2.0-flash";
+
+// Startup diagnostics — printed once when the module loads
+console.log(`[AI] LM Studio: ${client ? `enabled (${LM_STUDIO_URL})` : "disabled (no LM_STUDIO_URL)"}`);
+console.log(`[AI] Gemini:    ${geminiClient ? `enabled (model: ${GEMINI_MODEL})` : "disabled (no GEMINI_API_KEY)"}`);
 
 export interface AIPromptOptions {
   systemPrompt: string;
@@ -84,7 +89,15 @@ export async function askAI(options: AIPromptOptions): Promise<string | null> {
     }
 
     // Fallback: Gemini — skip while rate-limited
-    if (geminiClient && Date.now() >= geminiOpenUntil) {
+    if (!geminiClient) {
+      // already logged at startup — no repeat
+    } else if (Date.now() < geminiOpenUntil) {
+      const secsLeft = Math.ceil((geminiOpenUntil - Date.now()) / 1000);
+      if (Date.now() - geminiCircuitLogged > 15_000) {
+        console.warn(`[AI] Gemini circuit open — rate-limited, retrying in ${secsLeft}s`);
+        geminiCircuitLogged = Date.now();
+      }
+    } else {
       const geminiMessages = [
         { role: "system" as const, content: options.systemPrompt },
         { role: "user" as const, content: options.userPrompt },
@@ -98,26 +111,22 @@ export async function askAI(options: AIPromptOptions): Promise<string | null> {
         });
         const raw    = response.choices[0]?.message?.content ?? "";
         const result = sanitize(raw);
-        console.log(`[AI] Gemini → ${JSON.stringify(result)}`);
+        if (result) {
+          console.log(`[AI] Gemini → "${result}"`);
+        } else {
+          console.warn(`[AI] Gemini returned empty/unparseable: ${JSON.stringify(raw).slice(0, 120)}`);
+        }
         return result;
       } catch (e: any) {
         const status = e?.status as number | undefined;
         if (status === 429) {
-          // Rate limited — back off 60s (one RPM window) silently
-          geminiOpenUntil = Date.now() + 60_000;
-        } else if (status && status >= 500) {
-          // Transient server error — log but don't open circuit
+          geminiOpenUntil     = Date.now() + 60_000;
+          geminiCircuitLogged = Date.now();
+          console.warn(`[AI] Gemini 429 — rate-limited, circuit open for 60s`);
+        } else {
           const now = Date.now();
           if (now - lastErrorLog > 60_000) {
-            console.warn(`[AI] Gemini ${status} — falling back to static narration.`);
-            lastErrorLog = now;
-          }
-        }
-        // 4xx other than 429 (auth, bad request): log once
-        else if (status && status >= 400) {
-          const now = Date.now();
-          if (now - lastErrorLog > 300_000) {
-            console.error(`[AI] Gemini ${status}: ${e?.message}`);
+            console.error(`[AI] Gemini ${status ?? "?"}: ${e?.message}`);
             lastErrorLog = now;
           }
         }
