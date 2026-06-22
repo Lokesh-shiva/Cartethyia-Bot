@@ -380,6 +380,47 @@ model EchoPreset {
   @@map("echo_presets")
 }
 
+// ─── Mail System ─────────────────────────────────────────────────────────────
+
+model Mail {
+  id           String    @id @default(cuid())
+  subject      String
+  body         String
+  sentAt       DateTime  @default(now())
+  expiresAt    DateTime?
+  targetUserId String?   // null = global broadcast to all players
+
+  credits          Int @default(0)
+  lunakite         Int @default(0)
+  fractonite       Int @default(0)
+  tuningModules    Int @default(0)
+  sealingTubes     Int @default(0)
+  forgingOres      Int @default(0)
+  paradoxCores     Int @default(0)
+  stasisLocks      Int @default(0)
+  fractureKeys     Int @default(0)
+  auraPrisms       Int @default(0)
+  resonanceRecords Int @default(0)
+
+  claims  MailClaim[]
+
+  @@index([targetUserId])
+  @@index([sentAt])
+  @@map("mails")
+}
+
+model MailClaim {
+  mailId    String
+  userId    String
+  claimedAt DateTime @default(now())
+
+  mail  Mail @relation(fields: [mailId], references: [id], onDelete: Cascade)
+
+  @@id([mailId, userId])
+  @@index([userId])
+  @@map("mail_claims")
+}
+
 // ─── Patron Code ─────────────────────────────────────────────────────────────
 
 model PatronCode {

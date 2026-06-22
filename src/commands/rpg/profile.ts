@@ -8,6 +8,7 @@ import { generateProfileCard, BondData, EchoSlotData, WeaponData } from "../../l
 import { resolvePlayerBonuses, applyBonuses } from "../../lib/setBonus";
 import { computeAura, getMaxAura } from "../../lib/aura";
 import { communityFooter } from "../../lib/communityFooter";
+import { mailNudge } from "../../lib/mailNudge";
 import prisma from "../../lib/prisma";
 
 const command: Command = {
@@ -139,9 +140,18 @@ const command: Command = {
 
     const attachment = new AttachmentBuilder(buffer, { name: "profile.webp" });
     const extraBonds = totalBonds > 3 ? `  ·  +${totalBonds - 3} more bond${totalBonds - 3 !== 1 ? "s" : ""} — use /bonds` : "";
-    const embed      = new EmbedBuilder()
+
+    // Only nudge for own profile (not when viewing others)
+    const nudge = target.id === interaction.user.id
+      ? await mailNudge(interaction.user.id, (user as any).createdAt as Date)
+      : "";
+
+    const embed = new EmbedBuilder()
       .setColor(0x0D1117)
-      .setDescription(`-# [Vote on top.gg](https://top.gg/bot/1510163339177623642/vote) · [Vote on DBL](https://discordbotlist.com/bots/cartethyia/upvote) · [Vote on rank.top](https://rank.top/bot/cartethyia) · [Join community](https://discord.gg/vgVmRMc2Gb)`)
+      .setDescription(
+        `-# [Vote on top.gg](https://top.gg/bot/1510163339177623642/vote) · [Vote on DBL](https://discordbotlist.com/bots/cartethyia/upvote) · [Vote on rank.top](https://rank.top/bot/cartethyia) · [Join community](https://discord.gg/vgVmRMc2Gb)` +
+        nudge
+      )
       .setImage("attachment://profile.webp")
       .setFooter({ text: `CARTETHYIA  ·  ${displayName}'s Profile${extraBonds}`, iconURL: avatarUrl });
 

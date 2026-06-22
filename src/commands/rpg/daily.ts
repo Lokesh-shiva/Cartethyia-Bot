@@ -16,6 +16,7 @@ import { generateLootCard } from "../../lib/lootCard";
 import { checkLevelUp } from "../../lib/progression";
 import prisma from "../../lib/prisma";
 import { scheduleReminder, clearReminder } from "../../lib/dailyReminder";
+import { mailNudge } from "../../lib/mailNudge";
 
 const ELEMENT_HEX: Record<string, string> = {
   FUSION: "#FF6B35", GLACIO: "#38BDF8", ELECTRO: "#A855F7",
@@ -164,6 +165,8 @@ const command: Command = {
       ? `\n🛡️ **Streak Shield earned!** Protects your streak if you miss a day.`
       : "";
 
+    const nudge = await mailNudge(interaction.user.id, (user as any).createdAt as Date);
+
     const embed = new EmbedBuilder()
       .setColor(parseInt(elHex.slice(1), 16))
       .setAuthor({ name: `${displayName}  ·  Daily Rewards`, iconURL: avatarUrl })
@@ -172,6 +175,7 @@ const command: Command = {
         multiplier > 1 ? `\n◈  **${multiplier}×** multiplier active` : "",
         shieldLine,
         shields > 0 && !shieldUsed ? `\n🛡️ Shields remaining: **${shields}**` : "",
+        nudge,
       ].filter(Boolean).join(""))
       .setImage("attachment://daily.webp")
       .setFooter({ text: "CARTETHYIA  ·  Come back tomorrow to keep your streak!" });
