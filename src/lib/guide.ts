@@ -691,13 +691,16 @@ export const GUIDE_SECTIONS: Record<string, GuideSection> = {
           inline: false,
         },
         {
-          name: "✦ Patreon — Monthly Bundles + Permanent Perks  ·  \`/support\`",
+          name: "✦ Patreon — Daily Pass + Monthly Bundles + Perks  ·  \`/support\`",
           value: [
-            `**Attuned — $3/mo:** 2 🌙 Lunakite · 80 🔷 Fractonite`,
-            `**Ascendant — $5/mo:** 5 🌙 · 200 🔷 · 1 🔆 Aura Prism · Aura cap → 6`,
-            `**Calamity — $10/mo:** 12 🌙 · 500 🔷 · 3 🔆 Aura Prisms · Aura cap → 8`,
-            `Pledge at patreon.com/c/Cartethyia_bot/membership`,
-            `You'll receive a personal code to redeem with \`/patron redeem <code>\`.`,
+            `Patrons get two recurring rewards:`,
+            `— **Daily pass** every 20h via \`/patron daily\` — Fractonite + Credits`,
+            `— **Monthly bundle** every 30d via \`/patron claim\` — Lunakite + Fractonite`,
+            ``,
+            `**Attuned $3:** 2🌙 · 80🔷 bundle  ·  10🔷 · 150💠 daily`,
+            `**Ascendant $5:** 5🌙 · 200🔷 · 1🔆 bundle  ·  20🔷 · 300💠 daily  ·  Aura 6`,
+            `**Calamity $10:** 12🌙 · 500🔷 · 3🔆 bundle  ·  40🔷 · 500💠 daily  ·  Aura 8`,
+            `patreon.com/c/Cartethyia_bot/membership · redeem with \`/patron redeem\``,
           ].join("\n"),
           inline: false,
         },
@@ -707,7 +710,7 @@ export const GUIDE_SECTIONS: Record<string, GuideSection> = {
           inline: false,
         },
       )
-      .setFooter({ text: "CARTETHYIA  ·  /vote · /support · /patron redeem" }),
+      .setFooter({ text: "CARTETHYIA  ·  /vote · /patron daily · /patron claim · /support" }),
   },
 
   admin: {

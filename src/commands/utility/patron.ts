@@ -1,11 +1,12 @@
 import {
   SlashCommandBuilder, ChatInputCommandInteraction,
-  EmbedBuilder,
+  EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, ComponentType,
 } from "discord.js";
 import { Command } from "../../types";
 import { replyNotStarted, awardUser } from "../../lib/economy";
 import { CE } from "../../lib/emojiManager";
 import prisma from "../../lib/prisma";
+import { schedulePatronDailyReminder, clearPatronDailyReminder } from "../../lib/dailyReminder";
 
 const ELEMENT_HEX: Record<string, number> = {
   FUSION: 0xFF6B35, GLACIO: 0x38BDF8, ELECTRO: 0xA855F7,
@@ -123,11 +124,15 @@ async function handleInfo(interaction: ChatInputCommandInteraction) {
 
   const statusLine = tierDef
     ? [
-        `You are **${tierDef.name}**`,
-        `Monthly bundle: ${nextBundle > 0 ? `ready in **${fmtMs(nextBundle)}**` : "**ready to claim!**"}`,
-        `Daily pass: ${nextDaily > 0 ? `ready in **${fmtMs(nextDaily)}**` : "**ready to claim!**"}`,
+        `You are **${tierDef.name}** patron.`,
+        ``,
+        `🗓️ **Monthly bundle** — \`/patron claim\``,
+        nextBundle > 0 ? `  Ready in **${fmtMs(nextBundle)}**` : `  ✅ **Ready to claim!**`,
+        ``,
+        `⚡ **Daily pass** — \`/patron daily\``,
+        nextDaily > 0 ? `  Ready in **${fmtMs(nextDaily)}**` : `  ✅ **Ready to claim!**`,
       ].join("\n")
-    : "You are not a Patreon supporter.";
+    : "You are not a Patreon supporter.\n\n**As a patron you get:**\n— A daily pass (every 20h) with Fractonite + Credits\n— A monthly bundle (every 30d) with Lunakite + Fractonite\n— Permanent perks like a higher Aura cap";
 
   await interaction.editReply({
     embeds: [new EmbedBuilder()
@@ -137,9 +142,9 @@ async function handleInfo(interaction: ChatInputCommandInteraction) {
         `${statusLine}\n\n` +
         `Support the bot and get daily rewards + monthly bundles + permanent perks.\n\n` +
         tierLines + `\n\n` +
-        `*To activate your tier, DM the server owner with proof of your Patreon pledge.*`
+        `*To activate, DM the server owner on Patreon — you'll receive a code to redeem with \`/patron redeem\`.*`
       )
-      .setFooter({ text: "CARTETHYIA  ·  /patron daily · /patron claim" })],
+      .setFooter({ text: "CARTETHYIA  ·  /patron daily (20h)  ·  /patron claim (30d)" })],
   });
 }
 
@@ -208,7 +213,7 @@ async function handleDaily(interaction: ChatInputCommandInteraction) {
 
   const user = await prisma.user.findUnique({
     where:  { id: interaction.user.id },
-    select: { patronTier: true, patronDailyClaimed: true, element: true },
+    select: { patronTier: true, patronDailyClaimed: true, element: true, dailyReminderEnabled: true },
   });
   if (!user) { await replyNotStarted(interaction); return; }
 
@@ -251,6 +256,18 @@ async function handleDaily(interaction: ChatInputCommandInteraction) {
     },
   });
 
+  const fireAt = new Date(Date.now() + DAILY_COOLDOWN_MS);
+  if (user.dailyReminderEnabled) {
+    schedulePatronDailyReminder(interaction.client, interaction.user.id, fireAt);
+  }
+
+  const reminderRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
+    new ButtonBuilder()
+      .setCustomId("patron_daily_reminder_toggle")
+      .setLabel(user.dailyReminderEnabled ? "🔕  Disable Reminder" : "🔔  Remind Me in 20h")
+      .setStyle(user.dailyReminderEnabled ? ButtonStyle.Secondary : ButtonStyle.Primary),
+  );
+
   await interaction.editReply({
     embeds: [new EmbedBuilder()
       .setColor(PATRON_GOLD)
@@ -261,6 +278,44 @@ async function handleDaily(interaction: ChatInputCommandInteraction) {
         `-# Use \`/patron claim\` for your monthly bundle too.`
       )
       .setFooter({ text: "CARTETHYIA  ·  Patreon Daily  ·  Thank you for supporting!" })],
+    components: [reminderRow],
+  });
+
+  // Reminder toggle (60s window)
+  let currentEnabled = user.dailyReminderEnabled;
+  const collector = interaction.channel?.createMessageComponentCollector({
+    componentType: ComponentType.Button,
+    filter: b => b.user.id === interaction.user.id && b.customId === "patron_daily_reminder_toggle",
+    time: 60_000,
+  });
+
+  collector?.on("collect", async btn => {
+    await btn.deferUpdate();
+    currentEnabled = !currentEnabled;
+
+    await prisma.user.update({
+      where: { id: interaction.user.id },
+      data:  { dailyReminderEnabled: currentEnabled },
+    });
+
+    if (currentEnabled) {
+      schedulePatronDailyReminder(btn.client, interaction.user.id, fireAt);
+    } else {
+      clearPatronDailyReminder(interaction.user.id);
+    }
+
+    await btn.editReply({
+      components: [new ActionRowBuilder<ButtonBuilder>().addComponents(
+        new ButtonBuilder()
+          .setCustomId("patron_daily_reminder_toggle")
+          .setLabel(currentEnabled ? "🔕  Disable Reminder" : "🔔  Remind Me in 20h")
+          .setStyle(currentEnabled ? ButtonStyle.Secondary : ButtonStyle.Primary),
+      )],
+    });
+  });
+
+  collector?.on("end", () => {
+    interaction.editReply({ components: [] }).catch(() => {});
   });
 }
 
