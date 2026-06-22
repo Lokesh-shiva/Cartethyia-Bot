@@ -96,8 +96,9 @@ export async function askAI(options: AIPromptOptions): Promise<string | null> {
           max_tokens: options.maxTokens ?? 80,
           temperature: 0.85,
         });
-        const raw = response.choices[0]?.message?.content ?? "";
+        const raw    = response.choices[0]?.message?.content ?? "";
         const result = sanitize(raw);
+        console.log(`[AI] Gemini → ${JSON.stringify(result)}`);
         return result;
       } catch (e: any) {
         const status = e?.status as number | undefined;
