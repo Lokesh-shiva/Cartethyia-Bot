@@ -14,6 +14,7 @@ import { FIELD_BOSSES, FieldBoss } from "../../lib/fieldBosses";
 import { gearAwareScale, baselineAtk } from "../../lib/combat";
 import { incrementWeaponBond } from "../../lib/weaponAwakening";
 import { voteNudge, supportNudge } from "../../lib/voteNudge";
+import { mailNudge } from "../../lib/mailNudge";
 import { generateBattleCard, BattleCardState } from "../../lib/battleCard";
 import {
   resolvePlayerBonuses, applyBonuses,
@@ -297,7 +298,7 @@ const command: Command = {
                 `${CE.cr} ${credits} Credits  ·  ${CE.fk} 1 Fracture Key` +
                 (lvl.didLevelUp ? `\n◈ Level **${lvl.oldLevel}** → **${lvl.newLevel}**` : "") +
                 (bondResult ? `\n✦ Weapon Bond **${bondResult.bond}/10**${bondResult.milestone ? ` — *${bondResult.milestone}*` : ""}` : "") +
-                voteNudge() + supportNudge()
+                voteNudge() + supportNudge() + await mailNudge(interaction.user.id)
               )
               .setFooter({ text: "CARTETHYIA  ·  Field Boss" })],
           });

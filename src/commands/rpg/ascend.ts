@@ -20,6 +20,7 @@ import { formatV2Effects } from "../../lib/abilityEngineV2";
 import { generateAbilityCard } from "../../lib/abilityCard";
 import { incrementWeaponBond } from "../../lib/weaponAwakening";
 import { grantReferralMilestone } from "../../lib/referral";
+import { mailNudge } from "../../lib/mailNudge";
 import prisma from "../../lib/prisma";
 
 const ELEMENT_HEX: Record<string, number> = {
@@ -386,6 +387,7 @@ const command: Command = {
                 `◈  World Level **${user.worldLevel}** → **${newWL}**`,
                 `◈  Level cap raised to **${newCap}**`,
                 isFirstAscension ? `◈  Your resonance signature is being forged…` : "",
+                await mailNudge(interaction.user.id),
               ].filter(Boolean).join("\n"))
               .setFooter({ text: "CARTETHYIA  ·  Ascension Trial" })],
           });

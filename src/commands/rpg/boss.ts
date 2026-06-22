@@ -14,6 +14,7 @@ import { checkLevelUp } from "../../lib/progression";
 import { BOSSES, getBoss, veteranScale } from "../../lib/bosses";
 import { gearAwareScale, baselineAtk, buildRewardText } from "../../lib/combat";
 import { voteNudge, supportNudge } from "../../lib/voteNudge";
+import { mailNudge } from "../../lib/mailNudge";
 import { trackEvolutionProgress } from "../../lib/abilityEvolution";
 import { incrementWeaponBond } from "../../lib/weaponAwakening";
 import { generateBattleCard, BattleCardState } from "../../lib/battleCard";
@@ -287,7 +288,7 @@ const command: Command = {
               .setDescription([
                 `**${boss.name}** has been put to rest again.`,
                 ``,
-                `**Rewards (70%):**\n${buildRewardText(loot)}` + voteNudge() + supportNudge(),
+                `**Rewards (70%):**\n${buildRewardText(loot)}` + voteNudge() + supportNudge() + await mailNudge(interaction.user.id),
                 lvlResult.didLevelUp ? `\n◈ Level **${lvlResult.oldLevel}** → **${lvlResult.newLevel}**` : "",
                 evoLine ? `\n${evoLine}` : "",
                 bondResult ? `\n✦ Weapon Bond **${bondResult.bond}/${10}**${bondResult.milestone ? ` — *${bondResult.milestone}*` : ""}` : "",

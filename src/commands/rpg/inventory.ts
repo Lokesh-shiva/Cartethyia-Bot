@@ -7,6 +7,7 @@ import {
 import { Command } from "../../types";
 import { getOrCreateUser } from "../../lib/economy";
 import { generateInventoryCard } from "../../lib/inventoryCard";
+import { mailNudge } from "../../lib/mailNudge";
 
 const ELEMENT_HEX: Record<string, number> = {
   FUSION: 0xFF6B35, GLACIO: 0x38BDF8, ELECTRO: 0xA855F7,
@@ -35,8 +36,13 @@ const command: Command = {
     const card       = await generateInventoryCard(user, displayName, avatarUrl);
     const attachment = new AttachmentBuilder(card, { name: "inventory.webp" });
 
+    const nudge = target.id === interaction.user.id
+      ? await mailNudge(interaction.user.id)
+      : "";
+
     const embed = new EmbedBuilder()
       .setColor(color)
+      .setDescription(nudge || null)
       .setImage("attachment://inventory.webp")
       .setFooter({ text: "CARTETHYIA  ·  Material Inventory" });
 
