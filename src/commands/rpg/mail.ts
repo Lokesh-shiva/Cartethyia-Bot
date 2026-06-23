@@ -132,19 +132,20 @@ const command: Command = {
     function buildEmbed(page: number, mails: any[]): EmbedBuilder {
       const slice = mails.slice(page * PAGE, (page + 1) * PAGE);
       const lines = slice.map((m, i) => {
-        const idx    = page * PAGE + i + 1;
-        const reward = hasRewards(m) ? `\n> ${fmtRewards(m)}` : "";
-        const scope  = m.targetUserId ? "✉️ Personal" : "📡 Global";
-        return `**${idx}. ${m.subject}**  ·  *${timeAgo(m.sentAt)}*  ·  ${scope}\n${m.body}${reward}`;
+        const idx      = page * PAGE + i + 1;
+        const pin      = m.targetUserId ? "✉️" : "📡";
+        const rewards  = hasRewards(m) ? `  ·  ${fmtRewards(m)}` : "";
+        return `${pin} **${idx}.** ${m.subject}${rewards}\n-# ${timeAgo(m.sentAt)}`;
       });
 
       const totalRewards = fmtRewards(sumRewards(mails));
+      const pages = Math.ceil(mails.length / PAGE);
       return new EmbedBuilder()
         .setColor(0xFCD34D)
         .setTitle(`📬  Mailbox  ·  ${mails.length} unread`)
         .setDescription(lines.join("\n\n"))
-        .addFields({ name: "Total if claimed all", value: totalRewards, inline: false })
-        .setFooter({ text: `CARTETHYIA  ·  Mail  ·  Page ${page + 1}/${Math.ceil(mails.length / PAGE)}` });
+        .addFields({ name: "Claim all rewards", value: totalRewards, inline: false })
+        .setFooter({ text: `CARTETHYIA  ·  Mail${pages > 1 ? `  ·  Page ${page + 1}/${pages}` : ""}` });
     }
 
     function buildRow(page: number, total: number, disabled = false) {
