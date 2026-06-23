@@ -207,7 +207,7 @@ export async function runFirstExpedition(member: GuildMember, channel: TextChann
     where: { id: userId },
     data:  { firstExpeditionDone: true },
   });
-  await awardUser(userId, { fractonite: 300 }, "first-expedition");
+  await awardUser(userId, { fractureKeys: 10 }, "first-expedition");
 
   await channel.send({
     embeds: [new EmbedBuilder()
@@ -215,7 +215,7 @@ export async function runFirstExpedition(member: GuildMember, channel: TextChann
       .setTitle("✦  First Expedition Complete")
       .setDescription(
         `All three echoes have been claimed, **${displayName}**.\n\n` +
-        `**Rewards:**\n🔷  **300 Fractonite** — convert 100 → 1 Fracture Key with \`/use fractonite\`, then \`/wish\`\n` +
+        `**Rewards:**\n🗝️  **10 Fracture Keys** — use them on \`/wish\` to pull weapons\n` +
         `🌀  **3 Echoes** added to your inventory — equip them with \`/echo-equip\`\n\n` +
         `**What's next:**\n` +
         `› \`/daily\` — claim your first daily bonus\n` +
