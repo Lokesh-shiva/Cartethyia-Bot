@@ -1,8 +1,10 @@
 import { Client, Events, ActivityType, EmbedBuilder } from "discord.js";
+import { Api as TopGGApi } from "@top-gg/sdk";
 import { loadExploreChannels, loadAllGuildSettings, restoreEncounters } from "../lib/encounter";
 import { loadEmojis } from "../lib/emojiManager";
 import { rescheduleOnReady } from "../lib/dailyReminder";
 import { loadAllPrefixes } from "../lib/prefixManager";
+import { setAuditClient, runBalanceSweep } from "../lib/antiCheat";
 import prisma from "../lib/prisma";
 
 export const name = Events.ClientReady;
@@ -82,4 +84,26 @@ export async function execute(client: Client) {
     ],
     status: "online",
   });
+
+  // Anti-cheat: wire up audit client + run balance sweep every 12h
+  setAuditClient(client);
+  setInterval(() => runBalanceSweep(client), 12 * 60 * 60 * 1000);
+
+  // top.gg server count — posts immediately then every 30 min
+  const TOPGG_TOKEN = process.env.TOPGG_TOKEN ?? "";
+  if (TOPGG_TOKEN) {
+    const topgg = new TopGGApi(TOPGG_TOKEN);
+    const postTopggStats = async () => {
+      try {
+        await topgg.postStats({ serverCount: client.guilds.cache.size });
+        console.log(`[topgg] Posted server count: ${client.guilds.cache.size} servers`);
+      } catch (err: any) {
+        console.error("[topgg] postStats error:", err?.message ?? err);
+      }
+    };
+    await postTopggStats();
+    setInterval(postTopggStats, 30 * 60 * 1000);
+  } else {
+    console.warn("[topgg] TOPGG_TOKEN not set — skipping server count updates");
+  }
 }
