@@ -1,6 +1,8 @@
 import {
   SlashCommandBuilder, ChatInputCommandInteraction,
-  EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, ComponentType,
+  EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle,
+  StringSelectMenuBuilder, StringSelectMenuOptionBuilder,
+  ComponentType,
 } from "discord.js";
 import { Command } from "../../types";
 import { replyNotStarted } from "../../lib/economy";
@@ -45,12 +47,10 @@ async function getUnclaimedMails(userId: string, userCreatedAt: Date) {
   return prisma.mail.findMany({
     where: {
       AND: [
-        {
-          OR: [
-            { targetUserId: null, sentAt: { gt: userCreatedAt } },
-            { targetUserId: userId },
-          ],
-        },
+        { OR: [
+          { targetUserId: null, sentAt: { gt: userCreatedAt } },
+          { targetUserId: userId },
+        ]},
         { claims: { none: { userId } } },
         { OR: [{ expiresAt: null }, { expiresAt: { gt: now } }] },
       ],
@@ -62,7 +62,6 @@ async function getUnclaimedMails(userId: string, userCreatedAt: Date) {
 async function claimMail(mailId: string, userId: string): Promise<void> {
   const mail = await prisma.mail.findUnique({ where: { id: mailId } });
   if (!mail) return;
-
   await prisma.$transaction([
     prisma.mailClaim.create({ data: { mailId, userId } }),
     prisma.user.update({
@@ -86,15 +85,79 @@ async function claimMail(mailId: string, userId: string): Promise<void> {
 
 function sumRewards(mails: any[]): Record<string, number> {
   const totals: Record<string, number> = {};
-  const fields = ["credits","lunakite","fractonite","fractureKeys","auraPrisms",
-                  "tuningModules","sealingTubes","forgingOres","paradoxCores",
-                  "stasisLocks","resonanceRecords"];
   for (const m of mails) {
-    for (const f of fields) {
+    for (const f of ["credits","lunakite","fractonite","fractureKeys","auraPrisms",
+                     "tuningModules","sealingTubes","forgingOres","paradoxCores",
+                     "stasisLocks","resonanceRecords"]) {
       if (m[f]) totals[f] = (totals[f] ?? 0) + m[f];
     }
   }
   return totals;
+}
+
+const PAGE = 5;
+
+function buildInboxEmbed(page: number, mails: any[]): EmbedBuilder {
+  const slice = mails.slice(page * PAGE, (page + 1) * PAGE);
+  const lines = slice.map((m, i) => {
+    const idx     = page * PAGE + i + 1;
+    const pin     = m.targetUserId ? "✉️" : "📡";
+    const rewards = hasRewards(m) ? `  ·  ${fmtRewards(m)}` : "";
+    return `${pin} **${idx}.** ${m.subject}${rewards}\n-# ${timeAgo(m.sentAt)}`;
+  });
+  const pages = Math.ceil(mails.length / PAGE);
+  return new EmbedBuilder()
+    .setColor(0xFCD34D)
+    .setTitle(`📬  Mailbox  ·  ${mails.length} unread`)
+    .setDescription(lines.join("\n\n"))
+    .addFields({ name: "Claim all rewards", value: fmtRewards(sumRewards(mails)), inline: false })
+    .setFooter({ text: `CARTETHYIA  ·  Mail${pages > 1 ? `  ·  Page ${page + 1}/${pages}` : ""}  ·  Select a mail to read` });
+}
+
+function buildDetailEmbed(m: any, color: number): EmbedBuilder {
+  const pin = m.targetUserId ? "✉️ Personal" : "📡 Global";
+  return new EmbedBuilder()
+    .setColor(color)
+    .setTitle(m.subject)
+    .setDescription(m.body)
+    .addFields({ name: "Rewards", value: fmtRewards(m), inline: false })
+    .setFooter({ text: `CARTETHYIA  ·  Mail  ·  ${pin}  ·  ${timeAgo(m.sentAt)}` });
+}
+
+function buildSelectMenu(page: number, mails: any[]): ActionRowBuilder<StringSelectMenuBuilder> {
+  const slice = mails.slice(page * PAGE, (page + 1) * PAGE);
+  return new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(
+    new StringSelectMenuBuilder()
+      .setCustomId("mail_open")
+      .setPlaceholder("Open a mail to read it…")
+      .addOptions(slice.map((m, i) =>
+        new StringSelectMenuOptionBuilder()
+          .setLabel(`${page * PAGE + i + 1}. ${m.subject}`.slice(0, 100))
+          .setDescription(hasRewards(m) ? fmtRewards(m).slice(0, 100) : "No rewards")
+          .setValue(m.id)
+      ))
+  );
+}
+
+function buildInboxButtons(page: number, total: number, disabled = false) {
+  return new ActionRowBuilder<ButtonBuilder>().addComponents(
+    new ButtonBuilder().setCustomId("mail_prev").setLabel("◀").setStyle(ButtonStyle.Secondary)
+      .setDisabled(disabled || page === 0),
+    new ButtonBuilder().setCustomId("mail_claim_page").setLabel(`Claim Page ${page + 1}`)
+      .setStyle(ButtonStyle.Primary).setDisabled(disabled),
+    new ButtonBuilder().setCustomId("mail_claim_all").setLabel("📬 Claim All")
+      .setStyle(ButtonStyle.Success).setDisabled(disabled),
+    new ButtonBuilder().setCustomId("mail_next").setLabel("▶").setStyle(ButtonStyle.Secondary)
+      .setDisabled(disabled || (page + 1) * PAGE >= total),
+  );
+}
+
+function buildDetailButtons(mailId: string) {
+  return new ActionRowBuilder<ButtonBuilder>().addComponents(
+    new ButtonBuilder().setCustomId("mail_back").setLabel("◀ Back").setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId(`mail_claim_one:${mailId}`).setLabel("Claim Rewards")
+      .setStyle(ButtonStyle.Success),
+  );
 }
 
 const command: Command = {
@@ -113,9 +176,9 @@ const command: Command = {
 
     const color = ELEMENT_HEX[user.element as string] ?? 0x6366F1;
 
-    const mails = await getUnclaimedMails(interaction.user.id, user.createdAt);
+    let remaining = await getUnclaimedMails(interaction.user.id, user.createdAt);
 
-    if (mails.length === 0) {
+    if (remaining.length === 0) {
       await interaction.editReply({
         embeds: [new EmbedBuilder()
           .setColor(color)
@@ -126,93 +189,116 @@ const command: Command = {
       return;
     }
 
-    const PAGE = 5;
     let page = 0;
 
-    function buildEmbed(page: number, mails: any[]): EmbedBuilder {
-      const slice = mails.slice(page * PAGE, (page + 1) * PAGE);
-      const lines = slice.map((m, i) => {
-        const idx      = page * PAGE + i + 1;
-        const pin      = m.targetUserId ? "✉️" : "📡";
-        const rewards  = hasRewards(m) ? `  ·  ${fmtRewards(m)}` : "";
-        return `${pin} **${idx}.** ${m.subject}${rewards}\n-# ${timeAgo(m.sentAt)}`;
-      });
-
-      const totalRewards = fmtRewards(sumRewards(mails));
-      const pages = Math.ceil(mails.length / PAGE);
-      return new EmbedBuilder()
-        .setColor(0xFCD34D)
-        .setTitle(`📬  Mailbox  ·  ${mails.length} unread`)
-        .setDescription(lines.join("\n\n"))
-        .addFields({ name: "Claim all rewards", value: totalRewards, inline: false })
-        .setFooter({ text: `CARTETHYIA  ·  Mail${pages > 1 ? `  ·  Page ${page + 1}/${pages}` : ""}` });
-    }
-
-    function buildRow(page: number, total: number, disabled = false) {
-      return new ActionRowBuilder<ButtonBuilder>().addComponents(
-        new ButtonBuilder().setCustomId("mail_prev").setLabel("◀").setStyle(ButtonStyle.Secondary)
-          .setDisabled(disabled || page === 0),
-        new ButtonBuilder().setCustomId("mail_claim_page").setLabel(`Claim Page ${page + 1}`)
-          .setStyle(ButtonStyle.Primary).setDisabled(disabled),
-        new ButtonBuilder().setCustomId("mail_claim_all").setLabel("📬 Claim All")
-          .setStyle(ButtonStyle.Success).setDisabled(disabled),
-        new ButtonBuilder().setCustomId("mail_next").setLabel("▶").setStyle(ButtonStyle.Secondary)
-          .setDisabled(disabled || (page + 1) * PAGE >= total),
-      );
-    }
-
     const msg = await interaction.editReply({
-      embeds:     [buildEmbed(page, mails)],
-      components: [buildRow(page, mails.length)],
+      embeds:     [buildInboxEmbed(page, remaining)],
+      components: [buildSelectMenu(page, remaining), buildInboxButtons(page, remaining.length)],
     });
 
     const collector = msg.createMessageComponentCollector({
-      componentType: ComponentType.Button,
-      filter: b => b.user.id === interaction.user.id,
-      time: 3 * 60 * 1000,
+      filter: (i: any) => i.user.id === interaction.user.id,
+      time:   3 * 60 * 1000,
     });
 
-    let remaining = [...mails];
+    collector.on("collect", async (i: any) => {
+      await i.deferUpdate();
 
-    collector.on("collect", async btn => {
-      await btn.deferUpdate();
+      // ── Open a mail (select menu) ───────────────────────────────────────────
+      if (i.customId === "mail_open") {
+        const mailId = i.values[0];
+        const mail   = remaining.find((m: any) => m.id === mailId);
+        if (!mail) return;
+        await i.editReply({
+          embeds:     [buildDetailEmbed(mail, color)],
+          components: [buildDetailButtons(mail.id)],
+        });
+        return;
+      }
 
-      if (btn.customId === "mail_prev") {
+      // ── Back to inbox ───────────────────────────────────────────────────────
+      if (i.customId === "mail_back") {
+        await i.editReply({
+          embeds:     [buildInboxEmbed(page, remaining)],
+          components: [buildSelectMenu(page, remaining), buildInboxButtons(page, remaining.length)],
+        });
+        return;
+      }
+
+      // ── Claim single mail from detail view ──────────────────────────────────
+      if (i.customId.startsWith("mail_claim_one:")) {
+        const mailId = i.customId.split(":")[1];
+        const mail   = remaining.find((m: any) => m.id === mailId);
+        if (!mail) return;
+
+        await claimMail(mail.id, interaction.user.id);
+        remaining = remaining.filter((m: any) => m.id !== mail.id);
+        page      = Math.min(page, Math.max(0, Math.ceil(remaining.length / PAGE) - 1));
+
+        if (remaining.length === 0) {
+          collector.stop("done");
+          await i.editReply({
+            embeds: [new EmbedBuilder()
+              .setColor(0x10B981)
+              .setTitle("📬  All Mail Claimed!")
+              .setDescription(`**Received:** ${fmtRewards(mail)}`)
+              .setFooter({ text: "CARTETHYIA  ·  Mailbox empty" })],
+            components: [],
+          });
+          return;
+        }
+
+        await i.editReply({
+          embeds: [new EmbedBuilder()
+            .setColor(color)
+            .setTitle("✅  Claimed!")
+            .setDescription(`**Received:** ${fmtRewards(mail)}\n\n**${remaining.length} mail${remaining.length > 1 ? "s" : ""} remaining.**`)
+            .setFooter({ text: "CARTETHYIA  ·  Mail" })],
+          components: [],
+        });
+        await new Promise(r => setTimeout(r, 2000));
+        await i.editReply({
+          embeds:     [buildInboxEmbed(page, remaining)],
+          components: [buildSelectMenu(page, remaining), buildInboxButtons(page, remaining.length)],
+        });
+        return;
+      }
+
+      // ── Pagination ──────────────────────────────────────────────────────────
+      if (i.customId === "mail_prev") {
         page = Math.max(0, page - 1);
-        await btn.editReply({ embeds: [buildEmbed(page, remaining)], components: [buildRow(page, remaining.length)] });
+        await i.editReply({
+          embeds:     [buildInboxEmbed(page, remaining)],
+          components: [buildSelectMenu(page, remaining), buildInboxButtons(page, remaining.length)],
+        });
         return;
       }
 
-      if (btn.customId === "mail_next") {
+      if (i.customId === "mail_next") {
         page = Math.min(Math.ceil(remaining.length / PAGE) - 1, page + 1);
-        await btn.editReply({ embeds: [buildEmbed(page, remaining)], components: [buildRow(page, remaining.length)] });
+        await i.editReply({
+          embeds:     [buildInboxEmbed(page, remaining)],
+          components: [buildSelectMenu(page, remaining), buildInboxButtons(page, remaining.length)],
+        });
         return;
       }
 
-      // Claim page or all
-      const toClaim = btn.customId === "mail_claim_all"
+      // ── Claim page or all ───────────────────────────────────────────────────
+      const toClaim = i.customId === "mail_claim_all"
         ? remaining
         : remaining.slice(page * PAGE, (page + 1) * PAGE);
 
-      if (toClaim.length === 0) {
-        await btn.editReply({ embeds: [buildEmbed(page, remaining)], components: [buildRow(page, remaining.length)] });
-        return;
-      }
+      if (toClaim.length === 0) return;
 
-      // Claim each in sequence (transaction per mail to avoid partial-reward races)
-      for (const m of toClaim) {
-        await claimMail(m.id, interaction.user.id);
-      }
+      for (const m of toClaim) await claimMail(m.id, interaction.user.id);
+      const rewarded = fmtRewards(sumRewards(toClaim));
 
-      const totals   = sumRewards(toClaim);
-      const rewarded = fmtRewards(totals);
-
-      remaining = remaining.filter(m => !toClaim.find(c => c.id === m.id));
+      remaining = remaining.filter((m: any) => !toClaim.find((c: any) => c.id === m.id));
       page      = Math.min(page, Math.max(0, Math.ceil(remaining.length / PAGE) - 1));
 
       if (remaining.length === 0) {
         collector.stop("done");
-        await btn.editReply({
+        await i.editReply({
           embeds: [new EmbedBuilder()
             .setColor(0x10B981)
             .setTitle("📬  All Mail Claimed!")
@@ -223,21 +309,19 @@ const command: Command = {
         return;
       }
 
-      await btn.editReply({
+      await i.editReply({
         embeds: [new EmbedBuilder()
           .setColor(color)
           .setTitle("✅  Claimed!")
           .setDescription(`**Received:** ${rewarded}\n\n**${remaining.length} mail${remaining.length > 1 ? "s" : ""} remaining.**`)
-          .setFooter({ text: "CARTETHYIA  ·  Mail" })
-          .setTimestamp()],
+          .setFooter({ text: "CARTETHYIA  ·  Mail" })],
         components: [],
       });
 
-      // Re-show inbox with remaining after 3s
-      await new Promise(r => setTimeout(r, 3000));
-      await btn.editReply({
-        embeds:     [buildEmbed(page, remaining)],
-        components: [buildRow(page, remaining.length)],
+      await new Promise(r => setTimeout(r, 2000));
+      await i.editReply({
+        embeds:     [buildInboxEmbed(page, remaining)],
+        components: [buildSelectMenu(page, remaining), buildInboxButtons(page, remaining.length)],
       });
     });
 
