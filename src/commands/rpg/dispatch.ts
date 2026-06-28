@@ -96,6 +96,10 @@ const command: Command = {
     .addSubcommand((s) =>
       s.setName("status")
         .setDescription("Check your current expedition status.")
+    )
+    .addSubcommand((s) =>
+      s.setName("cancel")
+        .setDescription("Abort your current expedition. No rewards will be given.")
     ) as SlashCommandBuilder,
 
   async execute(interaction: ChatInputCommandInteraction) {
@@ -103,6 +107,7 @@ const command: Command = {
     if (sub === "send")   await handleSend(interaction);
     if (sub === "claim")  await handleClaim(interaction);
     if (sub === "status") await handleStatus(interaction);
+    if (sub === "cancel") await handleCancel(interaction);
   },
 };
 
@@ -311,6 +316,95 @@ async function handleStatus(interaction: ChatInputCommandInteraction) {
           : `◈  **Complete!** Use **/dispatch claim** to collect.`,
       ].join("\n"))
       .setFooter({ text: "CARTETHYIA  ·  Dispatch System" })],
+  });
+}
+
+// ── /dispatch cancel ──────────────────────────────────────────────────────────
+async function handleCancel(interaction: ChatInputCommandInteraction) {
+  await interaction.deferReply({ flags: 64 });
+
+  const displayName = interaction.guild?.members.cache.get(interaction.user.id)?.displayName
+    ?? interaction.user.displayName ?? interaction.user.username;
+  const avatarUrl   = interaction.user.displayAvatarURL({ size: 64, extension: "png" });
+  const user        = await getOrCreateUser(interaction.user.id, displayName, avatarUrl);
+  const color       = ELEMENT_HEX[user.element] ?? ELEMENT_HEX.NONE;
+
+  if (user.dispatchStatus !== "ON_DISPATCH" || !user.dispatchEndsAt) {
+    await interaction.editReply({
+      embeds: [new EmbedBuilder().setColor(0x334155)
+        .setDescription(`◈ You aren't on an expedition.\nUse **/dispatch send** to begin one.`)
+        .setFooter({ text: "CARTETHYIA  ·  Dispatch System" })],
+    });
+    return;
+  }
+
+  const remaining = user.dispatchEndsAt.getTime() - Date.now();
+  const dispatch  = DISPATCHES.find((d) => d.hours === user.dispatchHours) ?? DISPATCHES[0];
+
+  const confirmBtn = new ButtonBuilder()
+    .setCustomId("dispatch_cancel_confirm")
+    .setLabel("Abandon Expedition")
+    .setStyle(ButtonStyle.Danger);
+
+  const abortBtn = new ButtonBuilder()
+    .setCustomId("dispatch_cancel_abort")
+    .setLabel("Keep Going")
+    .setStyle(ButtonStyle.Secondary);
+
+  const row = new ActionRowBuilder<ButtonBuilder>().addComponents(confirmBtn, abortBtn);
+
+  const msg = await interaction.editReply({
+    embeds: [new EmbedBuilder().setColor(0xEF4444)
+      .setAuthor({ name: `${displayName}  ·  Abandon Expedition?`, iconURL: avatarUrl })
+      .setDescription([
+        `${dispatch.emoji}  **${dispatch.label}** — ${user.dispatchHours}h`,
+        ``,
+        `⚠️  **You will receive no rewards** if you cancel now.`,
+        remaining > 0
+          ? `◈  Time remaining: **${formatTimeLeft(remaining)}**`
+          : `◈  Your expedition is already complete — use **/dispatch claim** instead.`,
+        ``,
+        `Are you sure you want to abandon this expedition?`,
+      ].join("\n"))
+      .setFooter({ text: "CARTETHYIA  ·  This cannot be undone" })],
+    components: [row],
+  });
+
+  const collector = msg.createMessageComponentCollector({
+    componentType: ComponentType.Button,
+    filter: (b) => b.user.id === interaction.user.id,
+    time:   30_000,
+    max:    1,
+  });
+
+  collector.on("collect", async (btn) => {
+    await btn.deferUpdate();
+
+    if (btn.customId === "dispatch_cancel_confirm") {
+      await prisma.user.update({
+        where: { id: interaction.user.id },
+        data:  { dispatchStatus: "IDLE", dispatchEndsAt: null, dispatchHours: null },
+      });
+
+      await btn.editReply({
+        embeds: [new EmbedBuilder().setColor(0x334155)
+          .setAuthor({ name: `${displayName}  ·  Expedition Abandoned`, iconURL: avatarUrl })
+          .setDescription(`◈  Your expedition has been called off. No rewards were collected.\n\nUse **/dispatch send** to start a new one.`)
+          .setFooter({ text: "CARTETHYIA  ·  Dispatch System" })],
+        components: [],
+      });
+    } else {
+      await btn.editReply({
+        embeds: [new EmbedBuilder().setColor(color)
+          .setDescription(`◈  Expedition continues. Returns **<t:${Math.floor(user.dispatchEndsAt!.getTime() / 1000)}:R>**.`)
+          .setFooter({ text: "CARTETHYIA  ·  Dispatch System" })],
+        components: [],
+      });
+    }
+  });
+
+  collector.on("end", async (_, reason) => {
+    if (reason === "time") await interaction.editReply({ components: [] }).catch(() => {});
   });
 }
 
