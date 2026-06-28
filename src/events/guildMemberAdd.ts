@@ -28,7 +28,7 @@ export async function execute(member: GuildMember) {
     const embed = new EmbedBuilder()
       .setColor(0x6366F1)
       .setDescription(
-        `Welcome to **Eureka Society**, <@${member.id}>!\n\n` +
+        `Welcome to **${member.guild.name}**, <@${member.id}>!\n\n` +
         `**CARTETHYIA** is a social RPG that lives right here in this server.\n\n` +
         `◈  Chat → Resonance EXP → Level up\n` +
         `◈  Fight echoes that spawn while chatting\n` +
