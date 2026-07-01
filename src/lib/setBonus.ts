@@ -13,6 +13,7 @@ import { WEAPON_PASSIVES } from "./weapons";
 import { ALL_WISH_WEAPONS, calcWishSubStat } from "./wishWeapons";
 import { bondMultiplier } from "./weaponAwakening";
 import { calcSubstatValue } from "./echoes";
+import { NamedSetId, NAMED_TWO_PC, NAMED_ELEM_DMG_2PC } from "./namedSets";
 
 // ── Set bonus definitions ─────────────────────────────────────────────────────
 
@@ -178,6 +179,7 @@ export interface PlayerBonuses {
   // Active set effects
   set4pc: FourPcEffect | null;
   set5pc: FivePcEffect | null;
+  activeNamedSetId: NamedSetId | null;   // which named set (if any) has 2+ equipped — future combat-loop work uses this to know which namedSets.ts hooks to call
 
   // Element passive hook for in-combat procs
   elementPassive: ElementPassive | null;
@@ -209,7 +211,7 @@ export async function resolvePlayerBonuses(userId: string): Promise<PlayerBonuse
     prisma.echo.findMany({
       where:  { userId, isEquipped: true },
       select: {
-        element: true, mainStatType: true, mainStatValue: true, revealedSubstats: true,
+        element: true, setId: true, mainStatType: true, mainStatValue: true, revealedSubstats: true,
         level: true,
         substat1Type: true, substat1Value: true,
         substat2Type: true, substat2Value: true,
@@ -234,6 +236,7 @@ export async function resolvePlayerBonuses(userId: string): Promise<PlayerBonuse
     critRateBonus: 0, critDmgBonus: 0,
     energyBonus: 0, lifesteal: 0, elemDmgBonus: 0,
     set4pc: null, set5pc: null,
+    activeNamedSetId: null,
     elementPassive:  null,
     abilityEffects:  [],
     abilityVersion:  1,
@@ -404,6 +407,32 @@ export async function resolvePlayerBonuses(userId: string): Promise<PlayerBonuse
       bonuses.set5pc = FIVE_PC[elem];
       bonuses.activeLabels.push(FIVE_PC[elem].label);
     }
+  }
+
+  // ── Named set bonuses (count by setId among equipped echoes) ─────────────
+  const namedSetCounts: Record<string, number> = {};
+  for (const e of echoes as any[]) {
+    if (!e.setId) continue;
+    namedSetCounts[e.setId] = (namedSetCounts[e.setId] ?? 0) + 1;
+  }
+
+  for (const [setId, count] of Object.entries(namedSetCounts)) {
+    if (count < 2) continue;
+    const twoPc = NAMED_TWO_PC[setId as NamedSetId];
+    if (!twoPc) continue;
+    bonuses.atkMult       *= twoPc.atkMult;
+    bonuses.hpMult        *= twoPc.hpMult;
+    bonuses.defMult       *= twoPc.defMult;
+    bonuses.critRateBonus += twoPc.critRateBonus;
+    bonuses.energyBonus   += twoPc.energyBonus;
+    bonuses.lifesteal     += twoPc.lifesteal;
+    bonuses.elemDmgBonus  += NAMED_ELEM_DMG_2PC[setId as NamedSetId] ?? 0;
+    bonuses.activeLabels.push(twoPc.label);
+    bonuses.activeNamedSetId = setId as NamedSetId;
+    // Note: 4pc/5pc mechanic hooks (namedSets.ts) are NOT applied here — they need
+    // per-turn state that only exists inside a live combat loop. A future combat-loop
+    // integration task reads bonuses.activeNamedSetId and count to decide which
+    // hooks to call each turn.
   }
 
   // ── Unique ability (composite) ────────────────────────────────────────────
