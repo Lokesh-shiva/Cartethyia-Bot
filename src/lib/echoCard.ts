@@ -80,6 +80,12 @@ const BOSS_ART_FILENAMES: Record<string, string> = {
   "Tempest Ancient":      "Tempest Ancient.png",
   "Null Ravager":         "Null Ravager.png",
   "Luminal Specter":      "Luminal Specter.png",
+  "Cinderbound Colossus": "Cinderbound Colossus.png",
+  "Cryoveil Warden":      "Cryoveil Warden.png",
+  "Thundercrown Herald":  "Thundercrown Herald.png",
+  "Galebound Sovereign":  "Galebound Sovereign.png",
+  "Voidmaw Devourer":     "Voidmaw Devourer.png",
+  "Lumenwrought Seraph":  "Lumenwrought Seraph.png",
 };
 
 function echoArtPath(name: string, cost: number): string | null {

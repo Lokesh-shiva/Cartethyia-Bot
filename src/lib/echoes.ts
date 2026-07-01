@@ -312,37 +312,37 @@ export const BOSS_ECHO_DEFINITIONS: EchoDefinition[] = [
   // ── Named Echo Set boss echoes (one per element, farmed via /field-boss expanded roster) ──
   {
     name: "Cinderbound Colossus", element: "FUSION", cost: 4, setId: "SMOLDERING_SOVEREIGN",
-    assetFile: "Cinderbound Colossus.png",
+    assetFile: "cinderbound_colossus.svg",
     hp: 0, atk: 0, def: 0,
     rarityWeights: [0, 80, 20],
   },
   {
     name: "Cryoveil Warden", element: "GLACIO", cost: 4, setId: "FROSTVEIL_BASTION",
-    assetFile: "Cryoveil Warden.png",
+    assetFile: "cryoveil_warden.svg",
     hp: 0, atk: 0, def: 0,
     rarityWeights: [0, 80, 20],
   },
   {
     name: "Thundercrown Herald", element: "ELECTRO", cost: 4, setId: "STORMCALLERS_OATH",
-    assetFile: "Thundercrown Herald.png",
+    assetFile: "thundercrown_herald.svg",
     hp: 0, atk: 0, def: 0,
     rarityWeights: [0, 80, 20],
   },
   {
     name: "Galebound Sovereign", element: "AERO", cost: 4, setId: "WINDSTRIDERS_LEGACY",
-    assetFile: "Galebound Sovereign.png",
+    assetFile: "galebound_sovereign.svg",
     hp: 0, atk: 0, def: 0,
     rarityWeights: [0, 80, 20],
   },
   {
     name: "Voidmaw Devourer", element: "HAVOC", cost: 4, setId: "VOIDBORN_REMNANT",
-    assetFile: "Voidmaw Devourer.png",
+    assetFile: "voidmaw_devourer.svg",
     hp: 0, atk: 0, def: 0,
     rarityWeights: [0, 80, 20],
   },
   {
     name: "Lumenwrought Seraph", element: "SPECTRO", cost: 4, setId: "RADIANT_CONVERGENCE",
-    assetFile: "Lumenwrought Seraph.png",
+    assetFile: "lumenwrought_seraph.svg",
     hp: 0, atk: 0, def: 0,
     rarityWeights: [0, 80, 20],
   },
