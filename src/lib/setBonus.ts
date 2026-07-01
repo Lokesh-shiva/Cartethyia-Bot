@@ -411,7 +411,7 @@ export async function resolvePlayerBonuses(userId: string): Promise<PlayerBonuse
 
   // ── Named set bonuses (count by setId among equipped echoes) ─────────────
   const namedSetCounts: Record<string, number> = {};
-  for (const e of echoes as any[]) {
+  for (const e of echoes) {
     if (!e.setId) continue;
     namedSetCounts[e.setId] = (namedSetCounts[e.setId] ?? 0) + 1;
   }
