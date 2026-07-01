@@ -7,6 +7,7 @@ export interface EchoDefinition {
   name:       string;
   element:    Element;
   cost:       EchoCost;
+  setId?:     string;   // undefined = original element set; populated = named set
   assetFile:  string;   // assets/echoes/<file>
   // base combat stats (for encounter resolution)
   hp:         number;
@@ -91,6 +92,124 @@ export const ECHO_DEFINITIONS: EchoDefinition[] = [
     assetFile: "radiant_keeper.svg",
     hp: 540, atk: 64, def: 50,
     rarityWeights: [75, 22, 3],
+  },
+];
+
+// ── Named Echo Sets — 1-cost/3-cost (4-cost lives in BOSS_ECHO_DEFINITIONS below) ──
+export const NAMED_SET_ECHO_DEFINITIONS: EchoDefinition[] = [
+  // Smoldering Sovereign (Fusion)
+  {
+    name: "Ashfall Harrier", element: "FUSION", cost: 3, setId: "SMOLDERING_SOVEREIGN",
+    assetFile: "Ashfall Harrier.png",
+    hp: 520, atk: 72, def: 38,
+    rarityWeights: [75, 22, 3],
+  },
+  {
+    name: "Kindling Wretch", element: "FUSION", cost: 1, setId: "SMOLDERING_SOVEREIGN",
+    assetFile: "Kindling Wretch.png",
+    hp: 180, atk: 28, def: 12,
+    rarityWeights: [92, 8, 0],
+  },
+  {
+    name: "Scorchmite", element: "FUSION", cost: 1, setId: "SMOLDERING_SOVEREIGN",
+    assetFile: "Scorchmite.png",
+    hp: 180, atk: 28, def: 12,
+    rarityWeights: [92, 8, 0],
+  },
+  // Frostveil Bastion (Glacio)
+  {
+    name: "Rime Sentinel", element: "GLACIO", cost: 3, setId: "FROSTVEIL_BASTION",
+    assetFile: "Rime Sentinel.png",
+    hp: 580, atk: 60, def: 55,
+    rarityWeights: [75, 22, 3],
+  },
+  {
+    name: "Frostbound Imp", element: "GLACIO", cost: 1, setId: "FROSTVEIL_BASTION",
+    assetFile: "Frostbound Imp.png",
+    hp: 200, atk: 22, def: 18,
+    rarityWeights: [92, 8, 0],
+  },
+  {
+    name: "Hoarfrost Crawler", element: "GLACIO", cost: 1, setId: "FROSTVEIL_BASTION",
+    assetFile: "Hoarfrost Crawler.png",
+    hp: 200, atk: 22, def: 18,
+    rarityWeights: [92, 8, 0],
+  },
+  // Stormcaller's Oath (Electro)
+  {
+    name: "Voltaic Reaver", element: "ELECTRO", cost: 3, setId: "STORMCALLERS_OATH",
+    assetFile: "Voltaic Reaver.png",
+    hp: 490, atk: 82, def: 32,
+    rarityWeights: [75, 22, 3],
+  },
+  {
+    name: "Sparkmite", element: "ELECTRO", cost: 1, setId: "STORMCALLERS_OATH",
+    assetFile: "Sparkmite.png",
+    hp: 160, atk: 32, def: 10,
+    rarityWeights: [92, 8, 0],
+  },
+  {
+    name: "Static Wisp", element: "ELECTRO", cost: 1, setId: "STORMCALLERS_OATH",
+    assetFile: "Static Wisp.png",
+    hp: 160, atk: 32, def: 10,
+    rarityWeights: [92, 8, 0],
+  },
+  // Windstrider's Legacy (Aero)
+  {
+    name: "Skyrend Talon", element: "AERO", cost: 3, setId: "WINDSTRIDERS_LEGACY",
+    assetFile: "Skyrend Talon.png",
+    hp: 510, atk: 76, def: 36,
+    rarityWeights: [75, 22, 3],
+  },
+  {
+    name: "Zephyr Sprite", element: "AERO", cost: 1, setId: "WINDSTRIDERS_LEGACY",
+    assetFile: "Zephyr Sprite.png",
+    hp: 170, atk: 30, def: 14,
+    rarityWeights: [92, 8, 0],
+  },
+  {
+    name: "Windnipper", element: "AERO", cost: 1, setId: "WINDSTRIDERS_LEGACY",
+    assetFile: "Windnipper.png",
+    hp: 170, atk: 30, def: 14,
+    rarityWeights: [92, 8, 0],
+  },
+  // Voidborn Remnant (Havoc)
+  {
+    name: "Duskfang Stalker", element: "HAVOC", cost: 3, setId: "VOIDBORN_REMNANT",
+    assetFile: "Duskfang Stalker.png",
+    hp: 550, atk: 68, def: 44,
+    rarityWeights: [75, 22, 3],
+  },
+  {
+    name: "Nullspawn", element: "HAVOC", cost: 1, setId: "VOIDBORN_REMNANT",
+    assetFile: "Nullspawn.png",
+    hp: 190, atk: 26, def: 16,
+    rarityWeights: [92, 8, 0],
+  },
+  {
+    name: "Shade Leech", element: "HAVOC", cost: 1, setId: "VOIDBORN_REMNANT",
+    assetFile: "Shade Leech.png",
+    hp: 190, atk: 26, def: 16,
+    rarityWeights: [92, 8, 0],
+  },
+  // Radiant Convergence (Spectro)
+  {
+    name: "Prism Warden", element: "SPECTRO", cost: 3, setId: "RADIANT_CONVERGENCE",
+    assetFile: "Prism Warden.png",
+    hp: 540, atk: 64, def: 50,
+    rarityWeights: [75, 22, 3],
+  },
+  {
+    name: "Glimmermote", element: "SPECTRO", cost: 1, setId: "RADIANT_CONVERGENCE",
+    assetFile: "Glimmermote.png",
+    hp: 175, atk: 24, def: 20,
+    rarityWeights: [92, 8, 0],
+  },
+  {
+    name: "Halo Sprite", element: "SPECTRO", cost: 1, setId: "RADIANT_CONVERGENCE",
+    assetFile: "Halo Sprite.png",
+    hp: 175, atk: 24, def: 20,
+    rarityWeights: [92, 8, 0],
   },
 ];
 
@@ -190,9 +309,46 @@ export const BOSS_ECHO_DEFINITIONS: EchoDefinition[] = [
     hp: 0, atk: 0, def: 0,
     rarityWeights: [0, 40, 60],
   },
+  // ── Named Echo Set boss echoes (one per element, farmed via /field-boss expanded roster) ──
+  {
+    name: "Cinderbound Colossus", element: "FUSION", cost: 4, setId: "SMOLDERING_SOVEREIGN",
+    assetFile: "Cinderbound Colossus.png",
+    hp: 0, atk: 0, def: 0,
+    rarityWeights: [0, 80, 20],
+  },
+  {
+    name: "Cryoveil Warden", element: "GLACIO", cost: 4, setId: "FROSTVEIL_BASTION",
+    assetFile: "Cryoveil Warden.png",
+    hp: 0, atk: 0, def: 0,
+    rarityWeights: [0, 80, 20],
+  },
+  {
+    name: "Thundercrown Herald", element: "ELECTRO", cost: 4, setId: "STORMCALLERS_OATH",
+    assetFile: "Thundercrown Herald.png",
+    hp: 0, atk: 0, def: 0,
+    rarityWeights: [0, 80, 20],
+  },
+  {
+    name: "Galebound Sovereign", element: "AERO", cost: 4, setId: "WINDSTRIDERS_LEGACY",
+    assetFile: "Galebound Sovereign.png",
+    hp: 0, atk: 0, def: 0,
+    rarityWeights: [0, 80, 20],
+  },
+  {
+    name: "Voidmaw Devourer", element: "HAVOC", cost: 4, setId: "VOIDBORN_REMNANT",
+    assetFile: "Voidmaw Devourer.png",
+    hp: 0, atk: 0, def: 0,
+    rarityWeights: [0, 80, 20],
+  },
+  {
+    name: "Lumenwrought Seraph", element: "SPECTRO", cost: 4, setId: "RADIANT_CONVERGENCE",
+    assetFile: "Lumenwrought Seraph.png",
+    hp: 0, atk: 0, def: 0,
+    rarityWeights: [0, 80, 20],
+  },
 ];
 
-export const ALL_ECHO_DEFINITIONS = [...ECHO_DEFINITIONS, ...BOSS_ECHO_DEFINITIONS];
+export const ALL_ECHO_DEFINITIONS = [...ECHO_DEFINITIONS, ...NAMED_SET_ECHO_DEFINITIONS, ...BOSS_ECHO_DEFINITIONS];
 
 // ── Element colours ──────────────────────────────────────────────────────────
 export const ELEMENT_COLORS: Record<Element, number> = {
