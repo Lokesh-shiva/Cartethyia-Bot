@@ -3,7 +3,7 @@ import { tryAwardChatExp } from "../lib/economy";
 import { checkLevelUp, sendMilestoneNotifications } from "../lib/progression";
 import { generateLevelUpCard } from "../lib/levelUpCard";
 import { sendElementSelection } from "../lib/elementSelect";
-import { shouldSpawnEncounter, spawnEncounter, getLevelUpChannelId, getNotifChannelId, isLevelUpEnabled, isExpEnabled, getBotChannelIds } from "../lib/encounter";
+import { shouldSpawnEncounter, spawnEncounter, resolveEncounterTargetChannel, getLevelUpChannelId, getNotifChannelId, isLevelUpEnabled, isExpEnabled, getBotChannelIds } from "../lib/encounter";
 import { getPrefix } from "../lib/prefixManager";
 import { grantReferralMilestone } from "../lib/referral";
 import { ExtendedClient } from "../types";
@@ -78,9 +78,15 @@ export async function execute(message: Message) {
     return;
   }
 
-  // Encounter check — runs regardless of exp cooldown
+  // Encounter check — runs regardless of exp cooldown. Chat anywhere counts
+  // toward the roll, but the encounter always posts in the resolved target
+  // channel (configured encounter/bot channel), not necessarily here.
   if (shouldSpawnEncounter(message.guildId!, message.channelId, (channel as any).parentId)) {
-    await spawnEncounter(channel, chatUser.worldLevel ?? 0);
+    const targetId      = resolveEncounterTargetChannel(message.guildId!, message.channelId);
+    const targetChannel  = targetId === message.channelId
+      ? channel
+      : (message.client.channels.cache.get(targetId) as TextChannel | undefined) ?? channel;
+    await spawnEncounter(targetChannel, chatUser.worldLevel ?? 0);
   }
 
   if (!expGained) return;

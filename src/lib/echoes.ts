@@ -385,7 +385,6 @@ export function formatStatValue(type: string, value: number): string {
 // ── Pick a random encounter enemy ────────────────────────────────────────────
 // 3-cost echoes are available from WL0 — players need them to build their grid.
 // Rate scales with WL so field enemies become more common as you progress.
-// Rarity (not cost tier) is what's gated by WL.
 export function pickEncounterEnemy(worldLevel: number): EchoDefinition {
   const threeCosters = ECHO_DEFINITIONS.filter(e => e.cost === 3);
   const oneCosters   = ECHO_DEFINITIONS.filter(e => e.cost === 1);
@@ -394,4 +393,18 @@ export function pickEncounterEnemy(worldLevel: number): EchoDefinition {
   const fieldChance = Math.min(0.75, 0.15 + worldLevel * 0.08);
   const pool = Math.random() < fieldChance ? threeCosters : oneCosters;
   return pool[Math.floor(Math.random() * pool.length)];
+}
+
+// Scale an echo's base rarity weights up toward near-guaranteed 5★ as the
+// fighter's own World Level rises. WL0 = base weights unchanged; WL8 (max)
+// = ~95% 5★ / 5% 4★ / 0% 3★, regardless of the echo's base weights.
+export function scaleEncounterRarity(
+  base: [number, number, number],
+  worldLevel: number,
+): [number, number, number] {
+  const frac = Math.min(1, worldLevel / 8);
+  const w3 = Math.round(base[0] * (1 - frac));
+  const w5 = Math.round(base[2] + (95 - base[2]) * frac);
+  const w4 = Math.max(0, 100 - w3 - w5);
+  return [w3, w4, w5];
 }

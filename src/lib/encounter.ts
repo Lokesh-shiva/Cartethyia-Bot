@@ -9,7 +9,7 @@ import prisma from "./prisma";
 import {
   EchoDefinition, rollRarity, rollMainStat, rollSubstats,
   rollSubstatValue, calcMainStatValue, substatCount,
-  pickEncounterEnemy, ELEMENT_COLORS, ELEMENT_EMOJI, RARITY_STARS,
+  pickEncounterEnemy, scaleEncounterRarity, ELEMENT_COLORS, ELEMENT_EMOJI, RARITY_STARS,
 } from "./echoes";
 import { echoToBoss, calcPlayerDamage, calcEnemyDamage, COUNTER_ELEMENT, gearAwareScale, baselineAtk } from "./combat";
 import { echoEmoji } from "./emojiManager";
@@ -173,6 +173,19 @@ const ENCOUNTER_TTL_MS    = 3 * 60 * 1000;   // encounter expires after 3 min
 
 // ── Spawn check ──────────────────────────────────────────────────────────────
 
+// Where a triggered encounter actually posts: the configured encounter channel,
+// falling back to the configured bot-command channel, falling back to wherever
+// the triggering message was sent (servers with no restrictions keep spawning
+// in-place). This lets chat ANYWHERE on the server count toward a spawn roll
+// while keeping the actual encounter confined to one channel.
+export function resolveEncounterTargetChannel(guildId: string, fallbackChannelId: string): string {
+  const encounterAllow = encounterChannels.get(guildId);
+  if (encounterAllow && encounterAllow.size > 0) return [...encounterAllow][0];
+  const botAllow = botChannelIdsMap.get(guildId);
+  if (botAllow && botAllow.size > 0) return [...botAllow][0];
+  return fallbackChannelId;
+}
+
 export function shouldSpawnEncounter(guildId: string, channelId: string, parentId?: string | null): boolean {
   // Master toggle — admins can disable chat encounters entirely
   if (encountersEnabled.get(guildId) === false) return false;
@@ -181,16 +194,14 @@ export function shouldSpawnEncounter(guildId: string, channelId: string, parentI
   const blacklist = encounterBlacklist.get(guildId);
   if (blacklist?.has(channelId) || (parentId && blacklist?.has(parentId))) return false;
 
-  const explore = isExploreChannel(guildId, channelId, parentId);
-
-  // Allowlist: if configured, only fire in listed channels/categories (+ explore channels).
-  // Empty allowlist = fire everywhere.
-  const allow = encounterChannels.get(guildId);
-  if (allow && allow.size > 0 && !allow.has(channelId) && !(parentId && allow.has(parentId)) && !explore) return false;
-
+  // Chat anywhere (not blacklisted) counts toward the roll — the encounter
+  // itself always lands in resolveEncounterTargetChannel(), not necessarily here.
+  const explore  = isExploreChannel(guildId, channelId, parentId);
   const cooldown = explore ? COOLDOWN_EXPLORE_MS : COOLDOWN_NORMAL_MS;
   const chance   = explore ? CHANCE_EXPLORE      : CHANCE_NORMAL;
-  const last     = channelCooldowns.get(channelId) ?? 0;
+
+  const targetId = resolveEncounterTargetChannel(guildId, channelId);
+  const last     = channelCooldowns.get(targetId) ?? 0;
   if (Date.now() - last < cooldown) return false;
   return Math.random() < chance;
 }
@@ -508,7 +519,7 @@ export async function handleEncounterFight(
       if (state.bossHpNow <= 0) {
         removeEncounter(interaction.message.id);
 
-        const rarity   = rollRarity(enc.enemy.rarityWeights as [number, number, number]);
+        const rarity   = rollRarity(scaleEncounterRarity(enc.enemy.rarityWeights as [number, number, number], dbUser.worldLevel));
         const mainStat = rollMainStat(enc.enemy.cost as 1 | 3 | 4, dbUser.element);
         const subCount = substatCount(rarity);
         const substats = rollSubstats(subCount, mainStat);
