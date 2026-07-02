@@ -342,6 +342,12 @@ const command: Command = {
 
           let playerDmg = 0;
           let moveName  = "";
+          let radiantDmgMult = 1.0;
+          if (bonuses.activeNamedSetId === "RADIANT_CONVERGENCE" && btn.customId !== "fb_flee") {
+            const heal = radiantConvergenceOnTurnHeal(namedState, state.playerHpMax);
+            state.playerHp  = Math.min(state.playerHpMax, state.playerHp + heal.healAmount);
+            radiantDmgMult  = heal.dmgMult;
+          }
 
           const isWeak        = user.element === fb.weakness;
           const havocFrenzyActive = bonuses.activeNamedSetId === "VOIDBORN_REMNANT" && voidbornRemnantFrenzyActive(namedState);
@@ -380,7 +386,7 @@ const command: Command = {
             const crit = windExplosion.guaranteedCrit || Math.random() < activeCritRate; abilCrit = crit;
             const smolderMult = bonuses.activeNamedSetId === "SMOLDERING_SOVEREIGN"
               ? smolderingSovereignOnAction(namedState) : 1;
-            const base = Math.max(1, Math.floor(stats.atk * smolderMult * havocAtkMult * (1 - defReduction)));
+            const base = Math.max(1, Math.floor(stats.atk * smolderMult * havocAtkMult * radiantDmgMult * (1 - defReduction)));
             const extraElemBonus = glacioShieldTurnsLeft > 0 ? glacioShieldElemBonus : 0;
             let dmg    = Math.floor(base * (crit ? stats.critDmg : 1) * (isWeak ? 1.5 : 1) * (1 + bonuses.elemDmgBonus + extraElemBonus));
             if (bonuses.activeNamedSetId === "WINDSTRIDERS_LEGACY") {
@@ -404,6 +410,8 @@ const command: Command = {
             dmg        = ar_b.dmg;
             if (ar_b.newStacks !== undefined) v2Stacks = ar_b.newStacks;
             const ign  = elemIgniteProc(bonuses.elementPassive, stats.atk);
+            if (bonuses.activeNamedSetId === "RADIANT_CONVERGENCE" && namedState.spectroFractureTurnsLeft > 0) dmg = Math.floor(dmg * 1.10);
+            if (bonuses.activeNamedSetId === "RADIANT_CONVERGENCE" && crit) radiantConvergenceOnCrit(namedState, state.playerHp, state.playerHpMax);
             playerDmg  = dmg + ign.dmg;
             moveName   = crit ? `Basic Attack — **CRITICAL** (${playerDmg} DMG)` : `Basic Attack — ${playerDmg} DMG`;
             if (ign.tag) moveName += `  ✦${ign.tag}`;
@@ -417,7 +425,7 @@ const command: Command = {
             const crit = Math.random() < Math.min(1, activeCritRate + 0.1); abilCrit = crit;
             const smolderMult = bonuses.activeNamedSetId === "SMOLDERING_SOVEREIGN"
               ? smolderingSovereignOnAction(namedState) : 1;
-            const base = Math.max(1, Math.floor(stats.atk * smolderMult * havocAtkMult * 1.8 * (1 - defReduction)));
+            const base = Math.max(1, Math.floor(stats.atk * smolderMult * havocAtkMult * radiantDmgMult * 1.8 * (1 - defReduction)));
             const extraElemBonusSkill = glacioShieldTurnsLeft > 0 ? glacioShieldElemBonus : 0;
             let dmg    = Math.floor(base * (crit ? stats.critDmg : 1) * (isWeak ? 1.5 : 1) * (1 + bonuses.elemDmgBonus + extraElemBonusSkill));
             dmg        = apply4pcSkillBonus(bonuses, dmg, state.skillCooldown === 0);
@@ -431,6 +439,8 @@ const command: Command = {
             dmg        = ar_s.dmg;
             if (ar_s.newStacks !== undefined) v2Stacks = ar_s.newStacks;
             const ign  = elemIgniteProc(bonuses.elementPassive, stats.atk);
+            if (bonuses.activeNamedSetId === "RADIANT_CONVERGENCE" && namedState.spectroFractureTurnsLeft > 0) dmg = Math.floor(dmg * 1.10);
+            if (bonuses.activeNamedSetId === "RADIANT_CONVERGENCE" && crit) radiantConvergenceOnCrit(namedState, state.playerHp, state.playerHpMax);
             playerDmg  = dmg + ign.dmg;
             moveName   = `Resonance Skill — ${playerDmg} DMG${crit ? " **(CRIT)**" : ""}`;
             if (ign.tag) moveName += `  ✦${ign.tag}`;
@@ -445,7 +455,7 @@ const command: Command = {
             abilCrit   = true;
             const smolderMult = bonuses.activeNamedSetId === "SMOLDERING_SOVEREIGN"
               ? smolderingSovereignOnAction(namedState) : 1;
-            const base = Math.max(1, Math.floor(stats.atk * smolderMult * havocAtkMult * 3.5 * stats.critDmg * (1 - defReduction)));
+            const base = Math.max(1, Math.floor(stats.atk * smolderMult * havocAtkMult * radiantDmgMult * 3.5 * stats.critDmg * (1 - defReduction)));
             const extraElemBonusUlt = glacioShieldTurnsLeft > 0 ? glacioShieldElemBonus : 0;
             let dmg    = Math.floor(base * (isWeak ? 1.5 : 1) * (1 + bonuses.elemDmgBonus + extraElemBonusUlt));
             dmg        = apply4pcUltBonus(bonuses, dmg);
@@ -453,6 +463,8 @@ const command: Command = {
             const ar_u = applyAbilityAttack(bonuses, dmg, true, { ...abilCtxBase, moveType: "ULT" });
             dmg        = ar_u.dmg;
             if (ar_u.newStacks !== undefined) v2Stacks = ar_u.newStacks;
+            if (bonuses.activeNamedSetId === "RADIANT_CONVERGENCE" && namedState.spectroFractureTurnsLeft > 0) dmg = Math.floor(dmg * 1.10);
+            if (bonuses.activeNamedSetId === "RADIANT_CONVERGENCE") radiantConvergenceOnCrit(namedState, state.playerHp, state.playerHpMax);
             playerDmg  = dmg;
             moveName   = `⚡ ULTIMATE — ${playerDmg} DMG`;
             state.bossVibNow   = Math.max(0, state.bossVibNow - Math.floor(playerDmg * 0.8 * totalVibMult));
@@ -526,6 +538,14 @@ const command: Command = {
                 state.lastMove = (state.lastMove ?? "") + `\n🌑 **Void Frenzy** — ATK +${Math.floor((frenzy.atkMult - 1) * 100)}%, Lifesteal +${Math.floor(frenzy.lifesteal * 100)}%, ignoring ${Math.floor(frenzy.defIgnorePct * 100)}% enemy DEF!`;
               }
             }
+            if (bonuses.activeNamedSetId === "RADIANT_CONVERGENCE") {
+              radiantConvergenceOnHitTaken(namedState, bossDmg, state.playerHpMax);
+              const burst = radiantConvergenceCheckBurstHeal(namedState, state.playerHp, state.playerHpMax);
+              if (burst > 0) {
+                state.playerHp = Math.min(state.playerHpMax, state.playerHp + burst);
+                state.lastMove = (state.lastMove ?? "") + `\n✨ **Radiant Convergence** — burst-heal +${burst} HP!`;
+              }
+            }
             if (bonuses.activeNamedSetId === "FROSTVEIL_BASTION") {
               const counter = frostveilBastionOnHitTaken(namedState);
               if (counter.counterProc) {
@@ -556,6 +576,7 @@ const command: Command = {
           if (state.skillCooldown > 0) state.skillCooldown--;
           if (glacioShieldTurnsLeft > 0) glacioShieldTurnsLeft--;
           if (stormBuffTurnsLeft > 0) stormBuffTurnsLeft--;
+          if (namedState.spectroFractureTurnsLeft > 0) namedState.spectroFractureTurnsLeft--;
 
           if (state.playerHp <= 0 && compositeHasSecondWind(bonuses.abilityEffects) && !secondWindUsed) {
             secondWindUsed = true;
