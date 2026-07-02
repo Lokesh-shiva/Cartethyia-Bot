@@ -186,7 +186,7 @@ export function radiantConvergenceOnHitTaken(state: NamedSetState, dmgTaken: num
 }
 export function radiantConvergenceOnCrit(state: NamedSetState, currentHp: number, maxHp: number): boolean {
   if (currentHp < maxHp) return false;
-  state.spectroFractureTurnsLeft = 3;
+  state.spectroFractureTurnsLeft = 3 + 1; // +1 compensates for the same-round decrement that fires immediately after this triggers (same pattern/reason as Frostveil Bastion's shield and Stormcaller's Oath's crit buff)
   return true; // caller applies "+10% dmg taken" debuff to the enemy for 3 turns
 }
 export function radiantConvergenceCheckBurstHeal(
