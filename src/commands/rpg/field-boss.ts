@@ -488,7 +488,7 @@ const command: Command = {
               const panic = frostveilBastionCheckPanicShield(namedState, state.playerHp, state.playerHpMax);
               if (panic.triggered) {
                 state.playerHp = Math.min(state.playerHpMax, state.playerHp + panic.shieldAmount);
-                glacioShieldTurnsLeft = panic.turnsLeft;
+                glacioShieldTurnsLeft = panic.turnsLeft + 1; // +1 compensates for the same-round decrement that fires immediately after this triggers (shield is granted mid-round, after the player already acted, so the triggering round's decrement would otherwise eat into the advertised duration)
                 glacioShieldElemBonus = panic.elemDmgBonus;
                 state.lastMove += `\n❄️ **Frostveil Shield** — +${panic.shieldAmount} HP, +${Math.floor(panic.elemDmgBonus * 100)}% Glacio DMG for ${panic.turnsLeft} turns!`;
               }
