@@ -52,7 +52,7 @@ export function moltenBuildupOnBossTurn(
 // ── Cryoveil Warden — Frost Barrier ────────────────────────────────────────
 // Every 3rd available turn (2-turn cooldown after triggering either way), the
 // Warden heals 8% of its max HP — UNLESS the player's last hit crossed a burst
-// threshold (12% of the Warden's max HP), in which case the heal is denied.
+// threshold (6% of the Warden's max HP), in which case the heal is denied.
 export function frostBarrierOnBossTurn(
   state: FieldBossMechanicState, playerDmgThisRound: number, bossMaxHp: number,
 ): { healed: number } {
@@ -61,7 +61,11 @@ export function frostBarrierOnBossTurn(
     return { healed: 0 };
   }
   state.frostBarrierCd = 2;
-  const burstThreshold = bossMaxHp * 0.12;
+  // 6% (not 12%) of max HP — reachable by a solid Skill hit or crit even for
+  // sustained-DPS builds. A higher threshold let sustained builds never deny the
+  // heal at all while burst builds trivially denied it forever, an unfair
+  // asymmetry against non-burst playstyles.
+  const burstThreshold = bossMaxHp * 0.06;
   if (playerDmgThisRound >= burstThreshold) return { healed: 0 };
   return { healed: Math.floor(bossMaxHp * 0.08) };
 }
