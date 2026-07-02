@@ -371,12 +371,19 @@ const command: Command = {
           }
 
           if (btn.customId === "fb_basic") {
-            const crit = Math.random() < activeCritRate; abilCrit = crit;
+            const windExplosion = bonuses.activeNamedSetId === "WINDSTRIDERS_LEGACY"
+              ? windstridersLegacyCheckExplosion(namedState) : { proc: false, guaranteedCrit: false, bonusMult: 1.0 };
+            const crit = windExplosion.guaranteedCrit || Math.random() < activeCritRate; abilCrit = crit;
             const smolderMult = bonuses.activeNamedSetId === "SMOLDERING_SOVEREIGN"
               ? smolderingSovereignOnAction(namedState) : 1;
             const base = Math.max(1, Math.floor(stats.atk * smolderMult * (1 - defReduction)));
             const extraElemBonus = glacioShieldTurnsLeft > 0 ? glacioShieldElemBonus : 0;
             let dmg    = Math.floor(base * (crit ? stats.critDmg : 1) * (isWeak ? 1.5 : 1) * (1 + bonuses.elemDmgBonus + extraElemBonus));
+            if (bonuses.activeNamedSetId === "WINDSTRIDERS_LEGACY") {
+              dmg = windExplosion.proc
+                ? Math.floor(dmg * (1 + windExplosion.bonusMult))
+                : Math.floor(dmg * windstridersLegacyOnHit(namedState));
+            }
             let thunderboltEnergy = 0;
             if (bonuses.activeNamedSetId === "STORMCALLERS_OATH") {
               const tb = stormcallersOathOnBasic(namedState);
@@ -410,6 +417,7 @@ const command: Command = {
             const extraElemBonusSkill = glacioShieldTurnsLeft > 0 ? glacioShieldElemBonus : 0;
             let dmg    = Math.floor(base * (crit ? stats.critDmg : 1) * (isWeak ? 1.5 : 1) * (1 + bonuses.elemDmgBonus + extraElemBonusSkill));
             dmg        = apply4pcSkillBonus(bonuses, dmg, state.skillCooldown === 0);
+            if (bonuses.activeNamedSetId === "WINDSTRIDERS_LEGACY") dmg = Math.floor(dmg * windstridersLegacyOnHit(namedState));
             dmg        = Math.floor(dmg * elemWindstrideMult(bonuses.elementPassive, state.turn, "SKILL"));
             if (bonuses.activeNamedSetId === "SMOLDERING_SOVEREIGN") {
               const sov = smolderingSovereignOnSkill(namedState);
@@ -437,6 +445,7 @@ const command: Command = {
             const extraElemBonusUlt = glacioShieldTurnsLeft > 0 ? glacioShieldElemBonus : 0;
             let dmg    = Math.floor(base * (isWeak ? 1.5 : 1) * (1 + bonuses.elemDmgBonus + extraElemBonusUlt));
             dmg        = apply4pcUltBonus(bonuses, dmg);
+            if (bonuses.activeNamedSetId === "WINDSTRIDERS_LEGACY") dmg = Math.floor(dmg * windstridersLegacyOnHit(namedState));
             const ar_u = applyAbilityAttack(bonuses, dmg, true, { ...abilCtxBase, moveType: "ULT" });
             dmg        = ar_u.dmg;
             if (ar_u.newStacks !== undefined) v2Stacks = ar_u.newStacks;
@@ -495,6 +504,7 @@ const command: Command = {
             bossDmg       = shield.dmg;
             state.playerHp = Math.max(0, state.playerHp - bossDmg);
             if (bonuses.activeNamedSetId === "SMOLDERING_SOVEREIGN") smolderingSovereignOnDamageTaken(namedState);
+            if (bonuses.activeNamedSetId === "WINDSTRIDERS_LEGACY") windstridersLegacyOnBigHitTaken(namedState, bossDmg, state.playerHpMax);
             if (bonuses.activeNamedSetId === "FROSTVEIL_BASTION") {
               const counter = frostveilBastionOnHitTaken(namedState);
               if (counter.counterProc) {
