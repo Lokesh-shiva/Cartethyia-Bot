@@ -7,6 +7,7 @@ import { replyNotStarted, awardUser } from "../../lib/economy";
 import { CE } from "../../lib/emojiManager";
 import prisma from "../../lib/prisma";
 import { schedulePatronDailyReminder, clearPatronDailyReminder } from "../../lib/dailyReminder";
+import { LUNAKITE_BUNDLES } from "../../lib/lunakiteBundles";
 
 const ELEMENT_HEX: Record<string, number> = {
   FUSION: 0xFF6B35, GLACIO: 0x38BDF8, ELECTRO: 0xA855F7,
@@ -96,20 +97,47 @@ const command: Command = {
     )
     .addSubcommand(s =>
       s.setName("redeem")
-        .setDescription("Activate your Patreon tier with a code sent by the owner.")
+        .setDescription("Activate a Patreon tier or bundle code sent by the owner.")
         .addStringOption(o =>
-          o.setName("code").setDescription("Your activation code (e.g. CALAMITY-X7K2-9QMP).").setRequired(true)
+          o.setName("code").setDescription("Your code (e.g. CALAMITY-X7K2-9QMP or BUNDLE-X7K2-9QMP).").setRequired(true)
         )
+    )
+    .addSubcommand(s =>
+      s.setName("bundles").setDescription("View one-time Lunakite bundles available via Patreon.")
     ) as SlashCommandBuilder,
 
   async execute(interaction: ChatInputCommandInteraction) {
     const sub = interaction.options.getSubcommand();
-    if (sub === "info")   await handleInfo(interaction);
-    if (sub === "claim")  await handleClaim(interaction);
-    if (sub === "daily")  await handleDaily(interaction);
-    if (sub === "redeem") await handleRedeem(interaction);
+    if (sub === "info")    await handleInfo(interaction);
+    if (sub === "claim")   await handleClaim(interaction);
+    if (sub === "daily")   await handleDaily(interaction);
+    if (sub === "redeem")  await handleRedeem(interaction);
+    if (sub === "bundles") await handleBundles(interaction);
   },
 };
+
+async function handleBundles(interaction: ChatInputCommandInteraction) {
+  await interaction.deferReply({ flags: 64 });
+
+  const lines = Object.values(LUNAKITE_BUNDLES).map(b =>
+    `${b.emoji}  **${b.name}** — ${b.price}\n` +
+    `*${b.desc}*\n` +
+    `› ${b.rewards.lunakite} Lunakite · ${b.rewards.auraPrisms} Aura Prisms · ${b.rewards.fractonite} Fractonite`
+  ).join("\n\n");
+
+  await interaction.editReply({
+    embeds: [new EmbedBuilder()
+      .setColor(PATRON_GOLD)
+      .setTitle("✦  Lunakite Bundles")
+      .setDescription(
+        `One-time currency packs — separate from monthly Patreon tiers.\n\n` +
+        `${lines}\n\n` +
+        `**How to get one:** pledge the listed amount as an extra one-time payment on Patreon ` +
+        `and message the owner. You'll receive a code to redeem with \`/patron redeem\`.`
+      )
+      .setFooter({ text: "CARTETHYIA  ·  Patreon Bundles" })],
+  });
+}
 
 async function handleInfo(interaction: ChatInputCommandInteraction) {
   await interaction.deferReply({ flags: 64 });
@@ -385,7 +413,45 @@ async function handleRedeem(interaction: ChatInputCommandInteraction) {
   });
   if (!existing) { await replyNotStarted(interaction); return; }
 
-  if (existing.patronTier >= record.tier) {
+  // ── Bundle code — pure currency grant, no tier change ────────────────────────
+  if (record.bundleId) {
+    const bundle = LUNAKITE_BUNDLES[record.bundleId];
+    if (!bundle) {
+      await interaction.editReply({ content: "This bundle code is misconfigured — contact the owner." });
+      return;
+    }
+
+    await Promise.all([
+      prisma.patronCode.update({
+        where: { code },
+        data:  { usedBy: interaction.user.id, usedAt: new Date() },
+      }),
+      prisma.user.update({
+        where: { id: interaction.user.id },
+        data:  {
+          lunakite:   { increment: bundle.rewards.lunakite },
+          auraPrisms: { increment: bundle.rewards.auraPrisms },
+          fractonite: { increment: bundle.rewards.fractonite },
+        },
+      }),
+    ]);
+
+    await interaction.editReply({
+      embeds: [new EmbedBuilder()
+        .setColor(PATRON_GOLD)
+        .setTitle(`${bundle.emoji}  ${bundle.name} Claimed!`)
+        .setDescription(
+          `◈  ${bundle.rewards.lunakite} Lunakite\n` +
+          `◈  ${bundle.rewards.auraPrisms} Aura Prisms\n` +
+          `◈  ${bundle.rewards.fractonite} Fractonite\n\n` +
+          `Thank you for supporting CARTETHYIA!`
+        )
+        .setFooter({ text: "CARTETHYIA  ·  Patreon  ·  Your support keeps this game alive." })],
+    });
+    return;
+  }
+
+  if (record.tier === null || existing.patronTier >= record.tier) {
     await interaction.editReply({
       embeds: [new EmbedBuilder().setColor(0xEF4444)
         .setDescription(`◈ You already have **${TIER_NAMES[existing.patronTier]}** (tier ${existing.patronTier}) — this code is for tier ${record.tier}.`)

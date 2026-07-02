@@ -427,7 +427,8 @@ model MailClaim {
 
 model PatronCode {
   code        String    @id               // e.g. "CALAMITY-X7K2-9QMP"
-  tier        Int                         // 1/2/3
+  tier        Int?                        // 1/2/3 — set for tier-activation codes
+  bundleId    String?                     // e.g. "wanderer" — set for one-time currency bundle codes
   usedBy      String?                     // Discord user ID who redeemed
   usedAt      DateTime?
   createdAt   DateTime  @default(now())

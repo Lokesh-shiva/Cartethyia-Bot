@@ -5,12 +5,12 @@ import {
 import { Command } from "../../types";
 import { isOwner } from "../../lib/owner";
 import prisma from "../../lib/prisma";
+import { LUNAKITE_BUNDLES } from "../../lib/lunakiteBundles";
 
 const TIER_NAMES: Record<number, string> = { 1: "Attuned", 2: "Ascendant", 3: "Calamity" };
 const TIER_PREFIXES: Record<number, string> = { 1: "ATTUNED", 2: "ASCENDANT", 3: "CALAMITY" };
 
-function generateCode(tier: number): string {
-  const prefix = TIER_PREFIXES[tier] ?? "PATRON";
+function generateCode(prefix: string): string {
   const rand = () => Math.random().toString(36).slice(2, 6).toUpperCase();
   return `${prefix}-${rand()}-${rand()}`;
 }
@@ -31,6 +31,23 @@ const command: Command = {
               { name: "1 — Attuned ($3)",    value: 1 },
               { name: "2 — Ascendant ($5)",  value: 2 },
               { name: "3 — Calamity ($10)",  value: 3 },
+            )
+        )
+        .addIntegerOption(o =>
+          o.setName("amount")
+            .setDescription("How many codes to generate (default: 1).")
+            .setMinValue(1).setMaxValue(10).setRequired(false)
+        )
+    )
+    .addSubcommand(s =>
+      s.setName("create-bundle")
+        .setDescription("Generate a one-time Lunakite bundle code (no tier change).")
+        .addStringOption(o =>
+          o.setName("bundle")
+            .setDescription("Which bundle.")
+            .setRequired(true)
+            .addChoices(
+              ...Object.values(LUNAKITE_BUNDLES).map(b => ({ name: `${b.name} (${b.price})`, value: b.id })),
             )
         )
         .addIntegerOption(o =>
@@ -68,9 +85,10 @@ const command: Command = {
     }
 
     const sub = interaction.options.getSubcommand();
-    if (sub === "create") await handleCreate(interaction);
-    if (sub === "list")   await handleList(interaction);
-    if (sub === "revoke") await handleRevoke(interaction);
+    if (sub === "create")        await handleCreate(interaction);
+    if (sub === "create-bundle") await handleCreateBundle(interaction);
+    if (sub === "list")          await handleList(interaction);
+    if (sub === "revoke")        await handleRevoke(interaction);
   },
 };
 
@@ -82,7 +100,7 @@ async function handleCreate(interaction: ChatInputCommandInteraction) {
   const codes: string[] = [];
   for (let i = 0; i < amount; i++) {
     let code: string;
-    do { code = generateCode(tier); }
+    do { code = generateCode(TIER_PREFIXES[tier] ?? "PATRON"); }
     while (await prisma.patronCode.findUnique({ where: { code } }));
     await prisma.patronCode.create({ data: { code, tier } });
     codes.push(code);
@@ -96,6 +114,35 @@ async function handleCreate(interaction: ChatInputCommandInteraction) {
       .setDescription(
         codes.map(c => `\`${c}\``).join("\n") + "\n\n" +
         `Send this to your patron via Patreon messages.\n` +
+        `They redeem with \`/patron redeem <code>\` — works in DMs or any server.`
+      )
+      .setFooter({ text: "CARTETHYIA  ·  Patron Codes  ·  Owner only" })],
+  });
+}
+
+async function handleCreateBundle(interaction: ChatInputCommandInteraction) {
+  await interaction.deferReply({ flags: 64 });
+  const bundleId = interaction.options.getString("bundle", true);
+  const amount   = interaction.options.getInteger("amount") ?? 1;
+  const bundle   = LUNAKITE_BUNDLES[bundleId];
+  if (!bundle) { await interaction.editReply({ content: "Unknown bundle." }); return; }
+
+  const codes: string[] = [];
+  for (let i = 0; i < amount; i++) {
+    let code: string;
+    do { code = generateCode("BUNDLE"); }
+    while (await prisma.patronCode.findUnique({ where: { code } }));
+    await prisma.patronCode.create({ data: { code, bundleId } });
+    codes.push(code);
+  }
+
+  await interaction.editReply({
+    embeds: [new EmbedBuilder()
+      .setColor(0xFCD34D)
+      .setTitle(`${bundle.emoji} ${bundle.name} Code${amount > 1 ? "s" : ""} Generated`)
+      .setDescription(
+        codes.map(c => `\`${c}\``).join("\n") + "\n\n" +
+        `Send this to whoever pledged **${bundle.price}** for this bundle.\n` +
         `They redeem with \`/patron redeem <code>\` — works in DMs or any server.`
       )
       .setFooter({ text: "CARTETHYIA  ·  Patron Codes  ·  Owner only" })],
@@ -117,7 +164,11 @@ async function handleList(interaction: ChatInputCommandInteraction) {
     return;
   }
 
-  const lines = codes.map(c => `\`${c.code}\` — ${TIER_NAMES[c.tier]}`);
+  const lines = codes.map(c =>
+    c.bundleId
+      ? `\`${c.code}\` — ${LUNAKITE_BUNDLES[c.bundleId]?.name ?? c.bundleId} (bundle)`
+      : `\`${c.code}\` — ${TIER_NAMES[c.tier!]}`
+  );
   await interaction.editReply({
     embeds: [new EmbedBuilder()
       .setColor(0xFCD34D)
