@@ -374,7 +374,8 @@ const command: Command = {
             const smolderMult = bonuses.activeNamedSetId === "SMOLDERING_SOVEREIGN"
               ? smolderingSovereignOnAction(namedState) : 1;
             const base = Math.max(1, Math.floor(stats.atk * smolderMult * (1 - defReduction)));
-            let dmg    = Math.floor(base * (crit ? stats.critDmg : 1) * (isWeak ? 1.5 : 1) * (1 + bonuses.elemDmgBonus));
+            const extraElemBonus = glacioShieldTurnsLeft > 0 ? glacioShieldElemBonus : 0;
+            let dmg    = Math.floor(base * (crit ? stats.critDmg : 1) * (isWeak ? 1.5 : 1) * (1 + bonuses.elemDmgBonus + extraElemBonus));
             dmg        = apply5pcFirstHit(bonuses, dmg, state.turn === 1);
             dmg        = apply5pcFullHpDmg(bonuses, dmg, state.playerHp, state.playerHpMax);
             if (roll4pcDoubleHit(bonuses)) dmg *= 2;
@@ -396,7 +397,8 @@ const command: Command = {
             const smolderMult = bonuses.activeNamedSetId === "SMOLDERING_SOVEREIGN"
               ? smolderingSovereignOnAction(namedState) : 1;
             const base = Math.max(1, Math.floor(stats.atk * smolderMult * 1.8 * (1 - defReduction)));
-            let dmg    = Math.floor(base * (crit ? stats.critDmg : 1) * (isWeak ? 1.5 : 1) * (1 + bonuses.elemDmgBonus));
+            const extraElemBonusSkill = glacioShieldTurnsLeft > 0 ? glacioShieldElemBonus : 0;
+            let dmg    = Math.floor(base * (crit ? stats.critDmg : 1) * (isWeak ? 1.5 : 1) * (1 + bonuses.elemDmgBonus + extraElemBonusSkill));
             dmg        = apply4pcSkillBonus(bonuses, dmg, state.skillCooldown === 0);
             dmg        = Math.floor(dmg * elemWindstrideMult(bonuses.elementPassive, state.turn, "SKILL"));
             if (bonuses.activeNamedSetId === "SMOLDERING_SOVEREIGN") {
@@ -422,7 +424,8 @@ const command: Command = {
             const smolderMult = bonuses.activeNamedSetId === "SMOLDERING_SOVEREIGN"
               ? smolderingSovereignOnAction(namedState) : 1;
             const base = Math.max(1, Math.floor(stats.atk * smolderMult * 3.5 * stats.critDmg * (1 - defReduction)));
-            let dmg    = Math.floor(base * (isWeak ? 1.5 : 1) * (1 + bonuses.elemDmgBonus));
+            const extraElemBonusUlt = glacioShieldTurnsLeft > 0 ? glacioShieldElemBonus : 0;
+            let dmg    = Math.floor(base * (isWeak ? 1.5 : 1) * (1 + bonuses.elemDmgBonus + extraElemBonusUlt));
             dmg        = apply4pcUltBonus(bonuses, dmg);
             const ar_u = applyAbilityAttack(bonuses, dmg, true, { ...abilCtxBase, moveType: "ULT" });
             dmg        = ar_u.dmg;
@@ -476,6 +479,20 @@ const command: Command = {
             bossDmg       = shield.dmg;
             state.playerHp = Math.max(0, state.playerHp - bossDmg);
             if (bonuses.activeNamedSetId === "SMOLDERING_SOVEREIGN") smolderingSovereignOnDamageTaken(namedState);
+            if (bonuses.activeNamedSetId === "FROSTVEIL_BASTION") {
+              const counter = frostveilBastionOnHitTaken(namedState);
+              if (counter.counterProc) {
+                state.bossVibNow = Math.max(0, state.bossVibNow - Math.floor(fb.vibBar * counter.vibDrain));
+                state.lastMove  += `\n❄️ **Counter-Frost** — drained ${Math.floor(counter.vibDrain * 100)}% enemy vibration!`;
+              }
+              const panic = frostveilBastionCheckPanicShield(namedState, state.playerHp, state.playerHpMax);
+              if (panic.triggered) {
+                state.playerHp = Math.min(state.playerHpMax, state.playerHp + panic.shieldAmount);
+                glacioShieldTurnsLeft = panic.turnsLeft;
+                glacioShieldElemBonus = panic.elemDmgBonus;
+                state.lastMove += `\n❄️ **Frostveil Shield** — +${panic.shieldAmount} HP, +${Math.floor(panic.elemDmgBonus * 100)}% Glacio DMG for ${panic.turnsLeft} turns!`;
+              }
+            }
             const hpRegen  = get5pcHpRegen(bonuses, state.playerHpMax);
             if (hpRegen > 0 && typeof bonuses.set5pc?.value === "number" && bonuses.set5pc.value < 1)
               state.playerHp = Math.min(state.playerHpMax, state.playerHp + hpRegen);
@@ -490,6 +507,7 @@ const command: Command = {
 
           state.turn++;
           if (state.skillCooldown > 0) state.skillCooldown--;
+          if (glacioShieldTurnsLeft > 0) glacioShieldTurnsLeft--;
 
           if (state.playerHp <= 0 && compositeHasSecondWind(bonuses.abilityEffects) && !secondWindUsed) {
             secondWindUsed = true;
