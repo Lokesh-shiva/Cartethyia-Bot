@@ -86,13 +86,18 @@ export function energySurgeOnBossTurn(
 
 // ── Galebound Sovereign — Momentum Gust ────────────────────────────────────
 // Builds a stack each boss turn the player's damage that round stayed below a
-// pressure threshold (10% of the Sovereign's max HP) — being passive lets it
-// build momentum. Landing hits above the threshold knocks a stack off instead.
-// At 5 stacks, releases a bonus +100% damage gust and resets.
+// pressure threshold (6% of the Sovereign's max HP — matching the precedent
+// established for Frost Barrier, where ~4% of max HP is roughly an average
+// single hit and 6% was found reachable by a solid hit/crit even for
+// sustained-DPS builds; the original 10% threshold reproduced the same
+// unreachable-for-sustained-builds bug, but with a worse consequence — a
+// guaranteed periodic damage burst instead of a merely-denied heal) — being
+// passive lets it build momentum. Landing hits above the threshold knocks a
+// stack off instead. At 5 stacks, releases a bonus +100% damage gust and resets.
 export function momentumGustOnBossTurn(
   state: FieldBossMechanicState, playerDmgThisRound: number, bossMaxHp: number,
 ): { bonusDmgMult: number; released: boolean } {
-  const pressureThreshold = bossMaxHp * 0.10;
+  const pressureThreshold = bossMaxHp * 0.06;
   if (playerDmgThisRound >= pressureThreshold) {
     state.momentumStacks = Math.max(0, state.momentumStacks - 1);
     return { bonusDmgMult: 0, released: false };
