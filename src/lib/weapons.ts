@@ -148,6 +148,23 @@ export function getWeaponImagePath(
   return fs.existsSync(imgPath) ? imgPath : null;
 }
 
+// ── Dismantle value — weapon → Forging Ores ───────────────────────────────────
+// Base value per rarity tier + 50% refund of Forging Ores actually spent
+// leveling it up, mirroring echoDismantleValue's shape.
+function weaponUpgradeCostAt(level: number): number {
+  if (level < 20) return 1;
+  if (level < 40) return 2;
+  if (level < 60) return 3;
+  if (level < 80) return 4;
+  return 5;
+}
+const DISMANTLE_BASE_FO: Record<number, number> = { 1: 1, 2: 2, 3: 4, 4: 8, 5: 14 };
+export function weaponDismantleValue(rarity: number, level: number): number {
+  let invested = 0;
+  for (let l = 1; l < level; l++) invested += weaponUpgradeCostAt(l);
+  return (DISMANTLE_BASE_FO[rarity] ?? 1) + Math.floor(invested * 0.5);
+}
+
 // Passive effects injected into combat at equip-time.
 // elemDmg = flat addition to elemDmgBonus (e.g. 0.20 = +20%).
 // effects = AbilityEffect entries merged into the player's abilityEffects list.

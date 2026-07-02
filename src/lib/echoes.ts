@@ -524,6 +524,16 @@ export function upgradeCost(level: number): number {
 
 export const MAX_ECHO_LEVEL = 25;
 
+// ── Dismantle value — echo → Tuning Modules ───────────────────────────────────
+// Base value per rarity + 50% refund of Tuning Modules actually spent leveling
+// it up, so a heavily-invested "junk" echo still returns something meaningful.
+const DISMANTLE_BASE_TM: Record<string, number> = { THREE_STAR: 1, FOUR_STAR: 3, FIVE_STAR: 6 };
+export function echoDismantleValue(rarity: string, level: number): number {
+  let invested = 0;
+  for (let l = 0; l < level; l++) invested += upgradeCost(l);
+  return (DISMANTLE_BASE_TM[rarity] ?? 1) + Math.floor(invested * 0.5);
+}
+
 // ── Substat scaling with echo level ─────────────────────────────────────────
 // Substats grow +10% per 5 levels, reaching 1.5× their rolled value at level 25.
 // The rolled (base) value is stored in the DB; this is always computed on the fly.

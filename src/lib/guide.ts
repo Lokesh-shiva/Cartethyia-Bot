@@ -220,8 +220,13 @@ export const GUIDE_SECTIONS: Record<string, GuideSection> = {
           value: "Save your current equipped echoes as a named preset (e.g. 'PvP', 'Farm'). Load it any time to swap your full grid instantly. Up to **10 presets** stored.",
           inline: false,
         },
+        {
+          name:  "🗑️  /echo-discard & /weapon-discard — Clean out your inventory",
+          value: "Dismantle unwanted echoes/weapons for 🔧 Tuning Modules / ⛏️ Forging Ores (scaled by rarity + levels invested). No filters = pick one. Add `rarity`/`cost`/`max-level` for bulk discard with a confirm step. Equipped items must be unequipped first; Awakened weapons can't be dismantled.",
+          inline: false,
+        },
       )
-      .setFooter({ text: "CARTETHYIA  ·  /echo-upgrade · /echo-reveal · /echo-reroll · /echo-preset" }),
+      .setFooter({ text: "CARTETHYIA  ·  /echo-upgrade · /echo-reveal · /echo-reroll · /echo-preset · /echo-discard" }),
   },
 
   set_bonuses: {
