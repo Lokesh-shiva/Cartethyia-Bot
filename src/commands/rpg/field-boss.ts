@@ -371,7 +371,9 @@ const command: Command = {
 
           if (btn.customId === "fb_basic") {
             const crit = Math.random() < activeCritRate; abilCrit = crit;
-            const base = Math.max(1, Math.floor(stats.atk * (1 - defReduction)));
+            const smolderMult = bonuses.activeNamedSetId === "SMOLDERING_SOVEREIGN"
+              ? smolderingSovereignOnAction(namedState) : 1;
+            const base = Math.max(1, Math.floor(stats.atk * smolderMult * (1 - defReduction)));
             let dmg    = Math.floor(base * (crit ? stats.critDmg : 1) * (isWeak ? 1.5 : 1) * (1 + bonuses.elemDmgBonus));
             dmg        = apply5pcFirstHit(bonuses, dmg, state.turn === 1);
             dmg        = apply5pcFullHpDmg(bonuses, dmg, state.playerHp, state.playerHpMax);
@@ -391,10 +393,16 @@ const command: Command = {
 
           if (btn.customId === "fb_skill") {
             const crit = Math.random() < Math.min(1, activeCritRate + 0.1); abilCrit = crit;
-            const base = Math.max(1, Math.floor(stats.atk * 1.8 * (1 - defReduction)));
+            const smolderMult = bonuses.activeNamedSetId === "SMOLDERING_SOVEREIGN"
+              ? smolderingSovereignOnAction(namedState) : 1;
+            const base = Math.max(1, Math.floor(stats.atk * smolderMult * 1.8 * (1 - defReduction)));
             let dmg    = Math.floor(base * (crit ? stats.critDmg : 1) * (isWeak ? 1.5 : 1) * (1 + bonuses.elemDmgBonus));
             dmg        = apply4pcSkillBonus(bonuses, dmg, state.skillCooldown === 0);
             dmg        = Math.floor(dmg * elemWindstrideMult(bonuses.elementPassive, state.turn, "SKILL"));
+            if (bonuses.activeNamedSetId === "SMOLDERING_SOVEREIGN") {
+              const sov = smolderingSovereignOnSkill(namedState);
+              if (sov.doubleHit) dmg = Math.floor(dmg * (1 + sov.bonusMult) * 2);
+            }
             const ar_s = applyAbilityAttack(bonuses, dmg, crit, { ...abilCtxBase, moveType: "SKILL" });
             dmg        = ar_s.dmg;
             if (ar_s.newStacks !== undefined) v2Stacks = ar_s.newStacks;
@@ -411,7 +419,9 @@ const command: Command = {
 
           if (btn.customId === "fb_ultimate") {
             abilCrit   = true;
-            const base = Math.max(1, Math.floor(stats.atk * 3.5 * stats.critDmg * (1 - defReduction)));
+            const smolderMult = bonuses.activeNamedSetId === "SMOLDERING_SOVEREIGN"
+              ? smolderingSovereignOnAction(namedState) : 1;
+            const base = Math.max(1, Math.floor(stats.atk * smolderMult * 3.5 * stats.critDmg * (1 - defReduction)));
             let dmg    = Math.floor(base * (isWeak ? 1.5 : 1) * (1 + bonuses.elemDmgBonus));
             dmg        = apply4pcUltBonus(bonuses, dmg);
             const ar_u = applyAbilityAttack(bonuses, dmg, true, { ...abilCtxBase, moveType: "ULT" });
@@ -465,6 +475,7 @@ const command: Command = {
             const shield  = elemFrostShield(bonuses.elementPassive, bossDmg);
             bossDmg       = shield.dmg;
             state.playerHp = Math.max(0, state.playerHp - bossDmg);
+            if (bonuses.activeNamedSetId === "SMOLDERING_SOVEREIGN") smolderingSovereignOnDamageTaken(namedState);
             const hpRegen  = get5pcHpRegen(bonuses, state.playerHpMax);
             if (hpRegen > 0 && typeof bonuses.set5pc?.value === "number" && bonuses.set5pc.value < 1)
               state.playerHp = Math.min(state.playerHpMax, state.playerHp + hpRegen);
