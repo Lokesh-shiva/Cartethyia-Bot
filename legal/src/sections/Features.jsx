@@ -9,12 +9,17 @@ const FEATURES = [
   },
   {
     id: 'echo', label: 'Echo Builds', emoji: '🔮',
-    desc: 'Collect 1/3/4-cost echoes with randomised substats that scale 1.5× at Lv 25. Build 2/4/5-piece set bonuses.',
+    desc: 'Collect 1/3/4-cost echoes with randomised substats that scale 1.5× at Lv 25. Build 2/4/5-piece set bonuses, or dismantle unwanted echoes for upgrade materials.',
     accent: 'rgba(167,139,250,0.18)', reveal: 'up',
   },
   {
+    id: 'namedsets', label: 'Named Echo Sets', emoji: '✦',
+    desc: '6 lore-named sets — Smoldering Sovereign, Frostveil Bastion, Stormcaller\'s Oath, Windstrider\'s Legacy, Voidborn Remnant, Radiant Convergence — each guarded by a tougher boss with a unique fight mechanic.',
+    accent: 'rgba(250,204,21,0.16)', reveal: 'up',
+  },
+  {
     id: 'dungeon', label: 'Dungeons & Raids', emoji: '🏰',
-    desc: 'Multi-floor dungeons cost Resonance Aura. Multiplayer raids let you team up to take down elite targets.',
+    desc: 'Multi-floor dungeons cost Resonance Aura. Multiplayer raids let you team up against 12 field bosses or any World Level boss.',
     accent: 'rgba(251,191,36,0.15)', reveal: 'up',
   },
   {

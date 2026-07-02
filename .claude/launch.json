@@ -6,6 +6,12 @@
       "runtimeExecutable": "npx",
       "runtimeArgs": ["serve", "legal", "-p", "5500", "--no-clipboard"],
       "port": 5500
+    },
+    {
+      "name": "legal-dev",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["--prefix", "legal", "run", "dev"],
+      "port": 5173
     }
   ]
 }
