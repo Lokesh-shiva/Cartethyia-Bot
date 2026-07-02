@@ -1,6 +1,9 @@
 // Field Bosses — always accessible from Lv5, no WL gate.
 // Scale with the player via gearAwareScale.
 // Each drops its own 4-cost echo on defeat.
+// Base stats (all 12 bosses) bumped +20% in a 2026-07-02 balance pass — was too
+// easy relative to gearAwareScale's caps; raid.ts applies additional raid-only
+// scaling on top of these base values.
 
 export interface FieldBoss {
   id:       string;
@@ -26,7 +29,7 @@ export const FIELD_BOSSES: FieldBoss[] = [
     element: "FUSION",
     weakness:"GLACIO",
     artFile: "Ignis Behemoth.png",
-    baseHp:  3200, baseAtk: 170, baseDef: 85, vibBar: 105,
+    baseHp:  3840, baseAtk: 204, baseDef: 102, vibBar: 105,
     moves: [
       { name: "Magma Fist",      damage: 1.0, effect: "slams you with a fist wreathed in molten rock"  },
       { name: "Cinder Burst",    damage: 1.4, effect: "detonates with a spray of superheated slag"     },
@@ -40,7 +43,7 @@ export const FIELD_BOSSES: FieldBoss[] = [
     element: "GLACIO",
     weakness:"FUSION",
     artFile: "Permafrost Sovereign.png",
-    baseHp:  3600, baseAtk: 148, baseDef: 120, vibBar: 110,
+    baseHp:  4320, baseAtk: 178, baseDef: 144, vibBar: 110,
     moves: [
       { name: "Frost Grasp",     damage: 1.0, effect: "locks you in place with crystalline ice"        },
       { name: "Blizzard Rush",   damage: 1.3, effect: "charges through you on a wave of frozen wind"   },
@@ -54,7 +57,7 @@ export const FIELD_BOSSES: FieldBoss[] = [
     element: "ELECTRO",
     weakness:"AERO",
     artFile: "Voltaic Aberrant.png",
-    baseHp:  3000, baseAtk: 190, baseDef: 72, vibBar: 100,
+    baseHp:  3600, baseAtk: 228, baseDef: 86, vibBar: 100,
     moves: [
       { name: "Arc Strike",      damage: 1.0, effect: "discharges a raw bolt of plasma through you"    },
       { name: "Thunder Coil",    damage: 1.5, effect: "wraps you in a spiral of electro current"       },
@@ -68,7 +71,7 @@ export const FIELD_BOSSES: FieldBoss[] = [
     element: "AERO",
     weakness:"ELECTRO",
     artFile: "Tempest Ancient.png",
-    baseHp:  3400, baseAtk: 178, baseDef: 78, vibBar: 103,
+    baseHp:  4080, baseAtk: 214, baseDef: 94, vibBar: 103,
     moves: [
       { name: "Wind Slash",      damage: 1.0, effect: "cuts through your guard on an invisible current" },
       { name: "Gale Sweep",      damage: 1.4, effect: "hurls you with a concentrated burst of aero"    },
@@ -82,7 +85,7 @@ export const FIELD_BOSSES: FieldBoss[] = [
     element: "HAVOC",
     weakness:"SPECTRO",
     artFile: "Null Ravager.png",
-    baseHp:  3800, baseAtk: 165, baseDef: 100, vibBar: 108,
+    baseHp:  4560, baseAtk: 198, baseDef: 120, vibBar: 108,
     moves: [
       { name: "Shade Claw",      damage: 1.0, effect: "tears at your resonance field from the inside"  },
       { name: "Void Pulse",      damage: 1.5, effect: "sends a shockwave of null-energy through you"   },
@@ -96,7 +99,7 @@ export const FIELD_BOSSES: FieldBoss[] = [
     element: "SPECTRO",
     weakness:"HAVOC",
     artFile: "Luminal Specter.png",
-    baseHp:  3500, baseAtk: 158, baseDef: 106, vibBar: 106,
+    baseHp:  4200, baseAtk: 190, baseDef: 127, vibBar: 106,
     moves: [
       { name: "Light Lance",     damage: 1.0, effect: "pierces you with a focused beam of spectro energy" },
       { name: "Radiant Burst",   damage: 1.4, effect: "detonates in blinding resonant light"            },
@@ -113,7 +116,7 @@ export const NAMED_SET_FIELD_BOSSES: FieldBoss[] = [
     element: "FUSION",
     weakness:"GLACIO",
     artFile: "Cinderbound Colossus.png",
-    baseHp:  4400, baseAtk: 195, baseDef: 100, vibBar: 120,
+    baseHp:  5280, baseAtk: 234, baseDef: 120, vibBar: 120,
     unlockWorldLevel: 2,
     mechanicId: "MOLTEN_BUILDUP",
     moves: [
@@ -129,7 +132,7 @@ export const NAMED_SET_FIELD_BOSSES: FieldBoss[] = [
     element: "GLACIO",
     weakness:"FUSION",
     artFile: "Cryoveil Warden.png",
-    baseHp:  4800, baseAtk: 170, baseDef: 135, vibBar: 125,
+    baseHp:  5760, baseAtk: 204, baseDef: 162, vibBar: 125,
     unlockWorldLevel: 2,
     mechanicId: "FROST_BARRIER",
     moves: [
@@ -145,7 +148,7 @@ export const NAMED_SET_FIELD_BOSSES: FieldBoss[] = [
     element: "ELECTRO",
     weakness:"AERO",
     artFile: "Thundercrown Herald.png",
-    baseHp:  4200, baseAtk: 215, baseDef: 90, vibBar: 115,
+    baseHp:  5040, baseAtk: 258, baseDef: 108, vibBar: 115,
     unlockWorldLevel: 2,
     mechanicId: "ENERGY_SURGE",
     moves: [
@@ -161,7 +164,7 @@ export const NAMED_SET_FIELD_BOSSES: FieldBoss[] = [
     element: "AERO",
     weakness:"ELECTRO",
     artFile: "Galebound Sovereign.png",
-    baseHp:  4500, baseAtk: 200, baseDef: 95, vibBar: 118,
+    baseHp:  5400, baseAtk: 240, baseDef: 114, vibBar: 118,
     unlockWorldLevel: 2,
     mechanicId: "MOMENTUM_GUST",
     moves: [
@@ -177,7 +180,7 @@ export const NAMED_SET_FIELD_BOSSES: FieldBoss[] = [
     element: "HAVOC",
     weakness:"SPECTRO",
     artFile: "Voidmaw Devourer.png",
-    baseHp:  4900, baseAtk: 185, baseDef: 115, vibBar: 122,
+    baseHp:  5880, baseAtk: 222, baseDef: 138, vibBar: 122,
     unlockWorldLevel: 2,
     mechanicId: "LIFESTEAL_FRENZY",
     moves: [
@@ -193,7 +196,7 @@ export const NAMED_SET_FIELD_BOSSES: FieldBoss[] = [
     element: "SPECTRO",
     weakness:"HAVOC",
     artFile: "Lumenwrought Seraph.png",
-    baseHp:  4700, baseAtk: 178, baseDef: 120, vibBar: 120,
+    baseHp:  5640, baseAtk: 214, baseDef: 144, vibBar: 120,
     unlockWorldLevel: 2,
     mechanicId: "STEADY_REGEN",
     moves: [

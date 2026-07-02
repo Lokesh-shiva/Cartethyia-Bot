@@ -8,7 +8,7 @@ import * as path from "path";
 import * as fs   from "fs";
 import prisma    from "../../lib/prisma";
 import { getBoss, scaledBoss }      from "../../lib/bosses";
-import { FIELD_BOSSES, FieldBoss }  from "../../lib/fieldBosses";
+import { ALL_FIELD_BOSSES, FieldBoss }  from "../../lib/fieldBosses";
 import { calcPlayerDamage, calcEnemyDamage, hpBar, buildRewardText } from "../../lib/combat";
 import { awardUser } from "../../lib/economy";
 import {
@@ -55,7 +55,7 @@ function getRaidBoss(choiceValue: string): RaidBossConfig | null {
     return boss as RaidBossConfig; // Boss already has defeatLoot
   }
   if (type === "field") {
-    const fb = FIELD_BOSSES.find(b => b.id === key);
+    const fb = ALL_FIELD_BOSSES.find(b => b.id === key);
     if (!fb) return null;
     // Generate loot scaled to field boss difficulty
     return {
@@ -69,7 +69,7 @@ function getRaidBoss(choiceValue: string): RaidBossConfig | null {
 /** Derive loot for a field boss (they have no fixed loot table) */
 function fieldBossLoot(fb: FieldBoss) {
   // Scale based on baseHp as a proxy for difficulty
-  const tier = fb.baseHp / 2000; // 1.0 for weakest, up to ~1.05 for toughest
+  const tier = fb.baseHp / 2000; // ~1.8 for weakest, up to ~2.94 for toughest (post +20% balance pass)
   return {
     credits:       Math.floor(4000  * tier),
     tuningModules: Math.floor(9     * tier),
@@ -100,9 +100,12 @@ function computeRaidBossStats(
   // Target ~28 skill-cycle turns of the full party to clear the boss.
   // Per turn, an average player deals avgAtk * ~2.2 (basic/skill/ult average).
   // We want total HP ≈ totalAtk * 2.2 * 28 * 0.80 so geared parties still feel pressure.
+  // 2026-07-02 balance pass: multiplied by 1.35 (raids should hit noticeably harder
+  // than a solo /field-boss fight — this is on top of boss.baseHp already being
+  // +20% higher project-wide).
   // Floor = base * party-size factor * gear multiplier so high-ATK squads face proportionally
   // more HP even when the base would otherwise dominate (prevents HP flatline at WL5+).
-  const targetHp  = Math.floor(totalAtk * 2.2 * 28 * 0.80);
+  const targetHp  = Math.floor(totalAtk * 2.2 * 28 * 0.80 * 1.35);
   const gearMult2 = Math.min(2.5, Math.sqrt(avgAtk / 300));
   const floorHp   = Math.floor(boss.baseHp * (1 + n * 0.25) * gearMult2);
   const bossHp    = Math.max(floorHp, targetHp);
@@ -114,13 +117,17 @@ function computeRaidBossStats(
   // Baseline: boss ATK that deals ~15% avgHp against avgDef ≈ avgHp / 7 defense.
   // calcEnemyDamage → dmg = base * (1 - def / (def + 250))
   // Solve: 0.15 * avgHp = baseAtk * 0.6  →  baseAtk ≈ avgHp * 0.25
-  const targetAtk = Math.floor(avgHp * 0.25);
+  // 2026-07-02 balance pass: bumped 0.25 → 0.34 (+36%) so raid boss hits land
+  // meaningfully harder than the equivalent solo field-boss fight.
+  const targetAtk = Math.floor(avgHp * 0.34);
   const bossAtk   = Math.max(boss.baseAtk, targetAtk);
 
   // ── DEF ─────────────────────────────────────────────────────────────────────
   // Scale DEF with avg ATK so player penetration stays meaningful (not trivial,
   // not impenetrable). At avgAtk=300 it stays near boss base. Scales with sqrt.
-  const gearMult = Math.max(1, Math.sqrt(avgAtk / 300));
+  // 2026-07-02 balance pass: floor raised 1.0 → 1.15 so raid bosses never dip
+  // below a modest DEF baseline even for low-gear parties.
+  const gearMult = Math.max(1.15, Math.sqrt(avgAtk / 300));
   const bossDef  = Math.floor(boss.baseDef * gearMult);
 
   return { hp: Math.floor(bossHp), atk: Math.floor(bossAtk), def: Math.floor(bossDef) };
@@ -280,6 +287,13 @@ export const data = new SlashCommandBuilder()
             { name: "Field · Tempest Ancient  (AERO)",         value: encodeBossChoice("field", "tempest_ancient")      },
             { name: "Field · Null Ravager  (HAVOC)",           value: encodeBossChoice("field", "null_ravager")         },
             { name: "Field · Luminal Specter  (SPECTRO)",      value: encodeBossChoice("field", "luminal_specter")      },
+            // ── Named Echo Set Field Bosses (WL2+) ───────────────────────────────
+            { name: "Field · Cinderbound Colossus  (FUSION)",  value: encodeBossChoice("field", "cinderbound_colossus") },
+            { name: "Field · Cryoveil Warden  (GLACIO)",       value: encodeBossChoice("field", "cryoveil_warden")      },
+            { name: "Field · Thundercrown Herald  (ELECTRO)",  value: encodeBossChoice("field", "thundercrown_herald")  },
+            { name: "Field · Galebound Sovereign  (AERO)",     value: encodeBossChoice("field", "galebound_sovereign")  },
+            { name: "Field · Voidmaw Devourer  (HAVOC)",       value: encodeBossChoice("field", "voidmaw_devourer")     },
+            { name: "Field · Lumenwrought Seraph  (SPECTRO)",  value: encodeBossChoice("field", "lumenwrought_seraph")  },
           )
       )
   )
