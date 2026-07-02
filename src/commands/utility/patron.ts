@@ -16,6 +16,24 @@ const ELEMENT_HEX: Record<string, number> = {
 const PATRON_GOLD = 0xFCD34D;
 const CLAIM_COOLDOWN_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
 const DAILY_COOLDOWN_MS = 20 * 60 * 60 * 1000;       // 20 hours (same as /daily)
+const STREAK_WINDOW_MS  = 44 * 60 * 60 * 1000;       // 44h grace window before streak resets
+
+// Same milestone curve as /daily — keeps the two systems consistent for players
+function patronStreakBonus(streak: number): number {
+  if (streak >= 30) return 3.0;
+  if (streak >= 14) return 2.0;
+  if (streak >= 7)  return 1.5;
+  if (streak >= 3)  return 1.25;
+  return 1.0;
+}
+
+function patronStreakLabel(streak: number): string {
+  if (streak >= 30) return "🔥🔥🔥 30-Day Devotion";
+  if (streak >= 14) return "🔥🔥 2-Week Resonance";
+  if (streak >= 7)  return "🔥 Weekly Surge";
+  if (streak >= 3)  return "⚡ 3-Day Streak";
+  return "";
+}
 
 interface PatronTierDef {
   name:      string;
@@ -98,7 +116,7 @@ async function handleInfo(interaction: ChatInputCommandInteraction) {
 
   const user = await prisma.user.findUnique({
     where:  { id: interaction.user.id },
-    select: { patronTier: true, patronClaimed: true, patronDailyClaimed: true, element: true },
+    select: { patronTier: true, patronClaimed: true, patronDailyClaimed: true, patronDailyStreak: true, element: true },
   });
   if (!user) { await replyNotStarted(interaction); return; }
 
@@ -111,13 +129,14 @@ async function handleInfo(interaction: ChatInputCommandInteraction) {
   const nextDaily = user.patronDailyClaimed
     ? Math.max(0, DAILY_COOLDOWN_MS - (Date.now() - user.patronDailyClaimed.getTime()))
     : 0;
+  const patronStreak = user.patronDailyStreak;
 
   const tierLines = Object.entries(PATRON_TIERS).map(([t, d]) => {
     const active = user.patronTier === Number(t) ? " ← **your tier**" : "";
     return [
       `**✦ ${d.name}** — ${d.price}${active}`,
       `Monthly bundle: ${d.bundle}`,
-      `Daily pass: ${d.daily}`,
+      `Daily pass: ${d.daily} *(scales up to ×3 with streak)*`,
       d.auraMax > 5 ? `Aura cap → **${d.auraMax}**` : "No aura cap bonus",
     ].join("\n");
   }).join("\n\n");
@@ -131,6 +150,7 @@ async function handleInfo(interaction: ChatInputCommandInteraction) {
         ``,
         `⚡ **Daily pass** — \`/patron daily\``,
         nextDaily > 0 ? `  Ready in **${fmtMs(nextDaily)}**` : `  ✅ **Ready to claim!**`,
+        patronStreak > 0 ? `  Current streak: **${patronStreak} day${patronStreak === 1 ? "" : "s"}**` : "",
       ].join("\n")
     : "You are not a Patreon supporter.\n\n**As a patron you get:**\n— A daily pass (every 20h) with Fractonite + Credits\n— A monthly bundle (every 30d) with Lunakite + Fractonite\n— Permanent perks like a higher Aura cap";
 
@@ -213,7 +233,7 @@ async function handleDaily(interaction: ChatInputCommandInteraction) {
 
   const user = await prisma.user.findUnique({
     where:  { id: interaction.user.id },
-    select: { patronTier: true, patronDailyClaimed: true, element: true, dailyReminderEnabled: true },
+    select: { patronTier: true, patronDailyClaimed: true, patronDailyStreak: true, element: true, dailyReminderEnabled: true },
   });
   if (!user) { await replyNotStarted(interaction); return; }
 
@@ -247,12 +267,22 @@ async function handleDaily(interaction: ChatInputCommandInteraction) {
   const tierDef = PATRON_TIERS[user.patronTier];
   if (!tierDef) return;
 
+  // Streak — same 44h grace window as /daily. Missing the window resets to 1.
+  const withinWindow = user.patronDailyClaimed
+    && Date.now() - user.patronDailyClaimed.getTime() < STREAK_WINDOW_MS;
+  const streak     = withinWindow ? user.patronDailyStreak + 1 : 1;
+  const multiplier = patronStreakBonus(streak);
+
+  const fractoniteReward = Math.floor(tierDef.dailyRewards.fractonite * multiplier);
+  const creditsReward    = Math.floor(tierDef.dailyRewards.credits * multiplier);
+
   await prisma.user.update({
     where: { id: interaction.user.id },
     data:  {
       patronDailyClaimed: new Date(),
-      fractonite:         { increment: tierDef.dailyRewards.fractonite },
-      credits:            { increment: tierDef.dailyRewards.credits },
+      patronDailyStreak:  streak,
+      fractonite:         { increment: fractoniteReward },
+      credits:            { increment: creditsReward },
     },
   });
 
@@ -268,12 +298,16 @@ async function handleDaily(interaction: ChatInputCommandInteraction) {
       .setStyle(user.dailyReminderEnabled ? ButtonStyle.Secondary : ButtonStyle.Primary),
   );
 
+  const label = patronStreakLabel(streak);
+
   await interaction.editReply({
     embeds: [new EmbedBuilder()
       .setColor(PATRON_GOLD)
       .setTitle(`✦  ${tierDef.name} Daily Claimed`)
       .setDescription(
-        `${tierDef.daily}\n\n` +
+        `🔷 ${fractoniteReward} Fractonite · 💠 ${creditsReward} Credits\n\n` +
+        `**Streak: ${streak} day${streak === 1 ? "" : "s"}**${label ? `  —  ${label}` : ""}` +
+        (multiplier > 1 ? `  (**×${multiplier}** bonus)` : "") + `\n\n` +
         `Come back in **20 hours** for your next daily.\n` +
         `-# Use \`/patron claim\` for your monthly bundle too.`
       )
