@@ -549,6 +549,13 @@ const command: Command = {
                 state.lastMove = (state.lastMove ?? "") + `\n🔥 **Molten Eruption** — the buildup releases in a devastating burst! (+75% DMG)`;
               }
             }
+            if (fb.mechanicId === "FROST_BARRIER") {
+              const barrier = frostBarrierOnBossTurn(bossMechState, playerDmg, scaled.hp);
+              if (barrier.healed > 0) {
+                state.bossHpNow = Math.min(scaled.hp, state.bossHpNow + barrier.healed);
+                state.lastMove = (state.lastMove ?? "") + `\n❄️ **Frost Barrier** — the Warden mends itself for +${barrier.healed} HP!`;
+              }
+            }
             bossDmg       = roll4pcBlock(bonuses, bossDmg);
             const shield  = elemFrostShield(bonuses.elementPassive, bossDmg);
             bossDmg       = shield.dmg;
