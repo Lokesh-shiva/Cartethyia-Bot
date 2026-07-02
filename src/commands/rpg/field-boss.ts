@@ -27,6 +27,15 @@ import {
 } from "../../lib/setBonus";
 import { compositeVibMult, compositeHasSecondWind } from "../../lib/abilityEffects";
 import {
+  initNamedSetState,
+  smolderingSovereignOnAction, smolderingSovereignOnDamageTaken, smolderingSovereignOnSkill,
+  frostveilBastionOnHitTaken, frostveilBastionCheckPanicShield,
+  stormcallersOathOnUltimate, stormcallersOathCheckThunderbolt, stormcallersOathOnBasic,
+  windstridersLegacyOnHit, windstridersLegacyOnBigHitTaken, windstridersLegacyCheckExplosion,
+  voidbornRemnantOnShatter, voidbornRemnantCheckFrenzy, voidbornRemnantFrenzyActive,
+  radiantConvergenceOnTurnHeal, radiantConvergenceOnHitTaken, radiantConvergenceOnCrit, radiantConvergenceCheckBurstHeal,
+} from "../../lib/namedSets";
+import {
   rollRarity, rollMainStat, rollSubstats, rollSubstatValue,
   calcMainStatValue, substatCount, RARITY_STARS,
   ELEMENT_EMOJI, ELEMENT_COLORS,
@@ -223,6 +232,16 @@ const command: Command = {
       let battleMsg: any   = null;
       let v2Stacks = 0;
       const ENERGY_PER_TURN = Math.floor(stats.energyPerTurn);
+
+      // Named Echo Set per-fight state (all sets — no-op unless bonuses.activeNamedSetId matches)
+      const namedState = initNamedSetState();
+      let glacioShieldTurnsLeft  = 0;   // Frostveil Bastion 5pc — elem DMG buff duration
+      let glacioShieldElemBonus  = 0;   // active elem DMG bonus while shield buff is up
+      let stormBuffTurnsLeft     = 0;   // Stormcaller's Oath 4pc — crit rate buff duration
+      let stormBuffCritBonus     = 0;   // active crit rate bonus while post-ult buff is up
+      let havocFrenzyAtkMult     = 1.0; // Voidborn Remnant 5pc — active buff values while frenzyActive
+      let havocFrenzyLifesteal   = 0;
+      let havocFrenzyDefIgnore   = 0;
 
       const state: BattleCardState = {
         boss,
