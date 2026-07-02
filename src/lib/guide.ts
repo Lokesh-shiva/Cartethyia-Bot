@@ -268,7 +268,7 @@ export const GUIDE_SECTIONS: Record<string, GuideSection> = {
             "🌪️ **Windstrider's Legacy** — 2pc +10% Aero · 4pc Windstacks · 5pc Gale Explosion at 6 stacks",
             "🌑 **Voidborn Remnant** — 2pc +10% Lifesteal/+8% Havoc · 4pc Shatter DMG+heal · 5pc low-HP Frenzy",
             "✨ **Radiant Convergence** — 2pc +12% HP/+8% Spectro · 4pc turn-heal stacks · 5pc Fracture on Crit",
-            "-# 2pc works everywhere. 4pc/5pc mechanics are currently only active in `/field-boss` fights.",
+            "-# 4pc/5pc mechanics are active in every fight — `/field-boss`, `/boss`, `/ascend`, `/dungeon`, `/duel`, and `/raid`.",
           ].join("\n"),
           inline: false,
         },

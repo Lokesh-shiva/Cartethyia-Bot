@@ -29,6 +29,15 @@ import {
 } from "../../lib/setBonus";
 import { compositeVibMult, compositeHasSecondWind } from "../../lib/abilityEffects";
 import { computeAura, consumeAura, auraBar, fmtAuraRegen, getMaxAura } from "../../lib/aura";
+import {
+  initNamedSetState,
+  smolderingSovereignOnAction, smolderingSovereignOnDamageTaken, smolderingSovereignOnSkill,
+  frostveilBastionOnHitTaken, frostveilBastionCheckPanicShield,
+  stormcallersOathOnUltimate, stormcallersOathCheckThunderbolt, stormcallersOathOnBasic,
+  windstridersLegacyOnHit, windstridersLegacyOnBigHitTaken, windstridersLegacyCheckExplosion,
+  voidbornRemnantOnShatter, voidbornRemnantCheckFrenzy, voidbornRemnantFrenzyActive,
+  radiantConvergenceOnTurnHeal, radiantConvergenceOnHitTaken, radiantConvergenceOnCrit, radiantConvergenceCheckBurstHeal,
+} from "../../lib/namedSets";
 
 const ELEMENT_HEX: Record<string, number> = {
   FUSION: 0xFF6B35, GLACIO: 0x38BDF8, ELECTRO: 0xA855F7,
@@ -231,6 +240,16 @@ const command: Command = {
 
       const ENERGY_PER_TURN = Math.floor(stats.energyPerTurn);
 
+      // Named Echo Set per-fight state (all sets — no-op unless bonuses.activeNamedSetId matches)
+      const namedState = initNamedSetState();
+      let glacioShieldTurnsLeft  = 0;   // Frostveil Bastion 5pc — elem DMG buff duration
+      let glacioShieldElemBonus  = 0;   // active elem DMG bonus while shield buff is up
+      let stormBuffTurnsLeft     = 0;   // Stormcaller's Oath 4pc — crit rate buff duration
+      let stormBuffCritBonus     = 0;   // active crit rate bonus while post-ult buff is up
+      let havocFrenzyAtkMult     = 1.0; // Voidborn Remnant 5pc — active buff values while frenzyActive
+      let havocFrenzyLifesteal   = 0;
+      let havocFrenzyDefIgnore   = 0;
+
       const state: BattleCardState = {
         boss,
         bossHpNow:     scaled.hp,
@@ -317,13 +336,24 @@ const command: Command = {
 
           let playerDmg   = 0;
           let moveName    = "";
+          let radiantDmgMult = 1.0;
+          if (bonuses.activeNamedSetId === "RADIANT_CONVERGENCE" && btn.customId !== "boss_flee") {
+            const heal = radiantConvergenceOnTurnHeal(namedState, state.playerHpMax);
+            state.playerHp  = Math.min(state.playerHpMax, state.playerHp + heal.healAmount);
+            radiantDmgMult  = heal.dmgMult;
+          }
 
           const isWeak        = user.element === boss.weakness;
-          const defVal        = state.isShattered ? 0 : scaled.def;
+          const havocFrenzyActive = bonuses.activeNamedSetId === "VOIDBORN_REMNANT" && voidbornRemnantFrenzyActive(namedState);
+          const effectiveDef  = havocFrenzyActive ? scaled.def * (1 - havocFrenzyDefIgnore) : scaled.def;
+          const defVal        = state.isShattered ? 0 : effectiveDef;
           const defReduction  = Math.min(0.75, defVal / (defVal + 1500));
+          const havocAtkMult  = havocFrenzyActive ? havocFrenzyAtkMult : 1.0;
+          const havocLifesteal = havocFrenzyActive ? havocFrenzyLifesteal : 0;
           const vibMult       = get5pcVibDrainMult(bonuses);
           const radCrit       = elemRadianceCrit(bonuses.elementPassive, state.playerHp, state.playerHpMax);
-          const activeCritRate = apply5pcLowHpCrit(bonuses, Math.min(1, stats.critRate + radCrit), state.playerHp, state.playerHpMax);
+          const stormCritBuff  = stormBuffTurnsLeft > 0 ? stormBuffCritBonus : 0;
+          const activeCritRate = apply5pcLowHpCrit(bonuses, Math.min(1, stats.critRate + radCrit + stormCritBuff), state.playerHp, state.playerHpMax);
 
           if (btn.customId === "boss_flee") {
             await thread.send({
@@ -347,38 +377,69 @@ const command: Command = {
           let abilCrit = false;
 
           if (btn.customId === "boss_basic") {
-            const crit   = Math.random() < activeCritRate; abilCrit = crit;
-            const base   = Math.max(1, Math.floor(stats.atk * (1 - defReduction)));
-            let dmg      = Math.floor(base * (crit ? stats.critDmg : 1) * (isWeak ? 1.5 : 1) * (1 + bonuses.elemDmgBonus));
+            const windExplosion = bonuses.activeNamedSetId === "WINDSTRIDERS_LEGACY"
+              ? windstridersLegacyCheckExplosion(namedState) : { proc: false, guaranteedCrit: false, bonusMult: 1.0 };
+            const crit   = windExplosion.guaranteedCrit || Math.random() < activeCritRate; abilCrit = crit;
+            const smolderMult = bonuses.activeNamedSetId === "SMOLDERING_SOVEREIGN"
+              ? smolderingSovereignOnAction(namedState) : 1;
+            const base   = Math.max(1, Math.floor(stats.atk * smolderMult * havocAtkMult * (1 - defReduction)));
+            const extraElemBonus = glacioShieldTurnsLeft > 0 ? glacioShieldElemBonus : 0;
+            let dmg      = Math.floor(base * (crit ? stats.critDmg : 1) * (isWeak ? 1.5 : 1) * (1 + bonuses.elemDmgBonus + extraElemBonus) * radiantDmgMult);
             dmg          = apply5pcFirstHit(bonuses, dmg, !firstActionDone);
             dmg          = apply5pcFullHpDmg(bonuses, dmg, state.playerHp, state.playerHpMax);
             if (roll4pcDoubleHit(bonuses)) dmg *= 2;
             dmg          = Math.floor(dmg * elemWindstrideMult(bonuses.elementPassive, state.turn, "BASIC"));
+            if (bonuses.activeNamedSetId === "WINDSTRIDERS_LEGACY") {
+              dmg = windExplosion.proc
+                ? Math.floor(dmg * (1 + windExplosion.bonusMult))
+                : Math.floor(dmg * windstridersLegacyOnHit(namedState));
+            }
+            let thunderboltEnergy = 0;
+            if (bonuses.activeNamedSetId === "STORMCALLERS_OATH") {
+              const tb = stormcallersOathOnBasic(namedState);
+              if (tb.proc) {
+                dmg += Math.floor(stats.atk * tb.bonusMult);
+                thunderboltEnergy = tb.bonusEnergy;
+              }
+            }
             const ar_b   = applyAbilityAttack(bonuses, dmg, crit, { ...abilCtxBase, moveType: "BASIC" });
             dmg          = ar_b.dmg;
             if (ar_b.newStacks !== undefined) v2Stacks = ar_b.newStacks;
             const ignite = elemIgniteProc(bonuses.elementPassive, stats.atk);
+            if (bonuses.activeNamedSetId === "RADIANT_CONVERGENCE" && namedState.spectroFractureTurnsLeft > 0) dmg = Math.floor(dmg * 1.10);
+            if (bonuses.activeNamedSetId === "RADIANT_CONVERGENCE" && crit) radiantConvergenceOnCrit(namedState, state.playerHp, state.playerHpMax);
             playerDmg    = dmg + ignite.dmg;
             moveName     = crit ? `Basic Attack — **CRITICAL** (${playerDmg} DMG)` : `Basic Attack — ${playerDmg} DMG`;
             if (ar_b.tag)   moveName += `  ✦${ar_b.tag}`;
             if (ignite.tag) moveName += `  ✦${ignite.tag}`;
             state.bossVibNow   = Math.max(0, state.bossVibNow - Math.floor(playerDmg * 0.3 * totalVibMult));
-            state.playerEnergy = Math.min(100, state.playerEnergy + ENERGY_PER_TURN + elemDischargeEnergy(bonuses.elementPassive, crit) + ar_b.bonusEnergy);
+            state.playerEnergy = Math.min(100, state.playerEnergy + ENERGY_PER_TURN + elemDischargeEnergy(bonuses.elementPassive, crit) + ar_b.bonusEnergy + thunderboltEnergy);
             state.playerHp     = Math.min(state.playerHpMax, state.playerHp + ar_b.healHp);
-            state.playerHp     = applyLifesteal(bonuses.lifesteal + (ar_b.lifesteal ?? 0), playerDmg, state.playerHp, state.playerHpMax);
+            state.playerHp     = applyLifesteal(bonuses.lifesteal + havocLifesteal + (ar_b.lifesteal ?? 0), playerDmg, state.playerHp, state.playerHpMax);
+            if (bonuses.activeNamedSetId === "STORMCALLERS_OATH") stormcallersOathCheckThunderbolt(namedState, state.playerEnergy);
           }
 
           if (btn.customId === "boss_skill") {
             const crit   = Math.random() < Math.min(1, activeCritRate + 0.1); abilCrit = crit;
-            const base   = Math.max(1, Math.floor(stats.atk * 1.8 * (1 - defReduction)));
-            let dmg      = Math.floor(base * (crit ? stats.critDmg : 1) * (isWeak ? 1.5 : 1) * (1 + bonuses.elemDmgBonus));
+            const smolderMult = bonuses.activeNamedSetId === "SMOLDERING_SOVEREIGN"
+              ? smolderingSovereignOnAction(namedState) : 1;
+            const base   = Math.max(1, Math.floor(stats.atk * smolderMult * havocAtkMult * 1.8 * (1 - defReduction)));
+            const extraElemBonusSkill = glacioShieldTurnsLeft > 0 ? glacioShieldElemBonus : 0;
+            let dmg      = Math.floor(base * (crit ? stats.critDmg : 1) * (isWeak ? 1.5 : 1) * (1 + bonuses.elemDmgBonus + extraElemBonusSkill) * radiantDmgMult);
             dmg          = apply4pcSkillBonus(bonuses, dmg, !firstSkillUsed);
             dmg          = apply5pcFirstHit(bonuses, dmg, !firstActionDone);
             dmg          = Math.floor(dmg * elemWindstrideMult(bonuses.elementPassive, state.turn, "SKILL"));
+            if (bonuses.activeNamedSetId === "WINDSTRIDERS_LEGACY") dmg = Math.floor(dmg * windstridersLegacyOnHit(namedState));
+            if (bonuses.activeNamedSetId === "SMOLDERING_SOVEREIGN") {
+              const sov = smolderingSovereignOnSkill(namedState);
+              if (sov.doubleHit) dmg = Math.floor(dmg * sov.bonusMult * 2);
+            }
             const ar_s   = applyAbilityAttack(bonuses, dmg, crit, { ...abilCtxBase, moveType: "SKILL" });
             dmg          = ar_s.dmg;
             if (ar_s.newStacks !== undefined) v2Stacks = ar_s.newStacks;
             const ignite = elemIgniteProc(bonuses.elementPassive, stats.atk);
+            if (bonuses.activeNamedSetId === "RADIANT_CONVERGENCE" && namedState.spectroFractureTurnsLeft > 0) dmg = Math.floor(dmg * 1.10);
+            if (bonuses.activeNamedSetId === "RADIANT_CONVERGENCE" && crit) radiantConvergenceOnCrit(namedState, state.playerHp, state.playerHpMax);
             playerDmg    = dmg + ignite.dmg;
             moveName     = `Resonance Skill — ${playerDmg} DMG${crit ? " **(CRIT)**" : ""}`;
             if (ar_s.tag)   moveName += `  ✦${ar_s.tag}`;
@@ -387,26 +448,38 @@ const command: Command = {
             state.skillCooldown = SKILL_COOLDOWN;
             state.playerEnergy  = Math.min(100, state.playerEnergy + ENERGY_PER_TURN + elemDischargeEnergy(bonuses.elementPassive, crit) + ar_s.bonusEnergy);
             state.playerHp      = Math.min(state.playerHpMax, state.playerHp + ar_s.healHp);
-            state.playerHp      = applyLifesteal(bonuses.lifesteal + (ar_s.lifesteal ?? 0), playerDmg, state.playerHp, state.playerHpMax);
+            state.playerHp      = applyLifesteal(bonuses.lifesteal + havocLifesteal + (ar_s.lifesteal ?? 0), playerDmg, state.playerHp, state.playerHpMax);
             firstSkillUsed = true;
           }
 
           if (btn.customId === "boss_ultimate") {
             abilCrit     = true;
-            const base   = Math.max(1, Math.floor(stats.atk * 3.5 * stats.critDmg * (1 - defReduction)));
-            let dmg      = Math.floor(base * (isWeak ? 1.5 : 1) * (1 + bonuses.elemDmgBonus));
+            const smolderMult = bonuses.activeNamedSetId === "SMOLDERING_SOVEREIGN"
+              ? smolderingSovereignOnAction(namedState) : 1;
+            const base   = Math.max(1, Math.floor(stats.atk * smolderMult * havocAtkMult * 3.5 * stats.critDmg * (1 - defReduction)));
+            const extraElemBonusUlt = glacioShieldTurnsLeft > 0 ? glacioShieldElemBonus : 0;
+            let dmg      = Math.floor(base * (isWeak ? 1.5 : 1) * (1 + bonuses.elemDmgBonus + extraElemBonusUlt) * radiantDmgMult);
             dmg          = apply4pcUltBonus(bonuses, dmg);
+            if (bonuses.activeNamedSetId === "WINDSTRIDERS_LEGACY") dmg = Math.floor(dmg * windstridersLegacyOnHit(namedState));
             const ar_u   = applyAbilityAttack(bonuses, dmg, true, { ...abilCtxBase, moveType: "ULT" });
             dmg          = ar_u.dmg;
             if (ar_u.newStacks !== undefined) v2Stacks = ar_u.newStacks;
+            if (bonuses.activeNamedSetId === "RADIANT_CONVERGENCE" && namedState.spectroFractureTurnsLeft > 0) dmg = Math.floor(dmg * 1.10);
+            if (bonuses.activeNamedSetId === "RADIANT_CONVERGENCE") radiantConvergenceOnCrit(namedState, state.playerHp, state.playerHpMax);
             playerDmg    = dmg;
             moveName     = `⚡ ULTIMATE — ${playerDmg} DMG`;
             if (ar_u.tag) moveName += `  ✦${ar_u.tag}`;
             state.bossVibNow   = Math.max(0, state.bossVibNow - Math.floor(playerDmg * 0.8 * totalVibMult));
             state.playerEnergy = Math.min(100, ar_u.bonusEnergy);
             state.playerHp     = Math.min(state.playerHpMax, state.playerHp + ar_u.healHp);
-            state.playerHp     = applyLifesteal(bonuses.lifesteal + (ar_u.lifesteal ?? 0), playerDmg, state.playerHp, state.playerHpMax);
+            state.playerHp     = applyLifesteal(bonuses.lifesteal + havocLifesteal + (ar_u.lifesteal ?? 0), playerDmg, state.playerHp, state.playerHpMax);
             if (bonuses.set5pc?.type === "POST_ULT_SKILL") state.skillCooldown = 0;
+            if (bonuses.activeNamedSetId === "STORMCALLERS_OATH") {
+              const surge = stormcallersOathOnUltimate();
+              state.playerEnergy = Math.min(100, state.playerEnergy + surge.bonusEnergy);
+              stormBuffTurnsLeft = surge.turnsLeft + 1; // +1 compensates for the same-round decrement that fires immediately after this triggers
+              stormBuffCritBonus = surge.critRateBonus;
+            }
           }
 
           // V2 turn-start regen (fires each turn)
@@ -432,6 +505,14 @@ const command: Command = {
             if (voidHeal > 0) {
               state.playerHp = Math.min(state.playerHpMax, state.playerHp + voidHeal);
               moveName += `\n✦ **Void Surge** — +${voidHeal} HP restored!`;
+            }
+            if (bonuses.activeNamedSetId === "VOIDBORN_REMNANT") {
+              const remnant = voidbornRemnantOnShatter();
+              const bonusDmg = Math.floor(stats.atk * remnant.bonusMult);
+              state.bossHpNow = Math.max(0, state.bossHpNow - bonusDmg);
+              const healAmt = Math.floor(state.playerHpMax * remnant.healPct);
+              state.playerHp = Math.min(state.playerHpMax, state.playerHp + healAmt);
+              moveName += `\n🌑 **Voidborn Rupture** — +${bonusDmg} bonus DMG, +${healAmt} HP!`;
             }
           }
 
@@ -467,6 +548,39 @@ const command: Command = {
             const shield  = elemFrostShield(bonuses.elementPassive, bossDmg);
             bossDmg       = shield.dmg;
             state.playerHp = Math.max(0, state.playerHp - bossDmg);
+            if (bonuses.activeNamedSetId === "SMOLDERING_SOVEREIGN") smolderingSovereignOnDamageTaken(namedState);
+            if (bonuses.activeNamedSetId === "WINDSTRIDERS_LEGACY") windstridersLegacyOnBigHitTaken(namedState, bossDmg, state.playerHpMax);
+            if (bonuses.activeNamedSetId === "VOIDBORN_REMNANT") {
+              const frenzy = voidbornRemnantCheckFrenzy(namedState, state.playerHp, state.playerHpMax);
+              if (frenzy.triggered) {
+                havocFrenzyAtkMult   = frenzy.atkMult;
+                havocFrenzyLifesteal = frenzy.lifesteal;
+                havocFrenzyDefIgnore = frenzy.defIgnorePct;
+                state.lastMove = (state.lastMove ?? "") + `\n🌑 **Void Frenzy** — ATK +${Math.floor((frenzy.atkMult - 1) * 100)}%, Lifesteal +${Math.floor(frenzy.lifesteal * 100)}%, ignoring ${Math.floor(frenzy.defIgnorePct * 100)}% enemy DEF!`;
+              }
+            }
+            if (bonuses.activeNamedSetId === "RADIANT_CONVERGENCE") {
+              radiantConvergenceOnHitTaken(namedState, bossDmg, state.playerHpMax);
+              const burst = radiantConvergenceCheckBurstHeal(namedState, state.playerHp, state.playerHpMax);
+              if (burst > 0) {
+                state.playerHp = Math.min(state.playerHpMax, state.playerHp + burst);
+                state.lastMove = (state.lastMove ?? "") + `\n✨ **Radiant Convergence** — burst-heal +${burst} HP!`;
+              }
+            }
+            if (bonuses.activeNamedSetId === "FROSTVEIL_BASTION") {
+              const counter = frostveilBastionOnHitTaken(namedState);
+              if (counter.counterProc) {
+                state.bossVibNow = Math.max(0, state.bossVibNow - Math.floor(boss.vibBar * counter.vibDrain));
+                state.lastMove  += `\n❄️ **Counter-Frost** — drained ${Math.floor(counter.vibDrain * 100)}% enemy vibration!`;
+              }
+              const panic = frostveilBastionCheckPanicShield(namedState, state.playerHp, state.playerHpMax);
+              if (panic.triggered) {
+                state.playerHp = Math.min(state.playerHpMax, state.playerHp + panic.shieldAmount);
+                glacioShieldTurnsLeft = panic.turnsLeft + 1; // +1 compensates for the same-round decrement that fires immediately after this triggers
+                glacioShieldElemBonus = panic.elemDmgBonus;
+                state.lastMove += `\n❄️ **Frostveil Shield** — +${panic.shieldAmount} HP, +${Math.floor(panic.elemDmgBonus * 100)}% Glacio DMG for ${panic.turnsLeft} turns!`;
+              }
+            }
             const hpRegen  = get5pcHpRegen(bonuses, state.playerHpMax);
             if (hpRegen > 0 && typeof bonuses.set5pc?.value === "number" && bonuses.set5pc.value < 1) {
               state.playerHp = Math.min(state.playerHpMax, state.playerHp + hpRegen);
@@ -479,6 +593,9 @@ const command: Command = {
 
           state.turn++;
           if (state.skillCooldown > 0) state.skillCooldown--;
+          if (glacioShieldTurnsLeft > 0) glacioShieldTurnsLeft--;
+          if (stormBuffTurnsLeft > 0) stormBuffTurnsLeft--;
+          if (namedState.spectroFractureTurnsLeft > 0) namedState.spectroFractureTurnsLeft--;
 
           // Second Wind
           if (state.playerHp <= 0 && compositeHasSecondWind(bonuses.abilityEffects) && !secondWindUsed) {
