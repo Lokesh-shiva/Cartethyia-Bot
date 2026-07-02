@@ -43,6 +43,50 @@ export const NAMED_ELEM_DMG_2PC: Record<NamedSetId, number> = {
   RADIANT_CONVERGENCE:  0.08,
 };
 
+// ── Player-facing reference text — used by /echo, /echoes, and /guide so
+// players can see what a set actually does before they've farmed 4-5 pieces
+// of it (the 4pc/5pc mechanics themselves only currently activate in
+// /field-boss combat). Kept as plain strings here rather than derived from
+// the pure functions above, since those encode behavior, not prose.
+export interface NamedSetDescription {
+  twoPc:   string;
+  fourPc:  string;
+  fivePc:  string;
+}
+
+export const NAMED_SET_DESCRIPTIONS: Record<NamedSetId, NamedSetDescription> = {
+  SMOLDERING_SOVEREIGN: {
+    twoPc:  "+12% Fusion DMG",
+    fourPc: "Each consecutive action increases ATK by 6%, stacking up to 4×. Taking damage resets all stacks.",
+    fivePc: "When ATK stacks reach 4×, the next Skill hits twice and deals +30% bonus Fusion DMG. Stacks reset after trigger.",
+  },
+  FROSTVEIL_BASTION: {
+    twoPc:  "+15% DEF · +8% Glacio DMG",
+    fourPc: "Taking a hit has a 30% chance to trigger Counter-Frost: drain 20% enemy vibration. 3-turn internal cooldown.",
+    fivePc: "The first time HP drops below 60%, gain a shield (+28% max HP) and +22% Glacio DMG for 4 turns. Once per fight.",
+  },
+  STORMCALLERS_OATH: {
+    twoPc:  "+10% Electro DMG · +10 Energy/turn",
+    fourPc: "After using Ultimate, gain +40 Energy instantly and +15% Crit Rate for 3 turns.",
+    fivePc: "When Energy reaches its cap, the next Basic Attack triggers Thunderbolt — 80% ATK bonus Electro DMG and restores 20 Energy. Resets after trigger.",
+  },
+  WINDSTRIDERS_LEGACY: {
+    twoPc:  "+10% Aero DMG",
+    fourPc: "Each hit adds a Windstack (+5% DMG each, up to 6×). Stacks persist until Gale Explosion fires or you take a big hit.",
+    fivePc: "At 6 Windstacks, the next attack is a guaranteed Crit dealing +120% bonus Aero DMG. Stacks reset after trigger.",
+  },
+  VOIDBORN_REMNANT: {
+    twoPc:  "+10% Lifesteal · +8% Havoc DMG",
+    fourPc: "Shatter effects deal +60% ATK bonus Havoc DMG and heal 15% HP.",
+    fivePc: "The first time HP falls below 35%, gain +25% ATK, +15% Lifesteal, and ignore 20% enemy DEF for 4 turns. Once per fight.",
+  },
+  RADIANT_CONVERGENCE: {
+    twoPc:  "+12% HP · +8% Spectro DMG",
+    fourPc: "Heal 3% max HP each turn. Each heal adds +3% Spectro DMG, stacking up to 5×. Taking a big hit resets stacks.",
+    fivePc: "At full HP, every Crit applies Radiant Fracture to the enemy (+10% DMG taken from all sources, 3 turns, refreshes on Crit). Below 50% HP, active Fracture stacks burst-heal you.",
+  },
+};
+
 // ── Per-fight mutable state for 4pc/5pc mechanics ────────────────────────────
 // Combat loops create ONE of these per fight (via initNamedSetState) and pass it
 // into the hook functions below for every player action. Nothing here is read from

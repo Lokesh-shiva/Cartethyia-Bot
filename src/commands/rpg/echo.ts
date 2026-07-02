@@ -8,6 +8,7 @@ import { replyNotStarted } from "../../lib/economy";
 import { ELEMENT_COLORS, ELEMENT_EMOJI, RARITY_STARS, MAIN_STAT_LABELS, calcMainStatValue, calcSubstatValue, formatStatValue, SUBSTAT_LABELS } from "../../lib/echoes";
 import { Element } from "@prisma/client";
 import { generateEchoCard, echoRowToCard } from "../../lib/echoCard";
+import { NAMED_SETS, NAMED_SET_DESCRIPTIONS, NamedSetId } from "../../lib/namedSets";
 
 export const data = new SlashCommandBuilder()
   .setName("echo")
@@ -86,10 +87,25 @@ export async function execute(interaction: ChatInputCommandInteraction) {
     return new AttachmentBuilder(buf, { name: "echo.webp" });
   };
 
-  const buildEmbed = (echo: any) => new EmbedBuilder()
-    .setColor(ELEMENT_COLORS[echo.element as Element])
-    .setImage("attachment://echo.webp")
-    .setFooter({ text: `CARTETHYIA  ·  Echo${echo.isEquipped ? "  ·  EQUIPPED" : ""}${filterDesc ? `  ·  Filter: ${filterDesc}` : ""}` });
+  const setName = (echo: any): string | null =>
+    echo.setId && NAMED_SETS[echo.setId as NamedSetId] ? NAMED_SETS[echo.setId as NamedSetId].name : null;
+
+  const buildEmbed = (echo: any) => {
+    const set  = setName(echo);
+    const desc = echo.setId ? NAMED_SET_DESCRIPTIONS[echo.setId as NamedSetId] : null;
+    const setText = set
+      ? `✦ **${set}** Echo Set\n` +
+        `**2pc:** ${desc?.twoPc}\n` +
+        `**4pc:** ${desc?.fourPc}\n` +
+        `**5pc:** ${desc?.fivePc}\n` +
+        `-# Farm more pieces of this set to unlock these effects.`
+      : null;
+    return new EmbedBuilder()
+      .setColor(ELEMENT_COLORS[echo.element as Element])
+      .setImage("attachment://echo.webp")
+      .setDescription(setText)
+      .setFooter({ text: `CARTETHYIA  ·  Echo${echo.isEquipped ? "  ·  EQUIPPED" : ""}${filterDesc ? `  ·  Filter: ${filterDesc}` : ""}` });
+  };
 
   const options = shown.map(e => {
     const mainVal   = calcMainStatValue(e.mainStatType, e.level, e.rarity);
@@ -98,9 +114,10 @@ export async function execute(interaction: ChatInputCommandInteraction) {
     const bestSub = e.revealedSubstats > 0 && e.substat1Type
       ? `  ·  ${SUBSTAT_LABELS[e.substat1Type] ?? e.substat1Type} ${formatStatValue(e.substat1Type, calcSubstatValue(e.substat1Type, e.substat1Value ?? 0, e.level))}`
       : "";
+    const set = setName(e);
     return {
       label:       `${e.name}  ${RARITY_STARS[e.rarity]}  Lv${e.level}${e.isEquipped ? "  ← equipped" : ""}`,
-      description: `${e.cost}-cost · ${mainLabel}: ${formatStatValue(e.mainStatType, mainVal)}${bestSub}`,
+      description: `${set ? `✦ ${set}  ·  ` : ""}${e.cost}-cost · ${mainLabel}: ${formatStatValue(e.mainStatType, mainVal)}${bestSub}`.slice(0, 100),
       value:       e.id,
     };
   });

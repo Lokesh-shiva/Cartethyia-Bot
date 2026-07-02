@@ -542,8 +542,9 @@ export function formatStatValue(type: string, value: number): string {
 // 3-cost echoes are available from WL0 — players need them to build their grid.
 // Rate scales with WL so field enemies become more common as you progress.
 export function pickEncounterEnemy(worldLevel: number): EchoDefinition {
-  const threeCosters = ECHO_DEFINITIONS.filter(e => e.cost === 3);
-  const oneCosters   = ECHO_DEFINITIONS.filter(e => e.cost === 1);
+  const allDefs       = [...ECHO_DEFINITIONS, ...NAMED_SET_ECHO_DEFINITIONS];
+  const threeCosters   = allDefs.filter(e => e.cost === 3);
+  const oneCosters     = allDefs.filter(e => e.cost === 1);
 
   // WL0: 15% · WL1: 23% · WL2: 31% · ... caps at 75% at WL8
   const fieldChance = Math.min(0.75, 0.15 + worldLevel * 0.08);

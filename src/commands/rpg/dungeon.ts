@@ -653,7 +653,7 @@ async function grantRewards(
       Math.min(95, baseWeights[2] + wlRarityShift * 0.5),
     ];
 
-    const { ECHO_DEFINITIONS, BOSS_ECHO_DEFINITIONS } = await import("../../lib/echoes");
+    const { ECHO_DEFINITIONS, BOSS_ECHO_DEFINITIONS, NAMED_SET_ECHO_DEFINITIONS } = await import("../../lib/echoes");
 
     for (let i = 0; i < dropCount; i++) {
       const rarity  = rollRarity(scaledWeights);
@@ -661,16 +661,20 @@ async function grantRewards(
 
       let echoName: string;
       let cost: number;
+      let echoSetId: string | undefined;
 
       if (isBossTrial) {
         const bossEcho = BOSS_ECHO_DEFINITIONS.find(e => e.element === element);
-        echoName = bossEcho?.name ?? element;
-        cost     = 4;
+        echoName  = bossEcho?.name ?? element;
+        cost      = 4;
+        echoSetId = bossEcho?.setId;
       } else {
-        const candidates = ECHO_DEFINITIONS.filter(e => e.element === element);
-        const enemy      = candidates[Math.floor(Math.random() * candidates.length)];
-        echoName = enemy?.name ?? "Echo";
-        cost     = enemy?.cost ?? 1;
+        // Includes named-set 1/3-cost echoes alongside the original plain-element pool
+        const candidates = [...ECHO_DEFINITIONS, ...NAMED_SET_ECHO_DEFINITIONS].filter(e => e.element === element);
+        const enemy       = candidates[Math.floor(Math.random() * candidates.length)];
+        echoName  = enemy?.name ?? "Echo";
+        cost      = enemy?.cost ?? 1;
+        echoSetId = enemy?.setId;
       }
 
       const mainStat = rollMainStat(cost as 1 | 3 | 4, element as any);
@@ -680,6 +684,7 @@ async function grantRewards(
       const echoData: any = {
         userId: userId, name: echoName,
         rarity, element, cost,
+        ...(echoSetId ? { setId: echoSetId } : {}),
         mainStatType: mainStat, mainStatValue: calcMainStatValue(mainStat, 0, rarity),
       };
       substats.forEach((s, idx) => {

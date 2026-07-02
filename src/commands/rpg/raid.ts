@@ -21,6 +21,10 @@ import { compositeHasSecondWind } from "../../lib/abilityEffects";
 import { incrementWeaponBond }    from "../../lib/weaponAwakening";
 import { generateRaidCard }       from "../../lib/versusCard";
 import { isOwner }                from "../../lib/owner";
+import {
+  BOSS_ECHO_DEFINITIONS, rollRarity, rollMainStat, substatCount,
+  rollSubstats, rollSubstatValue, calcMainStatValue,
+} from "../../lib/echoes";
 
 // ── Unified boss handle (works for both World bosses and Field bosses) ─────────
 interface RaidBossConfig {
@@ -630,6 +634,32 @@ async function launchRaid(
         )
       );
 
+      // Each participant gets a guaranteed 4-cost echo drop matching the boss,
+      // mirroring solo /field-boss's guaranteed drop (also covers WL bosses,
+      // which have their own BOSS_ECHO_DEFINITIONS entries by name).
+      const raidEchoDef = BOSS_ECHO_DEFINITIONS.find(e => e.name === boss.name);
+      let raidEchoLine = "";
+      if (raidEchoDef) {
+        await Promise.all(raid.participants.map(async p => {
+          const rarity   = rollRarity(raidEchoDef.rarityWeights as [number, number, number]);
+          const mainSt   = rollMainStat(4, boss.element as any);
+          const subCount = substatCount(rarity);
+          const substats = rollSubstats(subCount, mainSt);
+          const echoData: any = {
+            userId: p.userId, name: raidEchoDef.name,
+            rarity, element: boss.element, cost: 4,
+            ...(raidEchoDef.setId ? { setId: raidEchoDef.setId } : {}),
+            mainStatType: mainSt, mainStatValue: calcMainStatValue(mainSt, 0, rarity),
+          };
+          substats.forEach((s, idx) => {
+            echoData[`substat${idx + 1}Type`]  = s;
+            echoData[`substat${idx + 1}Value`] = rollSubstatValue(s);
+          });
+          await prisma.echo.create({ data: echoData });
+        }));
+        raidEchoLine = `\n🌀 **${raidEchoDef.name}** (4-cost) awarded to every participant!`;
+      }
+
       const contribLines = [...raid.participants]
         .sort((a, b) => b.dmgDealt - a.dmgDealt)
         .map((p, i) => `${i + 1}. ${elementEmoji(p.element)} ${p.name} — **${p.dmgDealt.toLocaleString()} DMG**`);
@@ -646,7 +676,7 @@ async function launchRaid(
           .setTitle("☄️  Raid — Victory!")
           .setDescription(
             `**${boss.name}** has been defeated!\n\n` +
-            `**Rewards per player:**\n${buildRewardText(perPlayer)}\n\n` +
+            `**Rewards per player:**\n${buildRewardText(perPlayer)}${raidEchoLine}\n\n` +
             `**Damage Standings:**\n${contribLines.join("\n")}`
           )
           .setImage("attachment://raid-victory.webp")

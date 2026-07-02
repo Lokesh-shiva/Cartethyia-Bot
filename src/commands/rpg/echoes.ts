@@ -12,6 +12,7 @@ import { echoEmoji } from "../../lib/emojiManager";
 import { resolvePlayerBonuses } from "../../lib/setBonus";
 import { generateGridCard } from "../../lib/gridCard";
 import { Element } from "@prisma/client";
+import { NAMED_SETS, NamedSetId } from "../../lib/namedSets";
 
 export const data = new SlashCommandBuilder()
   .setName("echoes")
@@ -102,7 +103,8 @@ export async function execute(interaction: ChatInputCommandInteraction) {
     const subLine = subs.length > 0
       ? subs.slice(0, 3).map(([t, v]) => `${SUBSTAT_LABELS[t] ?? t} ${formatStatValue(t, calcSubstatValue(t, v, e.level))}`).join("  ·  ")
       : "*substats unrevealed*";
-    return `**${slotName}** ·  ${ELEMENT_EMOJI[e.element as Element]} **${e.name}**  ${RARITY_STARS[e.rarity]}  Lv${e.level}  (${e.cost}-cost)\n  \`${mainLabel}: ${formatStatValue(e.mainStatType, mainVal)}\`  ·  ${subLine}`;
+    const setInfo = e.setId ? NAMED_SETS[e.setId as NamedSetId] : null;
+    return `**${slotName}** ·  ${ELEMENT_EMOJI[e.element as Element]} **${e.name}**${setInfo ? `  ·  ✦ ${setInfo.name}` : ""}  ${RARITY_STARS[e.rarity]}  Lv${e.level}  (${e.cost}-cost)\n  \`${mainLabel}: ${formatStatValue(e.mainStatType, mainVal)}\`  ·  ${subLine}`;
   }).join("\n");
 
   // Full active bonus text for the embed (canvas may wrap long lines)

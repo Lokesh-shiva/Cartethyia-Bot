@@ -527,6 +527,7 @@ export async function handleEncounterFight(
         const echoData: any = {
           userId: interaction.user.id, name: enc.enemy.name,
           rarity, element: enc.enemy.element, cost: enc.enemy.cost,
+          ...(enc.enemy.setId ? { setId: enc.enemy.setId } : {}),
           mainStatType: mainStat, mainStatValue: calcMainStatValue(mainStat, 0, rarity),
         };
         substats.forEach((s, i) => {

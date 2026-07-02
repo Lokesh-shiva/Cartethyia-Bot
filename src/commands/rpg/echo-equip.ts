@@ -12,6 +12,7 @@ import {
 } from "../../lib/echoes";
 import { Element } from "@prisma/client";
 import { invalidateBonusCache } from "../../lib/setBonus";
+import { NAMED_SETS, NamedSetId } from "../../lib/namedSets";
 
 export const data = new SlashCommandBuilder()
   .setName("echo-equip")
@@ -62,7 +63,8 @@ function echoBlock(e: any | null, label: string): string {
 
   const lines: string[] = [];
   lines.push(`**${label}**`);
-  lines.push(`**${e.name}**  ${RARITY_STARS[e.rarity]}`);
+  const setInfo = e.setId ? NAMED_SETS[e.setId as NamedSetId] : null;
+  lines.push(`**${e.name}**  ${RARITY_STARS[e.rarity]}${setInfo ? `  ·  ✦ ${setInfo.name}` : ""}`);
   lines.push(`Lv${e.level}  ·  ${e.cost}-cost  ·  ${ELEMENT_EMOJI[e.element as Element]} ${e.element}`);
 
   const mainVal = calcMainStatValue(e.mainStatType, e.level, e.rarity);
@@ -158,9 +160,10 @@ export async function execute(interaction: ChatInputCommandInteraction) {
       const overBudget = pts > MAX_GRID_POINTS;
       const mainVal    = calcMainStatValue(e.mainStatType, e.level, e.rarity);
       const mainLabel  = MAIN_STAT_LABELS[e.mainStatType] ?? e.mainStatType;
+      const setInfo = e.setId ? NAMED_SETS[e.setId as NamedSetId] : null;
       opts.push({
         label:       `${e.name}  ${RARITY_STARS[e.rarity]}  Lv${e.level}  (${e.cost}-cost)${overBudget ? "  ⚠" : ""}`,
-        description: `${mainLabel}: ${formatStatValue(e.mainStatType, mainVal)}  ·  ${ELEMENT_EMOJI[e.element as Element]} ${e.element}${overBudget ? "  — would exceed 12pt" : ""}`,
+        description: `${setInfo ? `✦ ${setInfo.name}  ·  ` : ""}${mainLabel}: ${formatStatValue(e.mainStatType, mainVal)}  ·  ${ELEMENT_EMOJI[e.element as Element]} ${e.element}${overBudget ? "  — would exceed 12pt" : ""}`.slice(0, 100),
         value:       e.id,
       });
     }

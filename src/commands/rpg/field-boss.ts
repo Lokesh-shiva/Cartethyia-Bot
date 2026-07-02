@@ -310,6 +310,7 @@ const command: Command = {
             const echoData: any = {
               userId: interaction.user.id, name: echoDef.name,
               rarity, element: fb.element, cost: 4,
+              ...(echoDef.setId ? { setId: echoDef.setId } : {}),
               mainStatType: mainSt, mainStatValue: calcMainStatValue(mainSt, 0, rarity),
             };
             substats.forEach((s, idx) => {
