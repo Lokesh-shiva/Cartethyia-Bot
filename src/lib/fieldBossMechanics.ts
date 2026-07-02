@@ -135,12 +135,15 @@ export function lifestealFrenzyOnBossTurn(
 
 // ── Lumenwrought Seraph — Steady Regen ─────────────────────────────────────
 // Heals 4% of its max HP every boss turn — UNLESS the player has landed hits
-// above a pressure threshold (8% of the Seraph's max HP) for 2 consecutive
-// rounds, which breaks the regen for that turn.
+// above a pressure threshold (6% of the Seraph's max HP — matching the
+// precedent established for Frost Barrier and Momentum Gust, both of which
+// originally shipped with higher thresholds unreachable by sustained-DPS
+// builds and had to be corrected to 6%) for 2 consecutive rounds, which
+// breaks the regen for that turn.
 export function steadyRegenOnBossTurn(
   state: FieldBossMechanicState, playerDmgThisRound: number, bossMaxHp: number,
 ): { healed: number; regenBroken: boolean } {
-  const pressureThreshold = bossMaxHp * 0.08;
+  const pressureThreshold = bossMaxHp * 0.06;
   if (playerDmgThisRound >= pressureThreshold) {
     state.regenStreak = Math.min(2, state.regenStreak + 1);
   } else {

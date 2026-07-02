@@ -570,6 +570,15 @@ const command: Command = {
                 state.lastMove = (state.lastMove ?? "") + `\n🌪️ **Momentum Release** — pent-up wind erupts into a devastating gust! (+100% DMG)`;
               }
             }
+            if (fb.mechanicId === "STEADY_REGEN") {
+              const regen = steadyRegenOnBossTurn(bossMechState, playerDmg, scaled.hp);
+              if (regen.healed > 0) {
+                state.bossHpNow = Math.min(scaled.hp, state.bossHpNow + regen.healed);
+                state.lastMove = (state.lastMove ?? "") + `\n✨ **Steady Regeneration** — the Seraph mends itself for +${regen.healed} HP!`;
+              } else if (regen.regenBroken) {
+                state.lastMove = (state.lastMove ?? "") + `\n✨ Your relentless pressure disrupts the Seraph's regeneration!`;
+              }
+            }
             bossDmg       = roll4pcBlock(bonuses, bossDmg);
             const shield  = elemFrostShield(bonuses.elementPassive, bossDmg);
             bossDmg       = shield.dmg;
