@@ -252,6 +252,7 @@ const command: Command = {
 
       // Named Echo Set per-fight state (all sets — no-op unless bonuses.activeNamedSetId matches)
       const namedState = initNamedSetState();
+      const bossMechState = initFieldBossMechanicState();
       let glacioShieldTurnsLeft  = 0;   // Frostveil Bastion 5pc — elem DMG buff duration
       let glacioShieldElemBonus  = 0;   // active elem DMG bonus while shield buff is up
       let stormBuffTurnsLeft     = 0;   // Stormcaller's Oath 4pc — crit rate buff duration
@@ -540,6 +541,14 @@ const command: Command = {
           } else {
             const move    = fb.moves[Math.floor(Math.random() * fb.moves.length)];
             let bossDmg   = Math.max(1, Math.floor(scaled.atk * move.damage - stats.def * 0.4));
+            if (fb.mechanicId === "MOLTEN_BUILDUP") {
+              const interrupted = btn.customId === "fb_skill" || btn.customId === "fb_ultimate";
+              const molten = moltenBuildupOnBossTurn(bossMechState, interrupted);
+              if (molten.erupted) {
+                bossDmg = Math.floor(bossDmg * (1 + molten.bonusDmgMult));
+                state.lastMove = (state.lastMove ?? "") + `\n🔥 **Molten Eruption** — the buildup releases in a devastating burst!`;
+              }
+            }
             bossDmg       = roll4pcBlock(bonuses, bossDmg);
             const shield  = elemFrostShield(bonuses.elementPassive, bossDmg);
             bossDmg       = shield.dmg;
