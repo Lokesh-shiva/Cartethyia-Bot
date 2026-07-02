@@ -52,7 +52,7 @@ export interface NamedSetState {
   fusionSkillDoubleArmed:boolean; // Smoldering Sovereign 5pc — true once 4 stacks reached, consumed on next Skill
   glacioCounterCd:       number;  // Frostveil Bastion 4pc — turns until Counter-Frost can proc again
   glacioShieldUsed:      boolean; // Frostveil Bastion 5pc — once-per-fight panic shield
-  electroThunderboltArmed: boolean; // Stormcaller's Oath 5pc — true once energy > 120, consumed on next Basic
+  electroThunderboltArmed: boolean; // Stormcaller's Oath 5pc — true once energy reaches 100 (cap), consumed on next Basic
   aeroWindstacks:        number;  // Windstrider's Legacy 4pc — momentum stacks (max 6)
   havocFrenzyUsed:       boolean; // Voidborn Remnant 5pc — once-per-fight low-HP frenzy
   havocFrenzyTurnsLeft:  number;  // turns remaining on active frenzy
@@ -113,12 +113,14 @@ export function frostveilBastionCheckPanicShield(
 
 // ── Stormcaller's Oath (Electro) ──────────────────────────────────────────────
 // 4pc: after Ultimate, +40 Energy instantly + Crit Rate +15% for 3 turns.
-// 5pc: when Energy exceeds 120, next Basic triggers Thunderbolt (80% ATK bonus dmg + restore 20 Energy), resets.
+// 5pc: when Energy reaches its cap (100 — combat loops hard-cap energy at 100, so
+// "exceeds 120" from the original design text is unreachable in practice), next Basic
+// triggers Thunderbolt (80% ATK bonus dmg + restore 20 Energy), resets.
 export function stormcallersOathOnUltimate(): { bonusEnergy: number; critRateBonus: number; turnsLeft: number } {
   return { bonusEnergy: 40, critRateBonus: 0.15, turnsLeft: 3 };
 }
 export function stormcallersOathCheckThunderbolt(state: NamedSetState, currentEnergy: number): boolean {
-  if (currentEnergy > 120) state.electroThunderboltArmed = true;
+  if (currentEnergy >= 100) state.electroThunderboltArmed = true;
   return state.electroThunderboltArmed;
 }
 export function stormcallersOathOnBasic(state: NamedSetState): { proc: boolean; bonusMult: number; bonusEnergy: number } {
@@ -184,7 +186,7 @@ export function radiantConvergenceOnHitTaken(state: NamedSetState, dmgTaken: num
 }
 export function radiantConvergenceOnCrit(state: NamedSetState, currentHp: number, maxHp: number): boolean {
   if (currentHp < maxHp) return false;
-  state.spectroFractureTurnsLeft = 3;
+  state.spectroFractureTurnsLeft = 3 + 1; // +1 compensates for the same-round decrement that fires immediately after this triggers (same pattern/reason as Frostveil Bastion's shield and Stormcaller's Oath's crit buff)
   return true; // caller applies "+10% dmg taken" debuff to the enemy for 3 turns
 }
 export function radiantConvergenceCheckBurstHeal(
