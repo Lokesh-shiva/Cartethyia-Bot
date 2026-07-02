@@ -381,7 +381,7 @@ const command: Command = {
             if (bonuses.activeNamedSetId === "STORMCALLERS_OATH") {
               const tb = stormcallersOathOnBasic(namedState);
               if (tb.proc) {
-                dmg += Math.floor(stats.atk * tb.bonusMult);
+                dmg += Math.floor(stats.atk * tb.bonusMult); // intentionally flat/unscaled, matching elemIgniteProc's pattern below (raw-ATK elemental proc, not crit/weakness-scaled)
                 thunderboltEnergy = tb.bonusEnergy;
               }
             }
