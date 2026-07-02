@@ -573,6 +573,12 @@ const command: Command = {
             bossDmg       = roll4pcBlock(bonuses, bossDmg);
             const shield  = elemFrostShield(bonuses.elementPassive, bossDmg);
             bossDmg       = shield.dmg;
+            if (fb.mechanicId === "LIFESTEAL_FRENZY") {
+              const frenzy = lifestealFrenzyOnBossTurn(bossMechState, bossDmg, state.bossHpNow, scaled.hp);
+              if (frenzy.selfHeal > 0) state.bossHpNow = Math.min(scaled.hp, state.bossHpNow + frenzy.selfHeal);
+              if (frenzy.frenzyTriggered) state.lastMove = (state.lastMove ?? "") + `\n🌑 **Devourer's Frenzy** — the Devourer senses weakness and surges with hunger! (+35% ATK for 3 turns)`;
+              if (frenzy.frenzyActive && !frenzy.frenzyTriggered) bossDmg = Math.floor(bossDmg * frenzy.atkMult);
+            }
             state.playerHp = Math.max(0, state.playerHp - bossDmg);
             if (bonuses.activeNamedSetId === "SMOLDERING_SOVEREIGN") smolderingSovereignOnDamageTaken(namedState);
             if (bonuses.activeNamedSetId === "WINDSTRIDERS_LEGACY") windstridersLegacyOnBigHitTaken(namedState, bossDmg, state.playerHpMax);
