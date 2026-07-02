@@ -264,9 +264,6 @@ const command: Command = {
             `**Awakened passive:** ${awakening.passive.desc}`,
             `**Effects:** ${formatEffects(awakening.passive.effects).replace(/\n/g, " · ")}${awakening.passive.elemDmg ? ` · +${Math.round(awakening.passive.elemDmg * 100)}% Elemental DMG` : ""}`,
             `**ATK:** ×${mult.toFixed(2)}`,
-            ``,
-            `🎨 **Art prompt** (\`assets/weapons/awakened/${awakening.name}.png\`):`,
-            `\`\`\`${awakening.artPrompt}\`\`\``,
           ].join("\n"))
           .setFooter({ text: "CARTETHYIA  ·  This weapon's soul is yours alone." })],
         components: [],
