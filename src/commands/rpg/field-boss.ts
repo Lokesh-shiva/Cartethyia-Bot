@@ -556,6 +556,13 @@ const command: Command = {
                 state.lastMove = (state.lastMove ?? "") + `\n❄️ **Frost Barrier** — the Warden mends itself for +${barrier.healed} HP!`;
               }
             }
+            if (fb.mechanicId === "ENERGY_SURGE") {
+              const surge = energySurgeOnBossTurn(bossMechState);
+              if (surge.overcharged) {
+                bossDmg = Math.floor(bossDmg * (1 + surge.bonusDmgMult));
+                state.lastMove = (state.lastMove ?? "") + `\n⚡ **Overcharge** — the Herald's stormcrown discharges at full power! (+90% DMG)`;
+              }
+            }
             bossDmg       = roll4pcBlock(bonuses, bossDmg);
             const shield  = elemFrostShield(bonuses.elementPassive, bossDmg);
             bossDmg       = shield.dmg;
