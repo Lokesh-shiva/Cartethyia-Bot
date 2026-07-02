@@ -348,7 +348,8 @@ const command: Command = {
           const defReduction  = Math.min(0.75, defVal / (defVal + 1500));
           const vibMult       = get5pcVibDrainMult(bonuses);
           const radCrit       = elemRadianceCrit(bonuses.elementPassive, state.playerHp, state.playerHpMax);
-          const activeCritRate = apply5pcLowHpCrit(bonuses, Math.min(1, stats.critRate + radCrit), state.playerHp, state.playerHpMax);
+          const stormCritBuff  = stormBuffTurnsLeft > 0 ? stormBuffCritBonus : 0;
+          const activeCritRate = apply5pcLowHpCrit(bonuses, Math.min(1, stats.critRate + radCrit + stormCritBuff), state.playerHp, state.playerHpMax);
           const totalVibMult  = vibMult * compositeVibMult(bonuses.abilityEffects);
           const abilCtxBase   = {
             currentHp: state.playerHp, maxHp: state.playerHpMax,
@@ -376,6 +377,14 @@ const command: Command = {
             const base = Math.max(1, Math.floor(stats.atk * smolderMult * (1 - defReduction)));
             const extraElemBonus = glacioShieldTurnsLeft > 0 ? glacioShieldElemBonus : 0;
             let dmg    = Math.floor(base * (crit ? stats.critDmg : 1) * (isWeak ? 1.5 : 1) * (1 + bonuses.elemDmgBonus + extraElemBonus));
+            let thunderboltEnergy = 0;
+            if (bonuses.activeNamedSetId === "STORMCALLERS_OATH") {
+              const tb = stormcallersOathOnBasic(namedState);
+              if (tb.proc) {
+                dmg += Math.floor(stats.atk * tb.bonusMult);
+                thunderboltEnergy = tb.bonusEnergy;
+              }
+            }
             dmg        = apply5pcFirstHit(bonuses, dmg, state.turn === 1);
             dmg        = apply5pcFullHpDmg(bonuses, dmg, state.playerHp, state.playerHpMax);
             if (roll4pcDoubleHit(bonuses)) dmg *= 2;
@@ -388,8 +397,9 @@ const command: Command = {
             moveName   = crit ? `Basic Attack — **CRITICAL** (${playerDmg} DMG)` : `Basic Attack — ${playerDmg} DMG`;
             if (ign.tag) moveName += `  ✦${ign.tag}`;
             state.bossVibNow   = Math.max(0, state.bossVibNow - Math.floor(playerDmg * 0.3 * totalVibMult));
-            state.playerEnergy = Math.min(100, state.playerEnergy + ENERGY_PER_TURN + elemDischargeEnergy(bonuses.elementPassive, crit) + ar_b.bonusEnergy);
+            state.playerEnergy = Math.min(100, state.playerEnergy + ENERGY_PER_TURN + elemDischargeEnergy(bonuses.elementPassive, crit) + ar_b.bonusEnergy + thunderboltEnergy);
             state.playerHp     = Math.min(state.playerHpMax, applyLifesteal(bonuses.lifesteal + (ar_b.lifesteal ?? 0), playerDmg, state.playerHp, state.playerHpMax) + ar_b.healHp);
+            if (bonuses.activeNamedSetId === "STORMCALLERS_OATH") stormcallersOathCheckThunderbolt(namedState, state.playerEnergy);
           }
 
           if (btn.customId === "fb_skill") {
@@ -436,6 +446,12 @@ const command: Command = {
             state.playerEnergy = Math.min(100, ar_u.bonusEnergy);
             state.playerHp     = Math.min(state.playerHpMax, applyLifesteal(bonuses.lifesteal + (ar_u.lifesteal ?? 0), playerDmg, state.playerHp, state.playerHpMax) + ar_u.healHp);
             if (bonuses.set5pc?.type === "POST_ULT_SKILL") state.skillCooldown = 0;
+            if (bonuses.activeNamedSetId === "STORMCALLERS_OATH") {
+              const surge = stormcallersOathOnUltimate();
+              state.playerEnergy = Math.min(100, state.playerEnergy + surge.bonusEnergy);
+              stormBuffTurnsLeft = surge.turnsLeft + 1; // +1 compensates for the same-round decrement that fires immediately after this triggers (same pattern/reason as Frostveil Bastion's shield fix)
+              stormBuffCritBonus = surge.critRateBonus;
+            }
           }
 
           state.bossHpNow = Math.max(0, state.bossHpNow - playerDmg);
@@ -508,6 +524,7 @@ const command: Command = {
           state.turn++;
           if (state.skillCooldown > 0) state.skillCooldown--;
           if (glacioShieldTurnsLeft > 0) glacioShieldTurnsLeft--;
+          if (stormBuffTurnsLeft > 0) stormBuffTurnsLeft--;
 
           if (state.playerHp <= 0 && compositeHasSecondWind(bonuses.abilityEffects) && !secondWindUsed) {
             secondWindUsed = true;
