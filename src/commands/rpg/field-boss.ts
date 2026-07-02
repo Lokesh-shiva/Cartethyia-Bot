@@ -563,6 +563,13 @@ const command: Command = {
                 state.lastMove = (state.lastMove ?? "") + `\n⚡ **Overcharge** — the Herald's stormcrown discharges at full power! (+90% DMG)`;
               }
             }
+            if (fb.mechanicId === "MOMENTUM_GUST") {
+              const gust = momentumGustOnBossTurn(bossMechState, playerDmg, scaled.hp);
+              if (gust.released) {
+                bossDmg = Math.floor(bossDmg * (1 + gust.bonusDmgMult));
+                state.lastMove = (state.lastMove ?? "") + `\n🌪️ **Momentum Release** — pent-up wind erupts into a devastating gust! (+100% DMG)`;
+              }
+            }
             bossDmg       = roll4pcBlock(bonuses, bossDmg);
             const shield  = elemFrostShield(bonuses.elementPassive, bossDmg);
             bossDmg       = shield.dmg;
