@@ -10,7 +10,12 @@ import { getOrCreateUser, awardUser, isDispatchBlocked } from "../../lib/economy
 import { acquireLock, releaseLock, alreadyInCombatMsg } from "../../lib/combatLock";
 import { registerFight, clearFight } from "../../lib/fightTracker";
 import { checkLevelUp } from "../../lib/progression";
-import { FIELD_BOSSES, FieldBoss } from "../../lib/fieldBosses";
+import { ALL_FIELD_BOSSES, FieldBoss } from "../../lib/fieldBosses";
+import {
+  initFieldBossMechanicState,
+  moltenBuildupOnBossTurn, frostBarrierOnBossTurn, energySurgeOnBossTurn,
+  momentumGustOnBossTurn, lifestealFrenzyOnBossTurn, steadyRegenOnBossTurn,
+} from "../../lib/fieldBossMechanics";
 import { gearAwareScale, baselineAtk } from "../../lib/combat";
 import { incrementWeaponBond } from "../../lib/weaponAwakening";
 import { voteNudge, supportNudge } from "../../lib/voteNudge";
@@ -136,11 +141,12 @@ const command: Command = {
       return;
     }
 
-    const options = FIELD_BOSSES.map(fb => {
+    const options = ALL_FIELD_BOSSES.map(fb => {
       const elemEmoji = (ELEMENT_EMOJI as any)[fb.element] ?? "◇";
+      const locked = (fb.unlockWorldLevel ?? 0) > user.worldLevel;
       return {
-        label:       `${elemEmoji}  ${fb.name}`,
-        description: `${fb.element}  ·  Weakness: ${fb.weakness}`,
+        label:       locked ? `🔒 ${fb.name}  (WL${fb.unlockWorldLevel} required)` : `${elemEmoji}  ${fb.name}`,
+        description: locked ? `Reach World Level ${fb.unlockWorldLevel} to unlock` : `${fb.element}  ·  Weakness: ${fb.weakness}`,
         value:       fb.id,
       };
     });
@@ -178,8 +184,19 @@ const command: Command = {
 
     selCollector?.on("collect", async (sel: StringSelectMenuInteraction) => {
       await sel.deferUpdate();
-      const fb = FIELD_BOSSES.find(b => b.id === sel.values[0]);
+      const fb = ALL_FIELD_BOSSES.find(b => b.id === sel.values[0]);
       if (!fb) { await sel.editReply({ content: "Boss not found.", components: [], embeds: [] }); return; }
+
+      if ((fb.unlockWorldLevel ?? 0) > user.worldLevel) {
+        releaseLock(interaction.user.id);
+        await sel.editReply({
+          embeds: [new EmbedBuilder().setColor(0xFF4F6D)
+            .setDescription(`◈ **${fb.name}** requires **World Level ${fb.unlockWorldLevel}**. You are WL${user.worldLevel}.`)
+            .setFooter({ text: "CARTETHYIA  ·  Field Boss" })],
+          components: [],
+        });
+        return;
+      }
 
       // Aura check
       const freshAura = computeAura(user.resonanceAura ?? 5, user.auraUpdatedAt ?? new Date(), getMaxAura(user.patronTier ?? 0));
