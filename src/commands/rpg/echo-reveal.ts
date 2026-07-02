@@ -45,10 +45,13 @@ export async function execute(interaction: ChatInputCommandInteraction) {
 
   const color = ELEMENT_COLORS[dbUser.element as Element];
 
-  // Only echoes with sealed substats
+  // Only echoes with sealed substats. isEquipped sorts first so equipped
+  // echoes always land in the visible 25 — otherwise a big unrevealed
+  // inventory can crowd out the (usually few) equipped ones you actually
+  // want to reveal.
   const echoes = await prisma.echo.findMany({
     where:   { userId: interaction.user.id },
-    orderBy: [{ rarity: "desc" }, { createdAt: "desc" }],
+    orderBy: [{ isEquipped: "desc" }, { rarity: "desc" }, { createdAt: "desc" }],
   });
 
   const revealable = echoes.filter(e => e.revealedSubstats < substatCount(e.rarity));
@@ -68,7 +71,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
     const sealed    = total - e.revealedSubstats;
     const mainLabel = MAIN_STAT_LABELS[e.mainStatType] ?? e.mainStatType;
     return {
-      label:       `${e.name}  ${RARITY_STARS[e.rarity]}  (${sealed} sealed)`,
+      label:       `${e.name}  ${RARITY_STARS[e.rarity]}  (${sealed} sealed)${e.isEquipped ? "  · EQUIPPED" : ""}`,
       description: `Main: ${mainLabel}  ·  ${ELEMENT_EMOJI[e.element as Element]} ${e.element}`,
       value:       e.id,
     };

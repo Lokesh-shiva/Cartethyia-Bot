@@ -69,7 +69,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
 
   const echoes = await prisma.echo.findMany({
     where:   { userId: interaction.user.id },
-    orderBy: [{ rarity: "desc" }, { createdAt: "desc" }],
+    orderBy: [{ isEquipped: "desc" }, { rarity: "desc" }, { createdAt: "desc" }],
   });
 
   const rerollable = echoes.filter(e => e.revealedSubstats > 0);
@@ -89,7 +89,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
     const locked     = [1,2,3,4,5].filter(i => e[`substat${i}Locked` as keyof typeof e]).length;
     const mainLabel  = MAIN_STAT_LABELS[e.mainStatType] ?? e.mainStatType;
     return {
-      label:       `${e.name}  ${RARITY_STARS[e.rarity]}  (${locked} locked)`,
+      label:       `${e.name}  ${RARITY_STARS[e.rarity]}  (${locked} locked)${e.isEquipped ? "  · EQUIPPED" : ""}`,
       description: `Main: ${mainLabel}  ·  ${ELEMENT_EMOJI[e.element as Element]} ${e.element}`,
       value:       e.id,
     };
