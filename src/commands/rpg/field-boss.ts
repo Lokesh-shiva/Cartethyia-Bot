@@ -546,7 +546,7 @@ const command: Command = {
               const molten = moltenBuildupOnBossTurn(bossMechState, interrupted);
               if (molten.erupted) {
                 bossDmg = Math.floor(bossDmg * (1 + molten.bonusDmgMult));
-                state.lastMove = (state.lastMove ?? "") + `\n🔥 **Molten Eruption** — the buildup releases in a devastating burst!`;
+                state.lastMove = (state.lastMove ?? "") + `\n🔥 **Molten Eruption** — the buildup releases in a devastating burst! (+75% DMG)`;
               }
             }
             bossDmg       = roll4pcBlock(bonuses, bossDmg);

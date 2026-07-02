@@ -25,14 +25,20 @@ export function initFieldBossMechanicState(): FieldBossMechanicState {
 }
 
 // ── Cinderbound Colossus — Molten Buildup ──────────────────────────────────
-// Builds a stack each boss turn (max 4). Using Skill/Ultimate that round knocks
-// 2 stacks off (an "interrupt"). At 4 stacks, the boss's move gets +75% bonus
-// damage and stacks reset.
+// Builds a stack each boss turn (max 4). Using Skill/Ultimate that round fully
+// vents the buildup (an "interrupt"). At 4 stacks, the boss's move gets +75%
+// bonus damage and stacks reset.
 export function moltenBuildupOnBossTurn(
   state: FieldBossMechanicState, interrupted: boolean,
 ): { bonusDmgMult: number; erupted: boolean } {
   if (interrupted) {
-    state.moltenStacks = Math.max(0, state.moltenStacks - 2);
+    // Full vent, not a partial reduction: with Skill's 3-turn cooldown and a 4-turn
+    // buildup, a partial reduction (e.g. -2) still lets the boss rebuild to eruption
+    // faster than Skill comes off cooldown again, making the "interrupt" counterplay
+    // nearly unusable in practice (players don't see the boss's exact stack count).
+    // A full reset gives clean, learnable counterplay: interrupt at least once every
+    // 4 rounds and the eruption never happens.
+    state.moltenStacks = 0;
     return { bonusDmgMult: 0, erupted: false };
   }
   state.moltenStacks = Math.min(4, state.moltenStacks + 1);
