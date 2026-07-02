@@ -401,7 +401,7 @@ const command: Command = {
             dmg        = Math.floor(dmg * elemWindstrideMult(bonuses.elementPassive, state.turn, "SKILL"));
             if (bonuses.activeNamedSetId === "SMOLDERING_SOVEREIGN") {
               const sov = smolderingSovereignOnSkill(namedState);
-              if (sov.doubleHit) dmg = Math.floor(dmg * (1 + sov.bonusMult) * 2);
+              if (sov.doubleHit) dmg = Math.floor(dmg * sov.bonusMult * 2);
             }
             const ar_s = applyAbilityAttack(bonuses, dmg, crit, { ...abilCtxBase, moveType: "SKILL" });
             dmg        = ar_s.dmg;
