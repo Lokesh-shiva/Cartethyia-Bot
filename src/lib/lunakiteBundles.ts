@@ -17,7 +17,7 @@ export interface LunakiteBundle {
 
 export const LUNAKITE_BUNDLES: Record<string, LunakiteBundle> = {
   starter: {
-    id: "starter", name: "Starter Pack", price: "$2", emoji: "🔹",
+    id: "starter", name: "Starter Pack", price: "$3.5", emoji: "🔹",
     desc: "A small boost to get going.",
     rewards: { lunakite: 3, auraPrisms: 1, fractonite: 100 },
   },
