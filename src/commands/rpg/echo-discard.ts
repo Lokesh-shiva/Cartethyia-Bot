@@ -11,7 +11,7 @@ import { invalidateBonusCache } from "../../lib/setBonus";
 import {
   ELEMENT_COLORS, ELEMENT_EMOJI, RARITY_STARS, echoDismantleValue,
 } from "../../lib/echoes";
-import { CE } from "../../lib/emojiManager";
+import { CE, echoEmojiResolvable } from "../../lib/emojiManager";
 import { Element } from "@prisma/client";
 
 const MAX_SELECTABLE = 25; // Discord select-menu option cap
@@ -120,6 +120,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
             description: `${ELEMENT_EMOJI[e.element as Element]} ${e.element}  ·  worth ${echoDismantleValue(e.rarity, e.level)} ${CE.tm}`,
             value:       e.id,
             default:     kept.has(e.id),
+            emoji:       echoEmojiResolvable(e.name, ELEMENT_EMOJI[e.element as Element]),
           })))
       );
       const btnRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
@@ -206,6 +207,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
       label:       `${e.name}  ${RARITY_STARS[e.rarity]}  Lv${e.level}  (${e.cost}-cost)`,
       description: `Dismantle for ${value} ${CE.tm} Tuning Modules`,
       value:       e.id,
+      emoji:       echoEmojiResolvable(e.name, ELEMENT_EMOJI[e.element as Element]),
     };
   });
 

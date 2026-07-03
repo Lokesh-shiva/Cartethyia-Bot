@@ -9,6 +9,7 @@ import { ELEMENT_COLORS, ELEMENT_EMOJI, RARITY_STARS, MAIN_STAT_LABELS, calcMain
 import { Element } from "@prisma/client";
 import { generateEchoCard, echoRowToCard } from "../../lib/echoCard";
 import { NAMED_SETS, NAMED_SET_DESCRIPTIONS, NamedSetId } from "../../lib/namedSets";
+import { echoEmojiResolvable } from "../../lib/emojiManager";
 
 export const data = new SlashCommandBuilder()
   .setName("echo")
@@ -119,6 +120,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
       label:       `${e.isLocked ? "🔒 " : ""}${e.name}  ${RARITY_STARS[e.rarity]}  Lv${e.level}${e.isEquipped ? "  ← equipped" : ""}`,
       description: `${set ? `✦ ${set}  ·  ` : ""}${e.cost}-cost · ${mainLabel}: ${formatStatValue(e.mainStatType, mainVal)}${bestSub}`.slice(0, 100),
       value:       e.id,
+      emoji:       echoEmojiResolvable(e.name, ELEMENT_EMOJI[e.element as Element]),
     };
   });
 

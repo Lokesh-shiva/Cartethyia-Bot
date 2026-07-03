@@ -126,6 +126,18 @@ export function getEmoji(key: string, fallback = ""): string {
   return emojiCache.get(key) ?? fallback;
 }
 
+/**
+ * Resolvable form of echoEmoji() for use with StringSelectMenuOptionBuilder /
+ * select-option `emoji` fields — returns { id, name } for a registered custom
+ * echo icon (1/3-cost), or the plain unicode fallback string otherwise (e.g.
+ * 4-cost boss echoes, which have no registered icon since they show full art
+ * on their own card instead).
+ */
+export function echoEmojiResolvable(name: string, fallback: string): { id: string; name: string } | string {
+  const key = ECHO_EMOJI_MAP[name];
+  return key ? getEmojiResolvable(key, fallback) : fallback;
+}
+
 /** Whether emojis are loaded and usable */
 export function emojisReady(): boolean {
   return emojiCache.size > 0;

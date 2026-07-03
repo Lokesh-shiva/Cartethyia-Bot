@@ -139,7 +139,6 @@ export function buildRewardText(rewards: Record<string, number>): string {
   if (rewards.stasisLocks)      lines.push(`${CE.sl} ${rewards.stasisLocks} Stasis Lock${rewards.stasisLocks !== 1 ? "s" : ""}`);
   if (rewards.resonanceRecords) lines.push(`${CE.rr} ${rewards.resonanceRecords} Resonance Records`);
   if (rewards.fractonite)       lines.push(`${CE.ft} ${rewards.fractonite} Fractonite`);
-  if (rewards.fractonite)       lines.push(`${CE.ft} ${rewards.fractonite} Fractonite`);
   if (rewards.fractureKeys)     lines.push(`${CE.fk} ${rewards.fractureKeys} Fracture Keys`);
   if (rewards.resonanceExp)     lines.push(`✨ ${rewards.resonanceExp} EXP`);
   return lines.join("  ·  ") || "Nothing";

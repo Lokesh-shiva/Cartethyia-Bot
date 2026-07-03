@@ -104,7 +104,8 @@ export async function execute(interaction: ChatInputCommandInteraction) {
       ? subs.slice(0, 3).map(([t, v]) => `${SUBSTAT_LABELS[t] ?? t} ${formatStatValue(t, calcSubstatValue(t, v, e.level))}`).join("  ·  ")
       : "*substats unrevealed*";
     const setInfo = e.setId ? NAMED_SETS[e.setId as NamedSetId] : null;
-    return `**${slotName}** ·  ${ELEMENT_EMOJI[e.element as Element]} **${e.name}**${setInfo ? `  ·  ✦ ${setInfo.name}` : ""}${e.isLocked ? "  · 🔒" : ""}  ${RARITY_STARS[e.rarity]}  Lv${e.level}  (${e.cost}-cost)\n  \`${mainLabel}: ${formatStatValue(e.mainStatType, mainVal)}\`  ·  ${subLine}`;
+    const icon    = echoEmoji(e.name, ELEMENT_EMOJI[e.element as Element]);
+    return `**${slotName}** ·  ${icon} **${e.name}**${setInfo ? `  ·  ✦ ${setInfo.name}` : ""}${e.isLocked ? "  · 🔒" : ""}  ${RARITY_STARS[e.rarity]}  Lv${e.level}  (${e.cost}-cost)\n  \`${mainLabel}: ${formatStatValue(e.mainStatType, mainVal)}\`  ·  ${subLine}`;
   }).join("\n");
 
   // Full active bonus text for the embed (canvas may wrap long lines)

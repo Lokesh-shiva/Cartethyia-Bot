@@ -7,6 +7,7 @@ import prisma from "../../lib/prisma";
 import { replyNotStarted } from "../../lib/economy";
 import { ELEMENT_COLORS, ELEMENT_EMOJI, RARITY_STARS } from "../../lib/echoes";
 import { NAMED_SETS, NamedSetId } from "../../lib/namedSets";
+import { echoEmojiResolvable } from "../../lib/emojiManager";
 import { Element } from "@prisma/client";
 
 export const data = new SlashCommandBuilder()
@@ -41,6 +42,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
       label:       `${e.isLocked ? "🔒" : "🔓"} ${e.name}  ${RARITY_STARS[e.rarity]}  Lv${e.level}${e.isEquipped ? "  · EQUIPPED" : ""}`,
       description: `${setInfo ? `✦ ${setInfo.name}` : e.element}  ·  ${e.cost}-cost  ·  ${e.isLocked ? "Locked — select to unlock" : "Unlocked — select to lock"}`,
       value:       e.id,
+      emoji:       echoEmojiResolvable(e.name, ELEMENT_EMOJI[e.element as Element]),
     };
   });
 

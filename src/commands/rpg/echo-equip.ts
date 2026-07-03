@@ -13,6 +13,7 @@ import {
 import { Element } from "@prisma/client";
 import { invalidateBonusCache } from "../../lib/setBonus";
 import { NAMED_SETS, NamedSetId } from "../../lib/namedSets";
+import { echoEmoji, echoEmojiResolvable } from "../../lib/emojiManager";
 
 export const data = new SlashCommandBuilder()
   .setName("echo-equip")
@@ -64,7 +65,8 @@ function echoBlock(e: any | null, label: string): string {
   const lines: string[] = [];
   lines.push(`**${label}**`);
   const setInfo = e.setId ? NAMED_SETS[e.setId as NamedSetId] : null;
-  lines.push(`**${e.name}**  ${RARITY_STARS[e.rarity]}${setInfo ? `  ·  ✦ ${setInfo.name}` : ""}`);
+  const icon = echoEmoji(e.name, ELEMENT_EMOJI[e.element as Element]);
+  lines.push(`${icon} **${e.name}**  ${RARITY_STARS[e.rarity]}${setInfo ? `  ·  ✦ ${setInfo.name}` : ""}`);
   lines.push(`Lv${e.level}  ·  ${e.cost}-cost  ·  ${ELEMENT_EMOJI[e.element as Element]} ${e.element}`);
 
   const mainVal = calcMainStatValue(e.mainStatType, e.level, e.rarity);
@@ -141,7 +143,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
 
   // ── Build select menu ─────────────────────────────────────────────────────
   const buildSelectMenu = () => {
-    const opts: { label: string; description: string; value: string; emoji?: string }[] = [];
+    const opts: { label: string; description: string; value: string; emoji?: any }[] = [];
 
     if (currentEcho) {
       opts.push({
@@ -165,6 +167,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
         label:       `${e.name}  ${RARITY_STARS[e.rarity]}  Lv${e.level}  (${e.cost}-cost)${overBudget ? "  ⚠" : ""}`,
         description: `${setInfo ? `✦ ${setInfo.name}  ·  ` : ""}${mainLabel}: ${formatStatValue(e.mainStatType, mainVal)}  ·  ${ELEMENT_EMOJI[e.element as Element]} ${e.element}${overBudget ? "  — would exceed 12pt" : ""}`.slice(0, 100),
         value:       e.id,
+        emoji:       echoEmojiResolvable(e.name, ELEMENT_EMOJI[e.element as Element]),
       });
     }
 
@@ -177,7 +180,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
       );
 
     for (const o of opts) {
-      menu.addOptions({ label: o.label, description: o.description, value: o.value });
+      menu.addOptions({ label: o.label, description: o.description, value: o.value, emoji: o.emoji });
     }
 
     return { menu, hasMore, shownCount: shown.length, totalCount: unequipped.length };

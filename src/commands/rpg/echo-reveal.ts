@@ -10,7 +10,7 @@ import {
   MAIN_STAT_LABELS, SUBSTAT_LABELS, formatStatValue, substatCount, calcSubstatValue,
 } from "../../lib/echoes";
 import { generateEchoCard, echoRowToCard } from "../../lib/echoCard";
-import { CE } from "../../lib/emojiManager";
+import { CE, echoEmojiResolvable } from "../../lib/emojiManager";
 import { AttachmentBuilder } from "discord.js";
 import { Element } from "@prisma/client";
 
@@ -74,6 +74,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
       label:       `${e.name}  ${RARITY_STARS[e.rarity]}  (${sealed} sealed)${e.isEquipped ? "  · EQUIPPED" : ""}`,
       description: `Main: ${mainLabel}  ·  ${ELEMENT_EMOJI[e.element as Element]} ${e.element}`,
       value:       e.id,
+      emoji:       echoEmojiResolvable(e.name, ELEMENT_EMOJI[e.element as Element]),
     };
   });
 

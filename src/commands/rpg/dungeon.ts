@@ -27,7 +27,7 @@ import { acquireLock, releaseLock, alreadyInCombatMsg } from "../../lib/combatLo
 import { registerFight, clearFight } from "../../lib/fightTracker";
 import { checkLevelUp } from "../../lib/progression";
 import { computeAura, consumeAura, auraBar, fmtAuraRegen, getMaxAura } from "../../lib/aura";
-import { CE } from "../../lib/emojiManager";
+import { CE, echoEmoji } from "../../lib/emojiManager";
 import { trackEvolutionProgress } from "../../lib/abilityEvolution";
 import { incrementWeaponBond } from "../../lib/weaponAwakening";
 
@@ -827,7 +827,7 @@ async function grantRewards(
         echoData[`substat${idx + 1}Value`] = rollSubstatValue(s);
       });
       echoPayloads.push(echoData);
-      echoLines.push(`${elementEmoji(element)} **${echoName}**  ${RARITY_STARS[rarity]}  (${cost}-cost)`);
+      echoLines.push(`${echoEmoji(echoName, elementEmoji(element))} **${echoName}**  ${RARITY_STARS[rarity]}  (${cost}-cost)`);
     }
   }
 

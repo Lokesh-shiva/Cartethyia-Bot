@@ -13,7 +13,7 @@ import {
   maxEchoLevel, formatStatValue, substatCount,
 } from "../../lib/echoes";
 import { generateEchoCard, echoRowToCard } from "../../lib/echoCard";
-import { CE } from "../../lib/emojiManager";
+import { CE, echoEmojiResolvable } from "../../lib/emojiManager";
 import { Element } from "@prisma/client";
 
 const REVEAL_MILESTONES = [5, 10, 15, 20, 25];
@@ -72,6 +72,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
       label:       `${e.name}  ${RARITY_STARS[e.rarity]}  Lv${e.level}/${maxLvl}  (${cost} TM next)${canAfford ? "" : "  ✗"}`,
       description: `Main: ${mainLabel}  ·  ${ELEMENT_EMOJI[e.element as Element]} ${e.element}${e.isEquipped ? "  · EQUIPPED" : ""}`,
       value:       e.id,
+      emoji:       echoEmojiResolvable(e.name, ELEMENT_EMOJI[e.element as Element]),
     };
   });
 
