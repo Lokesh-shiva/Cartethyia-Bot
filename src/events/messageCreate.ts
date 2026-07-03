@@ -43,7 +43,7 @@ export async function execute(message: Message) {
           if (allowed.size > 0 && !allowed.has(message.channelId)) return;
         }
 
-        const fakeInteraction = buildPrefixInteraction(message, cmd, rest);
+        const fakeInteraction = buildPrefixInteraction(message, cmd, rest, command.data);
         try {
           await command.execute(fakeInteraction as any);
         } catch (err) {
@@ -155,7 +155,22 @@ export async function execute(message: Message) {
 //   c!dungeon type:echo-dungeon     ← named: getString("type") → "echo-dungeon"
 //   c!echo-equip slot:3 cost:3      ← named: getInteger("slot") → 3
 //
-function buildPrefixInteraction(message: Message, commandName: string, rawArgs: string[]) {
+function buildPrefixInteraction(message: Message, commandName: string, rawArgs: string[], commandData?: any) {
+  // Options declared with .addChoices(...) in the real slash command — the actual
+  // Discord UI can never send anything outside these, but free-text prefix args
+  // can. Build a lookup so getString/getInteger/getNumber can reject garbage
+  // (e.g. "c!echo lock" feeding the literal string "lock" into an `Element` enum
+  // filter) instead of passing it straight through to a Prisma query and crashing.
+  let choicesByOption: Record<string, Set<string | number>> | null = null;
+  try {
+    const opts = commandData?.toJSON?.()?.options ?? [];
+    for (const opt of opts) {
+      if (Array.isArray(opt?.choices) && opt.choices.length > 0) {
+        (choicesByOption ??= {})[opt.name] = new Set(opt.choices.map((c: any) => c.value));
+      }
+    }
+  } catch { /* commandData not in the expected shape — skip validation, same as before */ }
+
   // Separate named args (key:value) from positional args
   const named: Record<string, string> = {};
   const positional: string[] = [];
@@ -226,21 +241,32 @@ function buildPrefixInteraction(message: Message, commandName: string, rawArgs: 
       // Subcommand group: not used in prefix context
       getSubcommandGroup: (_required?: boolean): string | null => null,
 
-      getString: (name: string, _req?: boolean): string | null =>
-        getNamedOrPos(name),
+      getString: (name: string, _req?: boolean): string | null => {
+        const v = getNamedOrPos(name);
+        if (v === null) return null;
+        const choices = choicesByOption?.[name];
+        if (choices && !choices.has(v)) return null;
+        return v;
+      },
 
       getInteger: (name: string, _req?: boolean): number | null => {
         const v = getNamedOrPos(name);
         if (v === null) return null;
         const n = parseInt(v, 10);
-        return isNaN(n) ? null : n;
+        if (isNaN(n)) return null;
+        const choices = choicesByOption?.[name];
+        if (choices && !choices.has(n)) return null;
+        return n;
       },
 
       getNumber: (name: string, _req?: boolean): number | null => {
         const v = getNamedOrPos(name);
         if (v === null) return null;
         const n = parseFloat(v);
-        return isNaN(n) ? null : n;
+        if (isNaN(n)) return null;
+        const choices = choicesByOption?.[name];
+        if (choices && !choices.has(n)) return null;
+        return n;
       },
 
       getBoolean: (name: string, _req?: boolean): boolean | null => {
