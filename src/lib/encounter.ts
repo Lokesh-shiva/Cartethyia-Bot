@@ -352,11 +352,12 @@ export async function handleEncounterFight(
   const stats   = applyBonuses(dbUser, bonuses);
   let secondWindUsed = false;
 
-  // Scale enemy to the fighter's progression + gear (lighter gear weight — encounters stay quick)
+  // Scale enemy to the fighter's progression + gear (still lighter than dedicated boss
+  // fights, but bumped 2026-07-03 — chat encounters were reported as trivially easy)
   const gearRatio = stats.atk / baselineAtk(dbUser.level);
   const gs = gearAwareScale(
     { hp: enc.enemy.hp, atk: enc.enemy.atk, def: enc.enemy.def },
-    dbUser.level, dbUser.worldLevel, gearRatio, 0.5, 0.40,
+    dbUser.level, dbUser.worldLevel, gearRatio, 0.65, 0.55,
   );
   const scaledEnemy = { ...enc.enemy, hp: gs.hp, atk: gs.atk, def: gs.def };
   const boss    = echoToBoss(scaledEnemy);

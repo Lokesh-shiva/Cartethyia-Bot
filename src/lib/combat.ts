@@ -107,20 +107,23 @@ export function baselineAtk(level: number): number {
 export function gearAwareScale(
   base: { hp: number; atk: number; def: number },
   playerLevel: number, worldLevel: number, gearRatio: number,
-  levelWeight = 0.50, gearWeight = 0.75,
+  levelWeight = 0.65, gearWeight = 1.0,
 ): { hp: number; atk: number; def: number } {
   // Boss base stats already grow with WL — these multipliers are a NUDGE on top,
   // not the progression itself. Every axis is hard-capped: uncapped, the stacked
   // level × WL × gear terms reached ~30× ATK at WL5+ (one-shot territory) while
   // boss HP ballooned past 300k and DEF erased the player's flat damage.
-  const levelScale    = Math.min(1 + (playerLevel / 20) * levelWeight + worldLevel * 0.22, 2.2);
-  const cappedHpRatio = Math.min(gearRatio, 2.0);
+  // 2026-07-03 difficulty pass: caps + defaults raised ~35-40% — accumulated player
+  // power (named sets, evolved abilities, awakened weapons) had outpaced the original
+  // ceilings, making ascend/boss/encounters trivial to clear.
+  const levelScale    = Math.min(1 + (playerLevel / 20) * levelWeight + worldLevel * 0.22, 3.0);
+  const cappedHpRatio = Math.min(gearRatio, 2.7);
   const hpGearScale   = 1 + Math.max(0, cappedHpRatio - 1) * gearWeight;
-  const cappedAtkRatio = Math.min(gearRatio, 2.5);
+  const cappedAtkRatio = Math.min(gearRatio, 3.4);
   const atkGearScale  = 1 + Math.max(0, cappedAtkRatio - 1) * 0.40; // boss hits harder vs geared players
-  const hpScale  = Math.min(levelScale * hpGearScale, 2.0);
-  const atkScale = Math.min(levelScale * (1 + worldLevel * 0.12) * atkGearScale, 1.7);
-  const defScale = Math.min(levelScale, 1.5);
+  const hpScale  = Math.min(levelScale * hpGearScale, 2.8);
+  const atkScale = Math.min(levelScale * (1 + worldLevel * 0.12) * atkGearScale, 2.4);
+  const defScale = Math.min(levelScale, 2.0);
   return {
     hp:  Math.max(1, Math.floor(base.hp  * hpScale)),
     atk: Math.max(1, Math.floor(base.atk * atkScale)),

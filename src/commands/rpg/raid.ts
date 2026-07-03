@@ -117,11 +117,14 @@ function computeRaidBossStats(
   // 2026-07-02 balance pass: multiplied by 1.35 (raids should hit noticeably harder
   // than a solo /field-boss fight — this is on top of boss.baseHp already being
   // +20% higher project-wide).
+  // 2026-07-03 difficulty pass: another ×1.37 on top (players reported raids/bosses
+  // as too easy — accumulated power from named sets/evolved abilities/awakened
+  // weapons had outpaced these targets since they were last tuned).
   // Floor = base * party-size factor * gear multiplier so high-ATK squads face proportionally
   // more HP even when the base would otherwise dominate (prevents HP flatline at WL5+).
-  const targetHp  = Math.floor(totalAtk * 2.2 * 28 * 0.80 * 1.35);
-  const gearMult2 = Math.min(2.5, Math.sqrt(avgAtk / 300));
-  const floorHp   = Math.floor(boss.baseHp * (1 + n * 0.25) * gearMult2);
+  const targetHp  = Math.floor(totalAtk * 2.2 * 28 * 0.80 * 1.35 * 1.37);
+  const gearMult2 = Math.min(3.4, Math.sqrt(avgAtk / 300));
+  const floorHp   = Math.floor(boss.baseHp * (1 + n * 0.34) * gearMult2);
   const bossHp    = Math.max(floorHp, targetHp);
 
   // ── ATK ─────────────────────────────────────────────────────────────────────
@@ -133,7 +136,8 @@ function computeRaidBossStats(
   // Solve: 0.15 * avgHp = baseAtk * 0.6  →  baseAtk ≈ avgHp * 0.25
   // 2026-07-02 balance pass: bumped 0.25 → 0.34 (+36%) so raid boss hits land
   // meaningfully harder than the equivalent solo field-boss fight.
-  const targetAtk = Math.floor(avgHp * 0.34);
+  // 2026-07-03 difficulty pass: bumped again 0.34 → 0.46 (+35%).
+  const targetAtk = Math.floor(avgHp * 0.46);
   const bossAtk   = Math.max(boss.baseAtk, targetAtk);
 
   // ── DEF ─────────────────────────────────────────────────────────────────────
@@ -141,7 +145,8 @@ function computeRaidBossStats(
   // not impenetrable). At avgAtk=300 it stays near boss base. Scales with sqrt.
   // 2026-07-02 balance pass: floor raised 1.0 → 1.15 so raid bosses never dip
   // below a modest DEF baseline even for low-gear parties.
-  const gearMult = Math.max(1.15, Math.sqrt(avgAtk / 300));
+  // 2026-07-03 difficulty pass: floor raised 1.15 → 1.55.
+  const gearMult = Math.max(1.55, Math.sqrt(avgAtk / 300));
   const bossDef  = Math.floor(boss.baseDef * gearMult);
 
   return { hp: Math.floor(bossHp), atk: Math.floor(bossAtk), def: Math.floor(bossDef) };
