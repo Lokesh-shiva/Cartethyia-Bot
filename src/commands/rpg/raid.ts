@@ -28,6 +28,7 @@ import {
   voidbornRemnantOnShatter, voidbornRemnantCheckFrenzy, voidbornRemnantFrenzyActive,
   radiantConvergenceOnTurnHeal, radiantConvergenceOnHitTaken, radiantConvergenceOnCrit, radiantConvergenceCheckBurstHeal,
 } from "../../lib/namedSets";
+import { echoSkillBaseMult, applyEchoSkill } from "../../lib/echoSkills";
 import { incrementWeaponBond }    from "../../lib/weaponAwakening";
 import { generateRaidCard }       from "../../lib/versusCard";
 import { isOwner }                from "../../lib/owner";
@@ -187,6 +188,8 @@ interface RaidParticipant {
   havocFrenzyAtkMult:    number;
   havocFrenzyLifesteal:  number;
   havocFrenzyDefIgnore:  number;
+  echoSkillCd:           number;
+  nextCritArmed:         boolean;
 }
 
 interface ActiveRaid {
@@ -199,6 +202,8 @@ interface ActiveRaid {
   bossVibMax:    number;
   isShattered:   boolean;
   shatterLeft:   number;
+  bossDefShredTurnsLeft: number; // Permafrost Sovereign echo skill — shared, since the boss is a single shared target
+  bossDefShredPct:       number;
   phase:         "RECRUITING" | "FIGHTING";
   participants:  RaidParticipant[];
   currentIdx:    number;
@@ -267,16 +272,27 @@ function raidEmbed(raid: ActiveRaid, boss: RaidBossConfig, lastAction: string): 
 }
 
 function buildRaidButtons(p: RaidParticipant): ActionRowBuilder<ButtonBuilder> {
-  return new ActionRowBuilder<ButtonBuilder>().addComponents(
+  const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
     new ButtonBuilder().setCustomId("raid_basic").setLabel("⚔️  Basic Attack").setStyle(ButtonStyle.Primary),
     new ButtonBuilder().setCustomId("raid_skill")
       .setLabel(p.skillCd === 0 ? "✦  Skill" : `✦  Skill (${p.skillCd}🔄)`)
       .setStyle(ButtonStyle.Secondary).setDisabled(p.skillCd > 0),
     new ButtonBuilder().setCustomId("raid_ultimate")
       .setLabel("⚡  Ultimate").setStyle(ButtonStyle.Success).setDisabled(p.energy < 100),
+  );
+  if (p.bonuses.echoSkill) {
+    const echoReady = p.echoSkillCd === 0;
+    row.addComponents(
+      new ButtonBuilder().setCustomId("raid_echoskill")
+        .setLabel(echoReady ? `🌀  ${p.bonuses.echoSkill.name}` : `🌀  ${p.bonuses.echoSkill.name} (${p.echoSkillCd}🔄)`)
+        .setStyle(ButtonStyle.Secondary).setDisabled(!echoReady),
+    );
+  }
+  row.addComponents(
     new ButtonBuilder().setCustomId("raid_retreat")
       .setLabel("↩  Retreat").setStyle(ButtonStyle.Danger),
   );
+  return row;
 }
 
 function nextParticipant(raid: ActiveRaid): RaidParticipant | null {
@@ -375,6 +391,8 @@ async function startRaid(interaction: ChatInputCommandInteraction) {
     bossVibMax:   boss.vibBar,
     isShattered:  false,
     shatterLeft:  0,
+    bossDefShredTurnsLeft: 0,
+    bossDefShredPct:       0,
     phase:        "RECRUITING",
     participants: [],
     currentIdx:   0,
@@ -485,6 +503,7 @@ async function addParticipant(raid: ActiveRaid, userId: string, displayName: str
     glacioShieldTurnsLeft: 0, glacioShieldElemBonus: 0,
     stormBuffTurnsLeft: 0, stormBuffCritBonus: 0,
     havocFrenzyAtkMult: 1.0, havocFrenzyLifesteal: 0, havocFrenzyDefIgnore: 0,
+    echoSkillCd: 0, nextCritArmed: false,
   });
   return true;
 }
@@ -776,13 +795,15 @@ async function launchRaid(
       const havocLifesteal = havocFrenzyActive ? current.havocFrenzyLifesteal : 0;
       const havocDefIgnore = havocFrenzyActive ? current.havocFrenzyDefIgnore : 0;
       // Use the live raid.bossDef; zero when shattered
-      const defVal    = raid.isShattered ? 0 : raid.bossDef * (1 - havocDefIgnore);
+      const defShredActive = raid.bossDefShredTurnsLeft > 0;
+      const defVal    = raid.isShattered ? 0 : raid.bossDef * (1 - havocDefIgnore) * (defShredActive ? (1 - raid.bossDefShredPct) : 1);
       const extraElemBonus = current.glacioShieldTurnsLeft > 0 ? current.glacioShieldElemBonus : 0;
       const radCrit   = elemRadianceCrit(current.bonuses.elementPassive, current.hp, current.hpMax);
       const stormCritBuff = current.stormBuffTurnsLeft > 0 ? current.stormBuffCritBonus : 0;
       const aCrit     = abilityCritRate(current.bonuses, Math.min(1, current.critRate + radCrit + stormCritBuff), current.hp, current.hpMax);
       const vibMult   = abilityVib(current.bonuses);
       const bossHpPct = raid.bossHp / raid.bossHpMax;
+      const forcedCritActive = current.nextCritArmed && btn.customId !== "raid_retreat";
 
       let radiantDmgMult = 1.0;
       if (mySetId === "RADIANT_CONVERGENCE") {
@@ -805,7 +826,7 @@ async function launchRaid(
         const windExplosion = mySetId === "WINDSTRIDERS_LEGACY"
           ? windstridersLegacyCheckExplosion(current.namedState) : { proc: false, guaranteedCrit: false, bonusMult: 1.0 };
         const smolderMult = mySetId === "SMOLDERING_SOVEREIGN" ? smolderingSovereignOnAction(current.namedState) : 1;
-        const forcedCrit = windExplosion.guaranteedCrit;
+        const forcedCrit = forcedCritActive || windExplosion.guaranteedCrit;
         const r    = calcPlayerDamage(current.atk * smolderMult * havocAtkMult, defVal, forcedCrit ? 1 : aCrit, current.critDmg, 1.0, isWeak, raid.isShattered);
         let base   = Math.floor(r.damage * (1 + current.elemDmg + extraElemBonus) * radiantDmgMult);
         base       = Math.floor(base * elemWindstrideMult(current.bonuses.elementPassive, raid.turn, "BASIC"));
@@ -828,7 +849,7 @@ async function launchRaid(
 
       } else if (btn.customId === "raid_skill") {
         const smolderMult = mySetId === "SMOLDERING_SOVEREIGN" ? smolderingSovereignOnAction(current.namedState) : 1;
-        const r    = calcPlayerDamage(current.atk * smolderMult * havocAtkMult, defVal, Math.min(1, aCrit + 0.1), current.critDmg, 1.8, isWeak, raid.isShattered);
+        const r    = calcPlayerDamage(current.atk * smolderMult * havocAtkMult, defVal, forcedCritActive ? 1 : Math.min(1, aCrit + 0.1), current.critDmg, 1.8, isWeak, raid.isShattered);
         let base   = Math.floor(r.damage * (1 + current.elemDmg + extraElemBonus) * radiantDmgMult);
         base       = Math.floor(base * elemWindstrideMult(current.bonuses.elementPassive, raid.turn, "SKILL"));
         if (mySetId === "WINDSTRIDERS_LEGACY") base = Math.floor(base * windstridersLegacyOnHit(current.namedState));
@@ -857,7 +878,83 @@ async function launchRaid(
           current.stormBuffTurnsLeft = surge.turnsLeft + 1;
           current.stormBuffCritBonus = surge.critRateBonus;
         }
+      } else if (btn.customId === "raid_echoskill" && current.bonuses.echoSkill) {
+        const def = current.bonuses.echoSkill;
+        const echoCrit = forcedCritActive || def.kind === "GUARANTEED_CRIT" || Math.random() < aCrit;
+        isCrit = echoCrit; moveType = "SKILL"; vibFrac = 0.5;
+        const smolderMult = mySetId === "SMOLDERING_SOVEREIGN" ? smolderingSovereignOnAction(current.namedState) : 1;
+        const r = calcPlayerDamage(current.atk * smolderMult * havocAtkMult, defVal, echoCrit ? 1 : 0, current.critDmg, echoSkillBaseMult(), isWeak, raid.isShattered);
+        let base = Math.floor(r.damage * (1 + current.elemDmg + extraElemBonus) * radiantDmgMult);
+
+        const result = applyEchoSkill(def, {
+          atk: current.atk, enemyHp: raid.bossHp, enemyHpMax: raid.bossHpMax,
+          playerHp: current.hp, playerHpMax: current.hpMax,
+          playerEnergy: current.energy, turn: raid.turn, bossVibMax: raid.bossVibMax, crit: echoCrit,
+        });
+        base = Math.floor(base * result.dmgMult);
+        if (result.doubleHit) base *= 2;
+        if (result.noDamage) base = 0;
+
+        let namedTriggerTag = "";
+        if (def.kind === "NAMED_SET_TRIGGER" && mySetId === def.setId) {
+          switch (def.setId) {
+            case "SMOLDERING_SOVEREIGN":
+              current.namedState.fusionAtkStacks = 4; current.namedState.fusionSkillDoubleArmed = true;
+              namedTriggerTag = "ATK stacks maxed!";
+              break;
+            case "FROSTVEIL_BASTION":
+              if (!current.namedState.glacioShieldUsed) {
+                current.namedState.glacioShieldUsed = true;
+                const shieldAmt = Math.floor(current.hpMax * 0.28);
+                current.hp = Math.min(current.hpMax, current.hp + shieldAmt);
+                current.glacioShieldTurnsLeft = 5; current.glacioShieldElemBonus = 0.22;
+                namedTriggerTag = `+${shieldAmt} HP shield!`;
+              }
+              break;
+            case "STORMCALLERS_OATH":
+              current.namedState.electroThunderboltArmed = true;
+              namedTriggerTag = "Thunderbolt armed!";
+              break;
+            case "WINDSTRIDERS_LEGACY":
+              current.namedState.aeroWindstacks = 6;
+              namedTriggerTag = "Windstacks maxed!";
+              break;
+            case "VOIDBORN_REMNANT":
+              if (!current.namedState.havocFrenzyUsed) {
+                current.namedState.havocFrenzyUsed = true;
+                current.namedState.havocFrenzyTurnsLeft = 4;
+                current.havocFrenzyAtkMult = 1.25; current.havocFrenzyLifesteal = 0.15; current.havocFrenzyDefIgnore = 0.20;
+                namedTriggerTag = "Frenzy triggered!";
+              }
+              break;
+            case "RADIANT_CONVERGENCE":
+              current.namedState.spectroHealStacks = 5;
+              namedTriggerTag = "Heal-stacks maxed!";
+              break;
+          }
+        }
+
+        const ign = result.noDamage ? { dmg: 0, tag: "" } : elemIgniteProc(current.bonuses.elementPassive, current.atk);
+        damage = base + ign.dmg;
+        moveLine = `${current.name} — 🌀 ${def.name}${echoCrit ? " **(CRIT)**" : ""}${isWeak ? " **(WEAK)**" : ""}`;
+        if (namedTriggerTag) moveLine += `\n✦ ${namedTriggerTag}`;
+        if (ign.tag) moveLine += `  ✦${ign.tag}`;
+
+        const echoEnGain = ENERGY_PER_TURN + Math.floor(current.bonuses.spdFlat / 20) + elemDischargeEnergy(current.bonuses.elementPassive, echoCrit) + result.bonusEnergy;
+        current.echoSkillCd = (result.resetCdOnCrit && echoCrit) ? 0 : 4;
+        current.energy = result.setEnergyFull ? 100 : Math.min(100, current.energy + echoEnGain);
+        if (result.healHp > 0) current.hp = Math.min(current.hpMax, current.hp + result.healHp);
+        if (result.armsNextCrit) current.nextCritArmed = true;
+        if (result.defShredTurns > 0) {
+          raid.bossDefShredTurnsLeft = result.defShredTurns + 1;
+          raid.bossDefShredPct = result.defShredPct;
+        }
+        if (!result.noDamage) {
+          raid.bossVib = Math.max(0, raid.bossVib - result.extraVibDrain); // vibFrac-based drain applied below by the shared block
+        }
       }
+      const echoFlatLifesteal = (btn.customId === "raid_echoskill" && current.bonuses.echoSkill?.kind === "FLAT_LIFESTEAL")
+        ? current.bonuses.echoSkill.pct : 0;
 
       // Apply ability effects and element hooks (attack moves only)
       if (btn.customId !== "raid_retreat") {
@@ -868,7 +965,7 @@ async function launchRaid(
         damage = ar.dmg;
         if (ar.tag) moveLine += `  ✦${ar.tag}`;
         moveLine += ` — **${damage.toLocaleString()} DMG**`;
-        current.hp        = Math.min(current.hpMax, applyLifesteal(current.lifesteal + havocLifesteal, damage, current.hp, current.hpMax) + ar.healHp);
+        current.hp        = Math.min(current.hpMax, applyLifesteal(current.lifesteal + havocLifesteal + echoFlatLifesteal, damage, current.hp, current.hpMax) + ar.healHp);
         current.energy    = Math.min(100, current.energy + ar.bonusEnergy);
         current.firstAction = false;
         raid.bossVib       = Math.max(0, raid.bossVib - Math.floor(damage * vibFrac * vibMult));
@@ -981,6 +1078,9 @@ async function launchRaid(
       }
 
       if (current.skillCd > 0) current.skillCd--;
+      if (current.echoSkillCd > 0) current.echoSkillCd--;
+      if (raid.bossDefShredTurnsLeft > 0) raid.bossDefShredTurnsLeft--;
+      if (forcedCritActive) current.nextCritArmed = false;
 
       // All defeated?
       if (raid.participants.every(p => p.isDefeated)) {

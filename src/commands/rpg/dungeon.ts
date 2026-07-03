@@ -17,6 +17,7 @@ import {
   voidbornRemnantOnShatter, voidbornRemnantCheckFrenzy, voidbornRemnantFrenzyActive,
   radiantConvergenceOnTurnHeal, radiantConvergenceOnHitTaken, radiantConvergenceOnCrit, radiantConvergenceCheckBurstHeal,
 } from "../../lib/namedSets";
+import { echoSkillBaseMult, applyEchoSkill } from "../../lib/echoSkills";
 import { hpBar, energyBar, baselineAtk } from "../../lib/combat";
 import { voteNudge, supportNudge } from "../../lib/voteNudge";
 import { mailNudge } from "../../lib/mailNudge";
@@ -32,6 +33,7 @@ import { trackEvolutionProgress } from "../../lib/abilityEvolution";
 import { incrementWeaponBond } from "../../lib/weaponAwakening";
 
 const SKILL_CD     = 3;
+const ECHO_SKILL_COOLDOWN = 4;
 const TURN_TIMEOUT = 8 * 60 * 1000; // 8 min per turn
 
 // ── Active dungeon guard ──────────────────────────────────────────────────────
@@ -304,6 +306,10 @@ async function runDungeon(
   let havocFrenzyLifesteal  = 0;
   let havocFrenzyDefIgnore  = 0;
   let quickStrikeUsed       = false; // SPD-driven bonus action — once per dungeon run, not per wave
+  let echoSkillCooldown      = 0;
+  let enemyDefShredTurnsLeft = 0;
+  let enemyDefShredPct       = 0;
+  let nextAttackCritArmed    = false;
 
   for (let waveIdx = 0; waveIdx < dungeon.waves.length; waveIdx++) {
     const result = await runWave(
@@ -312,6 +318,7 @@ async function runDungeon(
         playerHp, playerHpMax, playerEnergy, skillCooldown, firstActionDone, firstSkillUsed, v2Stacks,
         namedState, glacioShieldTurnsLeft, glacioShieldElemBonus, stormBuffTurnsLeft, stormBuffCritBonus,
         havocFrenzyAtkMult, havocFrenzyLifesteal, havocFrenzyDefIgnore, quickStrikeUsed,
+        echoSkillCooldown, enemyDefShredTurnsLeft, enemyDefShredPct, nextAttackCritArmed,
       },
       displayName,
     );
@@ -349,6 +356,10 @@ async function runDungeon(
     havocFrenzyLifesteal  = result.havocFrenzyLifesteal;
     havocFrenzyDefIgnore  = result.havocFrenzyDefIgnore;
     quickStrikeUsed       = result.quickStrikeUsed;
+    echoSkillCooldown       = result.echoSkillCooldown;
+    enemyDefShredTurnsLeft  = result.enemyDefShredTurnsLeft;
+    enemyDefShredPct        = result.enemyDefShredPct;
+    nextAttackCritArmed     = result.nextAttackCritArmed;
 
     if (waveIdx < dungeon.waves.length - 1) {
       await thread.send({
@@ -386,6 +397,10 @@ interface WaveState {
   havocFrenzyLifesteal:  number;
   havocFrenzyDefIgnore:  number;
   quickStrikeUsed:       boolean;
+  echoSkillCooldown:     number;
+  enemyDefShredTurnsLeft: number;
+  enemyDefShredPct:       number;
+  nextAttackCritArmed:    boolean;
 }
 
 interface WaveResult extends WaveState {
@@ -456,15 +471,26 @@ async function runWave(
   }
 
   function buildButtons(): ActionRowBuilder<ButtonBuilder> {
-    return new ActionRowBuilder<ButtonBuilder>().addComponents(
+    const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
       new ButtonBuilder().setCustomId("dg_basic").setLabel("⚔️  Basic").setStyle(ButtonStyle.Primary),
       new ButtonBuilder().setCustomId("dg_skill")
         .setLabel(ws.skillCooldown === 0 ? "✦  Skill" : `✦  Skill (${ws.skillCooldown}🔄)`)
         .setStyle(ButtonStyle.Secondary).setDisabled(ws.skillCooldown > 0),
       new ButtonBuilder().setCustomId("dg_ultimate")
         .setLabel("⚡  Ultimate").setStyle(ButtonStyle.Success).setDisabled(ws.playerEnergy < 100),
+    );
+    if (bonuses.echoSkill) {
+      const echoReady = ws.echoSkillCooldown === 0;
+      row.addComponents(
+        new ButtonBuilder().setCustomId("dg_echoskill")
+          .setLabel(echoReady ? `🌀  ${bonuses.echoSkill.name}` : `🌀  ${bonuses.echoSkill.name} (${ws.echoSkillCooldown}🔄)`)
+          .setStyle(ButtonStyle.Secondary).setDisabled(!echoReady),
+      );
+    }
+    row.addComponents(
       new ButtonBuilder().setCustomId("dg_flee").setLabel("↩  Flee").setStyle(ButtonStyle.Danger),
     );
+    return row;
   }
 
   let battleMsg = await thread.send({
@@ -498,7 +524,8 @@ async function runWave(
         }
 
         const havocFrenzyActive = bonuses.activeNamedSetId === "VOIDBORN_REMNANT" && voidbornRemnantFrenzyActive(ws.namedState);
-        const effectiveDef = havocFrenzyActive ? scaled.def_ * (1 - ws.havocFrenzyDefIgnore) : scaled.def_;
+        const defShredActive = ws.enemyDefShredTurnsLeft > 0;
+        const effectiveDef = (havocFrenzyActive ? scaled.def_ * (1 - ws.havocFrenzyDefIgnore) : scaled.def_) * (defShredActive ? (1 - ws.enemyDefShredPct) : 1);
         const defVal       = isShattered ? 0 : effectiveDef;
         const defReduction = Math.min(0.75, defVal / (defVal + 1500));
         const havocAtkMult   = havocFrenzyActive ? ws.havocFrenzyAtkMult : 1.0;
@@ -506,6 +533,7 @@ async function runWave(
         const radCrit = elemRadianceCrit(bonuses.elementPassive, ws.playerHp, ws.playerHpMax);
         const stormCritBuff = ws.stormBuffTurnsLeft > 0 ? ws.stormBuffCritBonus : 0;
         const cRate   = apply5pcLowHpCrit(bonuses, Math.min(1, stats.critRate + radCrit + stormCritBuff), ws.playerHp, ws.playerHpMax);
+        const forcedCritActive = ws.nextAttackCritArmed && btn.customId !== "dg_flee";
         const totalVibMult = vibMult * compositeVibMult(bonuses.abilityEffects);
         const abilCtxBase = {
           currentHp: ws.playerHp, maxHp: ws.playerHpMax,
@@ -519,7 +547,7 @@ async function runWave(
         if (btn.customId === "dg_basic") {
           const windExplosion = bonuses.activeNamedSetId === "WINDSTRIDERS_LEGACY"
             ? windstridersLegacyCheckExplosion(ws.namedState) : { proc: false, guaranteedCrit: false, bonusMult: 1.0 };
-          const crit   = windExplosion.guaranteedCrit || Math.random() < cRate; abilCrit = crit;
+          const crit   = forcedCritActive || windExplosion.guaranteedCrit || Math.random() < cRate; abilCrit = crit;
           const smolderMult = bonuses.activeNamedSetId === "SMOLDERING_SOVEREIGN"
             ? smolderingSovereignOnAction(ws.namedState) : 1;
           const extraElemBonus = ws.glacioShieldTurnsLeft > 0 ? ws.glacioShieldElemBonus : 0;
@@ -556,7 +584,7 @@ async function runWave(
         }
 
         if (btn.customId === "dg_skill") {
-          const crit   = Math.random() < Math.min(1, cRate + 0.1); abilCrit = crit;
+          const crit   = forcedCritActive || Math.random() < Math.min(1, cRate + 0.1); abilCrit = crit;
           const smolderMult = bonuses.activeNamedSetId === "SMOLDERING_SOVEREIGN"
             ? smolderingSovereignOnAction(ws.namedState) : 1;
           const extraElemBonusSkill = ws.glacioShieldTurnsLeft > 0 ? ws.glacioShieldElemBonus : 0;
@@ -612,6 +640,94 @@ async function runWave(
             const surge = stormcallersOathOnUltimate();
             ws.stormBuffTurnsLeft = surge.turnsLeft + 1;
             ws.stormBuffCritBonus = surge.critRateBonus;
+          }
+        }
+
+        if (btn.customId === "dg_echoskill" && bonuses.echoSkill) {
+          const def = bonuses.echoSkill;
+          const crit = forcedCritActive || def.kind === "GUARANTEED_CRIT" || Math.random() < cRate;
+          abilCrit = crit;
+          const smolderMult = bonuses.activeNamedSetId === "SMOLDERING_SOVEREIGN"
+            ? smolderingSovereignOnAction(ws.namedState) : 1;
+          const base = Math.max(1, Math.floor(stats.atk * smolderMult * havocAtkMult * echoSkillBaseMult() * (1 - defReduction)));
+          const extraElemBonusEcho = ws.glacioShieldTurnsLeft > 0 ? ws.glacioShieldElemBonus : 0;
+          let dmg = Math.floor(base * (crit ? stats.critDmg : 1) * (isWeak ? 1.5 : 1) * (1 + bonuses.elemDmgBonus + extraElemBonusEcho) * radiantDmgMult);
+
+          const result = applyEchoSkill(def, {
+            atk: stats.atk, enemyHp, enemyHpMax: scaled.hp,
+            playerHp: ws.playerHp, playerHpMax: ws.playerHpMax,
+            playerEnergy: ws.playerEnergy, turn: 1, bossVibMax: 50, crit,
+          });
+          dmg = Math.floor(dmg * result.dmgMult);
+          if (result.doubleHit) dmg *= 2;
+          if (result.noDamage) dmg = 0;
+
+          let namedTriggerTag = "";
+          if (def.kind === "NAMED_SET_TRIGGER" && bonuses.activeNamedSetId === def.setId) {
+            switch (def.setId) {
+              case "SMOLDERING_SOVEREIGN":
+                ws.namedState.fusionAtkStacks = 4; ws.namedState.fusionSkillDoubleArmed = true;
+                namedTriggerTag = "ATK stacks maxed!";
+                break;
+              case "FROSTVEIL_BASTION":
+                if (!ws.namedState.glacioShieldUsed) {
+                  ws.namedState.glacioShieldUsed = true;
+                  const shieldAmt = Math.floor(ws.playerHpMax * 0.28);
+                  ws.playerHp = Math.min(ws.playerHpMax, ws.playerHp + shieldAmt);
+                  ws.glacioShieldTurnsLeft = 5; ws.glacioShieldElemBonus = 0.22;
+                  namedTriggerTag = `+${shieldAmt} HP shield!`;
+                }
+                break;
+              case "STORMCALLERS_OATH":
+                ws.namedState.electroThunderboltArmed = true;
+                namedTriggerTag = "Thunderbolt armed!";
+                break;
+              case "WINDSTRIDERS_LEGACY":
+                ws.namedState.aeroWindstacks = 6;
+                namedTriggerTag = "Windstacks maxed!";
+                break;
+              case "VOIDBORN_REMNANT":
+                if (!ws.namedState.havocFrenzyUsed) {
+                  ws.namedState.havocFrenzyUsed = true;
+                  ws.namedState.havocFrenzyTurnsLeft = 4;
+                  ws.havocFrenzyAtkMult = 1.25; ws.havocFrenzyLifesteal = 0.15; ws.havocFrenzyDefIgnore = 0.20;
+                  namedTriggerTag = "Frenzy triggered!";
+                }
+                break;
+              case "RADIANT_CONVERGENCE":
+                ws.namedState.spectroHealStacks = 5;
+                namedTriggerTag = "Heal-stacks maxed!";
+                break;
+            }
+          }
+
+          const ar_e = applyAbilityAttack(bonuses, dmg, crit, { ...abilCtxBase, moveType: "SKILL" });
+          dmg = ar_e.dmg;
+          if (ar_e.newStacks !== undefined) ws.v2Stacks = ar_e.newStacks;
+          const ignite = result.noDamage ? { dmg: 0, tag: "" } : elemIgniteProc(bonuses.elementPassive, stats.atk);
+          playerDmg = dmg + ignite.dmg;
+          moveLine  = result.noDamage ? `🌀 ${def.name}` : `🌀 ${def.name}${crit ? " **(CRIT)**" : ""} — ${playerDmg} DMG`;
+          if (namedTriggerTag) moveLine += `\n✦ ${namedTriggerTag}`;
+          if (ar_e.tag)   moveLine += `  ✦${ar_e.tag}`;
+          if (ignite.tag) moveLine += `  ✦${ignite.tag}`;
+
+          if (!result.noDamage) {
+            vibBar = Math.max(0, vibBar - Math.floor(playerDmg * 0.5 * totalVibMult) - result.extraVibDrain);
+          }
+          ws.echoSkillCooldown = (result.resetCdOnCrit && crit) ? 0 : ECHO_SKILL_COOLDOWN;
+
+          const energyGain = Math.floor(stats.energyPerTurn) + elemDischargeEnergy(bonuses.elementPassive, crit) + result.bonusEnergy;
+          ws.playerEnergy = result.setEnergyFull ? 100 : Math.min(100, ws.playerEnergy + energyGain);
+          ws.playerHp     = Math.min(ws.playerHpMax, ws.playerHp + ar_e.healHp + result.healHp);
+
+          let echoLifesteal = bonuses.lifesteal + havocLifesteal + (ar_e.lifesteal ?? 0);
+          if (def.kind === "FLAT_LIFESTEAL") echoLifesteal += def.pct;
+          ws.playerHp = applyLifesteal(echoLifesteal, playerDmg, ws.playerHp, ws.playerHpMax);
+
+          if (result.armsNextCrit) ws.nextAttackCritArmed = true;
+          if (result.defShredTurns > 0) {
+            ws.enemyDefShredTurnsLeft = result.defShredTurns + 1;
+            ws.enemyDefShredPct = result.defShredPct;
           }
         }
 
@@ -717,6 +833,9 @@ async function runWave(
         if (ws.glacioShieldTurnsLeft > 0) ws.glacioShieldTurnsLeft--;
         if (ws.stormBuffTurnsLeft > 0) ws.stormBuffTurnsLeft--;
         if (ws.namedState.spectroFractureTurnsLeft > 0) ws.namedState.spectroFractureTurnsLeft--;
+        if (ws.echoSkillCooldown > 0) ws.echoSkillCooldown--;
+        if (ws.enemyDefShredTurnsLeft > 0) ws.enemyDefShredTurnsLeft--;
+        if (forcedCritActive) ws.nextAttackCritArmed = false;
 
         // Lose
         if (ws.playerHp <= 0) {

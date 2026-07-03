@@ -26,6 +26,7 @@ import {
   voidbornRemnantCheckFrenzy, voidbornRemnantFrenzyActive,
   radiantConvergenceOnTurnHeal, radiantConvergenceOnHitTaken, radiantConvergenceOnCrit, radiantConvergenceCheckBurstHeal,
 } from "../../lib/namedSets";
+import { echoSkillBaseMult, applyEchoSkill } from "../../lib/echoSkills";
 import { incrementWeaponBond } from "../../lib/weaponAwakening";
 import { generateVersusCard, Fighter } from "../../lib/versusCard";
 import { AttachmentBuilder } from "discord.js";
@@ -47,6 +48,7 @@ interface DuelState {
   cGlacioShieldTurnsLeft: number; cGlacioShieldElemBonus: number;
   cStormBuffTurnsLeft: number; cStormBuffCritBonus: number;
   cHavocFrenzyAtkMult: number; cHavocFrenzyLifesteal: number; cHavocFrenzyDefIgnore: number;
+  cEchoSkillCd: number; cDefShredTurnsLeft: number; cDefShredPct: number; cNextCritArmed: boolean;
   // Challenged stats
   dHp:     number; dHpMax: number; dEnergy:  number; dSkillCd: number;
   dAtk:    number; dDef:   number; dSpd: number; dCritRate: number; dCritDmg: number; dElement: string;
@@ -56,6 +58,7 @@ interface DuelState {
   dGlacioShieldTurnsLeft: number; dGlacioShieldElemBonus: number;
   dStormBuffTurnsLeft: number; dStormBuffCritBonus: number;
   dHavocFrenzyAtkMult: number; dHavocFrenzyLifesteal: number; dHavocFrenzyDefIgnore: number;
+  dEchoSkillCd: number; dDefShredTurnsLeft: number; dDefShredPct: number; dNextCritArmed: boolean;
   // Turn tracking
   currentTurn: string; // userId
   turn:        number;
@@ -112,17 +115,30 @@ function buildDuelButtons(state: DuelState, forUserId: string): ActionRowBuilder
   const isChallenger = forUserId === state.challengerId;
   const myEnergy     = isChallenger ? state.cEnergy  : state.dEnergy;
   const mySkillCd    = isChallenger ? state.cSkillCd : state.dSkillCd;
+  const myBonus      = isChallenger ? state.cBonuses : state.dBonuses;
+  const myEchoCd     = isChallenger ? state.cEchoSkillCd : state.dEchoSkillCd;
 
-  return new ActionRowBuilder<ButtonBuilder>().addComponents(
+  const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
     new ButtonBuilder().setCustomId("duel_basic").setLabel("⚔️  Basic Attack").setStyle(ButtonStyle.Primary),
     new ButtonBuilder().setCustomId("duel_skill")
       .setLabel(mySkillCd === 0 ? "✦  Skill" : `✦  Skill (${mySkillCd}🔄)`)
       .setStyle(ButtonStyle.Secondary).setDisabled(mySkillCd > 0),
     new ButtonBuilder().setCustomId("duel_ultimate")
       .setLabel("⚡  Ultimate").setStyle(ButtonStyle.Success).setDisabled(myEnergy < 100),
+  );
+  if (myBonus.echoSkill) {
+    const echoReady = myEchoCd === 0;
+    row.addComponents(
+      new ButtonBuilder().setCustomId("duel_echoskill")
+        .setLabel(echoReady ? `🌀  ${myBonus.echoSkill.name}` : `🌀  ${myBonus.echoSkill.name} (${myEchoCd}🔄)`)
+        .setStyle(ButtonStyle.Secondary).setDisabled(!echoReady),
+    );
+  }
+  row.addComponents(
     new ButtonBuilder().setCustomId("duel_forfeit")
       .setLabel("🏳️  Forfeit").setStyle(ButtonStyle.Danger),
   );
+  return row;
 }
 
 function elementEmoji(el: string): string {
@@ -263,6 +279,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
       cGlacioShieldTurnsLeft: 0, cGlacioShieldElemBonus: 0,
       cStormBuffTurnsLeft: 0, cStormBuffCritBonus: 0,
       cHavocFrenzyAtkMult: 1.0, cHavocFrenzyLifesteal: 0, cHavocFrenzyDefIgnore: 0,
+      cEchoSkillCd: 0, cDefShredTurnsLeft: 0, cDefShredPct: 0, cNextCritArmed: false,
       dHp: dStats.hp, dHpMax: dStats.hp, dEnergy: 0, dSkillCd: 0,
       dAtk: dStats.atk, dDef: dStats.def, dSpd: dStats.spd,
       dCritRate: dStats.critRate, dCritDmg: dStats.critDmg,
@@ -273,6 +290,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
       dGlacioShieldTurnsLeft: 0, dGlacioShieldElemBonus: 0,
       dStormBuffTurnsLeft: 0, dStormBuffCritBonus: 0,
       dHavocFrenzyAtkMult: 1.0, dHavocFrenzyLifesteal: 0, dHavocFrenzyDefIgnore: 0,
+      dEchoSkillCd: 0, dDefShredTurnsLeft: 0, dDefShredPct: 0, dNextCritArmed: false,
       // Higher SPD acts first; ties keep the challenger-first default
       currentTurn: dStats.spd > cStats.spd ? target.id : interaction.user.id,
       turn: 1,
@@ -398,8 +416,13 @@ export async function execute(interaction: ChatInputCommandInteraction) {
         const myHavocAtkMult   = havocFrenzyActive ? (isChallenger ? state.cHavocFrenzyAtkMult   : state.dHavocFrenzyAtkMult)   : 1.0;
         const myHavocLifesteal = havocFrenzyActive ? (isChallenger ? state.cHavocFrenzyLifesteal : state.dHavocFrenzyLifesteal) : 0;
         const myHavocDefIgnore = havocFrenzyActive ? (isChallenger ? state.cHavocFrenzyDefIgnore  : state.dHavocFrenzyDefIgnore) : 0;
-        const effectiveOppDef  = oppDef * (1 - myHavocDefIgnore);
+        const oppDefShredTurns = isChallenger ? state.dDefShredTurnsLeft : state.cDefShredTurnsLeft;
+        const oppDefShredPct   = isChallenger ? state.dDefShredPct      : state.cDefShredPct;
+        const effectiveOppDef  = oppDef * (1 - myHavocDefIgnore) * (oppDefShredTurns > 0 ? (1 - oppDefShredPct) : 1);
         const extraElemBonus   = myGlacioTurns > 0 ? myGlacioBonus : 0;
+        const myEchoCd         = isChallenger ? state.cEchoSkillCd : state.dEchoSkillCd;
+        const myNextCritArmed  = isChallenger ? state.cNextCritArmed : state.dNextCritArmed;
+        const forcedCritActive = myNextCritArmed && btn.customId !== "duel_forfeit";
         let radiantDmgMult = 1.0;
         if (mySetId === "RADIANT_CONVERGENCE") {
           const heal = radiantConvergenceOnTurnHeal(myNamedState, myHpMax);
@@ -438,7 +461,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
           const windExplosion = mySetId === "WINDSTRIDERS_LEGACY"
             ? windstridersLegacyCheckExplosion(myNamedState) : { proc: false, guaranteedCrit: false, bonusMult: 1.0 };
           const smolderMult = mySetId === "SMOLDERING_SOVEREIGN" ? smolderingSovereignOnAction(myNamedState) : 1;
-          const forcedCrit = windExplosion.guaranteedCrit;
+          const forcedCrit = forcedCritActive || windExplosion.guaranteedCrit;
           const r      = calcPlayerDamage(myAtk * smolderMult * myHavocAtkMult, effectiveOppDef, forcedCrit ? 1 : aCrit, myCritDmg, 1.0, isWeak, false);
           let base     = Math.floor(r.damage * (1 + myElemDmg + extraElemBonus) * radiantDmgMult);
           base         = Math.floor(base * elemWindstrideMult(myBonus.elementPassive, state.turn, "BASIC"));
@@ -464,7 +487,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
 
         if (btn.customId === "duel_skill") {
           const smolderMult = mySetId === "SMOLDERING_SOVEREIGN" ? smolderingSovereignOnAction(myNamedState) : 1;
-          const r      = calcPlayerDamage(myAtk * smolderMult * myHavocAtkMult, effectiveOppDef, Math.min(1, aCrit + 0.1), myCritDmg, 1.8, isWeak, false);
+          const r      = calcPlayerDamage(myAtk * smolderMult * myHavocAtkMult, effectiveOppDef, forcedCritActive ? 1 : Math.min(1, aCrit + 0.1), myCritDmg, 1.8, isWeak, false);
           let base     = Math.floor(r.damage * (1 + myElemDmg + extraElemBonus) * radiantDmgMult);
           base         = Math.floor(base * elemWindstrideMult(myBonus.elementPassive, state.turn, "SKILL"));
           if (mySetId === "WINDSTRIDERS_LEGACY") base = Math.floor(base * windstridersLegacyOnHit(myNamedState));
@@ -496,6 +519,86 @@ export async function execute(interaction: ChatInputCommandInteraction) {
             const surge = stormcallersOathOnUltimate();
             if (isChallenger) { state.cStormBuffTurnsLeft = surge.turnsLeft + 1; state.cStormBuffCritBonus = surge.critRateBonus; }
             else              { state.dStormBuffTurnsLeft = surge.turnsLeft + 1; state.dStormBuffCritBonus = surge.critRateBonus; }
+          }
+        }
+
+        let echoResult: ReturnType<typeof applyEchoSkill> | null = null;
+        let echoNamedTriggerTag = "";
+        if (btn.customId === "duel_echoskill" && myBonus.echoSkill) {
+          const def = myBonus.echoSkill;
+          const echoCrit = forcedCritActive || def.kind === "GUARANTEED_CRIT" || Math.random() < aCrit;
+          isCrit = echoCrit; moveType = "SKILL";
+          const smolderMult = mySetId === "SMOLDERING_SOVEREIGN" ? smolderingSovereignOnAction(myNamedState) : 1;
+          const r = calcPlayerDamage(myAtk * smolderMult * myHavocAtkMult, effectiveOppDef, echoCrit ? 1 : 0, myCritDmg, echoSkillBaseMult(), isWeak, false);
+          let base = Math.floor(r.damage * (1 + myElemDmg + extraElemBonus) * radiantDmgMult);
+
+          echoResult = applyEchoSkill(def, {
+            atk: myAtk, enemyHp: oppHp, enemyHpMax: oppHpMax,
+            playerHp: myHp, playerHpMax: myHpMax,
+            playerEnergy: isChallenger ? state.cEnergy : state.dEnergy,
+            turn: state.turn, bossVibMax: oppHpMax * 0.1, crit: echoCrit,
+          });
+          base = Math.floor(base * echoResult.dmgMult);
+          if (echoResult.doubleHit) base *= 2;
+          if (echoResult.noDamage) base = 0;
+          base += echoResult.extraVibDrain; // no vib bar in duels — treat as bonus flat damage
+
+          if (def.kind === "NAMED_SET_TRIGGER" && mySetId === def.setId) {
+            switch (def.setId) {
+              case "SMOLDERING_SOVEREIGN":
+                myNamedState.fusionAtkStacks = 4; myNamedState.fusionSkillDoubleArmed = true;
+                echoNamedTriggerTag = "ATK stacks maxed!";
+                break;
+              case "FROSTVEIL_BASTION":
+                if (!myNamedState.glacioShieldUsed) {
+                  myNamedState.glacioShieldUsed = true;
+                  const shieldAmt = Math.floor(myHpMax * 0.28);
+                  if (isChallenger) { state.cHp = Math.min(state.cHpMax, state.cHp + shieldAmt); state.cGlacioShieldTurnsLeft = 5; state.cGlacioShieldElemBonus = 0.22; }
+                  else              { state.dHp = Math.min(state.dHpMax, state.dHp + shieldAmt); state.dGlacioShieldTurnsLeft = 5; state.dGlacioShieldElemBonus = 0.22; }
+                  echoNamedTriggerTag = `+${shieldAmt} HP shield!`;
+                }
+                break;
+              case "STORMCALLERS_OATH":
+                myNamedState.electroThunderboltArmed = true;
+                echoNamedTriggerTag = "Thunderbolt armed!";
+                break;
+              case "WINDSTRIDERS_LEGACY":
+                myNamedState.aeroWindstacks = 6;
+                echoNamedTriggerTag = "Windstacks maxed!";
+                break;
+              case "VOIDBORN_REMNANT":
+                if (!myNamedState.havocFrenzyUsed) {
+                  myNamedState.havocFrenzyUsed = true;
+                  myNamedState.havocFrenzyTurnsLeft = 4;
+                  if (isChallenger) { state.cHavocFrenzyAtkMult = 1.25; state.cHavocFrenzyLifesteal = 0.15; state.cHavocFrenzyDefIgnore = 0.20; }
+                  else              { state.dHavocFrenzyAtkMult = 1.25; state.dHavocFrenzyLifesteal = 0.15; state.dHavocFrenzyDefIgnore = 0.20; }
+                  echoNamedTriggerTag = "Frenzy triggered!";
+                }
+                break;
+              case "RADIANT_CONVERGENCE":
+                myNamedState.spectroHealStacks = 5;
+                echoNamedTriggerTag = "Heal-stacks maxed!";
+                break;
+            }
+          }
+
+          damage = base; isCrit = echoCrit;
+          moveLine = `${myName} — 🌀 ${def.name}${echoCrit ? " **(CRIT)**" : ""}${isWeak ? " **(WEAK)**" : ""}`;
+          if (echoNamedTriggerTag) moveLine += `\n✦ ${echoNamedTriggerTag}`;
+
+          const echoEnGain = ENERGY_PER_TURN + Math.floor(myBonus.spdFlat / 20) + elemDischargeEnergy(myBonus.elementPassive, echoCrit) + echoResult.bonusEnergy;
+          const newCd = (echoResult.resetCdOnCrit && echoCrit) ? 0 : 4;
+          if (isChallenger) { state.cEchoSkillCd = newCd; state.cEnergy = echoResult.setEnergyFull ? 100 : Math.min(100, state.cEnergy + echoEnGain); }
+          else              { state.dEchoSkillCd = newCd; state.dEnergy = echoResult.setEnergyFull ? 100 : Math.min(100, state.dEnergy + echoEnGain); }
+
+          if (echoResult.armsNextCrit) { if (isChallenger) state.cNextCritArmed = true; else state.dNextCritArmed = true; }
+          if (echoResult.defShredTurns > 0) {
+            if (isChallenger) { state.dDefShredTurnsLeft = echoResult.defShredTurns + 1; state.dDefShredPct = echoResult.defShredPct; }
+            else              { state.cDefShredTurnsLeft = echoResult.defShredTurns + 1; state.cDefShredPct = echoResult.defShredPct; }
+          }
+          if (echoResult.healHp > 0) {
+            if (isChallenger) state.cHp = Math.min(state.cHpMax, state.cHp + echoResult.healHp);
+            else              state.dHp = Math.min(state.dHpMax, state.dHp + echoResult.healHp);
           }
         }
 
@@ -531,7 +634,8 @@ export async function execute(interaction: ChatInputCommandInteraction) {
         }
 
         // Self heal (lifesteal + heal-on-crit), energy
-        const healed = applyLifesteal(myLife + myHavocLifesteal, damage, myHp, myHpMax) - myHp + ar.healHp;
+        const echoLifestealPct = echoResult && myBonus.echoSkill?.kind === "FLAT_LIFESTEAL" ? myBonus.echoSkill.pct : 0;
+        const healed = applyLifesteal(myLife + myHavocLifesteal + echoLifestealPct, damage, myHp, myHpMax) - myHp + ar.healHp;
         if (isChallenger) {
           state.cHp = Math.min(state.cHpMax, state.cHp + Math.max(0, healed));
           state.cEnergy = Math.min(100, state.cEnergy + ar.bonusEnergy);
@@ -616,10 +720,16 @@ export async function execute(interaction: ChatInputCommandInteraction) {
           if (state.cGlacioShieldTurnsLeft > 0) state.cGlacioShieldTurnsLeft--;
           if (state.cStormBuffTurnsLeft > 0) state.cStormBuffTurnsLeft--;
           if (state.cNamedState.spectroFractureTurnsLeft > 0) state.cNamedState.spectroFractureTurnsLeft--;
+          if (state.cEchoSkillCd > 0) state.cEchoSkillCd--;
+          if (state.cDefShredTurnsLeft > 0) state.cDefShredTurnsLeft--;
+          if (forcedCritActive) state.cNextCritArmed = false;
         } else {
           if (state.dGlacioShieldTurnsLeft > 0) state.dGlacioShieldTurnsLeft--;
           if (state.dStormBuffTurnsLeft > 0) state.dStormBuffTurnsLeft--;
           if (state.dNamedState.spectroFractureTurnsLeft > 0) state.dNamedState.spectroFractureTurnsLeft--;
+          if (state.dEchoSkillCd > 0) state.dEchoSkillCd--;
+          if (state.dDefShredTurnsLeft > 0) state.dDefShredTurnsLeft--;
+          if (forcedCritActive) state.dNextCritArmed = false;
         }
 
         // Check win

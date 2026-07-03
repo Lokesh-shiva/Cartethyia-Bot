@@ -14,6 +14,7 @@ import { ALL_WISH_WEAPONS, calcWishSubStat } from "./wishWeapons";
 import { bondMultiplier } from "./weaponAwakening";
 import { calcSubstatValue } from "./echoes";
 import { NamedSetId, NAMED_TWO_PC, NAMED_ELEM_DMG_2PC, NAMED_SET_DESCRIPTIONS, NAMED_SETS } from "./namedSets";
+import { EchoSkillDef, getEchoSkillDef, genericEchoSkill } from "./echoSkills";
 
 // ── Set bonus definitions ─────────────────────────────────────────────────────
 
@@ -194,6 +195,9 @@ export interface PlayerBonuses {
 
   // Display
   activeLabels: string[];
+
+  // Echo Skill — granted by whichever echo occupies the Main slot (slot 0)
+  echoSkill: EchoSkillDef | null;
 }
 
 // ── Bonus cache — 30s TTL, invalidated on any combat/equip write ──────────────
@@ -212,6 +216,7 @@ export async function resolvePlayerBonuses(userId: string): Promise<PlayerBonuse
     prisma.echo.findMany({
       where:  { userId, isEquipped: true },
       select: {
+        name: true, cost: true, equippedSlot: true,
         element: true, setId: true, mainStatType: true, mainStatValue: true, revealedSubstats: true,
         level: true,
         substat1Type: true, substat1Value: true,
@@ -243,11 +248,20 @@ export async function resolvePlayerBonuses(userId: string): Promise<PlayerBonuse
     abilityVersion:  1,
     v2Effects:       [],
     activeLabels:    [],
+    echoSkill:       null,
   };
 
   if (!user) return bonuses;
 
   const playerElem = user.element;
+
+  // ── Echo Skill (Main slot only) ───────────────────────────────────────────
+  const mainEcho = echoes.find(e => e.equippedSlot === 0) ?? null;
+  if (mainEcho) {
+    bonuses.echoSkill = mainEcho.cost === 4
+      ? getEchoSkillDef(mainEcho)
+      : genericEchoSkill(mainEcho.element);
+  }
 
   // ── Player element innate bonuses ────────────────────────────────────────
   const ep = ELEMENT_PASSIVES[playerElem] ?? null;
