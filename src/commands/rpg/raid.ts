@@ -103,7 +103,7 @@ function fieldBossLoot(fb: FieldBoss) {
 function computeRaidBossStats(
   boss: RaidBossConfig,
   participants: RaidParticipant[],
-): { hp: number; atk: number; def: number } {
+): { hp: number; atk: number; def: number; vibBar: number } {
   const n        = participants.length;
   const totalAtk = participants.reduce((s, p) => s + p.atk, 0);
   const totalHp  = participants.reduce((s, p) => s + p.hpMax, 0);
@@ -115,17 +115,18 @@ function computeRaidBossStats(
   // Per turn, an average player deals avgAtk * ~2.2 (basic/skill/ult average).
   // We want total HP ≈ totalAtk * 2.2 * 28 * 0.80 so geared parties still feel pressure.
   // 2026-07-02 balance pass: multiplied by 1.35 (raids should hit noticeably harder
-  // than a solo /field-boss fight — this is on top of boss.baseHp already being
-  // +20% higher project-wide).
+  // than a solo /field-boss fight).
   // 2026-07-03 difficulty pass: another ×1.37 on top (players reported raids/bosses
   // as too easy — accumulated power from named sets/evolved abilities/awakened
   // weapons had outpaced these targets since they were last tuned).
-  // Floor = base * party-size factor * gear multiplier so high-ATK squads face proportionally
-  // more HP even when the base would otherwise dominate (prevents HP flatline at WL5+).
-  const targetHp  = Math.floor(totalAtk * 2.2 * 28 * 0.80 * 1.35 * 1.37);
-  const gearMult2 = Math.min(3.4, Math.sqrt(avgAtk / 300));
-  const floorHp   = Math.floor(boss.baseHp * (1 + n * 0.34) * gearMult2);
-  const bossHp    = Math.max(floorHp, targetHp);
+  // 2026-07-03 (2nd pass): HP/ATK/DEF are now PURELY party-derived — no floor tied
+  // to boss.baseHp/baseAtk/baseDef at all. Previously a boss's own base stats could
+  // override the party-scaled target (e.g. WL8's huge baseDef vs. a field boss's
+  // tiny one), so which boss you picked mattered far more than your party's actual
+  // size/gear — a WL0 or field boss raid was trivial next to a WL8 one. The chosen
+  // boss is now purely cosmetic (name/element/moves/loot); difficulty is uniform
+  // across every raid option for the same party.
+  const bossHp  = Math.floor(totalAtk * 2.2 * 28 * 0.80 * 1.35 * 1.37);
 
   // ── ATK ─────────────────────────────────────────────────────────────────────
   // Each AoE round should drain ~12–18% of a player's HP after their DEF.
@@ -137,19 +138,24 @@ function computeRaidBossStats(
   // 2026-07-02 balance pass: bumped 0.25 → 0.34 (+36%) so raid boss hits land
   // meaningfully harder than the equivalent solo field-boss fight.
   // 2026-07-03 difficulty pass: bumped again 0.34 → 0.46 (+35%).
-  const targetAtk = Math.floor(avgHp * 0.46);
-  const bossAtk   = Math.max(boss.baseAtk, targetAtk);
+  const bossAtk = Math.floor(avgHp * 0.46);
 
   // ── DEF ─────────────────────────────────────────────────────────────────────
-  // Scale DEF with avg ATK so player penetration stays meaningful (not trivial,
-  // not impenetrable). At avgAtk=300 it stays near boss base. Scales with sqrt.
-  // 2026-07-02 balance pass: floor raised 1.0 → 1.15 so raid bosses never dip
-  // below a modest DEF baseline even for low-gear parties.
-  // 2026-07-03 difficulty pass: floor raised 1.15 → 1.55.
+  // Party-derived baseline (150) instead of the selected boss's own baseDef —
+  // that ranged 60 (WL0) to 1080 (WL8), an 18× spread that made boss choice
+  // dominate difficulty far more than party size/gear ever could.
   const gearMult = Math.max(1.55, Math.sqrt(avgAtk / 300));
-  const bossDef  = Math.floor(boss.baseDef * gearMult);
+  const bossDef  = Math.floor(150 * gearMult);
 
-  return { hp: Math.floor(bossHp), atk: Math.floor(bossAtk), def: Math.floor(bossDef) };
+  // ── Vibration bar ───────────────────────────────────────────────────────────
+  // Same problem as HP/ATK/DEF: boss.vibBar is a fixed per-boss value (110 for
+  // WL0 up to 285 for WL8, field bosses only 100-125) that never scaled with the
+  // party, so a full raid party could shatter a low-vibBar boss almost instantly.
+  // Preserve the boss's own relative shatter-difficulty (vibBar/baseHp ratio) but
+  // apply it to the new party-scaled HP so absolute vibBar scales with the party too.
+  const vibBar = Math.max(50, Math.floor(bossHp * (boss.vibBar / boss.baseHp)));
+
+  return { hp: Math.floor(bossHp), atk: Math.floor(bossAtk), def: Math.floor(bossDef), vibBar };
 }
 
 // ── In-memory raid state ───────────────────────────────────────────────────────
@@ -583,6 +589,8 @@ async function launchRaid(
   raid.bossHpMax   = scaled.hp;
   raid.bossAtk     = scaled.atk;
   raid.bossDef     = scaled.def;
+  raid.bossVib     = scaled.vibBar;
+  raid.bossVibMax  = scaled.vibBar;
 
   // ── Show scaling summary in the recruit embed ────────────────────────────────
   const n          = raid.participants.length;
@@ -902,7 +910,7 @@ async function launchRaid(
         raid.shatterLeft--;
         if (raid.shatterLeft === 0) {
           raid.isShattered = false;
-          raid.bossVib     = boss.vibBar;
+          raid.bossVib     = raid.bossVibMax;
           moveLine += "\n◇ Boss recovers from Shatter. Vibration bar reset.";
         } else {
           moveLine += `\n◇ Boss stunned (${raid.shatterLeft} turn${raid.shatterLeft > 1 ? "s" : ""} left).`;
@@ -939,7 +947,7 @@ async function launchRaid(
           if (pSetId === "FROSTVEIL_BASTION" && p.hp > 0) {
             const counter = frostveilBastionOnHitTaken(p.namedState);
             if (counter.counterProc) {
-              raid.bossVib = Math.max(0, raid.bossVib - Math.floor(boss.vibBar * counter.vibDrain));
+              raid.bossVib = Math.max(0, raid.bossVib - Math.floor(raid.bossVibMax * counter.vibDrain));
               dmgLines.push(`${p.name} ❄️Counter-Frost`);
             }
             const panic = frostveilBastionCheckPanicShield(p.namedState, p.hp, p.hpMax);
