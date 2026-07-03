@@ -87,7 +87,7 @@ export async function generateAbilityCard(d: AbilityCardData): Promise<Buffer> {
   ctx.textAlign = "center";
   ctx.fillStyle = rgba(ec, 0.95); ctx.font = `bold 14px Rajdhani, 'Noto Sans', 'Noto Sans CJK SC', 'Noto Sans JP', Arial, sans-serif`;
   ctx.letterSpacing = "6px";
-  ctx.fillText(d.evolved ? "✦  EVOLVED  RESONANCE  ·  AWAKENED  FORM  ✦" : "UNIQUE  PASSIVE  ·  FORGED  AT  ASCENSION", W / 2, 56);
+  ctx.fillText(d.evolved ? "*  EVOLVED  RESONANCE  ·  AWAKENED  FORM  *" : "UNIQUE  PASSIVE  ·  FORGED  AT  ASCENSION", W / 2, 56);
   ctx.letterSpacing = "0px";
 
   // ── Ability name (big, glowing) ───────────────────────────────────────────

@@ -125,7 +125,7 @@ export async function generateVersusCard(
     ctx.fillStyle = "#FFFFFF";
     ctx.font = `bold 18px Rajdhani, 'Arial Black', Arial`;
     ctx.textAlign = "center";
-    ctx.fillText(`✦  ${win.name.slice(0, 18)} WINS  ✦`, W / 2, H - 29);
+    ctx.fillText(`*  ${win.name.slice(0, 18)} WINS  *`, W / 2, H - 29);
     ctx.textAlign = "left";
   } else if (opts?.subtitle) {
     ctx.fillStyle = "rgba(255,255,255,0.6)";
@@ -195,7 +195,7 @@ export async function generateRaidCard(
 
   // Result banner
   if (opts?.victory || opts?.defeat) {
-    const txt  = opts.victory ? "✦  RAID CLEARED  ✦" : "✦  RESONATORS FELL  ✦";
+    const txt  = opts.victory ? "*  RAID CLEARED  *" : "*  RESONATORS FELL  *";
     const col  = opts.victory ? "#F5A623" : "#4A4A5A";
     ctx.fillStyle = rgba(col, 0.92);
     rrect(ctx, W / 2 - 150, H - 46, 300, 32, 8); ctx.fill();

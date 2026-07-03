@@ -356,10 +356,13 @@ export async function generateProfileCard(input: ProfileCardInput): Promise<Buff
     badgeX += ctx.measureText("* CREATOR").width + 10;
   }
 
+  // ASCII marker (not a unicode symbol) — Rajdhani only covers Latin glyphs, and
+  // the system-font fallback chain isn't guaranteed on every host (confirmed
+  // missing on the Oracle VM), so "✦" renders as a tofu box there.
   const PATRON_BADGE: Record<number, { label: string; color: string }> = {
-    1: { label: "✦ ATTUNED",   color: "#7DD3FC" },
-    2: { label: "✦ ASCENDANT", color: "#C084FC" },
-    3: { label: "✦ CALAMITY",  color: "#FB7185" },
+    1: { label: "* ATTUNED",   color: "#7DD3FC" },
+    2: { label: "* ASCENDANT", color: "#C084FC" },
+    3: { label: "* CALAMITY",  color: "#FB7185" },
   };
   const patronBadge = input.patronTier ? PATRON_BADGE[input.patronTier] : null;
   if (patronBadge) {
@@ -534,7 +537,7 @@ export async function generateProfileCard(input: ProfileCardInput): Promise<Buff
       rrect(ctx, bx, weapY + 38, bw, bh, 3); ctx.stroke();
       ctx.fillStyle = "#FCD34D";
       ctx.font = `bold 8px Rajdhani, Arial, sans-serif`;
-      ctx.fillText("✦ AWAKENED", bx + 6, weapY + 48);
+      ctx.fillText("* AWAKENED", bx + 6, weapY + 48);
 
       // Bond micro-bar
       const barX = TX, barW = 320 - WS - 14, barH = 6;

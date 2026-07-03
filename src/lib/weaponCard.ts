@@ -172,7 +172,7 @@ export async function generateWeaponCard(input: WeaponCardInput): Promise<Buffer
     ctx.fillStyle = rgba("#FCD34D",0.2); rrect(ctx,bx,cy-11,bw,bh,3); ctx.fill();
     ctx.strokeStyle = rgba("#FCD34D",0.6); ctx.lineWidth=1; rrect(ctx,bx,cy-11,bw,bh,3); ctx.stroke();
     ctx.fillStyle = "#FCD34D"; ctx.font = font(8);
-    ctx.fillText("✦ AWAKENED", bx+6, cy-1);
+    ctx.fillText("* AWAKENED", bx+6, cy-1);
   } else if (input.isUnique) {
     const tw = ctx.measureText(typeFull.toUpperCase()).width;
     const bx = SX + tw + 8, bw = 62, bh = 14;
@@ -216,13 +216,13 @@ export async function generateWeaponCard(input: WeaponCardInput): Promise<Buffer
   // Hidden substats
   if (input.hiddenSub1Type) {
     if (input.hiddenSub1Val != null)
-      stats.push({ label: input.hiddenSub1Type.replace(/_/g," ") + "  ✦", value: `+${input.hiddenSub1Val}%`, hi: true });
+      stats.push({ label: input.hiddenSub1Type.replace(/_/g," ") + "  *", value: `+${input.hiddenSub1Val}%`, hi: true });
     else
       stats.push({ label: "HIDDEN  ·  unlocks Lv 20", value: "? ? ?", locked: true });
   }
   if (input.hiddenSub2Type) {
     if (input.hiddenSub2Val != null)
-      stats.push({ label: input.hiddenSub2Type.replace(/_/g," ") + "  ✦✦", value: `+${input.hiddenSub2Val}%`, hi: true });
+      stats.push({ label: input.hiddenSub2Type.replace(/_/g," ") + "  **", value: `+${input.hiddenSub2Val}%`, hi: true });
     else
       stats.push({ label: "HIDDEN  ·  unlocks Lv 50", value: "? ? ?", locked: true });
   }
