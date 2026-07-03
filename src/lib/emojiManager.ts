@@ -32,6 +32,26 @@ const EMOJI_ASSETS: { name: string; file: string }[] = [
   { name: "ec_storm",    file: "assets/echoes/3-cost/Storm Harbinger.png" },
   { name: "ec_void",     file: "assets/echoes/3-cost/Void Stalker.png"    },
   { name: "ec_radiant",  file: "assets/echoes/3-cost/Radiant Keeper.png"  },
+  // Named Echo Set 1-cost echoes
+  { name: "ec_kindling",    file: "assets/echoes/1-cost/Kindling Wretch.png"    },
+  { name: "ec_scorchmite",  file: "assets/echoes/1-cost/Scorchmite.png"         },
+  { name: "ec_frostbound",  file: "assets/echoes/1-cost/Frostbound Imp.png"     },
+  { name: "ec_hoarfrost",   file: "assets/echoes/1-cost/Hoarfrost Crawler.png"  },
+  { name: "ec_sparkmite",   file: "assets/echoes/1-cost/Sparkmite.png"          },
+  { name: "ec_staticwisp",  file: "assets/echoes/1-cost/Static Wisp.png"        },
+  { name: "ec_zephyrspr",   file: "assets/echoes/1-cost/Zephyr Sprite.png"      },
+  { name: "ec_windnipper",  file: "assets/echoes/1-cost/Windnipper.png"         },
+  { name: "ec_nullspawn",   file: "assets/echoes/1-cost/Nullspawn.png"          },
+  { name: "ec_shadeleech",  file: "assets/echoes/1-cost/Shade Leech.png"        },
+  { name: "ec_glimmermote", file: "assets/echoes/1-cost/Glimmermote.png"        },
+  { name: "ec_halosprite",  file: "assets/echoes/1-cost/Halo Sprite.png"        },
+  // Named Echo Set 3-cost echoes
+  { name: "ec_ashfall",       file: "assets/echoes/3-cost/Ashfall Harrier.png"    },
+  { name: "ec_rime",          file: "assets/echoes/3-cost/Rime Sentinel.png"     },
+  { name: "ec_voltaicreaver", file: "assets/echoes/3-cost/Voltaic Reaver.png"    },
+  { name: "ec_skyrend",       file: "assets/echoes/3-cost/Skyrend Talon.png"     },
+  { name: "ec_duskfang",      file: "assets/echoes/3-cost/Duskfang Stalker.png"  },
+  { name: "ec_prismwarden",   file: "assets/echoes/3-cost/Prism Warden.png"      },
 ];
 
 // ── In-memory cache: emojiName → "<:name:id>" string ─────────────────────────
@@ -51,6 +71,25 @@ const ECHO_EMOJI_MAP: Record<string, string> = {
   "Storm Harbinger":"ec_storm",
   "Void Stalker":   "ec_void",
   "Radiant Keeper": "ec_radiant",
+  // Named Echo Set echoes
+  "Kindling Wretch":   "ec_kindling",
+  "Scorchmite":        "ec_scorchmite",
+  "Ashfall Harrier":   "ec_ashfall",
+  "Frostbound Imp":    "ec_frostbound",
+  "Hoarfrost Crawler": "ec_hoarfrost",
+  "Rime Sentinel":     "ec_rime",
+  "Sparkmite":         "ec_sparkmite",
+  "Static Wisp":       "ec_staticwisp",
+  "Voltaic Reaver":    "ec_voltaicreaver",
+  "Zephyr Sprite":     "ec_zephyrspr",
+  "Windnipper":        "ec_windnipper",
+  "Skyrend Talon":     "ec_skyrend",
+  "Nullspawn":         "ec_nullspawn",
+  "Shade Leech":       "ec_shadeleech",
+  "Duskfang Stalker":  "ec_duskfang",
+  "Glimmermote":       "ec_glimmermote",
+  "Halo Sprite":       "ec_halosprite",
+  "Prism Warden":      "ec_prismwarden",
 };
 
 const CURRENCY_EMOJI_MAP: Record<string, string> = {
