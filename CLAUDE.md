@@ -31,6 +31,10 @@ Bosses/  ← boss art PNGs, Title Case with spaces. Never snake_case.
 - **Echo upgrade**: `/echo-upgrade` has +1/+5/Auto buttons + Auto-Reveal toggle (Sealing Tubes at Lv 5/10/15/20/25).
 - **Weapon upgrade**: `/weapon-upgrade` has +1/+10/Auto buttons.
 - **Shop**: Records = 500 credits each. `/use record` max = 5 per use.
+- **Named Echo Sets**: 6 lore sets in `src/lib/namedSets.ts` (setId on Echo, distinct from plain `element`). 2pc stat bonuses apply everywhere via setBonus.ts; 4pc/5pc mechanic hooks wired into all 6 combat loops (field-boss/boss/ascend/dungeon/duel/raid) — duel/raid needed adapted triggers since they lack a shatter/vib concept. `NAMED_SET_ECHO_DEFINITIONS` (18 new 1/3-cost) + 6 new 4-cost `BOSS_ECHO_DEFINITIONS` guardians in `/field-boss`.
+- **Echo lock**: `isLocked` on Echo — `/echo-lock` toggles; excluded from `/echo-discard` and `/echo-reroll` candidate pools.
+- **Custom icons**: `src/lib/emojiManager.ts` — app emojis (bot-owned, work in every server) for currencies (`CE.xx`) and 1/3-cost echoes (`echoEmoji()`/`echoEmojiResolvable()` for select-menu emoji). 4-cost echoes have no icon by design (full card art instead). New echo added → register in both `EMOJI_ASSETS` and `ECHO_EMOJI_MAP` or its icon silently no-ops.
+- **Canvas text**: Rajdhani font has no unicode symbol glyphs (✦, likely ◈ too) and the system-font fallback isn't reliable on the Oracle VM — use plain ASCII (`*`) in any `ctx.fillText()`. Discord embed text is unaffected (rendered by Discord's client, not our server).
 
 ## World Levels & Bosses
 | WL | Boss | Element | Weakness | Level Cap |
@@ -78,21 +82,12 @@ Boss trials for all 9 in `dungeons.ts`. Field bosses (6, one/element) in `src/li
 - Awakened art: drop PNG at `assets/weapons/awakened/{awakenedName}.png` — `getWeaponImagePath` checks it first, card auto-upgrades. Art prompt stored in DB + shown on awakening embed.
 - **Hidden substats now apply in combat** (setBonus, Lv20/Lv50 gates) — they were display-only before.
 
-## Shipped 2026-06-11 (QoL + fixes session)
-- `/weapons` — arsenal browser (select menu → full weapon card). `/equip` — current-vs-incoming comparison + Confirm/Cancel + card image on confirm.
-- `/echo-equip` — shows slot occupant, comparison embed before swap, "Clear slot" unequip option. `/echoes` — per-slot grid breakdown field. `/echo` — main stat values in menus.
-- `/stats` — final combat numbers via `resolvePlayerBonuses`+`applyBonuses` (same path as combat), supports other players.
-- **Records rebalanced**: fixed 2,500 EXP each (`EXP_PER_RECORD` in use.ts), was 1 full level's worth. Max/use 5→10.
-- **1-DMG combat bug fixed**: all 4 loops (dungeon/boss/ascend/field-boss) used flat `atk - defVal` which went negative vs high-WL defense. Now `atk * (1 - min(0.75, def/(def+1500)))` everywhere.
-- **/start gate fixed**: messageCreate no longer auto-creates users; chat EXP + encounters require `isOnboarded`. Encounter Engage button checks `isOnboarded` too (rows exist via command auto-create). Unstarted users with levels keep them but EXP freezes until /start.
-- **DB stability**: switched to `@prisma/adapter-neon` (WebSocket, `ws` package) + retry wrapper (3× backoff, skips PrismaClientKnownRequestError/ValidationError) covering model ops AND $queryRaw/$executeRaw. Event-based error logging (`[Prisma:error]` with real message — stdout logging printed `undefined`).
-- Compensated user `1400767611746128005` (Adityaa) for ETIMEDOUT-eaten Nullfire WL9 rewards via one-off script (deleted after).
-
 ## TODO Next
-1. **Website update** (`legal/index.html`): add Evolution (Lv50) + Awakening (Lv60) section w/ gold card screenshot · vote rewards + DBL link (`discordbotlist.com/bots/cartethyia/upvote`, 1k credits + 1 key, 2× weekends) · new commands `/weapons /stats /evolve /awaken /vote` · Weapon Bond flavor · refresh old embed screenshots.
-2. **Named Echo Sets** — unique lore names per set instead of "Fusion 2pc" (labels in setBonus.ts TWO_PC/FOUR_PC/FIVE_PC).
-3. **`grantRewards` transaction wrap** (dungeon.ts) — multi-write reward grants can still partially fail.
-4. Consider: echo lock flag, `/echo-compare`, upgrade cost preview, echo sell/discard, announce records nerf before deploy.
+1. **Echo Skills** — give echoes their own skill/variety, new "Echo Skill" attack button alongside Basic/Skill/Ultimate. Undesigned — needs a data model (per-echo skill defs?) and combat-loop wiring across all 6 fight loops.
+2. **Speed stat** — `baseSpeed`/SPD is tracked and displayed but never actually used in any combat calc (no turn-order, no dodge). Either wire it into something real or stop showing it as a stat.
+3. **Duel turn order** — currently always challenger-first, no speed/initiative/dodge factor at all.
+4. Consider: `/echo-compare`, upgrade cost preview, DB-backed dismantle/merge alternative if dismantle-for-currency ever feels insufficient.
+5. Long-term/no rush: animated fight/boss visuals (currently only `/wish` has animation) — would need a real client-side animation approach (GIF sequence? external renderer?), not a small addition.
 
 ## Gotchas
 - Prisma v7: no `url` in datasource — adapter only. After schema changes: `npm run db:push` then `npx prisma generate`. DB client lives in `src/lib/prisma.ts` (Neon adapter + retry — don't revert to adapter-pg).
