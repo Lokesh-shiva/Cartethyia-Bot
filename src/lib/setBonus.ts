@@ -13,7 +13,7 @@ import { WEAPON_PASSIVES } from "./weapons";
 import { ALL_WISH_WEAPONS, calcWishSubStat } from "./wishWeapons";
 import { bondMultiplier } from "./weaponAwakening";
 import { calcSubstatValue } from "./echoes";
-import { NamedSetId, NAMED_TWO_PC, NAMED_ELEM_DMG_2PC } from "./namedSets";
+import { NamedSetId, NAMED_TWO_PC, NAMED_ELEM_DMG_2PC, NAMED_SET_DESCRIPTIONS, NAMED_SETS } from "./namedSets";
 
 // ── Set bonus definitions ─────────────────────────────────────────────────────
 
@@ -429,10 +429,14 @@ export async function resolvePlayerBonuses(userId: string): Promise<PlayerBonuse
     bonuses.elemDmgBonus  += NAMED_ELEM_DMG_2PC[setId as NamedSetId] ?? 0;
     bonuses.activeLabels.push(twoPc.label);
     bonuses.activeNamedSetId = setId as NamedSetId;
-    // Note: 4pc/5pc mechanic hooks (namedSets.ts) are NOT applied here — they need
-    // per-turn state that only exists inside a live combat loop. A future combat-loop
-    // integration task reads bonuses.activeNamedSetId and count to decide which
-    // hooks to call each turn.
+    // The 4pc/5pc mechanic hooks (namedSets.ts) run per-turn inside the live combat
+    // loops (boss/ascend/dungeon/duel/raid/field-boss) using activeNamedSetId — they
+    // aren't applied here as static bonuses. Still surface their descriptions below
+    // so /echo and /echoes show what's active, matching the plain elemental sets.
+    const desc = NAMED_SET_DESCRIPTIONS[setId as NamedSetId];
+    const name = NAMED_SETS[setId as NamedSetId]?.name ?? setId;
+    if (desc && count >= 4) bonuses.activeLabels.push(`✦ ${name} 4pc — ${desc.fourPc}`);
+    if (desc && count >= 5) bonuses.activeLabels.push(`✦ ${name} 5pc — ${desc.fivePc}`);
   }
 
   // ── Unique ability (composite) ────────────────────────────────────────────

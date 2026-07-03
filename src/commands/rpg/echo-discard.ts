@@ -2,7 +2,7 @@ import {
   SlashCommandBuilder, ChatInputCommandInteraction,
   EmbedBuilder, ActionRowBuilder, StringSelectMenuBuilder,
   StringSelectMenuInteraction, ButtonBuilder, ButtonStyle,
-  ComponentType, ButtonInteraction,
+  ComponentType, ButtonInteraction, MessageComponentInteraction,
 } from "discord.js";
 import prisma from "../../lib/prisma";
 import { replyNotStarted } from "../../lib/economy";
@@ -13,6 +13,8 @@ import {
 } from "../../lib/echoes";
 import { CE } from "../../lib/emojiManager";
 import { Element } from "@prisma/client";
+
+const MAX_SELECTABLE = 25; // Discord select-menu option cap
 
 export const data = new SlashCommandBuilder()
   .setName("echo-discard")
@@ -37,6 +39,19 @@ export const data = new SlashCommandBuilder()
         { name: "4-cost", value: 4 },
       )
   )
+  .addStringOption(o =>
+    o.setName("element")
+      .setDescription("Bulk mode: only discard echoes of this element")
+      .setRequired(false)
+      .addChoices(
+        { name: "🔥 Fusion",  value: "FUSION"  },
+        { name: "❄️ Glacio",  value: "GLACIO"  },
+        { name: "⚡ Electro", value: "ELECTRO" },
+        { name: "🌪️ Aero",   value: "AERO"    },
+        { name: "🌑 Havoc",  value: "HAVOC"   },
+        { name: "✨ Spectro", value: "SPECTRO" },
+      )
+  )
   .addIntegerOption(o =>
     o.setName("max-level")
       .setDescription("Bulk mode: only discard echoes at or below this level (avoids nuking invested echoes)")
@@ -57,13 +72,15 @@ export async function execute(interaction: ChatInputCommandInteraction) {
 
   const rarity   = interaction.options.getString("rarity");
   const cost     = interaction.options.getInteger("cost");
+  const element  = interaction.options.getString("element");
   const maxLevel = interaction.options.getInteger("max-level");
-  const bulkMode = rarity !== null || cost !== null || maxLevel !== null;
+  const bulkMode = rarity !== null || cost !== null || element !== null || maxLevel !== null;
 
-  const where: any = { userId: interaction.user.id, isEquipped: false };
-  if (rarity)             where.rarity = rarity;
-  if (cost)                where.cost  = cost;
-  if (maxLevel !== null)  where.level  = { lte: maxLevel };
+  const where: any = { userId: interaction.user.id, isEquipped: false, isLocked: false };
+  if (rarity)             where.rarity  = rarity;
+  if (cost)                where.cost   = cost;
+  if (element)            where.element = element;
+  if (maxLevel !== null)  where.level   = { lte: maxLevel };
 
   const candidates = await prisma.echo.findMany({ where, orderBy: [{ rarity: "asc" }, { level: "asc" }] });
 
@@ -71,70 +88,114 @@ export async function execute(interaction: ChatInputCommandInteraction) {
     await interaction.editReply({
       embeds: [new EmbedBuilder().setColor(color)
         .setDescription(bulkMode
-          ? "No unequipped echoes match those filters."
-          : "You have no unequipped echoes to discard. (Equipped echoes must be unequipped first via `/echo-equip`.)")
+          ? "No unlocked, unequipped echoes match those filters."
+          : "You have no unlocked, unequipped echoes to discard. (Equipped echoes must be unequipped, and locked echoes unlocked via `/echo-lock`, first.)")
         .setFooter({ text: "CARTETHYIA  ·  Echo Discard" })],
     });
     return;
   }
 
-  // ── Bulk mode: filter-driven, preview + confirm ──────────────────────────────
+  // ── Bulk mode: filter-driven, with a keep-list to exclude a few before confirming ──
   if (bulkMode) {
-    const totalValue = candidates.reduce((s, e) => s + echoDismantleValue(e.rarity, e.level), 0);
     const filterDesc = [
-      rarity ? RARITY_STARS[rarity as keyof typeof RARITY_STARS] : null,
-      cost ? `${cost}-cost` : null,
+      rarity  ? RARITY_STARS[rarity as keyof typeof RARITY_STARS] : null,
+      cost    ? `${cost}-cost` : null,
+      element ? `${ELEMENT_EMOJI[element as Element]} ${element}` : null,
       maxLevel !== null ? `Lv≤${maxLevel}` : null,
     ].filter(Boolean).join("  ·  ");
 
-    const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
-      new ButtonBuilder().setCustomId("discard_confirm").setLabel(`Dismantle ${candidates.length}`).setStyle(ButtonStyle.Danger),
-      new ButtonBuilder().setCustomId("discard_cancel").setLabel("Cancel").setStyle(ButtonStyle.Secondary),
-    );
+    const shown    = candidates.slice(0, MAX_SELECTABLE);
+    const overflow = candidates.length - shown.length;
+    let kept       = new Set<string>(); // echo ids the player chose to keep (excluded from discard)
 
-    const msg = await interaction.editReply({
-      embeds: [new EmbedBuilder().setColor(0xFF4F6D)
+    const buildRows = () => {
+      const selectRow = new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(
+        new StringSelectMenuBuilder()
+          .setCustomId("discard_keep_select")
+          .setPlaceholder("Optional: pick any echoes to KEEP (exclude from discard)")
+          .setMinValues(0)
+          .setMaxValues(shown.length)
+          .addOptions(shown.map(e => ({
+            label:       `${e.name}  ${RARITY_STARS[e.rarity]}  Lv${e.level}  (${e.cost}-cost)`,
+            description: `${ELEMENT_EMOJI[e.element as Element]} ${e.element}  ·  worth ${echoDismantleValue(e.rarity, e.level)} ${CE.tm}`,
+            value:       e.id,
+            default:     kept.has(e.id),
+          })))
+      );
+      const btnRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
+        new ButtonBuilder().setCustomId("discard_confirm").setLabel(`Dismantle ${candidates.length - kept.size}`).setStyle(ButtonStyle.Danger),
+        new ButtonBuilder().setCustomId("discard_cancel").setLabel("Cancel").setStyle(ButtonStyle.Secondary),
+      );
+      return [selectRow, btnRow];
+    };
+
+    const buildPreviewEmbed = () => {
+      const toDiscard  = candidates.filter(e => !kept.has(e.id));
+      const totalValue = toDiscard.reduce((s, e) => s + echoDismantleValue(e.rarity, e.level), 0);
+      return new EmbedBuilder().setColor(0xFF4F6D)
         .setTitle("⚠️  Bulk Discard — Confirm")
         .setDescription(
           `Filters: **${filterDesc}**\n\n` +
-          `This will permanently dismantle **${candidates.length} echo${candidates.length === 1 ? "" : "es"}** for a total of **${totalValue} ${CE.tm} Tuning Modules**.\n\n` +
+          `Matched **${candidates.length} echo${candidates.length === 1 ? "" : "es"}**` +
+          `${overflow > 0 ? ` (showing first ${MAX_SELECTABLE} for selection — the other ${overflow} will still be included)` : ""}.\n` +
+          (kept.size > 0 ? `**${kept.size} kept** (excluded from this run).\n` : "") +
+          `\nWill dismantle **${toDiscard.length}** for a total of **${totalValue} ${CE.tm} Tuning Modules**.\n\n` +
           `**This cannot be undone.**`
         )
-        .setFooter({ text: "CARTETHYIA  ·  Echo Discard  ·  Expires in 30s" })],
-      components: [row],
-    });
+        .setFooter({ text: "CARTETHYIA  ·  Echo Discard  ·  Expires in 60s" });
+    };
 
-    const btn = await msg.awaitMessageComponent({
-      componentType: ComponentType.Button,
-      filter: (i: ButtonInteraction) => i.user.id === interaction.user.id,
-      time: 30_000,
-    }).catch(() => null);
+    let msg = await interaction.editReply({ embeds: [buildPreviewEmbed()], components: buildRows() });
 
-    if (!btn || btn.customId === "discard_cancel") {
-      await interaction.editReply({ embeds: [new EmbedBuilder().setColor(0x334155).setDescription("Cancelled. No changes made.")], components: [] }).catch(() => {});
+    while (true) {
+      const comp: MessageComponentInteraction | null = await msg.awaitMessageComponent({
+        filter: (i: MessageComponentInteraction) => i.user.id === interaction.user.id,
+        time: 60_000,
+      }).catch(() => null);
+
+      if (!comp) {
+        await interaction.editReply({ components: [] }).catch(() => {});
+        return;
+      }
+
+      if (comp.isStringSelectMenu()) {
+        await comp.deferUpdate();
+        kept = new Set(comp.values);
+        msg = await interaction.editReply({ embeds: [buildPreviewEmbed()], components: buildRows() });
+        continue;
+      }
+
+      await comp.deferUpdate();
+      if (comp.customId === "discard_cancel") {
+        await interaction.editReply({ embeds: [new EmbedBuilder().setColor(0x334155).setDescription("Cancelled. No changes made.")], components: [] }).catch(() => {});
+        return;
+      }
+
+      // Re-fetch to guard against equip/lock/level changes between preview and confirm
+      const fresh      = await prisma.echo.findMany({ where, orderBy: [{ rarity: "asc" }, { level: "asc" }] });
+      const toDiscard   = fresh.filter(e => !kept.has(e.id));
+      const freshValue  = toDiscard.reduce((s, e) => s + echoDismantleValue(e.rarity, e.level), 0);
+
+      if (toDiscard.length === 0) {
+        await interaction.editReply({ embeds: [new EmbedBuilder().setColor(0x334155).setDescription("Nothing left to dismantle after your keeps. No changes made.")], components: [] }).catch(() => {});
+        return;
+      }
+
+      await prisma.$transaction([
+        prisma.echo.deleteMany({ where: { id: { in: toDiscard.map(e => e.id) } } }),
+        prisma.user.update({ where: { id: interaction.user.id }, data: { tuningModules: { increment: freshValue } } }),
+      ]);
+      invalidateBonusCache(interaction.user.id);
+      await auditAward(interaction.user.id, { tuningModules: freshValue }, "echo-discard-bulk");
+
+      await interaction.editReply({
+        embeds: [new EmbedBuilder().setColor(color)
+          .setDescription(`✅ Dismantled **${toDiscard.length} echo${toDiscard.length === 1 ? "" : "es"}** for **${freshValue} ${CE.tm} Tuning Modules**.`)
+          .setFooter({ text: "CARTETHYIA  ·  Echo Discard" })],
+        components: [],
+      });
       return;
     }
-
-    await btn.deferUpdate();
-
-    // Re-fetch to guard against equip/level changes between preview and confirm
-    const fresh = await prisma.echo.findMany({ where, orderBy: [{ rarity: "asc" }, { level: "asc" }] });
-    const freshValue = fresh.reduce((s, e) => s + echoDismantleValue(e.rarity, e.level), 0);
-
-    await prisma.$transaction([
-      prisma.echo.deleteMany({ where: { id: { in: fresh.map(e => e.id) } } }),
-      prisma.user.update({ where: { id: interaction.user.id }, data: { tuningModules: { increment: freshValue } } }),
-    ]);
-    invalidateBonusCache(interaction.user.id);
-    await auditAward(interaction.user.id, { tuningModules: freshValue }, "echo-discard-bulk");
-
-    await interaction.editReply({
-      embeds: [new EmbedBuilder().setColor(color)
-        .setDescription(`✅ Dismantled **${fresh.length} echo${fresh.length === 1 ? "" : "es"}** for **${freshValue} ${CE.tm} Tuning Modules**.`)
-        .setFooter({ text: "CARTETHYIA  ·  Echo Discard" })],
-      components: [],
-    });
-    return;
   }
 
   // ── Single mode: pick-and-confirm ────────────────────────────────────────────
@@ -158,7 +219,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
   await interaction.editReply({
     embeds: [new EmbedBuilder().setColor(color)
       .setTitle(`${ELEMENT_EMOJI[dbUser.element as Element]}  Echo Discard`)
-      .setDescription("Dismantle an unequipped echo for Tuning Modules. Equipped echoes must be unequipped first.\n\nUse `rarity`/`cost`/`max-level` options for bulk discard.")
+      .setDescription("Dismantle an unequipped, unlocked echo for Tuning Modules. Equipped echoes must be unequipped, locked echoes unlocked via `/echo-lock`, first.\n\nUse `rarity`/`cost`/`element`/`max-level` options for bulk discard.")
       .setFooter({ text: "CARTETHYIA  ·  Echo Discard  ·  Expires in 60s" })],
     components: [row],
   });
@@ -180,6 +241,13 @@ export async function execute(interaction: ChatInputCommandInteraction) {
     if (echo.isEquipped) {
       await sel.editReply({
         embeds: [new EmbedBuilder().setColor(0xFF4F6D).setDescription(`**${echo.name}** is currently equipped — unequip it first via \`/echo-equip\`.`)],
+        components: [],
+      });
+      return;
+    }
+    if (echo.isLocked) {
+      await sel.editReply({
+        embeds: [new EmbedBuilder().setColor(0xFF4F6D).setDescription(`**${echo.name}** is locked — unlock it first via \`/echo-lock\`.`)],
         components: [],
       });
       return;
@@ -210,7 +278,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
     await btn.deferUpdate();
 
     const stillExists = await prisma.echo.findUnique({ where: { id: echo.id } });
-    if (!stillExists || stillExists.isEquipped) {
+    if (!stillExists || stillExists.isEquipped || stillExists.isLocked) {
       await sel.editReply({ embeds: [new EmbedBuilder().setColor(0xFF4F6D).setDescription("That echo changed state — please try again.")], components: [] });
       return;
     }

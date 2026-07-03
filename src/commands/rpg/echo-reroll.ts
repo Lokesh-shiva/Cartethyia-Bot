@@ -72,13 +72,13 @@ export async function execute(interaction: ChatInputCommandInteraction) {
     orderBy: [{ isEquipped: "desc" }, { rarity: "desc" }, { createdAt: "desc" }],
   });
 
-  const rerollable = echoes.filter(e => e.revealedSubstats > 0);
+  const rerollable = echoes.filter(e => e.revealedSubstats > 0 && !e.isLocked);
 
   if (rerollable.length === 0) {
     await interaction.editReply({
       embeds: [new EmbedBuilder()
         .setColor(color)
-        .setDescription("You need to reveal at least one substat (via `/echo-reveal`) before rerolling.")
+        .setDescription("You need to reveal at least one substat (via `/echo-reveal`) before rerolling. (Locked echoes are hidden here — unlock via `/echo-lock` first.)")
         .setFooter({ text: "CARTETHYIA  ·  Echo Reroll" })],
     });
     return;

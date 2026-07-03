@@ -224,6 +224,7 @@ model Echo {
   cost        Int        @default(1)   // 1, 3, or 4
   setId       String?                  // null = original element set; populated = named set (see src/lib/namedSets.ts)
   isEquipped  Boolean    @default(false)
+  isLocked    Boolean    @default(false) // player-set guard against accidental discard/reroll targeting
   equippedSlot Int?                    // 0 = main, 1-4 = sub slots
   level       Int        @default(0)
 

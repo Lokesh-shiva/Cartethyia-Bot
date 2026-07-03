@@ -104,7 +104,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
       .setColor(ELEMENT_COLORS[echo.element as Element])
       .setImage("attachment://echo.webp")
       .setDescription(setText)
-      .setFooter({ text: `CARTETHYIA  ·  Echo${echo.isEquipped ? "  ·  EQUIPPED" : ""}${filterDesc ? `  ·  Filter: ${filterDesc}` : ""}` });
+      .setFooter({ text: `CARTETHYIA  ·  Echo${echo.isEquipped ? "  ·  EQUIPPED" : ""}${echo.isLocked ? "  ·  🔒 LOCKED" : ""}${filterDesc ? `  ·  Filter: ${filterDesc}` : ""}` });
   };
 
   const options = shown.map(e => {
@@ -116,7 +116,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
       : "";
     const set = setName(e);
     return {
-      label:       `${e.name}  ${RARITY_STARS[e.rarity]}  Lv${e.level}${e.isEquipped ? "  ← equipped" : ""}`,
+      label:       `${e.isLocked ? "🔒 " : ""}${e.name}  ${RARITY_STARS[e.rarity]}  Lv${e.level}${e.isEquipped ? "  ← equipped" : ""}`,
       description: `${set ? `✦ ${set}  ·  ` : ""}${e.cost}-cost · ${mainLabel}: ${formatStatValue(e.mainStatType, mainVal)}${bestSub}`.slice(0, 100),
       value:       e.id,
     };

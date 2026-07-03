@@ -221,12 +221,17 @@ export const GUIDE_SECTIONS: Record<string, GuideSection> = {
           inline: false,
         },
         {
+          name:  "🔒  /echo-lock — Protect an echo from discard/reroll",
+          value: "Toggle a lock on any echo. Locked echoes are skipped entirely by `/echo-discard` (single and bulk) and hidden from `/echo-reroll`, so a good build can't be dismantled or rerolled by accident.",
+          inline: false,
+        },
+        {
           name:  "🗑️  /echo-discard & /weapon-discard — Clean out your inventory",
-          value: "Dismantle unwanted echoes/weapons for 🔧 Tuning Modules / ⛏️ Forging Ores (scaled by rarity + levels invested). No filters = pick one. Add `rarity`/`cost`/`max-level` for bulk discard with a confirm step. Equipped items must be unequipped first; Awakened weapons can't be dismantled.",
+          value: "Dismantle unwanted echoes/weapons for 🔧 Tuning Modules / ⛏️ Forging Ores (scaled by rarity + levels invested). No filters = pick one. Add `rarity`/`cost`/`element`/`max-level` for bulk discard — you can then deselect a few specific echoes to keep before confirming. Equipped and locked items are always skipped; Awakened weapons can't be dismantled.",
           inline: false,
         },
       )
-      .setFooter({ text: "CARTETHYIA  ·  /echo-upgrade · /echo-reveal · /echo-reroll · /echo-preset · /echo-discard" }),
+      .setFooter({ text: "CARTETHYIA  ·  /echo-upgrade · /echo-reveal · /echo-reroll · /echo-lock · /echo-preset · /echo-discard" }),
   },
 
   set_bonuses: {
