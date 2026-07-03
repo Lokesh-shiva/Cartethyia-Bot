@@ -10,6 +10,7 @@ import { Element } from "@prisma/client";
 import { generateEchoCard, echoRowToCard } from "../../lib/echoCard";
 import { NAMED_SETS, NAMED_SET_DESCRIPTIONS, NamedSetId } from "../../lib/namedSets";
 import { echoEmojiResolvable } from "../../lib/emojiManager";
+import { getEchoSkillDef, genericEchoSkill, describeEchoSkill } from "../../lib/echoSkills";
 
 export const data = new SlashCommandBuilder()
   .setName("echo")
@@ -101,10 +102,20 @@ export async function execute(interaction: ChatInputCommandInteraction) {
         `**5pc:** ${desc?.fivePc}\n` +
         `-# Farm more pieces of this set to unlock these effects.`
       : null;
+
+    const echoSkillDef = echo.cost === 4 ? getEchoSkillDef(echo) : genericEchoSkill(echo.element);
+    const inMainSlot   = echo.isEquipped && echo.equippedSlot === 0;
+    const echoSkillText = echoSkillDef
+      ? `🌀 **Echo Skill — ${echoSkillDef.name}**\n${describeEchoSkill(echoSkillDef)}\n` +
+        (inMainSlot ? "-# Active — this echo is in your Main slot." : "-# Equip this echo to the **Main slot** to gain this skill in combat.")
+      : null;
+
+    const description = [setText, echoSkillText].filter(Boolean).join("\n\n") || null;
+
     return new EmbedBuilder()
       .setColor(ELEMENT_COLORS[echo.element as Element])
       .setImage("attachment://echo.webp")
-      .setDescription(setText)
+      .setDescription(description)
       .setFooter({ text: `CARTETHYIA  ·  Echo${echo.isEquipped ? "  ·  EQUIPPED" : ""}${echo.isLocked ? "  ·  🔒 LOCKED" : ""}${filterDesc ? `  ·  Filter: ${filterDesc}` : ""}` });
   };
 

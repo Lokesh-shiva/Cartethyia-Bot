@@ -13,6 +13,7 @@ import { resolvePlayerBonuses } from "../../lib/setBonus";
 import { generateGridCard } from "../../lib/gridCard";
 import { Element } from "@prisma/client";
 import { NAMED_SETS, NamedSetId } from "../../lib/namedSets";
+import { getEchoSkillDef, genericEchoSkill } from "../../lib/echoSkills";
 
 export const data = new SlashCommandBuilder()
   .setName("echoes")
@@ -105,7 +106,10 @@ export async function execute(interaction: ChatInputCommandInteraction) {
       : "*substats unrevealed*";
     const setInfo = e.setId ? NAMED_SETS[e.setId as NamedSetId] : null;
     const icon    = echoEmoji(e.name, ELEMENT_EMOJI[e.element as Element]);
-    return `**${slotName}** ·  ${icon} **${e.name}**${setInfo ? `  ·  ✦ ${setInfo.name}` : ""}${e.isLocked ? "  · 🔒" : ""}  ${RARITY_STARS[e.rarity]}  Lv${e.level}  (${e.cost}-cost)\n  \`${mainLabel}: ${formatStatValue(e.mainStatType, mainVal)}\`  ·  ${subLine}`;
+    const echoSkillLine = slot === 0
+      ? `\n  🌀 \`${(e.cost === 4 ? getEchoSkillDef(e) : genericEchoSkill(e.element))?.name ?? "Echo Strike"}\``
+      : "";
+    return `**${slotName}** ·  ${icon} **${e.name}**${setInfo ? `  ·  ✦ ${setInfo.name}` : ""}${e.isLocked ? "  · 🔒" : ""}  ${RARITY_STARS[e.rarity]}  Lv${e.level}  (${e.cost}-cost)\n  \`${mainLabel}: ${formatStatValue(e.mainStatType, mainVal)}\`  ·  ${subLine}${echoSkillLine}`;
   }).join("\n");
 
   // Full active bonus text for the embed (canvas may wrap long lines)
