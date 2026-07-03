@@ -124,6 +124,7 @@ export interface ProfileCardInput {
   auraMax:         number;   // patron-aware max (5/6/8)
   auraNextRegenMs: number;   // ms until next charge (Infinity = full)
   uniqueAbilityName: string | null;
+  patronTier?:     number;  // 0/undefined = none, 1 = Attuned, 2 = Ascendant, 3 = Calamity
   // Extra
   displayName:     string;
   bonds:           BondData[];
@@ -339,13 +340,32 @@ export async function generateProfileCard(input: ProfileCardInput): Promise<Buff
   fitText(ctx, input.displayName, 28, 260, `Rajdhani, ${FONT_FALLBACK}`);
   ctx.fillText(input.displayName, NX, 56);
 
-  // Creator crown badge
+  // Creator crown + patron tier badges, stacked left-to-right after the name.
+  // Measured against the actual rendered name (fitText already shrank the font
+  // to fit maxWidth 260, so the full string — not a truncated substring — is
+  // what's really on screen).
+  const nameW = Math.min(260, ctx.measureText(input.displayName).width);
+  let badgeX = NX + nameW + 10;
+  ctx.font = `bold 12px Rajdhani, 'Noto Sans', 'Noto Sans CJK SC', 'Noto Sans JP', Arial, sans-serif`;
+
   if (isOwner(input.id)) {
-    const nameW = ctx.measureText(truncate(input.displayName, 20)).width;
-    ctx.font = `bold 12px Rajdhani, 'Noto Sans', 'Noto Sans CJK SC', 'Noto Sans JP', Arial, sans-serif`;
     ctx.fillStyle = "#FCD34D";
     ctx.shadowColor = "#FCD34D"; ctx.shadowBlur = 8;
-    ctx.fillText("* CREATOR", NX + nameW + 10, 52);
+    ctx.fillText("* CREATOR", badgeX, 52);
+    ctx.shadowBlur = 0;
+    badgeX += ctx.measureText("* CREATOR").width + 10;
+  }
+
+  const PATRON_BADGE: Record<number, { label: string; color: string }> = {
+    1: { label: "✦ ATTUNED",   color: "#7DD3FC" },
+    2: { label: "✦ ASCENDANT", color: "#C084FC" },
+    3: { label: "✦ CALAMITY",  color: "#FB7185" },
+  };
+  const patronBadge = input.patronTier ? PATRON_BADGE[input.patronTier] : null;
+  if (patronBadge) {
+    ctx.fillStyle = patronBadge.color;
+    ctx.shadowColor = patronBadge.color; ctx.shadowBlur = 8;
+    ctx.fillText(patronBadge.label, badgeX, 52);
     ctx.shadowBlur = 0;
   }
 

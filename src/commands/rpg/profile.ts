@@ -132,6 +132,7 @@ const command: Command = {
       auraMax:           auraState.max,
       auraNextRegenMs:   auraState.nextRegenMs,
       uniqueAbilityName: user.uniqueAbilityName,
+      patronTier:        (user as any).patronTier ?? 0,
       displayName,
       bonds,
       echoes,
@@ -140,6 +141,8 @@ const command: Command = {
 
     const attachment = new AttachmentBuilder(buffer, { name: "profile.webp" });
     const extraBonds = totalBonds > 3 ? `  ·  +${totalBonds - 3} more bond${totalBonds - 3 !== 1 ? "s" : ""} — use /bonds` : "";
+    const PATRON_TIER_NAMES: Record<number, string> = { 1: "Attuned", 2: "Ascendant", 3: "Calamity" };
+    const patronTitle = (user as any).patronTier ? `  ·  ✦ ${PATRON_TIER_NAMES[(user as any).patronTier]} Patron` : "";
 
     // Only nudge for own profile (not when viewing others)
     const nudge = target.id === interaction.user.id
@@ -153,7 +156,7 @@ const command: Command = {
         nudge
       )
       .setImage("attachment://profile.webp")
-      .setFooter({ text: `CARTETHYIA  ·  ${displayName}'s Profile${extraBonds}`, iconURL: avatarUrl });
+      .setFooter({ text: `CARTETHYIA  ·  ${displayName}'s Profile${patronTitle}${extraBonds}`, iconURL: avatarUrl });
 
     await interaction.editReply({ embeds: [embed], files: [attachment] });
 
