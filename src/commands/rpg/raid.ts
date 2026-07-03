@@ -34,7 +34,7 @@ import { generateRaidCard }       from "../../lib/versusCard";
 import { isOwner }                from "../../lib/owner";
 import {
   BOSS_ECHO_DEFINITIONS, rollRarity, rollMainStat, substatCount,
-  rollSubstats, rollSubstatValue, calcMainStatValue,
+  rollSubstats, rollSubstatValue, calcMainStatValue, scaledFieldBossRarityWeights,
 } from "../../lib/echoes";
 
 // ── Unified boss handle (works for both World bosses and Field bosses) ─────────
@@ -164,6 +164,7 @@ interface RaidParticipant {
   userId:         string;
   name:           string;
   element:        string;
+  worldLevel:     number;
   hp:             number;
   hpMax:          number;
   energy:         number;
@@ -484,7 +485,7 @@ function buildRecruitEmbed(raid: ActiveRaid, boss: RaidBossConfig): EmbedBuilder
 async function addParticipant(raid: ActiveRaid, userId: string, displayName: string): Promise<boolean> {
   const db = await prisma.user.findUnique({
     where:  { id: userId },
-    select: { baseHp: true, baseAtk: true, baseDef: true, baseSpeed: true, critRate: true, critDmg: true, element: true, isOnboarded: true },
+    select: { baseHp: true, baseAtk: true, baseDef: true, baseSpeed: true, critRate: true, critDmg: true, element: true, isOnboarded: true, worldLevel: true },
   });
   if (!db?.isOnboarded) return false;
 
@@ -492,7 +493,7 @@ async function addParticipant(raid: ActiveRaid, userId: string, displayName: str
   const stats   = applyBonuses(db, bonuses);
 
   raid.participants.push({
-    userId, name: displayName, element: db.element,
+    userId, name: displayName, element: db.element, worldLevel: db.worldLevel,
     hp: stats.hp, hpMax: stats.hp, energy: 0, skillCd: 0,
     atk: stats.atk, def: stats.def, spd: stats.spd,
     critRate: stats.critRate, critDmg: stats.critDmg,
@@ -694,10 +695,16 @@ async function launchRaid(
       // mirroring solo /field-boss's guaranteed drop (also covers WL bosses,
       // which have their own BOSS_ECHO_DEFINITIONS entries by name).
       const raidEchoDef = BOSS_ECHO_DEFINITIONS.find(e => e.name === boss.name);
+      const isFieldBossRaid = raid.bossChoice.startsWith("field:");
       let raidEchoLine = "";
       if (raidEchoDef) {
         await Promise.all(raid.participants.map(async p => {
-          const rarity   = rollRarity(raidEchoDef.rarityWeights as [number, number, number]);
+          // Field-boss echoes use a flat table that needs WL scaling (same as solo
+          // /field-boss); WL-boss echoes already have their own escalating table baked in.
+          const weights = isFieldBossRaid
+            ? scaledFieldBossRarityWeights(raidEchoDef.rarityWeights as [number, number, number], p.worldLevel)
+            : raidEchoDef.rarityWeights as [number, number, number];
+          const rarity   = rollRarity(weights);
           const mainSt   = rollMainStat(4, boss.element as any);
           const subCount = substatCount(rarity);
           const substats = rollSubstats(subCount, mainSt);

@@ -385,6 +385,22 @@ export function rollRarity(weights: [number, number, number]): EchoRarityKey {
   return "FIVE_STAR";
 }
 
+/**
+ * Field boss (4-cost) echo drops use a flat rarity table regardless of World
+ * Level — unlike the WL-boss echoes (/ascend, /boss), which already escalate
+ * 5★ odds from 25% at WL0 up to 60% at WL8. Ramps field-boss 5★ odds from the
+ * base value (20% for all 12 field bosses) up to 65% at WL8+, linearly, while
+ * keeping the 3★ share untouched (always 0 for these).
+ */
+export function scaledFieldBossRarityWeights(base: [number, number, number], worldLevel: number): [number, number, number] {
+  const TARGET_FIVE_STAR_AT_MAX_WL = 65;
+  const t         = Math.min(1, worldLevel / 8);
+  const remaining = 100 - base[0]; // portion split between 4★ and 5★
+  const fiveStar  = Math.min(remaining, base[2] + (TARGET_FIVE_STAR_AT_MAX_WL - base[2]) * t);
+  const fourStar  = remaining - fiveStar;
+  return [base[0], fourStar, fiveStar];
+}
+
 // ── Substat pool ─────────────────────────────────────────────────────────────
 export const SUBSTAT_POOL = [
   "ATK_FLAT", "ATK_PCT", "HP_FLAT", "HP_PCT",

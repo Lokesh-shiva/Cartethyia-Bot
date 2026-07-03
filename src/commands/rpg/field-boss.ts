@@ -44,7 +44,7 @@ import { echoSkillBaseMult, applyEchoSkill } from "../../lib/echoSkills";
 import {
   rollRarity, rollMainStat, rollSubstats, rollSubstatValue,
   calcMainStatValue, substatCount, RARITY_STARS,
-  ELEMENT_EMOJI, ELEMENT_COLORS,
+  ELEMENT_EMOJI, ELEMENT_COLORS, scaledFieldBossRarityWeights,
 } from "../../lib/echoes";
 import { Boss } from "../../lib/bosses";
 import { computeAura, consumeAura, auraBar, fmtAuraRegen, getMaxAura } from "../../lib/aura";
@@ -324,7 +324,7 @@ const command: Command = {
           const echoLines: string[] = [];
 
           if (echoDef) {
-            const rarity   = rollRarity(echoDef.rarityWeights as [number, number, number]);
+            const rarity   = rollRarity(scaledFieldBossRarityWeights(echoDef.rarityWeights as [number, number, number], user.worldLevel));
             const mainSt   = rollMainStat(4, fb.element as any);
             const subCount = substatCount(rarity);
             const substats = rollSubstats(subCount, mainSt);
