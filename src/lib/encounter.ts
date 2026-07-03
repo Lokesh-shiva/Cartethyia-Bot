@@ -19,6 +19,7 @@ import {
   abilityCritRate, abilityVib, applyLifesteal,
   elemIgniteProc, elemFrostShield, elemDischargeEnergy,
   elemWindstrideMult, elemVoidSurgeHeal, elemRadianceRegen, elemRadianceCrit,
+  effectiveSkillCooldown,
 } from "./setBonus";
 import { compositeHasSecondWind } from "./abilityEffects";
 import { generateEchoCard, echoRowToCard } from "./echoCard";
@@ -474,7 +475,7 @@ export async function handleEncounterFight(
         moveType = "SKILL"; vibFrac = 0.6;
         moveName  = `Resonance Skill — ${playerDmg} DMG${r.isCrit ? " **(CRIT)**" : ""}`;
         if (ignite.tag) moveName += `  ✦${ignite.tag}`;
-        state.skillCooldown = SKILL_COOLDOWN;
+        state.skillCooldown = effectiveSkillCooldown(bonuses, SKILL_COOLDOWN);
         state.playerEnergy  = Math.min(100, state.playerEnergy + ENERGY_PER_TURN + elemDischargeEnergy(bonuses.elementPassive, r.isCrit));
       }
 

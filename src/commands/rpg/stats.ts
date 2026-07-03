@@ -55,7 +55,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
     `❤️ HP — **${stats.hp.toLocaleString()}**${diff(dbUser.baseHp, stats.hp)}`,
     `⚔️ ATK — **${stats.atk.toLocaleString()}**${diff(dbUser.baseAtk, stats.atk)}`,
     `🛡️ DEF — **${stats.def.toLocaleString()}**${diff(dbUser.baseDef, stats.def)}`,
-    `💨 SPD — **${dbUser.baseSpeed}**`,
+    `💨 SPD — **${stats.spd}**${diff(dbUser.baseSpeed, stats.spd)}`,
     ``,
     `🎯 Crit Rate — **${pct(stats.critRate)}**${bonuses.critRateBonus > 0 ? `  *(+${pct(bonuses.critRateBonus)})*` : ""}`,
     `💥 Crit DMG — **${pct(stats.critDmg)}**${bonuses.critDmgBonus > 0 ? `  *(+${pct(bonuses.critDmgBonus)})*` : ""}`,

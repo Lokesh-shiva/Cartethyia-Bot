@@ -88,7 +88,8 @@ export const GUIDE_SECTIONS: Record<string, GuideSection> = {
       .setDescription(
         `Every message earns **3–8 Resonance EXP** (3s cooldown). Genuine chat > spam.\n\n` +
         `**EXP to level up:** \`100 × level^1.6\`  ·  Use 📀 Resonance Records for an instant level.\n\n` +
-        `**Per level:** +12 HP · +3 ATK · +2 DEF · +1 SPD\n\n` +
+        `**Per level:** +12 HP · +3 ATK · +2 DEF · +1 SPD\n` +
+        `-# 💨 SPD from leveling doesn't drive combat mechanics — only SPD gained from echo Speed substats does: +1 Energy/turn per 20 invested, -1 turn Resonance Skill cooldown at 40+, higher SPD acts first in \`/duel\` and \`/raid\`, plus a one-time bonus strike in solo fights if your SPD clears the enemy's.\n\n` +
         `**World Levels** cap your max level — broken by winning \`/ascend\`:\n` +
         `› WL0→Lv20 · WL1→Lv40 · WL2→Lv50 · WL3→Lv60 · WL4→Lv70 · WL5→Lv80 · WL6→Lv84 · WL7→Lv88 · WL8→Lv90\n\n` +
         `**Milestone notifications** fire automatically in chat when you hit key levels:\n` +

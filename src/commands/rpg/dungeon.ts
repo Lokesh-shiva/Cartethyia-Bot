@@ -6,7 +6,7 @@ import {
 } from "discord.js";
 import prisma from "../../lib/prisma";
 import { DUNGEONS, getDungeon, getScaledWaveEnemy, DungeonDefinition } from "../../lib/dungeons";
-import { resolvePlayerBonuses, applyBonuses, apply4pcSkillBonus, apply4pcUltBonus, roll4pcDoubleHit, roll4pcBlock, apply5pcLowHpCrit, apply5pcFirstHit, apply5pcFullHpDmg, get5pcVibDrainMult, get5pcHpRegen, applyLifesteal, elemIgniteProc, elemFrostShield, elemDischargeEnergy, elemWindstrideMult, elemVoidSurgeHeal, elemRadianceRegen, elemRadianceCrit, applyAbilityAttack, abilityV2TurnRegen } from "../../lib/setBonus";
+import { resolvePlayerBonuses, applyBonuses, apply4pcSkillBonus, apply4pcUltBonus, roll4pcDoubleHit, roll4pcBlock, apply5pcLowHpCrit, apply5pcFirstHit, apply5pcFullHpDmg, get5pcVibDrainMult, get5pcHpRegen, applyLifesteal, elemIgniteProc, elemFrostShield, elemDischargeEnergy, elemWindstrideMult, elemVoidSurgeHeal, elemRadianceRegen, elemRadianceCrit, applyAbilityAttack, abilityV2TurnRegen, effectiveSkillCooldown, hasQuickStrike } from "../../lib/setBonus";
 import { compositeVibMult, compositeHasSecondWind } from "../../lib/abilityEffects";
 import {
   initNamedSetState, NamedSetState,
@@ -52,7 +52,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
   const dbUser = await prisma.user.findUnique({
     where:  { id: interaction.user.id },
     select: { level: true, worldLevel: true, element: true,
-              baseHp: true, baseAtk: true, baseDef: true,
+              baseHp: true, baseAtk: true, baseDef: true, baseSpeed: true,
               critRate: true, critDmg: true,
               resonanceAura: true, auraUpdatedAt: true, patronTier: true,
               dispatchStatus: true, dispatchEndsAt: true },
@@ -303,6 +303,7 @@ async function runDungeon(
   let havocFrenzyAtkMult    = 1.0;
   let havocFrenzyLifesteal  = 0;
   let havocFrenzyDefIgnore  = 0;
+  let quickStrikeUsed       = false; // SPD-driven bonus action — once per dungeon run, not per wave
 
   for (let waveIdx = 0; waveIdx < dungeon.waves.length; waveIdx++) {
     const result = await runWave(
@@ -310,7 +311,7 @@ async function runDungeon(
       {
         playerHp, playerHpMax, playerEnergy, skillCooldown, firstActionDone, firstSkillUsed, v2Stacks,
         namedState, glacioShieldTurnsLeft, glacioShieldElemBonus, stormBuffTurnsLeft, stormBuffCritBonus,
-        havocFrenzyAtkMult, havocFrenzyLifesteal, havocFrenzyDefIgnore,
+        havocFrenzyAtkMult, havocFrenzyLifesteal, havocFrenzyDefIgnore, quickStrikeUsed,
       },
       displayName,
     );
@@ -347,6 +348,7 @@ async function runDungeon(
     havocFrenzyAtkMult    = result.havocFrenzyAtkMult;
     havocFrenzyLifesteal  = result.havocFrenzyLifesteal;
     havocFrenzyDefIgnore  = result.havocFrenzyDefIgnore;
+    quickStrikeUsed       = result.quickStrikeUsed;
 
     if (waveIdx < dungeon.waves.length - 1) {
       await thread.send({
@@ -383,6 +385,7 @@ interface WaveState {
   havocFrenzyAtkMult:    number;
   havocFrenzyLifesteal:  number;
   havocFrenzyDefIgnore:  number;
+  quickStrikeUsed:       boolean;
 }
 
 interface WaveResult extends WaveState {
@@ -577,7 +580,7 @@ async function runWave(
           if (ar_s.tag) moveLine += `  ✦${ar_s.tag}`;
           if (ignite.tag) moveLine += `  ✦${ignite.tag}`;
           vibBar           = Math.max(0, vibBar - Math.floor(playerDmg * 0.6 * totalVibMult));
-          ws.skillCooldown  = SKILL_CD;
+          ws.skillCooldown  = effectiveSkillCooldown(bonuses, SKILL_CD);
           ws.playerEnergy   = Math.min(100, ws.playerEnergy + Math.floor(stats.energyPerTurn) + elemDischargeEnergy(bonuses.elementPassive, crit) + ar_s.bonusEnergy);
           ws.playerHp       = Math.min(ws.playerHpMax, ws.playerHp + ar_s.healHp);
           ws.playerHp       = applyLifesteal(bonuses.lifesteal + havocLifesteal + (ar_s.lifesteal ?? 0), playerDmg, ws.playerHp, ws.playerHpMax);
@@ -618,6 +621,15 @@ async function runWave(
         if (v2Regen.energy  > 0) ws.playerEnergy = Math.min(100, ws.playerEnergy + v2Regen.energy);
 
         ws.firstActionDone = true;
+
+        // SPD quick-strike — once per dungeon run, if invested SPD clears the wave enemy's derived SPD
+        if (!ws.quickStrikeUsed && btn.customId !== "dg_flee" && hasQuickStrike(stats.spd, dbUser.level)) {
+          ws.quickStrikeUsed = true;
+          const bonusDmg = Math.max(1, Math.floor(stats.atk * (1 - defReduction)));
+          playerDmg += bonusDmg;
+          moveLine  += `\n⚡ **Quick Strike** — your speed caught them off guard! +${bonusDmg} bonus DMG!`;
+        }
+
         enemyHp = Math.max(0, enemyHp - playerDmg);
 
         if (vibBar <= 0 && !isShattered) {

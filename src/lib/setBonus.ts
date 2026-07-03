@@ -166,6 +166,7 @@ export interface PlayerBonuses {
   atkFlat:        number;
   hpFlat:         number;
   defFlat:        number;
+  spdFlat:        number;  // from echo SPEED substats — drives energy/turn bonus + skill CD compression
   // Passive stat multipliers
   atkMult:        number;
   hpMult:         number;
@@ -231,7 +232,7 @@ export async function resolvePlayerBonuses(userId: string): Promise<PlayerBonuse
   ]);
 
   const bonuses: PlayerBonuses = {
-    atkFlat: 0, hpFlat: 0, defFlat: 0,
+    atkFlat: 0, hpFlat: 0, defFlat: 0, spdFlat: 0,
     atkMult: 1.0, hpMult: 1.0, defMult: 1.0,
     critRateBonus: 0, critDmgBonus: 0,
     energyBonus: 0, lifesteal: 0, elemDmgBonus: 0,
@@ -288,7 +289,7 @@ export async function resolvePlayerBonuses(userId: string): Promise<PlayerBonuse
       case "ELEM_DMG_PCT": bonuses.elemDmgBonus  += v/100;       break;
       case "ENERGY_REGEN": bonuses.energyBonus   += v/2;         break; // dampened
       case "HEALING_PCT":  /* no in-combat healing yet */        break;
-      case "SPEED":        /* combat doesn't use speed yet */    break;
+      case "SPEED":        bonuses.spdFlat       += v;          break;
       default:
         // Element-specific DMG main stat (e.g. Fusion DMG Bonus) — only if it matches you
         if (elemDmgKeys.has(type) && type === `${playerElem}_DMG`) {
@@ -512,10 +513,11 @@ export interface ResolvedStats {
   energyPerTurn: number;
   lifesteal: number;
   elemDmgBonus: number;
+  spd:       number;
 }
 
 export function applyBonuses(
-  base: { baseHp: number; baseAtk: number; baseDef: number; critRate: number; critDmg: number },
+  base: { baseHp: number; baseAtk: number; baseDef: number; critRate: number; critDmg: number; baseSpeed?: number },
   bonuses: PlayerBonuses,
 ): ResolvedStats {
   return {
@@ -524,10 +526,37 @@ export function applyBonuses(
     def:          Math.floor((base.baseDef + bonuses.defFlat) * bonuses.defMult),
     critRate:     Math.min(1, base.critRate + bonuses.critRateBonus),
     critDmg:      base.critDmg + bonuses.critDmgBonus,
-    energyPerTurn: 25 + bonuses.energyBonus,
+    // +1 energy/turn per 20 SPD invested via echo substats (spdFlat only — baseSpeed
+    // grows +1/level for everyone regardless of build, so it shouldn't drive this).
+    energyPerTurn: 25 + bonuses.energyBonus + Math.floor(bonuses.spdFlat / 20),
     lifesteal:    bonuses.lifesteal,
     elemDmgBonus: bonuses.elemDmgBonus,
+    spd:          (base.baseSpeed ?? 100) + bonuses.spdFlat,
   };
+}
+
+// ── SPD-driven combat mechanics ───────────────────────────────────────────────
+// Cross this much *invested* SPD (echo substats only, not level-derived baseSpeed)
+// and your Resonance Skill's cooldown compresses by 1 turn — rewards a real
+// "speed build" instead of SPD being a stat with no combat effect.
+const SPD_SKILL_CD_THRESHOLD = 40;
+
+export function effectiveSkillCooldown(bonuses: PlayerBonuses, baseCooldown: number): number {
+  return bonuses.spdFlat >= SPD_SKILL_CD_THRESHOLD ? Math.max(1, baseCooldown - 1) : baseCooldown;
+}
+
+// Solo-fight bonus quick-strike: if the player's total effective SPD clears the
+// boss's derived SPD (mirrors a zero-investment player at the boss's own level,
+// via the same `100 + level` formula as baseSpeed) by this margin, they get one
+// free bonus Basic Attack before the boss's first counter-attack. Once per fight.
+const SPD_QUICK_STRIKE_MARGIN = 20;
+
+export function derivedBossSpd(bossLevel: number): number {
+  return 100 + bossLevel;
+}
+
+export function hasQuickStrike(playerSpd: number, bossLevel: number): boolean {
+  return playerSpd - derivedBossSpd(bossLevel) >= SPD_QUICK_STRIKE_MARGIN;
 }
 
 // ── 4pc / 5pc in-combat helpers ───────────────────────────────────────────────

@@ -14,6 +14,7 @@ import {
   abilityCritRate, applyLifesteal, PlayerBonuses,
   elemIgniteProc, elemFrostShield, elemDischargeEnergy,
   elemWindstrideMult, elemRadianceRegen, elemRadianceCrit,
+  effectiveSkillCooldown,
 } from "../../lib/setBonus";
 import { compositeHasSecondWind, abilityLabel } from "../../lib/abilityEffects";
 import {
@@ -39,7 +40,7 @@ interface DuelState {
   challengedName: string;
   // Challenger stats
   cHp:     number; cHpMax: number; cEnergy: number; cSkillCd: number;
-  cAtk:    number; cDef:   number; cCritRate: number; cCritDmg: number; cElement: string;
+  cAtk:    number; cDef:   number; cSpd: number; cCritRate: number; cCritDmg: number; cElement: string;
   cElemDmg: number; cLifesteal: number; cBonuses: PlayerBonuses;
   cFirstAction: boolean; cSecondWindUsed: boolean; cV2Stacks: number;
   cNamedState: NamedSetState;
@@ -48,7 +49,7 @@ interface DuelState {
   cHavocFrenzyAtkMult: number; cHavocFrenzyLifesteal: number; cHavocFrenzyDefIgnore: number;
   // Challenged stats
   dHp:     number; dHpMax: number; dEnergy:  number; dSkillCd: number;
-  dAtk:    number; dDef:   number; dCritRate: number; dCritDmg: number; dElement: string;
+  dAtk:    number; dDef:   number; dSpd: number; dCritRate: number; dCritDmg: number; dElement: string;
   dElemDmg: number; dLifesteal: number; dBonuses: PlayerBonuses;
   dFirstAction: boolean; dSecondWindUsed: boolean; dV2Stacks: number;
   dNamedState: NamedSetState;
@@ -170,11 +171,11 @@ export async function execute(interaction: ChatInputCommandInteraction) {
   const [challengerDb, challengedDb] = await Promise.all([
     prisma.user.findUnique({
       where:  { id: interaction.user.id },
-      select: { baseHp: true, baseAtk: true, baseDef: true, critRate: true, critDmg: true, element: true, level: true, dispatchStatus: true, dispatchEndsAt: true },
+      select: { baseHp: true, baseAtk: true, baseDef: true, baseSpeed: true, critRate: true, critDmg: true, element: true, level: true, dispatchStatus: true, dispatchEndsAt: true },
     }),
     prisma.user.findUnique({
       where:  { id: target.id },
-      select: { baseHp: true, baseAtk: true, baseDef: true, critRate: true, critDmg: true, element: true, level: true },
+      select: { baseHp: true, baseAtk: true, baseDef: true, baseSpeed: true, critRate: true, critDmg: true, element: true, level: true },
     }),
   ]);
 
@@ -253,7 +254,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
       challengerId: interaction.user.id, challengedId: target.id,
       challengerName: cName, challengedName: dName,
       cHp: cStats.hp, cHpMax: cStats.hp, cEnergy: 0, cSkillCd: 0,
-      cAtk: cStats.atk, cDef: cStats.def,
+      cAtk: cStats.atk, cDef: cStats.def, cSpd: cStats.spd,
       cCritRate: cStats.critRate, cCritDmg: cStats.critDmg,
       cElement: challengerDb.element,
       cElemDmg: cStats.elemDmgBonus, cLifesteal: cStats.lifesteal, cBonuses,
@@ -263,7 +264,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
       cStormBuffTurnsLeft: 0, cStormBuffCritBonus: 0,
       cHavocFrenzyAtkMult: 1.0, cHavocFrenzyLifesteal: 0, cHavocFrenzyDefIgnore: 0,
       dHp: dStats.hp, dHpMax: dStats.hp, dEnergy: 0, dSkillCd: 0,
-      dAtk: dStats.atk, dDef: dStats.def,
+      dAtk: dStats.atk, dDef: dStats.def, dSpd: dStats.spd,
       dCritRate: dStats.critRate, dCritDmg: dStats.critDmg,
       dElement: challengedDb.element,
       dElemDmg: dStats.elemDmgBonus, dLifesteal: dStats.lifesteal, dBonuses,
@@ -272,7 +273,8 @@ export async function execute(interaction: ChatInputCommandInteraction) {
       dGlacioShieldTurnsLeft: 0, dGlacioShieldElemBonus: 0,
       dStormBuffTurnsLeft: 0, dStormBuffCritBonus: 0,
       dHavocFrenzyAtkMult: 1.0, dHavocFrenzyLifesteal: 0, dHavocFrenzyDefIgnore: 0,
-      currentTurn: interaction.user.id, // challenger goes first
+      // Higher SPD acts first; ties keep the challenger-first default
+      currentTurn: dStats.spd > cStats.spd ? target.id : interaction.user.id,
       turn: 1,
     };
 
@@ -382,6 +384,8 @@ export async function execute(interaction: ChatInputCommandInteraction) {
         const oppHp    = isChallenger ? state.dHp       : state.cHp;
         const oppHpMax = isChallenger ? state.dHpMax    : state.cHpMax;
         const firstAct = isChallenger ? state.cFirstAction : state.dFirstAction;
+        const mySpd    = isChallenger ? state.cSpd : state.dSpd;
+        const oppSpd   = isChallenger ? state.dSpd : state.cSpd;
         const isWeak   = myElem === COUNTER_ELEMENT[oppElem];
 
         const myNamedState  = isChallenger ? state.cNamedState : state.dNamedState;
@@ -452,7 +456,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
           if (mySetId === "RADIANT_CONVERGENCE" && r.isCrit) radiantConvergenceOnCrit(myNamedState, myHp, myHpMax);
           damage = base + ignite.dmg; isCrit = r.isCrit; moveType = "BASIC";
           moveLine = `${myName} — Basic Attack${r.isCrit ? " **(CRIT)**" : ""}${isWeak ? " **(WEAK)**" : ""}${ignite.tag ? `  ✦${ignite.tag}` : ""}`;
-          const enGain = ENERGY_PER_TURN + elemDischargeEnergy(myBonus.elementPassive, r.isCrit) + thunderboltEnergy;
+          const enGain = ENERGY_PER_TURN + Math.floor(myBonus.spdFlat / 20) + elemDischargeEnergy(myBonus.elementPassive, r.isCrit) + thunderboltEnergy;
           if (isChallenger) state.cEnergy = Math.min(100, state.cEnergy + enGain);
           else              state.dEnergy = Math.min(100, state.dEnergy + enGain);
           if (mySetId === "STORMCALLERS_OATH") stormcallersOathCheckThunderbolt(myNamedState, isChallenger ? state.cEnergy : state.dEnergy);
@@ -472,9 +476,10 @@ export async function execute(interaction: ChatInputCommandInteraction) {
           if (mySetId === "RADIANT_CONVERGENCE" && r.isCrit) radiantConvergenceOnCrit(myNamedState, myHp, myHpMax);
           damage = base + ignite.dmg; isCrit = r.isCrit; moveType = "SKILL";
           moveLine = `${myName} — Resonance Skill${r.isCrit ? " **(CRIT)**" : ""}${isWeak ? " **(WEAK)**" : ""}${ignite.tag ? `  ✦${ignite.tag}` : ""}`;
-          const enGain = ENERGY_PER_TURN + elemDischargeEnergy(myBonus.elementPassive, r.isCrit);
-          if (isChallenger) { state.cSkillCd = SKILL_CD; state.cEnergy = Math.min(100, state.cEnergy + enGain); }
-          else              { state.dSkillCd = SKILL_CD; state.dEnergy = Math.min(100, state.dEnergy + enGain); }
+          const enGain = ENERGY_PER_TURN + Math.floor(myBonus.spdFlat / 20) + elemDischargeEnergy(myBonus.elementPassive, r.isCrit);
+          const mySkillCd = effectiveSkillCooldown(myBonus, SKILL_CD);
+          if (isChallenger) { state.cSkillCd = mySkillCd; state.cEnergy = Math.min(100, state.cEnergy + enGain); }
+          else              { state.dSkillCd = mySkillCd; state.dEnergy = Math.min(100, state.dEnergy + enGain); }
         }
 
         if (btn.customId === "duel_ultimate") {
@@ -506,6 +511,14 @@ export async function execute(interaction: ChatInputCommandInteraction) {
           if (isChallenger) state.cV2Stacks = ar.newStacks;
           else              state.dV2Stacks = ar.newStacks;
         }
+
+        // SPD first-strike — whoever has the SPD edge gets bonus damage on the duel's very first action
+        if (state.turn === 1 && mySpd > oppSpd) {
+          const bonusDmg = Math.floor(damage * 0.15);
+          damage += bonusDmg;
+          moveLine += `\n⚡ **First Strike** — you got the jump on them! +${bonusDmg} bonus DMG!`;
+        }
+
         if (ar.tag) moveLine += `  ✦${ar.tag}`;
         moveLine += ` — **${damage} DMG**`;
 

@@ -14,7 +14,7 @@ import { getBoss, scaledBoss } from "../../lib/bosses";
 import { gearAwareScale, baselineAtk } from "../../lib/combat";
 import { generateBattleCard, BattleCardState } from "../../lib/battleCard";
 import { generateUniqueAbilityV2 } from "../../lib/uniqueAbility";
-import { resolvePlayerBonuses, applyBonuses, apply4pcSkillBonus, apply4pcUltBonus, roll4pcDoubleHit, roll4pcBlock, apply5pcLowHpCrit, apply5pcFirstHit, apply5pcFullHpDmg, get5pcVibDrainMult, get5pcHpRegen, applyLifesteal, elemIgniteProc, elemFrostShield, elemDischargeEnergy, elemWindstrideMult, elemVoidSurgeHeal, elemRadianceRegen, elemRadianceCrit, applyAbilityAttack, abilityV2TurnRegen } from "../../lib/setBonus";
+import { resolvePlayerBonuses, applyBonuses, apply4pcSkillBonus, apply4pcUltBonus, roll4pcDoubleHit, roll4pcBlock, apply5pcLowHpCrit, apply5pcFirstHit, apply5pcFullHpDmg, get5pcVibDrainMult, get5pcHpRegen, applyLifesteal, elemIgniteProc, elemFrostShield, elemDischargeEnergy, elemWindstrideMult, elemVoidSurgeHeal, elemRadianceRegen, elemRadianceCrit, applyAbilityAttack, abilityV2TurnRegen, effectiveSkillCooldown, hasQuickStrike } from "../../lib/setBonus";
 import { compositeVibMult, compositeHasSecondWind } from "../../lib/abilityEffects";
 import {
   initNamedSetState,
@@ -186,6 +186,7 @@ const command: Command = {
     let v2Stacks        = 0;
     let secondWindUsed = false;
     let isEnraged      = false;
+    let quickStrikeUsed = false; // SPD-driven bonus action — once per fight
     const ENERGY_PER_TURN_ASCEND = Math.floor(stats.energyPerTurn);
 
     // Named Echo Set per-fight state (all sets — no-op unless bonuses.activeNamedSetId matches)
@@ -366,7 +367,7 @@ const command: Command = {
           if (ar_s.tag)   moveName += `  ✦${ar_s.tag}`;
           if (ignite.tag) moveName += `  ✦${ignite.tag}`;
           state.bossVibNow    = Math.max(0, state.bossVibNow - Math.floor(playerDmg * 0.6 * totalVibMult));
-          state.skillCooldown = SKILL_COOLDOWN;
+          state.skillCooldown = effectiveSkillCooldown(bonuses, SKILL_COOLDOWN);
           state.playerEnergy  = Math.min(100, state.playerEnergy + ENERGY_PER_TURN_ASCEND + elemDischargeEnergy(bonuses.elementPassive, crit) + ar_s.bonusEnergy);
           state.playerHp      = Math.min(state.playerHpMax, state.playerHp + ar_s.healHp);
           state.playerHp      = applyLifesteal(bonuses.lifesteal + havocLifesteal + (ar_s.lifesteal ?? 0), playerDmg, state.playerHp, state.playerHpMax);
@@ -406,6 +407,14 @@ const command: Command = {
         const v2Regen = abilityV2TurnRegen(bonuses, state.playerHpMax);
         if (v2Regen.healHp > 0) state.playerHp     = Math.min(state.playerHpMax, state.playerHp + v2Regen.healHp);
         if (v2Regen.energy > 0) state.playerEnergy = Math.min(100, state.playerEnergy + v2Regen.energy);
+
+        // SPD quick-strike — once per fight, if invested SPD clears the boss's derived SPD
+        if (!quickStrikeUsed && btn.customId !== "battle_flee" && hasQuickStrike(stats.spd, WORLD_LEVEL_CAPS[boss.worldLevel] ?? 20)) {
+          quickStrikeUsed = true;
+          const bonusDmg = Math.max(1, Math.floor(stats.atk * (1 - defReduction)));
+          playerDmg += bonusDmg;
+          moveName  += `\n⚡ **Quick Strike** — your speed caught them off guard! +${bonusDmg} bonus DMG!`;
+        }
 
         firstActionDone = true;
         state.bossHpNow = Math.max(0, state.bossHpNow - playerDmg);

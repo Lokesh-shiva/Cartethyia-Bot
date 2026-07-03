@@ -16,6 +16,7 @@ import {
   abilityCritRate, abilityVib, applyLifesteal, PlayerBonuses,
   elemIgniteProc, elemFrostShield, elemDischargeEnergy,
   elemWindstrideMult, elemVoidSurgeHeal, elemRadianceRegen, elemRadianceCrit,
+  effectiveSkillCooldown,
 } from "../../lib/setBonus";
 import { compositeHasSecondWind } from "../../lib/abilityEffects";
 import {
@@ -157,6 +158,7 @@ interface RaidParticipant {
   skillCd:        number;
   atk:            number;
   def:            number;
+  spd:            number;
   critRate:       number;
   critDmg:        number;
   elemDmg:        number;
@@ -453,7 +455,7 @@ function buildRecruitEmbed(raid: ActiveRaid, boss: RaidBossConfig): EmbedBuilder
 async function addParticipant(raid: ActiveRaid, userId: string, displayName: string): Promise<boolean> {
   const db = await prisma.user.findUnique({
     where:  { id: userId },
-    select: { baseHp: true, baseAtk: true, baseDef: true, critRate: true, critDmg: true, element: true, isOnboarded: true },
+    select: { baseHp: true, baseAtk: true, baseDef: true, baseSpeed: true, critRate: true, critDmg: true, element: true, isOnboarded: true },
   });
   if (!db?.isOnboarded) return false;
 
@@ -463,7 +465,7 @@ async function addParticipant(raid: ActiveRaid, userId: string, displayName: str
   raid.participants.push({
     userId, name: displayName, element: db.element,
     hp: stats.hp, hpMax: stats.hp, energy: 0, skillCd: 0,
-    atk: stats.atk, def: stats.def,
+    atk: stats.atk, def: stats.def, spd: stats.spd,
     critRate: stats.critRate, critDmg: stats.critDmg,
     elemDmg: stats.elemDmgBonus, lifesteal: stats.lifesteal, bonuses,
     firstAction: true, secondWindUsed: false,
@@ -567,6 +569,7 @@ async function launchRaid(
 
   raid.joinCollector?.stop();
   raid.phase      = "FIGHTING";
+  raid.participants.sort((a, b) => b.spd - a.spd); // higher SPD acts earlier each round
   raid.currentIdx = 0;
 
   // ── Scale boss stats to this party ──────────────────────────────────────────
@@ -807,7 +810,7 @@ async function launchRaid(
         if (mySetId === "RADIANT_CONVERGENCE" && r.isCrit) radiantConvergenceOnCrit(current.namedState, current.hp, current.hpMax);
         damage = base + ign.dmg; isCrit = r.isCrit; vibFrac = 0.3;
         moveLine = `${current.name} — Basic Attack${r.isCrit ? " **(CRIT)**" : ""}${isWeak ? " **(WEAK)**" : ""}${ign.tag ? `  ✦${ign.tag}` : ""}`;
-        current.energy = Math.min(100, current.energy + ENERGY_PER_TURN + elemDischargeEnergy(current.bonuses.elementPassive, r.isCrit) + thunderboltEnergy);
+        current.energy = Math.min(100, current.energy + ENERGY_PER_TURN + Math.floor(current.bonuses.spdFlat / 20) + elemDischargeEnergy(current.bonuses.elementPassive, r.isCrit) + thunderboltEnergy);
         if (mySetId === "STORMCALLERS_OATH") stormcallersOathCheckThunderbolt(current.namedState, current.energy);
 
       } else if (btn.customId === "raid_skill") {
@@ -824,8 +827,8 @@ async function launchRaid(
         if (mySetId === "RADIANT_CONVERGENCE" && r.isCrit) radiantConvergenceOnCrit(current.namedState, current.hp, current.hpMax);
         damage = base + ign.dmg; isCrit = r.isCrit; moveType = "SKILL"; vibFrac = 0.6;
         moveLine = `${current.name} — Resonance Skill${r.isCrit ? " **(CRIT)**" : ""}${isWeak ? " **(WEAK)**" : ""}${ign.tag ? `  ✦${ign.tag}` : ""}`;
-        current.skillCd = SKILL_CD;
-        current.energy  = Math.min(100, current.energy + ENERGY_PER_TURN + elemDischargeEnergy(current.bonuses.elementPassive, r.isCrit));
+        current.skillCd = effectiveSkillCooldown(current.bonuses, SKILL_CD);
+        current.energy  = Math.min(100, current.energy + ENERGY_PER_TURN + Math.floor(current.bonuses.spdFlat / 20) + elemDischargeEnergy(current.bonuses.elementPassive, r.isCrit));
 
       } else if (btn.customId === "raid_ultimate") {
         const smolderMult = mySetId === "SMOLDERING_SOVEREIGN" ? smolderingSovereignOnAction(current.namedState) : 1;

@@ -28,7 +28,7 @@ import {
   get5pcVibDrainMult, get5pcHpRegen, applyLifesteal,
   elemIgniteProc, elemFrostShield, elemDischargeEnergy,
   elemWindstrideMult, elemVoidSurgeHeal, elemRadianceRegen, elemRadianceCrit,
-  applyAbilityAttack, abilityV2TurnRegen,
+  applyAbilityAttack, abilityV2TurnRegen, effectiveSkillCooldown, hasQuickStrike,
 } from "../../lib/setBonus";
 import { compositeVibMult, compositeHasSecondWind } from "../../lib/abilityEffects";
 import {
@@ -248,6 +248,7 @@ const command: Command = {
       let secondWindUsed   = false;
       let battleMsg: any   = null;
       let v2Stacks = 0;
+      let quickStrikeUsed = false; // SPD-driven bonus action — once per fight
       const ENERGY_PER_TURN = Math.floor(stats.energyPerTurn);
 
       // Named Echo Set per-fight state (all sets — no-op unless bonuses.activeNamedSetId matches)
@@ -464,7 +465,7 @@ const command: Command = {
             moveName   = `Resonance Skill — ${playerDmg} DMG${crit ? " **(CRIT)**" : ""}`;
             if (ign.tag) moveName += `  ✦${ign.tag}`;
             state.bossVibNow    = Math.max(0, state.bossVibNow - Math.floor(playerDmg * 0.6 * totalVibMult));
-            state.skillCooldown = SKILL_COOLDOWN;
+            state.skillCooldown = effectiveSkillCooldown(bonuses, SKILL_COOLDOWN);
             state.playerEnergy  = Math.min(100, state.playerEnergy + ENERGY_PER_TURN + elemDischargeEnergy(bonuses.elementPassive, crit) + ar_s.bonusEnergy);
             state.playerHp      = Math.min(state.playerHpMax, applyLifesteal(bonuses.lifesteal + havocLifesteal + (ar_s.lifesteal ?? 0), playerDmg, state.playerHp, state.playerHpMax) + ar_s.healHp);
             if (bonuses.set5pc?.type === "POST_ULT_SKILL") state.skillCooldown = 0;
@@ -496,6 +497,14 @@ const command: Command = {
               stormBuffTurnsLeft = surge.turnsLeft + 1; // +1 compensates for the same-round decrement that fires immediately after this triggers (same pattern/reason as Frostveil Bastion's shield fix)
               stormBuffCritBonus = surge.critRateBonus;
             }
+          }
+
+          // SPD quick-strike — once per fight, if invested SPD clears the boss's derived SPD
+          if (!quickStrikeUsed && btn.customId !== "fb_flee" && hasQuickStrike(stats.spd, fightLevel)) {
+            quickStrikeUsed = true;
+            const bonusDmg = Math.max(1, Math.floor(stats.atk * (1 - defReduction)));
+            playerDmg += bonusDmg;
+            moveName  += `\n⚡ **Quick Strike** — your speed caught them off guard! +${bonusDmg} bonus DMG!`;
           }
 
           state.bossHpNow = Math.max(0, state.bossHpNow - playerDmg);

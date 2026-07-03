@@ -83,11 +83,11 @@ Boss trials for all 9 in `dungeons.ts`. Field bosses (6, one/element) in `src/li
 - **Hidden substats now apply in combat** (setBonus, Lv20/Lv50 gates) — they were display-only before.
 
 ## TODO Next
-1. **Echo Skills** — give echoes their own skill/variety, new "Echo Skill" attack button alongside Basic/Skill/Ultimate. Undesigned — needs a data model (per-echo skill defs?) and combat-loop wiring across all 6 fight loops.
-2. **Speed stat** — `baseSpeed`/SPD is tracked and displayed but never actually used in any combat calc (no turn-order, no dodge). Either wire it into something real or stop showing it as a stat.
-3. **Duel turn order** — currently always challenger-first, no speed/initiative/dodge factor at all.
-4. Consider: `/echo-compare`, upgrade cost preview, DB-backed dismantle/merge alternative if dismantle-for-currency ever feels insufficient.
-5. Long-term/no rush: animated fight/boss visuals (currently only `/wish` has animation) — would need a real client-side animation approach (GIF sequence? external renderer?), not a small addition.
+1. **Echo Skills** — give echoes their own skill/variety, new "Echo Skill" attack button alongside Basic/Skill/Ultimate. Design so far: Main-slot echo only grants it, skill determined by (element, cost tier) not per-echo, own cooldown separate from Resonance Skill. Not yet built.
+2. Consider: `/echo-compare`, upgrade cost preview, DB-backed dismantle/merge alternative if dismantle-for-currency ever feels insufficient, SPD dodge/evasion mechanic (deferred — turn order shipped first).
+3. Long-term/no rush: animated fight/boss visuals (currently only `/wish` has animation) — would need a real client-side animation approach (GIF sequence? external renderer?), not a small addition.
+
+**SPD is now a real combat stat** (was purely cosmetic): `bonuses.spdFlat` (setBonus.ts) aggregates echo Speed substats only — NOT `baseSpeed`, which grows +1/level for everyone regardless of build and shouldn't drive build-reward mechanics. `ResolvedStats.spd = baseSpeed + spdFlat` is the total used for turn-order comparisons. Four hooks: `effectiveSkillCooldown()` (-1 turn Skill CD at 40+ spdFlat), `+1 energy/turn per 20 spdFlat` (baked into `energyPerTurn` in ascend/boss/dungeon/field-boss/encounter via `stats.energyPerTurn` — but duel/raid use a flat `ENERGY_PER_TURN` constant instead, so they need the spdFlat bonus added manually, don't double-add), `hasQuickStrike()` (solo fights: one-time bonus Basic Attack if `stats.spd` clears `derivedBossSpd(level)` by 20+), and SPD-based turn order/first-strike in duel + raid (participants sorted by `stats.spd` in raid, faster player goes first + gets a first-action damage bonus in duel).
 
 ## Gotchas
 - Prisma v7: no `url` in datasource — adapter only. After schema changes: `npm run db:push` then `npx prisma generate`. DB client lives in `src/lib/prisma.ts` (Neon adapter + retry — don't revert to adapter-pg).
