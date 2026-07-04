@@ -112,7 +112,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
         `**Rerolling** costs **1 Paradox Core** and randomises all *unlocked* substats.\n` +
         `**Stasis Locks** protect a substat from rerolling:\n` +
         `› 1st lock: 1 ${CE.sl}  ·  2nd lock: 3 ${CE.sl}  ·  3rd lock: 6 ${CE.sl}\n\n` +
-        `*Stasis Lock cost is charged only when you confirm the reroll — locking is free to undo by cancelling.*`
+        `*Stasis Lock cost is charged only when you confirm the reroll — locking is free to undo by cancelling. Already-locked substats can be unlocked anytime (no refund).*`
       )
       .setFooter({ text: "CARTETHYIA  ·  Echo Reroll  ·  Expires in 60s" })],
     components: [echoSelectRow],
@@ -145,14 +145,19 @@ export async function execute(interaction: ChatInputCommandInteraction) {
 
     // Locks added THIS session — not charged yet, deferred to reroll confirm
     const pendingLocks = new Set<number>();
+    // DB-persisted locks the user wants to release THIS session — free, applied on confirm
+    const pendingUnlocks = new Set<number>();
 
-    function allLocked() { return new Set([...lockedSet, ...pendingLocks]); }
+    function allLocked() {
+      return new Set([...lockedSet, ...pendingLocks].filter(i => !pendingUnlocks.has(i)));
+    }
 
     async function renderPreview() {
       const locked    = allLocked();
       const pendingSL = calcPendingSLCost(startingLockedCount, pendingLocks.size);
       const nextCost  = stasisLockCost(locked.size);
       const canLock   = dbUser!.stasisLocks >= pendingSL + nextCost && locked.size < Math.min(revealed, 3);
+      const canUnlock = locked.size > 0;
       const canReroll = dbUser!.paradoxCores >= 1 && dbUser!.stasisLocks >= pendingSL;
 
       const rerollLabel = pendingSL > 0
@@ -165,6 +170,12 @@ export async function execute(interaction: ChatInputCommandInteraction) {
         .setStyle(ButtonStyle.Secondary)
         .setDisabled(!canLock);
 
+      const unlockBtn = new ButtonBuilder()
+        .setCustomId("reroll_unlock")
+        .setLabel("Unlock a Substat")
+        .setStyle(ButtonStyle.Secondary)
+        .setDisabled(!canUnlock);
+
       const rerollBtn = new ButtonBuilder()
         .setCustomId("reroll_confirm")
         .setLabel(rerollLabel)
@@ -176,9 +187,10 @@ export async function execute(interaction: ChatInputCommandInteraction) {
         .setLabel("Cancel")
         .setStyle(ButtonStyle.Secondary);
 
-      const pendingNote = pendingLocks.size > 0
-        ? `\n\n*(${pendingLocks.size} pending lock${pendingLocks.size > 1 ? "s" : ""} — ${pendingSL} ${CE.sl} charged on reroll, free to cancel)*`
-        : "";
+      const notes: string[] = [];
+      if (pendingLocks.size > 0) notes.push(`${pendingLocks.size} pending lock${pendingLocks.size > 1 ? "s" : ""} — ${pendingSL} ${CE.sl} charged on reroll`);
+      if (pendingUnlocks.size > 0) notes.push(`${pendingUnlocks.size} pending unlock${pendingUnlocks.size > 1 ? "s" : ""} — no refund, free to cancel`);
+      const pendingNote = notes.length > 0 ? `\n\n*(${notes.join("  ·  ")})*` : "";
 
       await interaction.editReply({
         embeds: [new EmbedBuilder()
@@ -189,7 +201,10 @@ export async function execute(interaction: ChatInputCommandInteraction) {
             `Lock a substat to protect it, then reroll. Sealed substats are unaffected.${pendingNote}`
           )
           .setFooter({ text: `CARTETHYIA  ·  Reroll Preview  ·  ${locked.size} locked  ·  ${dbUser!.stasisLocks} ${CE.sl} available` })],
-        components: [new ActionRowBuilder<ButtonBuilder>().addComponents(lockBtn, rerollBtn, cancelBtn)],
+        components: [
+          new ActionRowBuilder<ButtonBuilder>().addComponents(lockBtn, unlockBtn),
+          new ActionRowBuilder<ButtonBuilder>().addComponents(rerollBtn, cancelBtn),
+        ],
       });
     }
 
@@ -198,7 +213,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
     // Step 3: handle lock or reroll
     const btnCollector = interaction.channel?.createMessageComponentCollector({
       componentType: ComponentType.Button,
-      filter: b => b.user.id === interaction.user.id && ["reroll_lock","reroll_confirm","reroll_cancel"].includes(b.customId),
+      filter: b => b.user.id === interaction.user.id && ["reroll_lock","reroll_unlock","reroll_confirm","reroll_cancel"].includes(b.customId),
       time:   90_000,
     });
 
@@ -261,6 +276,59 @@ export async function execute(interaction: ChatInputCommandInteraction) {
         return;
       }
 
+      if (btn.customId === "reroll_unlock") {
+        await btn.deferUpdate();
+
+        const locked = allLocked();
+        const lockedList: { index: number; type: string; value: number }[] = [];
+        for (const i of locked) {
+          lockedList.push({
+            index: i,
+            type:  echo[`substat${i}Type`  as keyof typeof echo] as string,
+            value: echo[`substat${i}Value` as keyof typeof echo] as number,
+          });
+        }
+        if (lockedList.length === 0) { await renderPreview(); return; }
+
+        await interaction.editReply({
+          embeds: [new EmbedBuilder()
+            .setColor(ELEMENT_COLORS[echoElem])
+            .setDescription(`Choose which substat to unlock. No Stasis Locks are refunded.`)],
+          components: [new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(
+            new StringSelectMenuBuilder()
+              .setCustomId("reroll_unlock_pick")
+              .setPlaceholder("Choose a substat to unlock…")
+              .addOptions(lockedList.map(u => ({
+                label:       `${SUBSTAT_LABELS[u.type] ?? u.type}  +${formatStatValue(u.type, u.value)}`,
+                description: `Substat ${u.index} of ${total}`,
+                value:       String(u.index),
+              })))
+          )],
+        });
+
+        const unlockPickCollector = interaction.channel?.createMessageComponentCollector({
+          componentType: ComponentType.StringSelect,
+          filter: i => i.user.id === interaction.user.id && i.customId === "reroll_unlock_pick",
+          time:   30_000,
+          max:    1,
+        });
+
+        unlockPickCollector?.on("collect", async (unlockSel: StringSelectMenuInteraction) => {
+          await unlockSel.deferUpdate();
+          const idx = parseInt(unlockSel.values[0]);
+          // If it was only a pending (this-session, not-yet-charged) lock, just drop it —
+          // otherwise it's a DB-persisted lock, so mark it for release on confirm.
+          if (pendingLocks.has(idx)) pendingLocks.delete(idx);
+          else pendingUnlocks.add(idx);
+          await renderPreview();
+        });
+
+        unlockPickCollector?.on("end", async (col) => {
+          if (col.size === 0) await renderPreview();
+        });
+        return;
+      }
+
       if (btn.customId === "reroll_confirm") {
         btnCollector.stop();
         await btn.deferUpdate();
@@ -285,15 +353,18 @@ export async function execute(interaction: ChatInputCommandInteraction) {
         const freshEcho = await prisma.echo.findUnique({ where: { id: echo.id } });
         if (!freshEcho) { await interaction.editReply({ content: "Echo not found.", components: [], embeds: [] }); return; }
 
-        // Build echo update: write pending locks + reroll unlocked slots
+        // Build echo update: write pending locks + unlocks + reroll unlocked slots
         const updateData: Record<string, any> = {};
         for (const idx of pendingLocks) updateData[`substat${idx}Locked`] = true;
+        for (const idx of pendingUnlocks) updateData[`substat${idx}Locked`] = false;
 
         const total2 = substatCount(freshEcho.rarity);
-        const allLockedNow = new Set([
-          ...[1,2,3,4,5].filter(i => freshEcho[`substat${i}Locked` as keyof typeof freshEcho] === true),
-          ...pendingLocks,
-        ]);
+        const allLockedNow = new Set(
+          [
+            ...[1,2,3,4,5].filter(i => freshEcho[`substat${i}Locked` as keyof typeof freshEcho] === true),
+            ...pendingLocks,
+          ].filter(i => !pendingUnlocks.has(i))
+        );
 
         // Reserved: main stat + locked + sealed substats
         const reservedTypes = new Set<string>([freshEcho.mainStatType]);
