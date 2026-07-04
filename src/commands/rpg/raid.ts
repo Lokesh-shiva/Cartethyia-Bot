@@ -149,13 +149,15 @@ function computeRaidBossStats(
   const bossDef  = Math.floor(150 * gearMult);
 
   // ── Vibration bar ───────────────────────────────────────────────────────────
-  // Same problem as HP/ATK/DEF: boss.vibBar is a fixed per-boss value (110 for
-  // WL0 up to 285 for WL8, field bosses only 100-125) that never scaled with the
-  // party, so a full raid party could shatter a low-vibBar boss almost instantly.
-  // Preserve the boss's own relative shatter-difficulty (vibBar/baseHp ratio) but
-  // apply it to the new party-scaled HP so absolute vibBar scales with the party too.
-  // Multiply by 1.5× to account for multiple players draining vib in parallel.
-  const vibBar = Math.max(80, Math.floor(bossHp * (boss.vibBar / boss.baseHp) * 1.5));
+  // Previously scaled off boss.vibBar/boss.baseHp ratio applied to the new
+  // totalAtk-scaled bossHp. That's the wrong basis: a single attack's damage
+  // only ever comes from ONE player's ATK, not the party's total — so for a
+  // minimum-size raid (2 players), vibBar came out sized for roughly one hit.
+  // A crit ultimate + weakness hit measured at ~107% of the bar in one attack.
+  // Vib bar now scales off avgAtk directly (independent of party size) so a
+  // single strong hit only ever takes a meaningful bite — target ~15% of the
+  // bar for a worst-case crit ultimate + weakness hit.
+  const vibBar = Math.max(200, Math.floor(avgAtk * 45));
 
   return { hp: Math.floor(bossHp), atk: Math.floor(bossAtk), def: Math.floor(bossDef), vibBar };
 }
