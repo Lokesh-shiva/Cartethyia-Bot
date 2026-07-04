@@ -101,20 +101,36 @@ function fieldBossLoot(fb: FieldBoss) {
 // Boss ATK = f(avg player HP)  → boss damage reflects actual player survivability
 // More players → more total HP pool so boss hits slightly harder + more HP total
 //
+// Raw ATK alone understates real damage output once crit rate/dmg and elemental
+// DMG bonus are stacked — a maxed build (100% crit, 300%+ crit dmg, 150%+ elem
+// bonus) deals several times its raw ATK stat in practice, but the old scaling
+// only ever looked at ATK, so heavily optimized players trivialized raid bosses
+// that were sized around raw ATK. This folds in the same multipliers combat
+// actually applies: expected crit multiplier (1 + critRate * (critDmg - 1)) and
+// the elemental DMG bonus (1 + elemDmg). For an unoptimized fresh character
+// (critRate 5%, critDmg 1.5×, elemDmg 0) this is ~1.0× — i.e. no change to
+// existing balance for typical players. It only scales up for builds that
+// actually deal outsized damage.
+function effectivePower(p: RaidParticipant): number {
+  const critMult = 1 + Math.min(1, p.critRate) * Math.max(0, p.critDmg - 1);
+  const elemMult = 1 + Math.max(0, p.elemDmg);
+  return p.atk * critMult * elemMult;
+}
+
 function computeRaidBossStats(
   boss: RaidBossConfig,
   participants: RaidParticipant[],
 ): { hp: number; atk: number; def: number; vibBar: number } {
-  const n        = participants.length;
-  const totalAtk = participants.reduce((s, p) => s + p.atk, 0);
-  const totalHp  = participants.reduce((s, p) => s + p.hpMax, 0);
-  const avgAtk   = totalAtk / n;
-  const avgHp    = totalHp  / n;
+  const n          = participants.length;
+  const totalPower = participants.reduce((s, p) => s + effectivePower(p), 0);
+  const totalHp    = participants.reduce((s, p) => s + p.hpMax, 0);
+  const avgPower   = totalPower / n;
+  const avgHp      = totalHp    / n;
 
   // ── HP ──────────────────────────────────────────────────────────────────────
   // Target ~28 skill-cycle turns of the full party to clear the boss.
-  // Per turn, an average player deals avgAtk * ~2.2 (basic/skill/ult average).
-  // We want total HP ≈ totalAtk * 2.2 * 28 * 0.80 so geared parties still feel pressure.
+  // Per turn, an average player deals avgPower * ~2.2 (basic/skill/ult average).
+  // We want total HP ≈ totalPower * 2.2 * 28 * 0.80 so geared parties still feel pressure.
   // 2026-07-02 balance pass: multiplied by 1.35 (raids should hit noticeably harder
   // than a solo /field-boss fight).
   // 2026-07-03 difficulty pass: another ×1.37 on top (players reported raids/bosses
@@ -127,7 +143,8 @@ function computeRaidBossStats(
   // size/gear — a WL0 or field boss raid was trivial next to a WL8 one. The chosen
   // boss is now purely cosmetic (name/element/moves/loot); difficulty is uniform
   // across every raid option for the same party.
-  const bossHp  = Math.floor(totalAtk * 2.2 * 28 * 0.80 * 1.35 * 1.37);
+  // 2026-07-04: totalAtk → totalPower (folds in crit/elemDmg, see effectivePower above).
+  const bossHp  = Math.floor(totalPower * 2.2 * 28 * 0.80 * 1.35 * 1.37);
 
   // ── ATK ─────────────────────────────────────────────────────────────────────
   // Each AoE round should drain ~12–18% of a player's HP after their DEF.
@@ -145,7 +162,8 @@ function computeRaidBossStats(
   // Party-derived baseline (150) instead of the selected boss's own baseDef —
   // that ranged 60 (WL0) to 1080 (WL8), an 18× spread that made boss choice
   // dominate difficulty far more than party size/gear ever could.
-  const gearMult = Math.max(1.55, Math.sqrt(avgAtk / 300));
+  // 2026-07-04: avgAtk → avgPower (see effectivePower above).
+  const gearMult = Math.max(1.55, Math.sqrt(avgPower / 300));
   const bossDef  = Math.floor(150 * gearMult);
 
   // ── Vibration bar ───────────────────────────────────────────────────────────
@@ -154,10 +172,10 @@ function computeRaidBossStats(
   // only ever comes from ONE player's ATK, not the party's total — so for a
   // minimum-size raid (2 players), vibBar came out sized for roughly one hit.
   // A crit ultimate + weakness hit measured at ~107% of the bar in one attack.
-  // Vib bar now scales off avgAtk directly (independent of party size) so a
+  // Vib bar now scales off avgPower directly (independent of party size) so a
   // single strong hit only ever takes a meaningful bite — target ~15% of the
   // bar for a worst-case crit ultimate + weakness hit.
-  const vibBar = Math.max(200, Math.floor(avgAtk * 45));
+  const vibBar = Math.max(200, Math.floor(avgPower * 45));
 
   return { hp: Math.floor(bossHp), atk: Math.floor(bossAtk), def: Math.floor(bossDef), vibBar };
 }
