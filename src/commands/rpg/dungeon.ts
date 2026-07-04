@@ -251,19 +251,17 @@ export async function execute(interaction: ChatInputCommandInteraction) {
 }
 
 // ── Core dungeon runner ───────────────────────────────────────────────────────
+type DungeonUser = { level: number; worldLevel: number; element: string; baseHp: number; baseAtk: number; baseDef: number; critRate: number; critDmg: number };
+
 async function runDungeon(
   interaction: ChatInputCommandInteraction,
   dungeon:     DungeonDefinition,
-  dbUser:      { level: number; worldLevel: number; element: string; baseHp: number; baseAtk: number; baseDef: number; critRate: number; critDmg: number },
+  dbUser:      DungeonUser,
 ) {
   const displayName = interaction.guild?.members.cache.get(interaction.user.id)?.displayName
     ?? interaction.user.displayName;
 
-  // Resolve bonuses once
-  const bonuses = await resolvePlayerBonuses(interaction.user.id);
-  const stats   = applyBonuses(dbUser, bonuses);
-
-  // Create private thread
+  // Create private thread (reused across rechallenges — no new thread per run)
   let thread;
   try {
     thread = await (interaction.channel as TextChannel).threads.create({
@@ -280,103 +278,170 @@ async function runDungeon(
   await interaction.editReply({ content: `${dungeon.emoji} Dungeon entered! <#${thread.id}>`, embeds: [], components: [] });
   await registerFight(interaction.user.id, thread.id, interaction.guildId!, "Dungeon");
 
-  // Intro
-  await thread.send({
-    embeds: [new EmbedBuilder()
-      .setColor(dungeon.color)
-      .setTitle(`${dungeon.emoji}  ${dungeon.name}`)
-      .setDescription(`*${dungeon.flavor}*\n\n**3 waves stand between you and your reward.**\nDefeat them all to claim your spoils.`)
-      .setFooter({ text: "CARTETHYIA  ·  Dungeon" })],
-  });
+  let currentDbUser = dbUser;
+  let runNumber     = 1;
 
-  // Track player HP across waves (shared)
-  let playerHp    = stats.hp;
-  const playerHpMax = stats.hp;
-  let playerEnergy = 0;
-  let skillCooldown = 0;
-  let firstActionDone = false;
-  let firstSkillUsed  = false;
-  let v2Stacks        = 0;
-  const namedState = initNamedSetState();
-  let glacioShieldTurnsLeft = 0;
-  let glacioShieldElemBonus = 0;
-  let stormBuffTurnsLeft    = 0;
-  let stormBuffCritBonus    = 0;
-  let havocFrenzyAtkMult    = 1.0;
-  let havocFrenzyLifesteal  = 0;
-  let havocFrenzyDefIgnore  = 0;
-  let quickStrikeUsed       = false; // SPD-driven bonus action — once per dungeon run, not per wave
-  let echoSkillCooldown      = 0;
-  let enemyDefShredTurnsLeft = 0;
-  let enemyDefShredPct       = 0;
-  let nextAttackCritArmed    = false;
+  while (true) {
+    // Resolve bonuses/stats fresh each run — level or gear may have changed since the last clear
+    const bonuses = await resolvePlayerBonuses(interaction.user.id);
+    const stats   = applyBonuses(currentDbUser, bonuses);
 
-  for (let waveIdx = 0; waveIdx < dungeon.waves.length; waveIdx++) {
-    const result = await runWave(
-      thread, interaction.user.id, dungeon, waveIdx, dbUser, stats, bonuses,
-      {
-        playerHp, playerHpMax, playerEnergy, skillCooldown, firstActionDone, firstSkillUsed, v2Stacks,
-        namedState, glacioShieldTurnsLeft, glacioShieldElemBonus, stormBuffTurnsLeft, stormBuffCritBonus,
-        havocFrenzyAtkMult, havocFrenzyLifesteal, havocFrenzyDefIgnore, quickStrikeUsed,
-        echoSkillCooldown, enemyDefShredTurnsLeft, enemyDefShredPct, nextAttackCritArmed,
-      },
-      displayName,
-    );
+    await thread.send({
+      embeds: [new EmbedBuilder()
+        .setColor(dungeon.color)
+        .setTitle(`${dungeon.emoji}  ${dungeon.name}${runNumber > 1 ? `  ·  Run ${runNumber}` : ""}`)
+        .setDescription(`*${dungeon.flavor}*\n\n**3 waves stand between you and your reward.**\nDefeat them all to claim your spoils.`)
+        .setFooter({ text: "CARTETHYIA  ·  Dungeon" })],
+    });
 
-    if (!result.survived) {
-      // Died — no reward
-      await thread.send({
-        embeds: [new EmbedBuilder()
-          .setColor(0x4A4A5A)
-          .setTitle("💀  Dungeon Failed")
-          .setDescription(
-            `You fell on **Wave ${waveIdx + 1}** of 3.\n\n` +
-            `No rewards this run. The dungeon cooldown still applies.\n` +
-            `Come back stronger.`
-          )
-          .setFooter({ text: "CARTETHYIA  ·  Dungeon" })],
-      });
+    // Track player HP across waves (shared)
+    let playerHp    = stats.hp;
+    const playerHpMax = stats.hp;
+    let playerEnergy = 0;
+    let skillCooldown = 0;
+    let firstActionDone = false;
+    let firstSkillUsed  = false;
+    let v2Stacks        = 0;
+    const namedState = initNamedSetState();
+    let glacioShieldTurnsLeft = 0;
+    let glacioShieldElemBonus = 0;
+    let stormBuffTurnsLeft    = 0;
+    let stormBuffCritBonus    = 0;
+    let havocFrenzyAtkMult    = 1.0;
+    let havocFrenzyLifesteal  = 0;
+    let havocFrenzyDefIgnore  = 0;
+    let quickStrikeUsed       = false; // SPD-driven bonus action — once per dungeon run, not per wave
+    let echoSkillCooldown      = 0;
+    let enemyDefShredTurnsLeft = 0;
+    let enemyDefShredPct       = 0;
+    let nextAttackCritArmed    = false;
+    let survivedAll            = true;
+
+    for (let waveIdx = 0; waveIdx < dungeon.waves.length; waveIdx++) {
+      const result = await runWave(
+        thread, interaction.user.id, dungeon, waveIdx, currentDbUser, stats, bonuses,
+        {
+          playerHp, playerHpMax, playerEnergy, skillCooldown, firstActionDone, firstSkillUsed, v2Stacks,
+          namedState, glacioShieldTurnsLeft, glacioShieldElemBonus, stormBuffTurnsLeft, stormBuffCritBonus,
+          havocFrenzyAtkMult, havocFrenzyLifesteal, havocFrenzyDefIgnore, quickStrikeUsed,
+          echoSkillCooldown, enemyDefShredTurnsLeft, enemyDefShredPct, nextAttackCritArmed,
+        },
+        displayName,
+      );
+
+      if (!result.survived) {
+        // Died — no reward
+        await thread.send({
+          embeds: [new EmbedBuilder()
+            .setColor(0x4A4A5A)
+            .setTitle("💀  Dungeon Failed")
+            .setDescription(
+              `You fell on **Wave ${waveIdx + 1}** of 3.\n\n` +
+              `No rewards this run. The dungeon cooldown still applies.\n` +
+              `Come back stronger.`
+            )
+            .setFooter({ text: "CARTETHYIA  ·  Dungeon" })],
+        });
+        survivedAll = false;
+        break;
+      }
+
+      // Carry HP/energy between waves
+      playerHp       = result.playerHp;
+      playerEnergy   = result.playerEnergy;
+      skillCooldown  = Math.max(0, result.skillCooldown - 1);
+      firstActionDone = result.firstActionDone;
+      firstSkillUsed  = result.firstSkillUsed;
+      v2Stacks        = result.v2Stacks;
+      glacioShieldTurnsLeft = result.glacioShieldTurnsLeft;
+      glacioShieldElemBonus = result.glacioShieldElemBonus;
+      stormBuffTurnsLeft    = result.stormBuffTurnsLeft;
+      stormBuffCritBonus    = result.stormBuffCritBonus;
+      havocFrenzyAtkMult    = result.havocFrenzyAtkMult;
+      havocFrenzyLifesteal  = result.havocFrenzyLifesteal;
+      havocFrenzyDefIgnore  = result.havocFrenzyDefIgnore;
+      quickStrikeUsed       = result.quickStrikeUsed;
+      echoSkillCooldown       = result.echoSkillCooldown;
+      enemyDefShredTurnsLeft  = result.enemyDefShredTurnsLeft;
+      enemyDefShredPct        = result.enemyDefShredPct;
+      nextAttackCritArmed     = result.nextAttackCritArmed;
+
+      if (waveIdx < dungeon.waves.length - 1) {
+        await thread.send({
+          embeds: [new EmbedBuilder()
+            .setColor(dungeon.color)
+            .setDescription(`✦  **Wave ${waveIdx + 1} cleared!**  HP carries over.\n\n*Wave ${waveIdx + 2} approaching…*`)
+            .setFooter({ text: "CARTETHYIA  ·  Dungeon" })],
+        });
+        await new Promise(r => setTimeout(r, 2000));
+      }
+    }
+
+    if (!survivedAll) {
       await thread.setArchived(true).catch(() => {});
       setTimeout(() => thread.delete().catch(() => {}), 5 * 60 * 1000);
       return;
     }
 
-    // Carry HP/energy between waves
-    playerHp       = result.playerHp;
-    playerEnergy   = result.playerEnergy;
-    skillCooldown  = Math.max(0, result.skillCooldown - 1);
-    firstActionDone = result.firstActionDone;
-    firstSkillUsed  = result.firstSkillUsed;
-    v2Stacks        = result.v2Stacks;
-    glacioShieldTurnsLeft = result.glacioShieldTurnsLeft;
-    glacioShieldElemBonus = result.glacioShieldElemBonus;
-    stormBuffTurnsLeft    = result.stormBuffTurnsLeft;
-    stormBuffCritBonus    = result.stormBuffCritBonus;
-    havocFrenzyAtkMult    = result.havocFrenzyAtkMult;
-    havocFrenzyLifesteal  = result.havocFrenzyLifesteal;
-    havocFrenzyDefIgnore  = result.havocFrenzyDefIgnore;
-    quickStrikeUsed       = result.quickStrikeUsed;
-    echoSkillCooldown       = result.echoSkillCooldown;
-    enemyDefShredTurnsLeft  = result.enemyDefShredTurnsLeft;
-    enemyDefShredPct        = result.enemyDefShredPct;
-    nextAttackCritArmed     = result.nextAttackCritArmed;
+    // All 3 waves cleared — grant rewards
+    await grantRewards(thread, interaction.user.id, dungeon, currentDbUser.worldLevel, displayName);
+    await prisma.user.update({ where: { id: interaction.user.id }, data: { dungeonClears: { increment: 1 }, fractonite: { increment: 40 } } }).catch(() => {});
+    await checkLevelUp(interaction.user.id);
 
-    if (waveIdx < dungeon.waves.length - 1) {
-      await thread.send({
-        embeds: [new EmbedBuilder()
-          .setColor(dungeon.color)
-          .setDescription(`✦  **Wave ${waveIdx + 1} cleared!**  HP carries over.\n\n*Wave ${waveIdx + 2} approaching…*`)
-          .setFooter({ text: "CARTETHYIA  ·  Dungeon" })],
+    // Offer a rechallenge in the same thread if aura allows — no need to leave and re-pick
+    const freshUser = await prisma.user.findUnique({
+      where:  { id: interaction.user.id },
+      select: { level: true, worldLevel: true, element: true, baseHp: true, baseAtk: true, baseDef: true,
+                critRate: true, critDmg: true, resonanceAura: true, auraUpdatedAt: true, patronTier: true },
+    });
+    if (!freshUser) { await thread.setArchived(true).catch(() => {}); return; }
+
+    const auraNow  = computeAura(freshUser.resonanceAura, freshUser.auraUpdatedAt, getMaxAura(freshUser.patronTier ?? 0));
+    const canAfford = auraNow.current >= dungeon.auraCost;
+
+    const rechallengeBtn = new ButtonBuilder()
+      .setCustomId("dg_rechallenge")
+      .setLabel(`🔁  Rechallenge  (${dungeon.auraCost} ◈)`)
+      .setStyle(ButtonStyle.Success)
+      .setDisabled(!canAfford);
+    const leaveBtn = new ButtonBuilder()
+      .setCustomId("dg_leave")
+      .setLabel("Leave Dungeon")
+      .setStyle(ButtonStyle.Secondary);
+
+    const promptMsg = await thread.send({
+      embeds: [new EmbedBuilder()
+        .setColor(dungeon.color)
+        .setDescription(
+          canAfford
+            ? `Run it back? Rechallenging costs **${dungeon.auraCost} ◈** — you have **${auraNow.current}/${auraNow.max}**.`
+            : `Not enough **Resonance Aura** to rechallenge (need **${dungeon.auraCost} ◈**, have **${auraNow.current}/${auraNow.max}**). Next charge in **${fmtAuraRegen(auraNow.nextRegenMs)}**.`
+        )
+        .setFooter({ text: "CARTETHYIA  ·  Dungeon  ·  Expires in 60s" })],
+      components: [new ActionRowBuilder<ButtonBuilder>().addComponents(rechallengeBtn, leaveBtn)],
+    });
+
+    const choice = await new Promise<string>(resolve => {
+      const col = promptMsg.createMessageComponentCollector({
+        componentType: ComponentType.Button,
+        filter: (b: ButtonInteraction) => b.user.id === interaction.user.id && ["dg_rechallenge", "dg_leave"].includes(b.customId),
+        time: 60_000, max: 1,
       });
-      await new Promise(r => setTimeout(r, 2000));
-    }
-  }
+      col.on("collect", async (btn: ButtonInteraction) => { await btn.deferUpdate().catch(() => {}); resolve(btn.customId); });
+      col.on("end", (collected) => { if (collected.size === 0) resolve("dg_leave"); });
+    });
 
-  // All 3 waves cleared — grant rewards
-  await grantRewards(thread, interaction.user.id, dungeon, dbUser.worldLevel, displayName);
-  await prisma.user.update({ where: { id: interaction.user.id }, data: { dungeonClears: { increment: 1 }, fractonite: { increment: 40 } } }).catch(() => {});
-  await checkLevelUp(interaction.user.id);
-  await thread.setArchived(true).catch(() => {});
+    await promptMsg.edit({ components: [] }).catch(() => {});
+
+    if (choice !== "dg_rechallenge") {
+      await thread.setArchived(true).catch(() => {});
+      return;
+    }
+
+    await consumeAura(interaction.user.id, dungeon.auraCost);
+    currentDbUser = freshUser;
+    runNumber++;
+  }
 }
 
 // ── Single wave fight ─────────────────────────────────────────────────────────
