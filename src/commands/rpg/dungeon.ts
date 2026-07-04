@@ -18,7 +18,7 @@ import {
   radiantConvergenceOnTurnHeal, radiantConvergenceOnHitTaken, radiantConvergenceOnCrit, radiantConvergenceCheckBurstHeal,
 } from "../../lib/namedSets";
 import { echoSkillBaseMult, applyEchoSkill } from "../../lib/echoSkills";
-import { hpBar, energyBar, baselineAtk } from "../../lib/combat";
+import { hpBar, energyBar, baselineAtk, COUNTER_ELEMENT } from "../../lib/combat";
 import { voteNudge, supportNudge } from "../../lib/voteNudge";
 import { mailNudge } from "../../lib/mailNudge";
 import { rollRarity, rollMainStat, rollSubstats, rollSubstatValue, calcMainStatValue, substatCount, RARITY_STARS, ELEMENT_EMOJI } from "../../lib/echoes";
@@ -429,12 +429,7 @@ async function runWave(
     def_: rawScaled.def_,
   };
   const enemy    = scaled.def;
-  const isWeak   = dbUser.element === (enemy.element === "FUSION" ? "GLACIO"
-    : enemy.element === "GLACIO" ? "FUSION"
-    : enemy.element === "ELECTRO" ? "AERO"
-    : enemy.element === "AERO" ? "ELECTRO"
-    : enemy.element === "HAVOC" ? "SPECTRO"
-    : enemy.element === "SPECTRO" ? "HAVOC" : "NONE");
+  const isWeak   = dbUser.element === (COUNTER_ELEMENT[enemy.element] ?? "NONE");
 
   let enemyHp  = scaled.hp;
   let vibBar   = 50;

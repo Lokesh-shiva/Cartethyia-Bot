@@ -113,6 +113,12 @@ export const GUIDE_SECTIONS: Record<string, GuideSection> = {
       )
       .addFields(
         {
+          name:  "⚔️  Weakness Cycle",
+          value: "🔥 Fusion → 🌑 Havoc → ✨ Spectro → ❄️ Glacio → ⚡ Electro → 🌪️ Aero → *(back to Fusion)*\n" +
+                 "Each element beats exactly one and loses to exactly one — a true 6-way cycle, not mutual pairs. Attacking with the element that beats your target's element deals **1.5× damage**.",
+          inline: false,
+        },
+        {
           name:  "🔥 Fusion",
           value: "+15% ATK · +15% Crit Rate · +20% Elemental DMG\n**Hook — IGNITE:** 35% chance on hit → +25% ATK for that hit.",
           inline: false,
@@ -814,8 +820,7 @@ export const GUIDE_SECTIONS: Record<string, GuideSection> = {
       .setDescription(
         `\`/duel @player\` — challenge someone. They have 60 seconds to accept.\n` +
         `Fight starts in a private thread with alternating turns.\n\n` +
-        `**Element weaknesses apply:**\n` +
-        `Fusion ↔ Glacio · Electro ↔ Aero · Havoc ↔ Spectro (counter-element = 1.5× damage)\n\n` +
+        `**Element weaknesses apply** (1.5× damage) — see the Elements page for the full cycle.\n\n` +
         `**Actions:** Basic / Skill (3-turn cd) / Ultimate (100 energy) / Forfeit\n\n` +
         `**Rules:**\n` +
         `› First to reach 0 HP loses\n` +

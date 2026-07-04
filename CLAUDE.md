@@ -37,15 +37,17 @@ Bosses/  ← boss art PNGs, Title Case with spaces. Never snake_case.
 - **Canvas text**: Rajdhani font has no unicode symbol glyphs (✦, likely ◈ too) and the system-font fallback isn't reliable on the Oracle VM — use plain ASCII (`*`) in any `ctx.fillText()`. Discord embed text is unaffected (rendered by Discord's client, not our server).
 
 ## World Levels & Bosses
+Weakness cycle (not mutual pairs): **Fusion → Havoc → Spectro → Glacio → Electro → Aero → Fusion** (each beats exactly one, loses to exactly one). `COUNTER_ELEMENT` in combat.ts is the source of truth — recompute every boss's `weakness` field from this cycle if it ever changes.
+
 | WL | Boss | Element | Weakness | Level Cap |
 |---|---|---|---|---|
-| 0 | Resonant Wraith | HAVOC | SPECTRO | 20 |
-| 1 | Tidecaller Sovereign | GLACIO | FUSION | 40 |
+| 0 | Resonant Wraith | HAVOC | FUSION | 20 |
+| 1 | Tidecaller Sovereign | GLACIO | SPECTRO | 40 |
 | 2 | Fractured Arbiter | SPECTRO | HAVOC | 50 |
-| 3 | Nullfire Construct | ELECTRO | AERO | 60 |
-| 4 | Sable Harbinger | HAVOC | SPECTRO | 70 |
+| 3 | Nullfire Construct | ELECTRO | GLACIO | 60 |
+| 4 | Sable Harbinger | HAVOC | FUSION | 70 |
 | 5 | Auric Colossus | SPECTRO | HAVOC | 80 |
-| 6 | Embercrown Tyrant | FUSION | GLACIO | 84 |
+| 6 | Embercrown Tyrant | FUSION | AERO | 84 |
 | 7 | Galeborne Phantom | AERO | ELECTRO | 88 |
 | 8 | The Resonant Absolute | SPECTRO | HAVOC | 90 |
 

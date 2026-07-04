@@ -5,12 +5,15 @@ import { Boss }                           from "./bosses";
 import { CE }                             from "./emojiManager";
 
 // ── Element weakness table ────────────────────────────────────────────────────
+// True 6-element cycle (not mutual pairs) — each element beats exactly one and
+// loses to exactly one: Fusion > Havoc > Spectro > Glacio > Electro > Aero > Fusion.
+// COUNTER_ELEMENT[X] = the element that deals 1.5x weakness damage AGAINST X.
 export const COUNTER_ELEMENT: Record<string, string> = {
-  FUSION:  "GLACIO",
-  GLACIO:  "FUSION",
-  ELECTRO: "AERO",
+  FUSION:  "AERO",
+  GLACIO:  "SPECTRO",
+  ELECTRO: "GLACIO",
   AERO:    "ELECTRO",
-  HAVOC:   "SPECTRO",
+  HAVOC:   "FUSION",
   SPECTRO: "HAVOC",
   NONE:    "NONE",
 };
