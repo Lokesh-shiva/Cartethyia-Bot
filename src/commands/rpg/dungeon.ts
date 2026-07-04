@@ -957,8 +957,8 @@ async function grantRewards(
   if (r.paradoxCores)     { gained.paradoxCores     = scale(r.paradoxCores);     lines.push(`${CE.pc} ${scale(r.paradoxCores)} Paradox Cores`); }
   if (r.resonanceRecords) { gained.resonanceRecords = scale(r.resonanceRecords); lines.push(`${CE.rr} ${scale(r.resonanceRecords)} Resonance Records`); }
 
-  // Fracture Key — always +1 per dungeon clear (awarded separately after grantRewards, shown here)
-  lines.push(`${CE.fk} 1 Fracture Key`);
+  // Fractonite — always +40 per dungeon clear (awarded separately after grantRewards, shown here)
+  lines.push(`${CE.ft} 40 Fractonite`);
 
   // EXP (with dungeon multiplier AND WL multiplier)
   const totalExp = Math.floor(r.resonanceExp * r.resonanceExpMult * wlMult);
@@ -1080,6 +1080,7 @@ function buildRewardPreview(dungeon: DungeonDefinition): string {
   if (r.forgingOres)      lines.push(`${CE.fo} ${r.forgingOres} Forging Ores`);
   if (r.paradoxCores)     lines.push(`${CE.pc} ${r.paradoxCores} Paradox Cores`);
   if (r.resonanceRecords) lines.push(`${CE.rr} ${r.resonanceRecords} Resonance Records`);
+  lines.push(`${CE.ft} 40 Fractonite`);
   const exp = r.resonanceExp * r.resonanceExpMult;
   if (exp > 0) lines.push(`✨ ${exp} EXP${r.resonanceExpMult > 1 ? ` (${r.resonanceExpMult}×)` : ""}`);
   return lines.join("\n") || "Materials";
