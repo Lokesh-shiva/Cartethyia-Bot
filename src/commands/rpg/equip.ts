@@ -140,10 +140,12 @@ const command: Command = {
     const equipped = weapons.find((w) => w.isEquipped);
 
     // ── Build select menu ────────────────────────────────────────────────────
+    // Discord limit: 25 options per select menu. Slice to top 25 (already ordered by equipped, rarity, level).
+    const selectableWeapons = weapons.slice(0, 25);
     const makeSelect = () => new StringSelectMenuBuilder()
       .setCustomId("equip_select")
       .setPlaceholder("Choose a weapon to equip…")
-      .addOptions(weapons.map((w) => {
+      .addOptions(selectableWeapons.map((w) => {
         const label = (w.awakened && w.awakenedName) ? w.awakenedName : w.name;
         const eff   = effectiveAtk(w.baseAtk, w.rarity, w.level);
         const sub   = w.subStatType && w.subStatVal != null
@@ -160,11 +162,13 @@ const command: Command = {
     const selectRow = new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(makeSelect());
 
     // Show current weapon + list in the initial embed
-    const weaponList = weapons.map((w) => {
+    const weaponList = selectableWeapons.map((w) => {
       const label = (w.awakened && w.awakenedName) ? w.awakenedName : w.name;
       const eff   = effectiveAtk(w.baseAtk, w.rarity, w.level);
       return `${w.isEquipped ? "▶" : "◇"}  **${label}**  ${RARITY_STARS[w.rarity]}  ·  Lv${w.level}  ·  ATK **${eff}**${w.awakened ? "  ✦" : ""}`;
     }).join("\n");
+
+    const overflow = weapons.length > 25 ? `\n\n-# Showing top 25 of ${weapons.length} weapons (sorted by equipped, rarity, level).` : "";
 
     await interaction.editReply({
       embeds: [new EmbedBuilder()
@@ -177,7 +181,7 @@ const command: Command = {
           `**All weapons (${weapons.length}):**`,
           weaponList,
           ``,
-          `Select one below to swap.`,
+          `Select one below to swap.${overflow}`,
         ].join("\n"))
         .setFooter({ text: "CARTETHYIA  ·  Arsenal  ·  Expires in 2 min" })],
       components: [selectRow],
