@@ -78,6 +78,54 @@ export const GUIDE_SECTIONS: Record<string, GuideSection> = {
       .setFooter({ text: "CARTETHYIA  ·  Use /guide to explore every system in detail" }),
   },
 
+  recent_updates: {
+    label: "Recent Updates",
+    description: "What's changed lately — read this if something feels different",
+    emoji: "🆕",
+    embed: () => new EmbedBuilder()
+      .setColor(C.primary)
+      .setTitle("🆕  Recent Updates")
+      .setDescription("A running log of the biggest recent changes to the game.")
+      .addFields(
+        {
+          name:  "⚔️  Element weakness — now a true 6-way cycle",
+          value: "🔥 Fusion → 🌑 Havoc → ✨ Spectro → ❄️ Glacio → ⚡ Electro → 🌪️ Aero → *(back to Fusion)*\nReplaces the old 3 mutual pairs — every element now beats exactly one and loses to exactly one. Check the **Elements** page for the full chart, and re-check your counter-picks against bosses/field bosses since some weaknesses changed.",
+          inline: false,
+        },
+        {
+          name:  "🌀  Echo Skill — a 4th attack move",
+          value: "Whichever echo sits in your **Main Slot** grants a bonus attack button with its own cooldown. All 21 boss (4-cost) echoes have a bespoke, unique skill; 1★/3-cost echoes get an element-flavored generic one. See `/echo` or `/echoes` on any echo to view its skill. Wired into every fight mode, including chat encounters.",
+          inline: false,
+        },
+        {
+          name:  "💨  SPD is now a real combat stat",
+          value: "Only SPD from **echo Speed substats** drives mechanics (leveling SPD stays cosmetic): +1 Energy/turn per 20 SPD, -1 turn Resonance Skill cooldown at 40+ SPD, a one-time bonus strike if you clear the enemy's SPD by 20+, and turn order / first-strike bonus in `/duel` and `/raid`. `/profile` and `/stats` both show your effective total now.",
+          inline: false,
+        },
+        {
+          name:  "🥊  Significant difficulty increase",
+          value: "Ascend, `/boss`, `/raid`, and chat encounters all hit noticeably harder — accumulated player power (named sets, evolved abilities, awakened weapons) had outpaced the old scaling ceilings.",
+          inline: false,
+        },
+        {
+          name:  "☄️  Raid bosses now scale with the party, not boss identity",
+          value: "HP/ATK/DEF scale from the participating players' gear and count — a WL0 field boss brought by a full geared party hits just as hard as a WL8 boss would. Bring friends, not just the \"strongest\" boss.",
+          inline: false,
+        },
+        {
+          name:  "🎴  Field boss 5★ echo odds ramp much higher at max World Level",
+          value: "Drop rates now scale aggressively from WL0 to WL8+, matching a proper endgame feel instead of staying rare forever.",
+          inline: false,
+        },
+        {
+          name:  "🔓  /echo-reroll — Unlock a Substat",
+          value: "Locked a substat and changed your mind? **Unlock a Substat** releases it anytime — no Stasis Lock refund, but you're never stuck with a bad lock choice again.",
+          inline: false,
+        },
+      )
+      .setFooter({ text: "CARTETHYIA  ·  Check back here after major patches" }),
+  },
+
   progression: {
     label: "Progression & Leveling",
     description: "EXP, levels, World Levels, stat scaling",
@@ -219,7 +267,7 @@ export const GUIDE_SECTIONS: Record<string, GuideSection> = {
         },
         {
           name:  "🔮  /echo-reroll — Reroll substats",
-          value: "Costs 1 🔮 Paradox Core. Randomises all **unlocked, revealed** substats. Types stay — values change.\nUse 🔒 Stasis Locks to protect specific substats first (1st = 1 lock, 2nd = 3, 3rd = 6).",
+          value: "Costs 1 🔮 Paradox Core. Randomises all **unlocked, revealed** substats. Types stay — values change.\nUse 🔒 Stasis Locks to protect specific substats first (1st = 1 lock, 2nd = 3, 3rd = 6). Changed your mind? **Unlock a Substat** releases a lock anytime — no refund, but you're never stuck with a bad lock choice.",
           inline: false,
         },
         {
