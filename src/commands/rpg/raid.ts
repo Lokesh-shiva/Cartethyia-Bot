@@ -102,19 +102,24 @@ function fieldBossLoot(fb: FieldBoss) {
 // More players → more total HP pool so boss hits slightly harder + more HP total
 //
 // Raw ATK alone understates real damage output once crit rate/dmg and elemental
-// DMG bonus are stacked — a maxed build (100% crit, 300%+ crit dmg, 150%+ elem
-// bonus) deals several times its raw ATK stat in practice, but the old scaling
-// only ever looked at ATK, so heavily optimized players trivialized raid bosses
-// that were sized around raw ATK. This folds in the same multipliers combat
-// actually applies: expected crit multiplier (1 + critRate * (critDmg - 1)) and
-// the elemental DMG bonus (1 + elemDmg). For an unoptimized fresh character
-// (critRate 5%, critDmg 1.5×, elemDmg 0) this is ~1.0× — i.e. no change to
-// existing balance for typical players. It only scales up for builds that
-// actually deal outsized damage.
+// DMG bonus are stacked. This folds in the same multipliers combat actually
+// applies: expected crit multiplier (1 + critRate * (critDmg - 1)) and the
+// elemental DMG bonus (1 + elemDmg).
+// 2026-07-04 correction: the first version of this (full linear multiply)
+// overcorrected badly. It was calibrated against one maxed-out outlier account,
+// but ANY invested player has non-trivial crit/elemDmg — every element grants
+// ~20% elemDmg baseline alone — so the full multiplier (7-11×+ for a normal
+// built character) inflated bossHp/DEF/vibBar for basically everyone, not just
+// extreme accounts. A 2-player raid of decently-built (not even maxed) Aero
+// characters got a computed bossHp of ~8.3M and nearly wiped by turn 4 with the
+// boss barely scratched. Dampened via sqrt so the correction is real but far
+// gentler: a rawMult of 7.56 (the wipe case) becomes a 2.75× power multiplier
+// instead of 7.56×, and the extreme maxed-outlier case (rawMult ~11) becomes
+// ~3.3× instead of ~11×.
 function effectivePower(p: RaidParticipant): number {
   const critMult = 1 + Math.min(1, p.critRate) * Math.max(0, p.critDmg - 1);
   const elemMult = 1 + Math.max(0, p.elemDmg);
-  return p.atk * critMult * elemMult;
+  return p.atk * Math.sqrt(critMult * elemMult);
 }
 
 function computeRaidBossStats(
@@ -124,8 +129,10 @@ function computeRaidBossStats(
   const n          = participants.length;
   const totalPower = participants.reduce((s, p) => s + effectivePower(p), 0);
   const totalHp    = participants.reduce((s, p) => s + p.hpMax, 0);
+  const totalAtk   = participants.reduce((s, p) => s + p.atk, 0);
   const avgPower   = totalPower / n;
   const avgHp      = totalHp    / n;
+  const avgAtk     = totalAtk   / n;
 
   // ── HP ──────────────────────────────────────────────────────────────────────
   // Target ~28 skill-cycle turns of the full party to clear the boss.
@@ -162,8 +169,12 @@ function computeRaidBossStats(
   // Party-derived baseline (150) instead of the selected boss's own baseDef —
   // that ranged 60 (WL0) to 1080 (WL8), an 18× spread that made boss choice
   // dominate difficulty far more than party size/gear ever could.
-  // 2026-07-04: avgAtk → avgPower (see effectivePower above).
-  const gearMult = Math.max(1.55, Math.sqrt(avgPower / 300));
+  // Uses raw avgAtk, NOT avgPower — DEF received shouldn't also get the
+  // crit/elemDmg correction on top of HP and vibBar. Stacking the same
+  // correction three times (HP harder to burn down, damage-dealt reduced by
+  // higher DEF, AND vib bar harder to drain) is what caused the 2026-07-04
+  // near-wipe above. DEF only needs to track raw gear investment.
+  const gearMult = Math.max(1.55, Math.sqrt(avgAtk / 300));
   const bossDef  = Math.floor(150 * gearMult);
 
   // ── Vibration bar ───────────────────────────────────────────────────────────
