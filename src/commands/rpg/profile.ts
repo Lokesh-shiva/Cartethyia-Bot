@@ -122,7 +122,7 @@ const command: Command = {
       baseHp:          stats.hp,
       baseAtk:         stats.atk,
       baseDef:         stats.def,
-      baseSpeed:       user.baseSpeed,
+      baseSpeed:       stats.spd,
       critRate:        stats.critRate,
       critDmg:         stats.critDmg,
       credits:         user.credits,
