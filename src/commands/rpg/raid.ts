@@ -154,7 +154,8 @@ function computeRaidBossStats(
   // party, so a full raid party could shatter a low-vibBar boss almost instantly.
   // Preserve the boss's own relative shatter-difficulty (vibBar/baseHp ratio) but
   // apply it to the new party-scaled HP so absolute vibBar scales with the party too.
-  const vibBar = Math.max(50, Math.floor(bossHp * (boss.vibBar / boss.baseHp)));
+  // Multiply by 1.5× to account for multiple players draining vib in parallel.
+  const vibBar = Math.max(80, Math.floor(bossHp * (boss.vibBar / boss.baseHp) * 1.5));
 
   return { hp: Math.floor(bossHp), atk: Math.floor(bossAtk), def: Math.floor(bossDef), vibBar };
 }
