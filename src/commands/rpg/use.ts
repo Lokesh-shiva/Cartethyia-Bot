@@ -276,17 +276,25 @@ async function handleAuraPrism(interaction: ChatInputCommandInteraction) {
   }
 
   const newAura = auraState.current + restore;
+  // Only consume as many prisms as it actually took to fill the aura bar —
+  // was previously decrementing the full requested `amount` even when `restore`
+  // got clamped down near max aura, silently burning unused prisms.
+  const prismsUsed = Math.ceil(restore / 3);
   await prisma.user.update({
     where: { id: interaction.user.id },
-    data:  { auraPrisms: { decrement: amount }, resonanceAura: newAura, auraUpdatedAt: new Date() },
+    data:  { auraPrisms: { decrement: prismsUsed }, resonanceAura: newAura, auraUpdatedAt: new Date() },
   });
-  auditSpend(interaction.user.id, { auraPrisms: amount }, "use:aura-prism");
+  auditSpend(interaction.user.id, { auraPrisms: prismsUsed }, "use:aura-prism");
+
+  const leftoverNote = prismsUsed < amount
+    ? `\n-# Only **${prismsUsed}** of your requested ${amount} were needed — the rest stayed in your inventory.`
+    : "";
 
   await interaction.editReply({
     embeds: [new EmbedBuilder().setColor(color)
       .setDescription(
-        `✦ Used **${amount}** ${CE.ap} Aura Prism${amount !== 1 ? "s" : ""} — restored **+${restore} ◈**.\n\n` +
-        `Resonance Aura: **${newAura}/${maxAura}** ${"◈".repeat(newAura)}${"◇".repeat(maxAura - newAura)}`
+        `✦ Used **${prismsUsed}** ${CE.ap} Aura Prism${prismsUsed !== 1 ? "s" : ""} — restored **+${restore} ◈**.\n\n` +
+        `Resonance Aura: **${newAura}/${maxAura}** ${"◈".repeat(newAura)}${"◇".repeat(maxAura - newAura)}${leftoverNote}`
       )
       .setFooter({ text: "CARTETHYIA  ·  Items" })],
   });
