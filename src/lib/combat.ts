@@ -85,7 +85,11 @@ export function echoToBoss(enemy: EchoDefinition): Boss {
     baseHp:    enemy.hp,
     baseAtk:   enemy.atk,
     baseDef:   enemy.def,
-    vibBar:    50,
+    // Was a flat 50 regardless of the enemy's (gear-scaled) HP — with player
+    // power having grown a lot, a single hit could drain the whole bar and
+    // shatter/one-shot the enemy instantly. Scale with HP like every other
+    // fight mode's vib bar effectively does.
+    vibBar:    Math.max(40, Math.floor(enemy.hp * 0.5)),
     moves: [
       { name: "Resonance Pulse", damage: 1.0, effect: "strikes with raw elemental force" },
       { name: "Echo Burst",      damage: 1.3, effect: "releases a burst of echo energy"  },

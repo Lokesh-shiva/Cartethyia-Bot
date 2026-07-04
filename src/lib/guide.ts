@@ -280,7 +280,7 @@ export const GUIDE_SECTIONS: Record<string, GuideSection> = {
         },
         {
           name:  "🌀 Echo Skill",
-          value: "Whichever echo sits in your **Main slot** grants a 4th attack button, own cooldown separate from your Resonance Skill. 4-cost (boss) echoes each have a genuinely unique skill — execute damage, shields, guaranteed crits, DEF shred, and more. 1/3-cost echoes grant a simpler element-flavored bonus-damage move. Live in `/field-boss`, `/boss`, `/ascend`, `/dungeon`, `/duel`, and `/raid`.",
+          value: "Whichever echo sits in your **Main slot** grants a 4th attack button, own cooldown separate from your Resonance Skill. 4-cost (boss) echoes each have a genuinely unique skill — execute damage, shields, guaranteed crits, DEF shred, and more. 1/3-cost echoes grant a simpler element-flavored bonus-damage move. Live in every fight mode — `/field-boss`, `/boss`, `/ascend`, `/dungeon`, `/duel`, `/raid`, and chat encounters.",
           inline: false,
         },
         {

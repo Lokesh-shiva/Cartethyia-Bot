@@ -22,6 +22,7 @@ import {
   effectiveSkillCooldown,
 } from "./setBonus";
 import { compositeHasSecondWind } from "./abilityEffects";
+import { echoSkillBaseMult, applyEchoSkill } from "./echoSkills";
 import { generateEchoCard, echoRowToCard } from "./echoCard";
 
 // ── In-memory guild settings cache ───────────────────────────────────────────
@@ -395,19 +396,35 @@ export async function handleEncounterFight(
 
   const ENERGY_PER_TURN = Math.floor(stats.energyPerTurn);
   const SKILL_COOLDOWN  = 3;
+  const ECHO_SKILL_COOLDOWN = 4;
   let shatterTurnsLeft  = 0;
   let firstActionDone   = false;
+  let echoSkillCooldown      = 0;
+  let enemyDefShredTurnsLeft = 0;
+  let enemyDefShredPct       = 0;
+  let nextAttackCritArmed    = false;
 
   function buildEncounterButtons(): ActionRowBuilder<ButtonBuilder> {
-    return new ActionRowBuilder<ButtonBuilder>().addComponents(
+    const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
       new ButtonBuilder().setCustomId("enc_basic").setLabel("⚔️  Basic").setStyle(ButtonStyle.Primary),
       new ButtonBuilder().setCustomId("enc_skill")
         .setLabel(state.skillCooldown === 0 ? "✦  Skill" : `✦  Skill (${state.skillCooldown}🔄)`)
         .setStyle(ButtonStyle.Secondary).setDisabled(state.skillCooldown > 0),
       new ButtonBuilder().setCustomId("enc_ultimate").setLabel("⚡  Ultimate")
         .setStyle(ButtonStyle.Success).setDisabled(state.playerEnergy < 100),
+    );
+    if (bonuses.echoSkill) {
+      const echoReady = echoSkillCooldown === 0;
+      row.addComponents(
+        new ButtonBuilder().setCustomId("enc_echoskill")
+          .setLabel(echoReady ? `🌀  ${bonuses.echoSkill.name}` : `🌀  ${bonuses.echoSkill.name} (${echoSkillCooldown}🔄)`)
+          .setStyle(ButtonStyle.Secondary).setDisabled(!echoReady),
+      );
+    }
+    row.addComponents(
       new ButtonBuilder().setCustomId("enc_flee").setLabel("↩  Flee").setStyle(ButtonStyle.Danger),
     );
+    return row;
   }
 
   // Send the battle card as a new message
@@ -446,17 +463,19 @@ export async function handleEncounterFight(
         return;
       }
 
-      const defVal     = state.isShattered ? 0 : enc.enemy.def;
+      const defShredActive = enemyDefShredTurnsLeft > 0;
+      const defVal     = state.isShattered ? 0 : scaledEnemy.def * (defShredActive ? (1 - enemyDefShredPct) : 1);
       const enemyHpPct = state.bossHpNow / state.bossHpMax;
       const radCrit    = elemRadianceCrit(bonuses.elementPassive, state.playerHp, state.playerHpMax);
       const cRate      = abilityCritRate(bonuses, Math.min(1, stats.critRate + radCrit), state.playerHp, state.playerHpMax);
       const vibMult    = abilityVib(bonuses);
+      const forcedCritActive = nextAttackCritArmed && btn.customId !== "enc_flee";
       let   vibFrac    = 0.3;
       let   moveType: "BASIC" | "SKILL" | "ULT" = "BASIC";
       let   isCrit = false;
 
       if (btn.customId === "enc_basic") {
-        const r  = calcPlayerDamage(stats.atk, defVal, cRate, stats.critDmg, 1.0, isWeak, state.isShattered);
+        const r  = calcPlayerDamage(stats.atk, defVal, forcedCritActive ? 1 : cRate, stats.critDmg, 1.0, isWeak, state.isShattered);
         let base = Math.floor(r.damage * (1 + stats.elemDmgBonus));
         base     = Math.floor(base * elemWindstrideMult(bonuses.elementPassive, state.turn, "BASIC"));
         const ignite = elemIgniteProc(bonuses.elementPassive, stats.atk);
@@ -468,7 +487,7 @@ export async function handleEncounterFight(
       }
 
       if (btn.customId === "enc_skill") {
-        const r  = calcPlayerDamage(stats.atk, defVal, Math.min(1, cRate + 0.1), stats.critDmg, 1.8, isWeak, state.isShattered);
+        const r  = calcPlayerDamage(stats.atk, defVal, forcedCritActive ? 1 : Math.min(1, cRate + 0.1), stats.critDmg, 1.8, isWeak, state.isShattered);
         let base = Math.floor(r.damage * (1 + stats.elemDmgBonus));
         base     = Math.floor(base * elemWindstrideMult(bonuses.elementPassive, state.turn, "SKILL"));
         const ignite = elemIgniteProc(bonuses.elementPassive, stats.atk);
@@ -488,6 +507,41 @@ export async function handleEncounterFight(
         state.playerEnergy = 0;
       }
 
+      let echoLifestealPct = 0;
+      if (btn.customId === "enc_echoskill" && bonuses.echoSkill) {
+        const def = bonuses.echoSkill;
+        const echoCrit = forcedCritActive || def.kind === "GUARANTEED_CRIT" || Math.random() < cRate;
+        isCrit = echoCrit; moveType = "SKILL"; vibFrac = 0.5;
+        const r = calcPlayerDamage(stats.atk, defVal, echoCrit ? 1 : 0, stats.critDmg, echoSkillBaseMult(), isWeak, state.isShattered);
+        let base = Math.floor(r.damage * (1 + stats.elemDmgBonus));
+
+        const result = applyEchoSkill(def, {
+          atk: stats.atk, enemyHp: state.bossHpNow, enemyHpMax: state.bossHpMax,
+          playerHp: state.playerHp, playerHpMax: state.playerHpMax,
+          playerEnergy: state.playerEnergy, turn: state.turn, bossVibMax: boss.vibBar, crit: echoCrit,
+        });
+        base = Math.floor(base * result.dmgMult);
+        if (result.doubleHit) base *= 2;
+        if (result.noDamage) base = 0;
+        // NAMED_SET_TRIGGER has no named-set state in casual encounters — falls back to a plain hit.
+
+        const ignite = result.noDamage ? { dmg: 0, tag: "" } : elemIgniteProc(bonuses.elementPassive, stats.atk);
+        playerDmg = base + ignite.dmg;
+        moveName  = result.noDamage ? `🌀 ${def.name}` : `🌀 ${def.name}${echoCrit ? " **(CRIT)**" : ""} — ${playerDmg} DMG`;
+        if (ignite.tag) moveName += `  ✦${ignite.tag}`;
+
+        echoSkillCooldown = (result.resetCdOnCrit && echoCrit) ? 0 : ECHO_SKILL_COOLDOWN;
+        state.playerEnergy = result.setEnergyFull ? 100 : Math.min(100, state.playerEnergy + ENERGY_PER_TURN + elemDischargeEnergy(bonuses.elementPassive, echoCrit) + result.bonusEnergy);
+        if (result.healHp > 0) state.playerHp = Math.min(state.playerHpMax, state.playerHp + result.healHp);
+        if (result.armsNextCrit) nextAttackCritArmed = true;
+        if (result.defShredTurns > 0) {
+          enemyDefShredTurnsLeft = result.defShredTurns + 1;
+          enemyDefShredPct = result.defShredPct;
+        }
+        if (def.kind === "FLAT_LIFESTEAL") echoLifestealPct = def.pct;
+        if (!result.noDamage) state.bossVibNow = Math.max(0, state.bossVibNow - result.extraVibDrain);
+      }
+
       // Apply unique ability effects to this attack
       const ar = applyAbilityAttack(bonuses, playerDmg, isCrit, {
         moveType, currentHp: state.playerHp, maxHp: state.playerHpMax,
@@ -498,7 +552,7 @@ export async function handleEncounterFight(
       if (ar.healHp > 0)      state.playerHp     = Math.min(state.playerHpMax, state.playerHp + ar.healHp);
       if (ar.bonusEnergy > 0) state.playerEnergy = Math.min(100, state.playerEnergy + ar.bonusEnergy);
       // Lifesteal from echoes/abilities
-      state.playerHp = applyLifesteal(stats.lifesteal, playerDmg, state.playerHp, state.playerHpMax);
+      state.playerHp = applyLifesteal(stats.lifesteal + echoLifestealPct, playerDmg, state.playerHp, state.playerHpMax);
       firstActionDone = true;
 
       state.bossVibNow = Math.max(0, state.bossVibNow - Math.floor(playerDmg * vibFrac * vibMult));
@@ -583,6 +637,9 @@ export async function handleEncounterFight(
 
       state.turn++;
       if (state.skillCooldown > 0) state.skillCooldown--;
+      if (echoSkillCooldown > 0) echoSkillCooldown--;
+      if (enemyDefShredTurnsLeft > 0) enemyDefShredTurnsLeft--;
+      if (forcedCritActive) nextAttackCritArmed = false;
 
       // ── Second Wind: survive a lethal blow once at 1 HP ────────────────────
       if (state.playerHp <= 0 && compositeHasSecondWind(bonuses.abilityEffects) && !secondWindUsed) {
