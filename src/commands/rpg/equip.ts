@@ -6,7 +6,7 @@ import {
 } from "discord.js";
 import { Command } from "../../types";
 import { getOrCreateUser } from "../../lib/economy";
-import { RARITY_STARS, WEAPON_TYPE_EMOJI, FORGED_WEAPONS } from "../../lib/weapons";
+import { RARITY_STARS, WEAPON_TYPE_EMOJI, FORGED_WEAPONS, describeWeaponPassive } from "../../lib/weapons";
 import { generateWeaponCard } from "../../lib/weaponCard";
 import { formatAwakenedPassive } from "../../lib/weaponAwakening";
 import { ALL_WISH_WEAPONS, calcWishSubStat } from "../../lib/wishWeapons";
@@ -57,10 +57,16 @@ function weaponBlock(w: any): string {
   // Passive
   const passiveDesc = w.awakened && w.awakenedPassive
     ? formatAwakenedPassive(w.awakenedPassive)
-    : forgeDef?.passive ?? "";
+    : forgeDef?.passive ?? wishDef?.passive ?? "";
   if (passiveDesc) {
     const short = passiveDesc.length > 80 ? passiveDesc.slice(0, 77) + "…" : passiveDesc;
     lines.push(`*${short}*`);
+  }
+
+  // Verified passive breakdown — generated straight from WEAPON_PASSIVES, can't drift from what actually applies
+  if (!w.awakened) {
+    const verified = describeWeaponPassive(w.name);
+    if (verified) lines.push(`\`${verified.split("\n").join(" · ")}\``);
   }
 
   return lines.join("\n");

@@ -1,6 +1,7 @@
 import { WeaponType } from "@prisma/client";
 import path from "path";
 import fs   from "fs";
+import { formatEffects } from "./abilityEffects";
 
 export interface WeaponDefinition {
   id:          string;
@@ -196,3 +197,17 @@ export const WEAPON_PASSIVES: Record<string, WeaponPassive> = {
   "Null Fangs":        { effects: [{ type: "ESCALATION",    value: 0.11 }, { type: "CRIT_RATE", value: 0.10 }] },
   "Abyssal Tome":      { elemDmg: 0.18, effects: [{ type: "EXECUTE",   value: 0.40 }, { type: "ULT_POWER", value: 0.28 }] },
 };
+
+// Generated straight from WEAPON_PASSIVES — can never drift from what actually
+// applies in combat, unlike the hand-written `passive` flavor text on each
+// WeaponDefinition/WishWeapon, which is just prose and isn't checked against
+// the real effect values.
+export function describeWeaponPassive(weaponName: string): string {
+  const p = WEAPON_PASSIVES[weaponName];
+  if (!p) return "";
+  const lines: string[] = [];
+  if (p.elemDmg) lines.push(`Elemental DMG: +${Math.round(p.elemDmg * 100)}%`);
+  const effectsText = formatEffects(p.effects ?? []);
+  if (effectsText) lines.push(effectsText);
+  return lines.join("\n");
+}

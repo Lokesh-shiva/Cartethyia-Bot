@@ -1,7 +1,7 @@
 import { SlashCommandBuilder, ChatInputCommandInteraction, EmbedBuilder, AttachmentBuilder } from "discord.js";
 import { Command } from "../../types";
 import { getOrCreateUser } from "../../lib/economy";
-import { WEAPON_TYPE_LABEL, FORGED_WEAPONS } from "../../lib/weapons";
+import { WEAPON_TYPE_LABEL, FORGED_WEAPONS, describeWeaponPassive } from "../../lib/weapons";
 import { generateWeaponCard } from "../../lib/weaponCard";
 import { formatAwakenedPassive } from "../../lib/weaponAwakening";
 import { ALL_WISH_WEAPONS, calcWishSubStat } from "../../lib/wishWeapons";
@@ -111,6 +111,14 @@ const command: Command = {
       .setImage("attachment://weapon.png")
       .setFooter({ text: weapon.awakened ? "CARTETHYIA  ·  Arsenal  ·  ✦ Ego Awakened" : "CARTETHYIA  ·  Arsenal  ·  /forge to change  ·  /weapon-upgrade to level up" });
     if (weapon.awakened && weapon.awakenedLore) embed.setDescription(`*${weapon.awakenedLore}*`);
+
+    // Verified passive breakdown — generated straight from WEAPON_PASSIVES, can't drift from what actually applies
+    if (!weapon.awakened) {
+      const verified = describeWeaponPassive(weapon.name);
+      if (verified) {
+        embed.addFields({ name: "Verified Passive", value: `\`\`\`${verified}\`\`\``, inline: false });
+      }
+    }
 
     await interaction.editReply({ embeds: [embed], files: [attachment] });
   },

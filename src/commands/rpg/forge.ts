@@ -8,7 +8,7 @@ import { getOrCreateUser } from "../../lib/economy";
 import { auditSpend } from "../../lib/antiCheat";
 import {
   FORGED_WEAPONS, RARITY_STARS, WEAPON_TYPE_LABEL,
-  WEAPON_TYPE_EMOJI, WeaponDefinition, getWeaponImagePath,
+  WEAPON_TYPE_EMOJI, WeaponDefinition, getWeaponImagePath, describeWeaponPassive,
 } from "../../lib/weapons";
 import { WeaponType } from "@prisma/client";
 import prisma from "../../lib/prisma";
@@ -55,12 +55,14 @@ const command: Command = {
     const weaponList = weapons.map((w) => {
       const canAfford = user.forgingOres >= w.forgeCost;
       const isEquipped = equipped?.name === w.name;
+      const verified = describeWeaponPassive(w.name);
       return [
         `${canAfford ? "✅" : "❌"}  **${w.name}**  ${RARITY_STARS[w.rarity]}`,
         `${WEAPON_TYPE_EMOJI[type]}  ATK: **${w.baseAtk}**  ·  ${w.subStatType.replace(/_/g, " ")}: +${w.subStatVal}%`,
         `*${w.passive}*`,
+        verified ? `\`${verified.split("\n").join(" · ")}\`` : "",
         `Cost: **${w.forgeCost}** Forging Ore${w.forgeCost > 1 ? "s" : ""}${isEquipped ? "  ·  *(equipped)*" : ""}`,
-      ].join("\n");
+      ].filter(Boolean).join("\n");
     }).join("\n\n");
 
     const embed = new EmbedBuilder()
@@ -133,6 +135,7 @@ const command: Command = {
           ``,
           `ATK  **${chosen.baseAtk}**  ·  ${chosen.subStatType.replace(/_/g, " ")}  +${chosen.subStatVal}%`,
           `*${chosen.passive}*`,
+          describeWeaponPassive(chosen.name) ? `\`${describeWeaponPassive(chosen.name).split("\n").join(" · ")}\`` : "",
           ``,
           `Cost: **${chosen.forgeCost}** Forging Ore${chosen.forgeCost > 1 ? "s" : ""}`,
           equipped ? `\n⚠️ This will **replace** your current weapon: **${equipped.name}**` : "",
@@ -223,9 +226,10 @@ const command: Command = {
             ``,
             `ATK  **${chosen.baseAtk}**  ·  ${chosen.subStatType.replace(/_/g, " ")}  +${chosen.subStatVal}%`,
             `*${chosen.passive}*`,
+            describeWeaponPassive(chosen.name) ? `\`${describeWeaponPassive(chosen.name).split("\n").join(" · ")}\`` : "",
             ``,
             `Your weapon has been equipped. Check **/profile** to see it.`,
-          ].join("\n"))
+          ].filter(Boolean).join("\n"))
           .setFooter({ text: "CARTETHYIA  ·  Forge" });
 
         const successFiles: AttachmentBuilder[] = [];
