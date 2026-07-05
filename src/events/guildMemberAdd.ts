@@ -1,10 +1,8 @@
 import { Events, GuildMember, TextChannel, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, AttachmentBuilder } from "discord.js";
 import { sendOnboarding } from "../lib/onboarding";
 import { generateWelcomeCard } from "../lib/welcomeCard";
+import { MAIN_GUILD_ID, grantDrifterRole } from "../lib/supportServer";
 import prisma from "../lib/prisma";
-
-const MAIN_GUILD_ID   = process.env.MAIN_GUILD_ID   ?? "1516679873438027776";
-const DRIFTER_ROLE_ID = process.env.DRIFTER_ROLE_ID ?? "1516691155104829523";
 
 export const name = Events.GuildMemberAdd;
 export const once = false;
@@ -21,6 +19,11 @@ export async function execute(member: GuildMember) {
 
   // ── Main (support) server — welcome card + Begin Journey button ──────────────
   if (member.guild.id === MAIN_GUILD_ID) {
+    // Drifter role — was declared but never actually assigned anywhere in the
+    // codebase before this fix. Granted on join now (also re-attempted on the
+    // Begin Journey click in interactionCreate.ts as a safety net).
+    await grantDrifterRole(member.client, member.id).catch(() => {});
+
     const avatarUrl = member.user.displayAvatarURL({ size: 256, extension: "png" });
     const cardBuf   = await generateWelcomeCard(member.displayName, avatarUrl, true).catch(() => null);
     const files     = cardBuf ? [new AttachmentBuilder(cardBuf, { name: "welcome.webp" })] : [];

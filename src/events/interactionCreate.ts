@@ -3,6 +3,7 @@ import { ExtendedClient } from "../types";
 import { handleEncounterFight, getBotChannelIds } from "../lib/encounter";
 import { runFirstExpedition } from "../lib/firstExpedition";
 import { logError } from "../lib/logger";
+import { grantDrifterRole } from "../lib/supportServer";
 
 export const name = Events.InteractionCreate;
 export const once = false;
@@ -59,6 +60,10 @@ export async function execute(interaction: Interaction) {
       }
 
       const START_CHANNEL_ID = process.env.START_CHANNEL_ID ?? "1516683590140690502";
+
+      // Safety net alongside the guildMemberAdd.ts join grant — covers anyone who
+      // somehow reached this button without having gotten the role on join.
+      await grantDrifterRole(interaction.client, targetId).catch(() => {});
 
       const disabledRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
         new ButtonBuilder()
