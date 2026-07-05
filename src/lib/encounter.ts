@@ -181,10 +181,25 @@ const ENCOUNTER_TTL_MS    = 3 * 60 * 1000;   // encounter expires after 3 min
 // in-place). This lets chat ANYWHERE on the server count toward a spawn roll
 // while keeping the actual encounter confined to one channel.
 export function resolveEncounterTargetChannel(guildId: string, fallbackChannelId: string): string {
+  // Bug (reported 2026-07-04): this always returned the FIRST channel ever added
+  // to the allowlist, regardless of which allowlisted channel the chat actually
+  // happened in — so with multiple encounter channels configured, only the
+  // first one ever got spawns; the rest counted toward the roll but never
+  // produced anything, which felt broken to players chatting there.
+  // Fix: if the triggering channel is itself one of the allowed channels, spawn
+  // there directly. Only fall back to the first allowed channel if the trigger
+  // channel isn't an allowed one at all (e.g. chat-anywhere-counts channels
+  // outside the allowlist funneling into a dedicated spawn channel).
   const encounterAllow = encounterChannels.get(guildId);
-  if (encounterAllow && encounterAllow.size > 0) return [...encounterAllow][0];
+  if (encounterAllow && encounterAllow.size > 0) {
+    if (encounterAllow.has(fallbackChannelId)) return fallbackChannelId;
+    return [...encounterAllow][0];
+  }
   const botAllow = botChannelIdsMap.get(guildId);
-  if (botAllow && botAllow.size > 0) return [...botAllow][0];
+  if (botAllow && botAllow.size > 0) {
+    if (botAllow.has(fallbackChannelId)) return fallbackChannelId;
+    return [...botAllow][0];
+  }
   return fallbackChannelId;
 }
 
