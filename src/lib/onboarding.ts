@@ -125,10 +125,14 @@ export async function sendOnboarding(
 
   if (isFirstTime) {
     await awardUser(member.id, { credits: 500, tuningModules: 3, resonanceRecords: 5 }, "onboarding");
+  }
 
-    // Support server join bonus — checked regardless of which guild /start ran in,
-    // since the reward is for being a member of the support server, not for using
-    // it as the onboarding venue.
+  // Support server join bonus — a ONE-TIME grant independent of isFirstTime/isOnboarded,
+  // so existing players (onboarded before this feature shipped, or who joined the
+  // support server after already playing) can still claim it. Tracked via its own
+  // supportServerBonusClaimed flag rather than piggybacking on isOnboarded, which
+  // only reflects "has this person ever run /start", not "have they gotten this gift".
+  if (!user.supportServerBonusClaimed) {
     const inSupportServer = await isMemberOfSupportServer((channel as any).client, member.id).catch(() => false);
     if (inSupportServer) {
       await awardUser(
@@ -136,6 +140,7 @@ export async function sendOnboarding(
         { credits: 500, tuningModules: 3, sealingTubes: 3, fractonite: 5, paradoxCores: 1 },
         "onboarding:support-server-bonus",
       );
+      await prisma.user.update({ where: { id: member.id }, data: { supportServerBonusClaimed: true } });
       await channel.send({
         embeds: [new EmbedBuilder()
           .setColor(C.gold)
