@@ -122,6 +122,11 @@ export const GUIDE_SECTIONS: Record<string, GuideSection> = {
           value: "Locked a substat and changed your mind? **Unlock a Substat** releases it anytime — no Stasis Lock refund, but you're never stuck with a bad lock choice again.",
           inline: false,
         },
+        {
+          name:  "🏠  Support server rewards",
+          value: "First `/start` while you're a member of the support server grants a one-time bonus on top of the base onboarding gift. Staying in the support server also gives **+15%** Credits/EXP on every `/daily` claim, checked automatically — no command needed.",
+          inline: false,
+        },
       )
       .setFooter({ text: "CARTETHYIA  ·  Check back here after major patches" }),
   },

@@ -11,6 +11,8 @@ import { getOrCreateUser, awardUser } from "./economy";
 import { generateOnboardingQuestions, PersonalityQuestion } from "./personalityQuestions";
 import { generateWelcomeCard } from "./welcomeCard";
 import { claimReferralJoin } from "./referral";
+import { isMemberOfSupportServer } from "./supportServer";
+import { CE } from "./emojiManager";
 import prisma from "./prisma";
 
 // ── Colours ───────────────────────────────────────────────────────────────────
@@ -123,6 +125,28 @@ export async function sendOnboarding(
 
   if (isFirstTime) {
     await awardUser(member.id, { credits: 500, tuningModules: 3, resonanceRecords: 5 }, "onboarding");
+
+    // Support server join bonus — checked regardless of which guild /start ran in,
+    // since the reward is for being a member of the support server, not for using
+    // it as the onboarding venue.
+    const inSupportServer = await isMemberOfSupportServer((channel as any).client, member.id).catch(() => false);
+    if (inSupportServer) {
+      await awardUser(
+        member.id,
+        { credits: 500, tuningModules: 3, sealingTubes: 3, fractonite: 5, paradoxCores: 1 },
+        "onboarding:support-server-bonus",
+      );
+      await channel.send({
+        embeds: [new EmbedBuilder()
+          .setColor(C.gold)
+          .setDescription(
+            `🎁  **Support Server Bonus** — thanks for being part of the community!\n\n` +
+            `${CE.cr} +500 Credits  ·  ${CE.tm} +3 Tuning Modules  ·  ${CE.st} +3 Sealing Tubes  ·  ` +
+            `${CE.ft} +5 Fractonite  ·  ${CE.pc} +1 Paradox Core`
+          )
+          .setFooter({ text: "CARTETHYIA  ·  Welcome to the community" })],
+      }).catch(() => {});
+    }
   }
 
   await new Promise(r => setTimeout(r, 1500));

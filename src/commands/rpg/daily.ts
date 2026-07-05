@@ -17,6 +17,7 @@ import { checkLevelUp } from "../../lib/progression";
 import prisma from "../../lib/prisma";
 import { scheduleReminder, clearReminder } from "../../lib/dailyReminder";
 import { mailNudge } from "../../lib/mailNudge";
+import { isMemberOfSupportServer } from "../../lib/supportServer";
 
 const ELEMENT_HEX: Record<string, string> = {
   FUSION: "#FF6B35", GLACIO: "#38BDF8", ELECTRO: "#A855F7",
@@ -99,10 +100,15 @@ const command: Command = {
 
     const multiplier = streakBonus(streak);
 
+    // Support server perk — checked once per claim (not per-message), rewards
+    // staying in the community, on top of the one-time join bonus in onboarding.ts
+    const inSupportServer = await isMemberOfSupportServer(interaction.client, interaction.user.id).catch(() => false);
+    const supportBonusMult = inSupportServer ? 1.15 : 1.0;
+
     // Base rewards — scale gently with level
     const base = {
-      credits:       Math.floor((100 + user.level * 5) * multiplier),
-      resonanceExp:  Math.floor((30  + user.level * 2) * multiplier),
+      credits:       Math.floor((100 + user.level * 5) * multiplier * supportBonusMult),
+      resonanceExp:  Math.floor((30  + user.level * 2) * multiplier * supportBonusMult),
       tuningModules: streak >= 3  ? Math.floor(1 * multiplier) : 0,
       sealingTubes:  streak >= 7  ? 1 : 0,
       forgingOres:   streak >= 7  ? 1 : 0,
@@ -173,6 +179,7 @@ const command: Command = {
       .setDescription([
         sLabel ? `${sLabel}  ·  **${streak}-day streak**` : `Day **${streak}**`,
         multiplier > 1 ? `\n◈  **${multiplier}×** multiplier active` : "",
+        inSupportServer ? `\n🏠  **+15%** Support Server bonus active` : "",
         shieldLine,
         shields > 0 && !shieldUsed ? `\n🛡️ Shields remaining: **${shields}**` : "",
         nudge,
