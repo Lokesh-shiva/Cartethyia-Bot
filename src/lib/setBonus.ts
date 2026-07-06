@@ -351,6 +351,7 @@ export async function resolvePlayerBonuses(userId: string): Promise<PlayerBonuse
         case "CRIT_DMG":      bonuses.critDmgBonus  += val/100;       break;
         case "ELEMENTAL_DMG": bonuses.elemDmgBonus  += val/100;       break;
         case "ENERGY_REGEN":  bonuses.energyBonus   += val/2;         break;
+        case "SPEED":         bonuses.spdFlat       += val;          break;
       }
     };
     applySub(weapon.subStatType, sv);
