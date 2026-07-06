@@ -141,10 +141,15 @@ export async function generateEchoCard(e: EchoCardData): Promise<Buffer> {
     ctx.fillStyle = rgba(ec, 0.5); ctx.font = `bold 120px Rajdhani, 'Noto Sans', 'Noto Sans CJK SC', 'Noto Sans JP', Arial, sans-serif`;
     ctx.textAlign = "center"; ctx.fillText("?", W / 2, artY + artH / 2 + 44); ctx.textAlign = "left";
   }
-  // bottom fade into panel
-  const fade = ctx.createLinearGradient(0, artY + artH - 80, 0, artY + artH);
-  fade.addColorStop(0, "rgba(11,12,20,0)"); fade.addColorStop(1, "rgba(11,12,20,0.95)");
-  ctx.fillStyle = fade; ctx.fillRect(artX, artY + artH - 80, artW, 80);
+  // bottom fade into panel — covers ~40% of the art height and ramps to
+  // fully opaque well before the bottom edge, so name/element text always
+  // sits on a solid dark backdrop regardless of how bright/busy the art is.
+  const fadeH = artH * 0.4;
+  const fade = ctx.createLinearGradient(0, artY + artH - fadeH, 0, artY + artH);
+  fade.addColorStop(0, "rgba(11,12,20,0)");
+  fade.addColorStop(0.5, "rgba(11,12,20,0.75)");
+  fade.addColorStop(1, "rgba(11,12,20,0.98)");
+  ctx.fillStyle = fade; ctx.fillRect(artX, artY + artH - fadeH, artW, fadeH);
   ctx.restore();
   // art frame
   ctx.strokeStyle = rgba(ec, 0.7); ctx.lineWidth = 1.5;
