@@ -1,6 +1,7 @@
 import { createCanvas, loadImage, GlobalFonts, SKRSContext2D } from "@napi-rs/canvas";
 import path from "path";
 import fs   from "fs";
+import { drawImageSharp } from "./canvasUtil";
 
 try {
   try { (GlobalFonts as any).loadSystemFonts(); } catch {}
@@ -102,7 +103,7 @@ async function drawSlot(
         const img = await loadImage(ap);
         const sc = Math.max(size / img.width, size / img.height);
         const sw = img.width * sc, sh = img.height * sc;
-        ctx.drawImage(img, x + (size - sw) / 2, y + (size - sh) / 2, sw, sh);
+        drawImageSharp(ctx, img, x + (size - sw) / 2, y + (size - sh) / 2, sw, sh);
       } catch { /* skip */ }
     }
     // bottom fade
