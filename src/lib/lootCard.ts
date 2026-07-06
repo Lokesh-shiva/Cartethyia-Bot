@@ -21,6 +21,12 @@ const ICON_FILES: Record<string, string> = {
   lunakite:         "Lunakite.png",
 };
 
+/** Absolute path to the icon PNG for a given item field (e.g. "tuningModules"), or null if unknown. */
+export function itemIconPath(field: string): string | null {
+  const file = ICON_FILES[field];
+  return file ? path.join(ICONS_DIR, file) : null;
+}
+
 const ITEM_LABELS: Record<string, string> = {
   credits:          "Credits",
   tuningModules:    "Tuning Mod.",

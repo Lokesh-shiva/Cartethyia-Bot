@@ -4,12 +4,14 @@ import {
   StringSelectMenuInteraction, ButtonBuilder, ButtonStyle,
   ComponentType, ButtonInteraction,
   ModalBuilder, TextInputBuilder, TextInputStyle,
-  ModalSubmitInteraction, Events, Interaction,
+  ModalSubmitInteraction, Events, Interaction, AttachmentBuilder,
 } from "discord.js";
 import prisma from "../../lib/prisma";
 import { replyNotStarted } from "../../lib/economy";
 import { CE } from "../../lib/emojiManager";
 import { Element } from "@prisma/client";
+import { itemIconPath, generateLootCard } from "../../lib/lootCard";
+import fs from "fs";
 
 const ELEMENT_COLORS: Record<string, number> = {
   NONE: 0x6366F1, FUSION: 0xFF6B35, GLACIO: 0x4FC3F7,
@@ -256,17 +258,27 @@ async function showQuantityPicker(
     .map(([k, v]) => `${v} ${k.replace(/([A-Z])/g, ' $1').trim()}`)
     .join(", ");
 
+  const primaryField = Object.keys(item.gives)[0];
+  const iconPath = primaryField ? itemIconPath(primaryField) : null;
+  const files = iconPath && fs.existsSync(iconPath)
+    ? [new AttachmentBuilder(iconPath, { name: "item-icon.png" })]
+    : [];
+
+  const embed = new EmbedBuilder()
+    .setColor(color)
+    .setTitle(`${item.emoji}  ${item.name}`)
+    .setDescription(
+      `${item.description}\n\n` +
+      `**Gives:** ${givesText} per purchase\n` +
+      `**Price:** ${item.price} ${currencyEmoji(item.currency)} ${currencyLabel(item.currency)} each\n\n` +
+      `How many do you want?`
+    )
+    .setFooter({ text: "CARTETHYIA  ·  Shop  ·  Expires in 60s" });
+  if (files.length) embed.setThumbnail("attachment://item-icon.png");
+
   await sel.update({
-    embeds: [new EmbedBuilder()
-      .setColor(color)
-      .setTitle(`${item.emoji}  ${item.name}`)
-      .setDescription(
-        `${item.description}\n\n` +
-        `**Gives:** ${givesText} per purchase\n` +
-        `**Price:** ${item.price} ${currencyEmoji(item.currency)} ${currencyLabel(item.currency)} each\n\n` +
-        `How many do you want?`
-      )
-      .setFooter({ text: "CARTETHYIA  ·  Shop  ·  Expires in 60s" })],
+    embeds: [embed],
+    files,
     components: rows,
   });
 
