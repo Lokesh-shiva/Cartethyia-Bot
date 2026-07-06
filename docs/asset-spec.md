@@ -5,28 +5,37 @@ renders cleanly in the existing card generators without code changes.
 
 ## Echo art (`assets/echoes/{1,3}-cost/*.png`, `Bosses/*.png` for 4-cost)
 
-- **Aspect ratio:** portrait, 2:3 to 3:4 (matches the echo card's art panel, which
-  is wider-than-tall-safe but expects a standing/centered subject).
-- **Resolution:** at least 900px on the short edge. Larger is fine — the renderer
-  now step-downscales sharply (see `src/lib/canvasUtil.ts`), so oversized source
-  art is not a problem.
-- **Safe zone:** keep the subject within the center ~80% of the frame. The bottom
-  ~40% of the panel gets a dark fade overlay for text — avoid putting essential
-  detail (face, key silhouette) in the very bottom 15%, since it will be dimmed.
-- **Background:** transparent or a dark/simple background preferred, but not
-  required — the bottom fade now compensates for busy/bright art.
+The existing library is either **square** (1:1, e.g. 500×500) or **landscape**
+(~1.83 ratio, e.g. 676×369) — no true portrait art exists today. Both are
+supported, fit differently:
+
+- **Square/near-square (ratio ≤ 1.15):** cover-fit, so keep the subject centered
+  and reasonably contained — a small crop (~13%) happens at the panel edges.
+- **Landscape (ratio > 1.15):** contain-fit (no crop at all) — the full image is
+  shown, centered in the panel, with any surrounding gap filled by the panel's
+  ambient element-tinted background. No need to crop-safe the composition.
+- **Resolution:** at least 900px on the short edge for square art, at least
+  1200px wide for landscape art. Larger is fine — the renderer step-downscales
+  sharply (see `src/lib/canvasUtil.ts`).
+- **Safe zone:** keep the subject within the center ~80% of the frame. The
+  bottom ~40% of the panel gets a dark fade overlay for text — avoid putting
+  essential detail (face, key silhouette) in the very bottom 15%.
+- **Background:** transparent or simple preferred for square art (still gets
+  cropped a little); painted backgrounds are fine for landscape art since it's
+  never cropped.
 
 ## Weapon art (`assets/weapons/{Type}/*.png`, `assets/weapons/awakened/*.png`, `assets/weapons/unique/*.png`)
 
 - **Aspect ratio:** landscape scene art, ~1.6-1.9 ratio (matches the existing
   library, all of which is painted-background scenes, not transparent icons).
-  The art panel always `cover`-fits and crops to fill — keep the weapon/subject
-  centered so cropping the top/bottom or left/right edges doesn't cut it off.
+  The art panel (420×[H-32], H varies ~310-450) is wide enough that most of
+  this range covers with only a modest crop (~10-25% depending on card height
+  variant) — keep the weapon/subject centered so that crop doesn't cut it off.
 - **Resolution:** at least 1600px on the long edge (matches existing art, which
   is ~1670-1700px wide).
-- **Background:** fully painted is expected and fine — the panel always fills
-  edge-to-edge with a soft top/bottom vignette, no letterboxing regardless of
-  background content.
+- **Background:** fully painted is expected and fine — the panel fills
+  edge-to-edge with a soft top/bottom vignette blending any crop, no dead
+  letterbox bars regardless of background content.
 
 ## General card backgrounds (`assets/backgrounds/*.png`)
 
