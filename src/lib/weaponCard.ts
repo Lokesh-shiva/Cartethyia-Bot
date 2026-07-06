@@ -68,11 +68,28 @@ export interface WeaponCardInput {
   weaponBond?:    number;
 }
 
+// All weapon art on disk is landscape scene art (~1.74-1.85 ratio) with a
+// painted background — the art strip below is built to that same ratio so
+// cover-fit only needs a small trim (a few % either side), not a heavy crop.
+const ART_RATIO = 1.8;
+
 export async function generateWeaponCard(input: WeaponCardInput): Promise<Buffer> {
-  const W = 860;
+  const W = 640;
+  const AX = 16, AY = 16, AW = W - 32;
+  const AH = Math.round(AW / ART_RATIO);
+
   const hiddenRows = (input.hiddenSub1Type ? 1 : 0) + (input.hiddenSub2Type ? 1 : 0);
   const passiveExtraLines = input.passive ? Math.max(0, input.passive.split("\n").length - 1) : 0;
-  const H = 310 + hiddenRows * 28 + (input.awakened ? 50 + passiveExtraLines * 17 : 0);
+  const numStatRows = 2 + (input.subStatType && input.effectiveSub !== null ? 1 : 0) + hiddenRows;
+
+  const TY = AY + AH + 18;                 // top of the stats block, below the art
+  const HEADER_H = 96;                     // name + type/badge + stars/level + separator
+  const PASSIVE_BASE = 70;                 // gap + rule + chip row + bottom padding
+  const H = TY + HEADER_H + numStatRows * 28 + 10
+    + (input.awakened ? 40 : 0)
+    + PASSIVE_BASE + passiveExtraLines * 17
+    + 24;
+
   const canvas = createCanvas(W, H);
   const ctx    = canvas.getContext("2d");
 
@@ -83,22 +100,21 @@ export async function generateWeaponCard(input: WeaponCardInput): Promise<Buffer
   // ── Background ──────────────────────────────────────────────────────────────
   ctx.fillStyle = input.awakened ? "#0C0A06" : "#080B12"; ctx.fillRect(0,0,W,H);
 
-  // Bloom from art side
+  // Bloom behind the art strip
   const bloomColor = input.awakened ? "#FCD34D" : (ELEMENT_HEX[input.element.toUpperCase()] ?? ELEMENT_HEX.NONE);
-  const bloom = ctx.createRadialGradient(226,H/2,0,226,H/2,340);
+  const bloom = ctx.createRadialGradient(W/2, AY+AH/2, 0, W/2, AY+AH/2, AW*0.6);
   bloom.addColorStop(0, rgba(bloomColor, input.awakened ? 0.18 : 0.30));
   bloom.addColorStop(0.6, rgba(bloomColor, input.awakened ? 0.05 : 0.08));
   bloom.addColorStop(1,"rgba(0,0,0,0)");
   ctx.fillStyle = bloom; ctx.fillRect(0,0,W,H);
 
   // Rarity / gold bloom behind art
-  const rb = ctx.createRadialGradient(226,H/2,0,226,H/2,190);
+  const rb = ctx.createRadialGradient(W/2, AY+AH/2, 0, W/2, AY+AH/2, AW*0.35);
   rb.addColorStop(0, rgba(input.awakened ? "#FCD34D" : rc, input.awakened ? 0.14 : 0.20));
   rb.addColorStop(1,"rgba(0,0,0,0)");
   ctx.fillStyle = rb; ctx.fillRect(0,0,W,H);
 
-  // ── Art panel ───────────────────────────────────────────────────────────────
-  const AX=16, AY=16, AW=420, AH=H-32;
+  // ── Art strip ───────────────────────────────────────────────────────────────
   ctx.save();
   rrect(ctx,AX,AY,AW,AH,14); ctx.clip();
 
@@ -112,23 +128,20 @@ export async function generateWeaponCard(input: WeaponCardInput): Promise<Buffer
     try {
       const img  = await loadImage(imgPath);
 
-      // All weapon art on disk is landscape scene art with a painted
-      // background (checked: ~1.78-1.85 ratio, none transparent) — cover-fit
-      // so it fills the panel edge-to-edge instead of letterboxing with dead
-      // black bars top/bottom.
+      // The strip's ratio (ART_RATIO) already matches the art's native ratio
+      // closely, so cover-fit only trims a few percent — no heavy crop.
       const scale = Math.max(AW / img.width, AH / img.height);
       const sw = img.width * scale, sh = img.height * scale;
       ctx.drawImage(img, AX + (AW-sw)/2, AY + (AH-sh)/2, sw, sh);
 
-      // Soft edge vignette so the crop blends into the panel bg instead of
-      // cutting the scene off hard at the frame edge.
-      const edgeFade = 28;
+      // Soft edge vignette so any residual trim blends into the panel bg.
+      const edgeFade = 24;
       const top = ctx.createLinearGradient(0, AY, 0, AY + edgeFade);
-      top.addColorStop(0, "rgba(0,0,0,0.55)"); top.addColorStop(1, "rgba(0,0,0,0)");
+      top.addColorStop(0, "rgba(0,0,0,0.45)"); top.addColorStop(1, "rgba(0,0,0,0)");
       ctx.fillStyle = top; ctx.fillRect(AX, AY, AW, edgeFade);
 
       const bottom = ctx.createLinearGradient(0, AY + AH - edgeFade, 0, AY + AH);
-      bottom.addColorStop(0, "rgba(0,0,0,0)"); bottom.addColorStop(1, "rgba(0,0,0,0.55)");
+      bottom.addColorStop(0, "rgba(0,0,0,0)"); bottom.addColorStop(1, "rgba(0,0,0,0.45)");
       ctx.fillStyle = bottom; ctx.fillRect(AX, AY + AH - edgeFade, AW, edgeFade);
     } catch { /* fallback */ }
   }
@@ -145,23 +158,13 @@ export async function generateWeaponCard(input: WeaponCardInput): Promise<Buffer
   ctx.shadowBlur = 0;
   ctx.restore();
 
-  // ── Divider ─────────────────────────────────────────────────────────────────
-  const DX = AX+AW+14;
-  const dvGrad = ctx.createLinearGradient(DX,0,DX,H);
-  dvGrad.addColorStop(0,"rgba(0,0,0,0)");
-  dvGrad.addColorStop(0.25, rgba(ec, input.awakened ? 0.60 : 0.45));
-  dvGrad.addColorStop(0.75, rgba(ec, input.awakened ? 0.60 : 0.45));
-  dvGrad.addColorStop(1,"rgba(0,0,0,0)");
-  ctx.strokeStyle = dvGrad; ctx.lineWidth = 1;
-  ctx.beginPath(); ctx.moveTo(DX,18); ctx.lineTo(DX,H-18); ctx.stroke();
-
-  // ── Stats panel ─────────────────────────────────────────────────────────────
-  const SX = DX + 14;   // left edge of text
-  const RX = W - 18;    // right edge for right-aligned values
-  let cy = 0;           // current y cursor
+  // ── Stats block (below the art) ─────────────────────────────────────────────
+  const SX = AX + 8;    // left edge of text
+  const RX = W - 24;    // right edge for right-aligned values
+  let cy = 0;
 
   // ── Weapon name ─────────────────────────────────────────────────────────────
-  cy = 46;
+  cy = TY + 26;
   const displayName = (input.awakened && input.awakenedName) ? input.awakenedName : input.name;
   ctx.fillStyle = input.awakened ? "#FCD34D" : input.isUnique ? ec : "#FFFFFF";
   ctx.font = font(24);
@@ -175,7 +178,7 @@ export async function generateWeaponCard(input: WeaponCardInput): Promise<Buffer
   ctx.shadowBlur = 0;
 
   // ── Type + unique badge ──────────────────────────────────────────────────────
-  cy = 64;
+  cy = TY + 44;
   const typeFull = input.weaponType.charAt(0).toUpperCase() + input.weaponType.slice(1).toLowerCase();
   ctx.fillStyle = rgba("#FFFFFF", 0.4);
   ctx.font = font(11);
@@ -198,7 +201,7 @@ export async function generateWeaponCard(input: WeaponCardInput): Promise<Buffer
   }
 
   // ── Stars + level pill ───────────────────────────────────────────────────────
-  cy = 82;
+  cy = TY + 62;
   for (let i = 0; i < 5; i++) {
     ctx.fillStyle = i < input.rarity ? rc : rgba("#FFFFFF",0.12);
     drawStar(ctx, SX + 8 + i*18, cy, 6);
@@ -215,11 +218,10 @@ export async function generateWeaponCard(input: WeaponCardInput): Promise<Buffer
   ctx.fillText(lvTxt, lvX+8, cy+3);
 
   // ── Separator ────────────────────────────────────────────────────────────────
-  cy = 96;
+  cy = TY + HEADER_H;
   sep(ctx, SX, cy, RX-SX, ec);
 
   // ── Stat rows (label left, value right — single line each) ──────────────────
-  cy = 96;
   interface StatRow { label: string; value: string; hi?: boolean; locked?: boolean }
   const stats: StatRow[] = [
     { label: "BASE ATK",  value: `${input.baseAtk}` },
