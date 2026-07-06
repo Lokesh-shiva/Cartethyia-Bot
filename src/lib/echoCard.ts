@@ -187,23 +187,25 @@ export async function generateEchoCard(e: EchoCardData): Promise<Buffer> {
   // ── Name + element + level (over art bottom) ──────────────────────────────
   ctx.fillStyle = "#FFFFFF"; ctx.font = `bold 26px Rajdhani, 'Arial Black', 'Noto Sans', 'Noto Sans CJK SC', Arial, sans-serif`;
   ctx.fillText(e.name.length > 18 ? e.name.slice(0, 17) + "…" : e.name, 22, artY + artH - 16);
-  // element dot + label
-  ctx.fillStyle = ec; ctx.beginPath(); ctx.arc(27, artY + artH + 2, 4, 0, Math.PI * 2); ctx.fill();
+  // element dot + label — offset past the art frame's rounded corner (radius
+  // 12) and a full row-height below the border so the corner curve doesn't
+  // visually cross through the text.
+  ctx.fillStyle = ec; ctx.beginPath(); ctx.arc(30, artY + artH + 10, 4, 0, Math.PI * 2); ctx.fill();
   ctx.font = `bold 13px Rajdhani, 'Noto Sans', 'Noto Sans CJK SC', 'Noto Sans JP', Arial, sans-serif`;
-  ctx.fillText(e.element, 38, artY + artH + 6);
+  ctx.fillText(e.element, 41, artY + artH + 14);
   // level pill (right)
   const lvText = `Lv ${e.level}/${maxEchoLevel(e.rarity)}`;
   ctx.font = `bold 13px Rajdhani, 'Noto Sans', 'Noto Sans CJK SC', 'Noto Sans JP', Arial, sans-serif`;
   const lvW = ctx.measureText(lvText).width + 18;
   // Sits fully below the art frame border (not straddling it) to match the
   // element row alongside it.
-  ctx.fillStyle = rgba(ec, 0.18); rrect(ctx, W - 22 - lvW, artY + artH + 2, lvW, 20, 10); ctx.fill();
-  ctx.strokeStyle = rgba(ec, 0.6); ctx.lineWidth = 1; rrect(ctx, W - 22 - lvW, artY + artH + 2, lvW, 20, 10); ctx.stroke();
+  ctx.fillStyle = rgba(ec, 0.18); rrect(ctx, W - 22 - lvW, artY + artH + 8, lvW, 20, 10); ctx.fill();
+  ctx.strokeStyle = rgba(ec, 0.6); ctx.lineWidth = 1; rrect(ctx, W - 22 - lvW, artY + artH + 8, lvW, 20, 10); ctx.stroke();
   ctx.fillStyle = "#FFFFFF"; ctx.textAlign = "center";
-  ctx.fillText(lvText, W - 22 - lvW / 2, artY + artH + 16); ctx.textAlign = "left";
+  ctx.fillText(lvText, W - 22 - lvW / 2, artY + artH + 22); ctx.textAlign = "left";
 
   // ── Main stat ─────────────────────────────────────────────────────────────
-  const msY = artY + artH + 30;
+  const msY = artY + artH + 38;
   ctx.fillStyle = "rgba(255,255,255,0.45)"; ctx.font = `bold 10px Rajdhani, 'Noto Sans', 'Noto Sans CJK SC', 'Noto Sans JP', Arial, sans-serif`;
   ctx.letterSpacing = "2px"; ctx.fillText("MAIN STAT", 22, msY); ctx.letterSpacing = "0px";
   const mainLabel = MAIN_STAT_LABELS[e.mainStatType] ?? e.mainStatType;
