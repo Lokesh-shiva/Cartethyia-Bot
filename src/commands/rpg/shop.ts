@@ -397,9 +397,25 @@ async function processPurchase(
 
   await prisma.user.update({ where: { id: interaction.user.id }, data: { ...deduct, ...gains } });
 
-  const givesLines = Object.entries(item.gives)
-    .map(([k, v]) => `› +${(v ?? 0) * qty} ${k.replace(/([A-Z])/g, ' $1').trim()}`)
-    .join("\n");
+  const lootResult = {
+    credits:          item.gives.credits          ? (item.gives.credits ?? 0) * qty          : 0,
+    tuningModules:    item.gives.tuningModules     ? (item.gives.tuningModules ?? 0) * qty     : 0,
+    sealingTubes:     item.gives.sealingTubes      ? (item.gives.sealingTubes ?? 0) * qty      : 0,
+    forgingOres:      item.gives.forgingOres       ? (item.gives.forgingOres ?? 0) * qty       : 0,
+    resonanceExp:     item.gives.resonanceExp      ? (item.gives.resonanceExp ?? 0) * qty      : 0,
+    resonanceRecords: item.gives.resonanceRecords  ? (item.gives.resonanceRecords ?? 0) * qty  : 0,
+    isMultiplied:     false,
+  };
+
+  const cardColorHex = "#" + color.toString(16).padStart(6, "0").toUpperCase();
+  const card = await generateLootCard({
+    loot: lootResult,
+    actorName: interaction.user.username,
+    elementColor: cardColorHex,
+    affinity: null,
+    isReturn: false,
+  });
+  const purchaseAttachment = new AttachmentBuilder(card, { name: "purchase.webp" });
 
   await interaction.editReply({
     embeds: [new EmbedBuilder()
@@ -407,10 +423,11 @@ async function processPurchase(
       .setTitle(`${item.emoji}  Purchase Complete`)
       .setDescription(
         `**${item.name} × ${qty}** purchased for **${total.toLocaleString()} ${currencyEmoji(item.currency)}**.\n\n` +
-        `${givesLines}\n\n` +
         `Remaining balance: **${(balance - total).toLocaleString()} ${currencyEmoji(item.currency)}**`
       )
+      .setImage("attachment://purchase.webp")
       .setFooter({ text: "CARTETHYIA  ·  Shop" })],
+    files: [purchaseAttachment],
     components: [],
   });
 }
