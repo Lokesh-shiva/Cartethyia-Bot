@@ -69,7 +69,7 @@ export interface WeaponCardInput {
 }
 
 export async function generateWeaponCard(input: WeaponCardInput): Promise<Buffer> {
-  const W = 720;
+  const W = 860;
   const hiddenRows = (input.hiddenSub1Type ? 1 : 0) + (input.hiddenSub2Type ? 1 : 0);
   const passiveExtraLines = input.passive ? Math.max(0, input.passive.split("\n").length - 1) : 0;
   const H = 310 + hiddenRows * 28 + (input.awakened ? 50 + passiveExtraLines * 17 : 0);
@@ -85,20 +85,20 @@ export async function generateWeaponCard(input: WeaponCardInput): Promise<Buffer
 
   // Bloom from art side
   const bloomColor = input.awakened ? "#FCD34D" : (ELEMENT_HEX[input.element.toUpperCase()] ?? ELEMENT_HEX.NONE);
-  const bloom = ctx.createRadialGradient(210,H/2,0,210,H/2,340);
+  const bloom = ctx.createRadialGradient(226,H/2,0,226,H/2,340);
   bloom.addColorStop(0, rgba(bloomColor, input.awakened ? 0.18 : 0.30));
   bloom.addColorStop(0.6, rgba(bloomColor, input.awakened ? 0.05 : 0.08));
   bloom.addColorStop(1,"rgba(0,0,0,0)");
   ctx.fillStyle = bloom; ctx.fillRect(0,0,W,H);
 
   // Rarity / gold bloom behind art
-  const rb = ctx.createRadialGradient(210,H/2,0,210,H/2,190);
+  const rb = ctx.createRadialGradient(226,H/2,0,226,H/2,190);
   rb.addColorStop(0, rgba(input.awakened ? "#FCD34D" : rc, input.awakened ? 0.14 : 0.20));
   rb.addColorStop(1,"rgba(0,0,0,0)");
   ctx.fillStyle = rb; ctx.fillRect(0,0,W,H);
 
   // ── Art panel ───────────────────────────────────────────────────────────────
-  const AX=16, AY=16, AW=262, AH=H-32;
+  const AX=16, AY=16, AW=420, AH=H-32;
   ctx.save();
   rrect(ctx,AX,AY,AW,AH,14); ctx.clip();
 
