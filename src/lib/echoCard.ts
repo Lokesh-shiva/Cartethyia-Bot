@@ -132,10 +132,14 @@ export async function generateEchoCard(e: EchoCardData): Promise<Buffer> {
 
       if (ratio > 1.15) {
         // Landscape art (~1.83 ratio in practice, e.g. Windnipper, Duskfang
-        // Stalker) — contain-fit so nothing gets cropped off the sides.
-        // The panel's already-tinted background (filled above) makes the
-        // surrounding space read as ambient glow, not a dead letterbox bar.
-        const scale = Math.min(artW / img.width, artH / img.height);
+        // Stalker) — blend halfway between contain-fit (no crop, but looks
+        // small/padded in this near-square panel) and cover-fit (fills the
+        // panel, but crops too much off the sides). The panel's tinted
+        // background (filled above) makes any small residual gap read as
+        // ambient glow, not a dead letterbox bar.
+        const containScale = Math.min(artW / img.width, artH / img.height);
+        const coverScale   = Math.max(artW / img.width, artH / img.height);
+        const scale = containScale + (coverScale - containScale) * 0.5;
         const sw = img.width * scale, sh = img.height * scale;
         ctx.drawImage(img, artX + (artW - sw) / 2, artY + (artH - sh) / 2, sw, sh);
       } else {
