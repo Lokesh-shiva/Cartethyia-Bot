@@ -11,9 +11,10 @@ supported, fit differently:
 
 - **Square/near-square (ratio ≤ 1.15):** cover-fit, so keep the subject centered
   and reasonably contained — a small crop (~13%) happens at the panel edges.
-- **Landscape (ratio > 1.15):** contain-fit (no crop at all) — the full image is
-  shown, centered in the panel, with any surrounding gap filled by the panel's
-  ambient element-tinted background. No need to crop-safe the composition.
+- **Landscape (ratio > 1.15):** blended contain/cover fit (halfway between "show
+  everything, small" and "fill the panel, crop the sides") — a small trim off
+  the far left/right edges is possible, so keep the subject reasonably centered,
+  but it won't be cropped as aggressively as a pure cover-fit would.
 - **Resolution:** at least 900px on the short edge for square art, at least
   1200px wide for landscape art. Larger is fine — the renderer step-downscales
   sharply (see `src/lib/canvasUtil.ts`).
@@ -26,16 +27,19 @@ supported, fit differently:
 
 ## Weapon art (`assets/weapons/{Type}/*.png`, `assets/weapons/awakened/*.png`, `assets/weapons/unique/*.png`)
 
-- **Aspect ratio:** landscape scene art, ~1.6-1.9 ratio (matches the existing
+The weapon card is a top-art / stats-below layout (not side-by-side) — the art
+strip's own ratio (1.8) is built to match the art's native ratio, so cover-fit
+only trims a few percent, never a heavy crop.
+
+- **Aspect ratio:** landscape scene art, ~1.75-1.85 ratio (matches the existing
   library, all of which is painted-background scenes, not transparent icons).
-  The art panel (420×[H-32], H varies ~310-450) is wide enough that most of
-  this range covers with only a modest crop (~10-25% depending on card height
-  variant) — keep the weapon/subject centered so that crop doesn't cut it off.
+  Staying in that range keeps the crop minimal; straying further (e.g. a
+  square or portrait weapon shot) will get cropped more heavily by cover-fit.
 - **Resolution:** at least 1600px on the long edge (matches existing art, which
   is ~1670-1700px wide).
-- **Background:** fully painted is expected and fine — the panel fills
-  edge-to-edge with a soft top/bottom vignette blending any crop, no dead
-  letterbox bars regardless of background content.
+- **Background:** fully painted is expected and fine — the strip fills
+  edge-to-edge with a soft top/bottom vignette blending any residual trim, no
+  dead letterbox bars regardless of background content.
 
 ## General card backgrounds (`assets/backgrounds/*.png`)
 
