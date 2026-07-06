@@ -173,7 +173,12 @@ git commit -m "fix(gridCard): use step-down downscale for equipped-echo thumbnai
 
 ---
 
-### Task 3: Weapon card aspect-aware art fit
+### Task 3: Weapon card cover-fit art (no more letterboxing)
+
+**Context:** checked every PNG under `assets/weapons/` — all of it (every type, including
+awakened) is landscape, ~1.78-1.85 ratio, with a fully painted background. None are
+transparent/portrait icon art. So there's no asset today that benefits from the old
+`contain`-fit — always cover-fit is correct and simpler (YAGNI: no ratio branch).
 
 **Files:**
 - Modify: `src/lib/weaponCard.ts:100-121`
@@ -224,32 +229,25 @@ Replace with:
   if (imgPath) {
     try {
       const img  = await loadImage(imgPath);
-      const ratio = img.width / img.height;
 
-      if (ratio <= 1.15) {
-        // Portrait / near-square icon art — contain-fit, unchanged behavior.
-        const pad  = 12;
-        const scale = Math.min((AW - pad*2) / img.width, (AH - pad*2) / img.height);
-        const sw = img.width * scale, sh = img.height * scale;
-        ctx.drawImage(img, AX + (AW-sw)/2, AY + (AH-sh)/2, sw, sh);
-      } else {
-        // Landscape scene art — cover-fit (fills the panel, crops overflow)
-        // instead of letterboxing with dead black bars.
-        const scale = Math.max(AW / img.width, AH / img.height);
-        const sw = img.width * scale, sh = img.height * scale;
-        ctx.drawImage(img, AX + (AW-sw)/2, AY + (AH-sh)/2, sw, sh);
+      // All weapon art on disk is landscape scene art with a painted
+      // background (checked: ~1.78-1.85 ratio, none transparent) — cover-fit
+      // so it fills the panel edge-to-edge instead of letterboxing with dead
+      // black bars top/bottom.
+      const scale = Math.max(AW / img.width, AH / img.height);
+      const sw = img.width * scale, sh = img.height * scale;
+      ctx.drawImage(img, AX + (AW-sw)/2, AY + (AH-sh)/2, sw, sh);
 
-        // Soft edge vignette so the crop blends into the panel bg instead of
-        // cutting the scene off hard at the frame edge.
-        const edgeFade = 28;
-        const top = ctx.createLinearGradient(0, AY, 0, AY + edgeFade);
-        top.addColorStop(0, "rgba(0,0,0,0.55)"); top.addColorStop(1, "rgba(0,0,0,0)");
-        ctx.fillStyle = top; ctx.fillRect(AX, AY, AW, edgeFade);
+      // Soft edge vignette so the crop blends into the panel bg instead of
+      // cutting the scene off hard at the frame edge.
+      const edgeFade = 28;
+      const top = ctx.createLinearGradient(0, AY, 0, AY + edgeFade);
+      top.addColorStop(0, "rgba(0,0,0,0.55)"); top.addColorStop(1, "rgba(0,0,0,0)");
+      ctx.fillStyle = top; ctx.fillRect(AX, AY, AW, edgeFade);
 
-        const bottom = ctx.createLinearGradient(0, AY + AH - edgeFade, 0, AY + AH);
-        bottom.addColorStop(0, "rgba(0,0,0,0)"); bottom.addColorStop(1, "rgba(0,0,0,0.55)");
-        ctx.fillStyle = bottom; ctx.fillRect(AX, AY + AH - edgeFade, AW, edgeFade);
-      }
+      const bottom = ctx.createLinearGradient(0, AY + AH - edgeFade, 0, AY + AH);
+      bottom.addColorStop(0, "rgba(0,0,0,0)"); bottom.addColorStop(1, "rgba(0,0,0,0.55)");
+      ctx.fillStyle = bottom; ctx.fillRect(AX, AY + AH - edgeFade, AW, edgeFade);
     } catch { /* fallback */ }
   }
 
@@ -265,7 +263,7 @@ Expected: `no errors in weaponCard.ts`
 
 Write a throwaway scratchpad script that calls `generateWeaponCard` with `awakened: true, awakenedName: "Symphony of the Unbound"` (matching the awakened pistols art already on disk at `assets/weapons/awakened/Symphony of the Unbound.png` per the reported screenshot) plus the other required `WeaponCardInput` fields (use plausible placeholder numbers — rarity 5, level 90, baseAtk/effectiveAtk from the screenshot: 123/615, subStatType with effectiveSub 22.9, hiddenSub1/2 matching crit rate/dmg from the screenshot). Save to `scratchpad/weapon-check.webp` and view with Read. Confirm the space scene now fills the panel edge-to-edge with no black letterbox bars, and the top/bottom vignette blends cleanly.
 
-Also generate one card for an existing portrait-art weapon (any non-awakened 3-5★ weapon with art in `assets/weapons/<Type>/`) to confirm the `ratio <= 1.15` branch still renders identically to before (no regression).
+Also generate one card for an existing non-awakened weapon (any 3-5★ weapon with art in `assets/weapons/<Type>/`) to confirm cover-fit looks correct there too, not just on the awakened pistols art.
 
 - [ ] **Step 4: Commit**
 
@@ -356,13 +354,15 @@ renders cleanly in the existing card generators without code changes.
 
 ## Weapon art (`assets/weapons/{Type}/*.png`, `assets/weapons/awakened/*.png`, `assets/weapons/unique/*.png`)
 
-- **Preferred:** portrait or near-square (width/height ratio ≤ 1.15) icon-style
-  art of the weapon itself, transparent or simple background — this gets a
-  `contain`-fit, unchanged from before.
-- **Landscape scene art** (ratio > 1.15, e.g. a wide establishing shot) is
-  supported but gets `cover`-fit and cropped to fill the panel — keep the subject
-  centered so cropping the left/right or top/bottom edges doesn't cut it off.
-- **Resolution:** at least 800px on the short edge.
+- **Aspect ratio:** landscape scene art, ~1.6-1.9 ratio (matches the existing
+  library, all of which is painted-background scenes, not transparent icons).
+  The art panel always `cover`-fits and crops to fill — keep the weapon/subject
+  centered so cropping the top/bottom or left/right edges doesn't cut it off.
+- **Resolution:** at least 1600px on the long edge (matches existing art, which
+  is ~1670-1700px wide).
+- **Background:** fully painted is expected and fine — the panel always fills
+  edge-to-edge with a soft top/bottom vignette, no letterboxing regardless of
+  background content.
 
 ## General card backgrounds (`assets/backgrounds/*.png`)
 
