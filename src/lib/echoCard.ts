@@ -128,14 +128,27 @@ export async function generateEchoCard(e: EchoCardData): Promise<Buffer> {
   if (artPath) {
     try {
       const img = await loadImage(artPath);
-      const scale = Math.max(artW / img.width, artH / img.height);
-      const sw = img.width * scale, sh = img.height * scale;
-      // 3/4-cost art is portrait — top-align so the head is always visible.
-      // 1-cost echoes are small icons — center them.
-      const drawY = e.cost === 1
-        ? artY + (artH - sh) / 2       // center for small icons
-        : artY;                         // top-anchor for 3/4-cost portraits
-      ctx.drawImage(img, artX + (artW - sw) / 2, drawY, sw, sh);
+      const ratio = img.width / img.height;
+
+      if (ratio > 1.15) {
+        // Landscape art (~1.83 ratio in practice, e.g. Windnipper, Duskfang
+        // Stalker) — contain-fit so nothing gets cropped off the sides.
+        // The panel's already-tinted background (filled above) makes the
+        // surrounding space read as ambient glow, not a dead letterbox bar.
+        const scale = Math.min(artW / img.width, artH / img.height);
+        const sw = img.width * scale, sh = img.height * scale;
+        ctx.drawImage(img, artX + (artW - sw) / 2, artY + (artH - sh) / 2, sw, sh);
+      } else {
+        // Square/near-square art — cover-fit as before.
+        const scale = Math.max(artW / img.width, artH / img.height);
+        const sw = img.width * scale, sh = img.height * scale;
+        // 3/4-cost art is portrait-safe — top-align so the head is always
+        // visible. 1-cost echoes are small icons — center them.
+        const drawY = e.cost === 1
+          ? artY + (artH - sh) / 2       // center for small icons
+          : artY;                         // top-anchor for 3/4-cost portraits
+        ctx.drawImage(img, artX + (artW - sw) / 2, drawY, sw, sh);
+      }
     } catch { /* glyph fallback below */ }
   } else {
     ctx.fillStyle = rgba(ec, 0.5); ctx.font = `bold 120px Rajdhani, 'Noto Sans', 'Noto Sans CJK SC', 'Noto Sans JP', Arial, sans-serif`;
@@ -182,10 +195,12 @@ export async function generateEchoCard(e: EchoCardData): Promise<Buffer> {
   const lvText = `Lv ${e.level}/${maxEchoLevel(e.rarity)}`;
   ctx.font = `bold 13px Rajdhani, 'Noto Sans', 'Noto Sans CJK SC', 'Noto Sans JP', Arial, sans-serif`;
   const lvW = ctx.measureText(lvText).width + 18;
-  ctx.fillStyle = rgba(ec, 0.18); rrect(ctx, W - 22 - lvW, artY + artH - 6, lvW, 20, 10); ctx.fill();
-  ctx.strokeStyle = rgba(ec, 0.6); ctx.lineWidth = 1; rrect(ctx, W - 22 - lvW, artY + artH - 6, lvW, 20, 10); ctx.stroke();
+  // Sits fully below the art frame border (not straddling it) to match the
+  // element row alongside it.
+  ctx.fillStyle = rgba(ec, 0.18); rrect(ctx, W - 22 - lvW, artY + artH + 2, lvW, 20, 10); ctx.fill();
+  ctx.strokeStyle = rgba(ec, 0.6); ctx.lineWidth = 1; rrect(ctx, W - 22 - lvW, artY + artH + 2, lvW, 20, 10); ctx.stroke();
   ctx.fillStyle = "#FFFFFF"; ctx.textAlign = "center";
-  ctx.fillText(lvText, W - 22 - lvW / 2, artY + artH + 8); ctx.textAlign = "left";
+  ctx.fillText(lvText, W - 22 - lvW / 2, artY + artH + 16); ctx.textAlign = "left";
 
   // ── Main stat ─────────────────────────────────────────────────────────────
   const msY = artY + artH + 30;
