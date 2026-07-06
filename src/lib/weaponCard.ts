@@ -111,10 +111,25 @@ export async function generateWeaponCard(input: WeaponCardInput): Promise<Buffer
   if (imgPath) {
     try {
       const img  = await loadImage(imgPath);
-      const pad  = 12;
-      const scale = Math.min((AW - pad*2) / img.width, (AH - pad*2) / img.height);
+
+      // All weapon art on disk is landscape scene art with a painted
+      // background (checked: ~1.78-1.85 ratio, none transparent) — cover-fit
+      // so it fills the panel edge-to-edge instead of letterboxing with dead
+      // black bars top/bottom.
+      const scale = Math.max(AW / img.width, AH / img.height);
       const sw = img.width * scale, sh = img.height * scale;
       ctx.drawImage(img, AX + (AW-sw)/2, AY + (AH-sh)/2, sw, sh);
+
+      // Soft edge vignette so the crop blends into the panel bg instead of
+      // cutting the scene off hard at the frame edge.
+      const edgeFade = 28;
+      const top = ctx.createLinearGradient(0, AY, 0, AY + edgeFade);
+      top.addColorStop(0, "rgba(0,0,0,0.55)"); top.addColorStop(1, "rgba(0,0,0,0)");
+      ctx.fillStyle = top; ctx.fillRect(AX, AY, AW, edgeFade);
+
+      const bottom = ctx.createLinearGradient(0, AY + AH - edgeFade, 0, AY + AH);
+      bottom.addColorStop(0, "rgba(0,0,0,0)"); bottom.addColorStop(1, "rgba(0,0,0,0.55)");
+      ctx.fillStyle = bottom; ctx.fillRect(AX, AY + AH - edgeFade, AW, edgeFade);
     } catch { /* fallback */ }
   }
 
