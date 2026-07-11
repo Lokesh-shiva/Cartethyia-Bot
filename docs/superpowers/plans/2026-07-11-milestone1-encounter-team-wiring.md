@@ -270,7 +270,44 @@ git commit -m "feat(teams): add dev-guild-gated 2-unit state + swap button UI to
 **Files:**
 - Modify: `src/lib/encounter.ts`
 
-- [ ] **Step 1: Add the swap branch**
+- [ ] **Step 1: Hoist `forcedCritActive` out of the section about to be wrapped**
+
+**Correction (caught during implementation, before this was committed):** `forcedCritActive` is declared `const` inside the damage-dealing section that Step 2 below wraps in a new `else {}` block, but it's read again later in the turn-increment logic (`if (forcedCritActive) nextAttackCritArmed = false;`), which sits OUTSIDE that block. Wrapping the section as originally planned would make `forcedCritActive` go out of scope at that later read site — a real `tsc` error, not a style nit. Fix: hoist it to a `let` declared before the swap check, defaulting to `false` (a swap never arms/consumes a forced crit, which is also the semantically correct behavior — no attack happened on a swap turn).
+
+Find this existing block (top of the button collector, right after `deferUpdate()`):
+
+```typescript
+      let moveName = "";
+      let playerDmg = 0;
+
+      if (btn.customId === "enc_flee") {
+```
+
+Replace with:
+
+```typescript
+      let moveName = "";
+      let playerDmg = 0;
+      let forcedCritActive = false; // set inside the damage-dealing branch below; a swap never arms/consumes it
+
+      if (btn.customId === "enc_flee") {
+```
+
+Then find this existing line (inside the damage-dealing section, right after the `defShredActive`/`defVal`/`enemyHpPct`/`radCrit`/`cRate`/`vibMult` block):
+
+```typescript
+      const forcedCritActive = nextAttackCritArmed && btn.customId !== "enc_flee";
+```
+
+Replace with:
+
+```typescript
+      forcedCritActive = nextAttackCritArmed && btn.customId !== "enc_flee";
+```
+
+(Same expression, just an assignment to the hoisted `let` instead of a new `const` declaration — this is the only change needed to fix the scoping bug.)
+
+- [ ] **Step 2: Add the swap branch**
 
 Find this existing block (right after the `enc_flee` early-return, before the `defShredActive`/`defVal` computation):
 
@@ -339,7 +376,7 @@ Replace with:
 
 Note the added `} else {` at the end — this wraps the ENTIRE existing damage-dealing section (from `defShredActive` through the shatter-check block) so it's skipped on swap. The matching closing brace goes in Step 2.
 
-- [ ] **Step 2: Close the wrapping `else` block before the win-check section**
+- [ ] **Step 3: Close the wrapping `else` block before the win-check section**
 
 Find this existing block (the shatter-check, right before "── Win ──"):
 
@@ -381,16 +418,16 @@ Replace with:
       // ── Win ────────────────────────────────────────────────────────────────
 ```
 
-- [ ] **Step 3: Guard the win-check against a dead player's own damage while the ally is benched**
+- [ ] **Step 4: Guard the win-check against a dead player's own damage while the ally is benched**
 
 The existing win-check (`if (state.bossHpNow <= 0) { ... }`) is unaffected by this change — `state.bossHpNow` only decreases in the damage-dealing branch, which swap skips, so a swap turn can never trigger a win. No code change needed here — just confirming this is correct by inspection.
 
-- [ ] **Step 4: Typecheck**
+- [ ] **Step 5: Typecheck**
 
 Run: `npx tsc --noEmit`
 Expected: clean, no errors.
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 6: Commit**
 
 ```bash
 git add src/lib/encounter.ts
