@@ -625,8 +625,8 @@ export async function handleEncounterFight(
       let   isCrit = false;
 
       if (btn.customId === "enc_basic") {
-        const atkMult = getWeakenedMult(playerDebuffs) * (isDevGuild ? getAttunementAtkMult(attunement) : 1);
-        const r  = calcPlayerDamage(stats.atk * atkMult, defVal, forcedCritActive ? 1 : Math.min(1, cRate + (isDevGuild ? getAttunementCritRateBonus(attunement) : 0)), stats.critDmg, 1.0, isWeak, state.isShattered);
+        const atkMult = getWeakenedMult(playerDebuffs) * (isDevGuild ? getAttunementAtkMult(attunement, attunementDoubleTurnsLeft > 0) : 1);
+        const r  = calcPlayerDamage(stats.atk * atkMult, defVal, forcedCritActive ? 1 : Math.min(1, cRate + (isDevGuild ? getAttunementCritRateBonus(attunement, attunementDoubleTurnsLeft > 0) : 0)), stats.critDmg, 1.0, isWeak, state.isShattered);
         let base = Math.floor(r.damage * (1 + stats.elemDmgBonus));
         base     = Math.floor(base * elemWindstrideMult(bonuses.elementPassive, state.turn, "BASIC"));
         // Ignite is a separate proc effect, not part of the base attack roll —
@@ -667,7 +667,7 @@ export async function handleEncounterFight(
       }
 
       if (btn.customId === "enc_ultimate" && !(isDevGuild && activeUnit === "ally")) {
-        const atkMult = getWeakenedMult(playerDebuffs) * (isDevGuild ? getAttunementAtkMult(attunement) : 1);
+        const atkMult = getWeakenedMult(playerDebuffs) * (isDevGuild ? getAttunementAtkMult(attunement, attunementDoubleTurnsLeft > 0) : 1);
         const r = calcPlayerDamage(stats.atk * atkMult, defVal, 1.0, stats.critDmg, 3.5, isWeak, state.isShattered);
         playerDmg = Math.floor(r.damage * (1 + stats.elemDmgBonus)); isCrit = true;
         moveType = "ULT"; vibFrac = 0.8;
@@ -833,9 +833,10 @@ export async function handleEncounterFight(
         // Milestone 1 bug fix (caught in playtesting): this always hit
         // state.playerHp regardless of who was actually active, so benching
         // yourself behind the dummy did nothing protective — swap was purely
-        // cosmetic. The placeholder ally has no stat block of its own, so the
-        // damage math (DEF, elemental procs) still uses the player's stats —
-        // only WHICH HP pool actually takes the hit changes.
+        // cosmetic. Solace doesn't have her own independent stat block yet in
+        // this test milestone, so the damage math (DEF, elemental procs)
+        // still uses the player's stats — only WHICH HP pool actually takes
+        // the hit changes.
         const allyIsActive = isDevGuild && activeUnit === "ally";
         const targetHpMax  = allyIsActive ? allyHpMax : state.playerHpMax;
         const radRegen     = elemRadianceRegen(bonuses.elementPassive, targetHpMax);
@@ -849,9 +850,10 @@ export async function handleEncounterFight(
         state.lastMove += `\n◇ ${enc.enemy.name} ${move.effect} — **${bossDmg} DMG**${allyIsActive ? ` *(hit ${SOLACE.name})*` : ""}${shield.blocked ? " *(Frost Shield!)*" : ""}${radRegen > 0 ? ` *(+${radRegen} Radiance)*` : ""}`;
         state.playerEnergy = Math.min(100, state.playerEnergy + 15);
 
-        // The placeholder ally has no real kit and can't act — if it goes
-        // down, auto-swap back to the player rather than ending the whole
-        // encounter over a fixture NPC's HP hitting 0.
+        // Solace has no AI-driven turn of her own (the player controls her
+        // directly via the button row when she's active) — if she goes down,
+        // auto-swap back to the player rather than ending the whole encounter
+        // over her HP hitting 0.
         if (allyIsActive && allyHp <= 0) {
           activeUnit = "player";
           state.lastMove += `\n◇ **${SOLACE.name} was knocked out** — swapped back to ${displayName}.`;
