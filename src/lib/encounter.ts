@@ -24,8 +24,12 @@ import {
 import { compositeHasSecondWind } from "./abilityEffects";
 import { echoSkillBaseMult, applyEchoSkill } from "./echoSkills";
 import { generateEchoCard, echoRowToCard } from "./echoCard";
-import { PLACEHOLDER_ALLY, PLAYER_SELF_INTRO, PLAYER_SELF_OUTRO } from "./placeholderAlly";
+import { SOLACE, SOLACE_ULTIMATE_DOUBLE_TURNS, PLAYER_SELF_INTRO, PLAYER_SELF_OUTRO } from "./solace";
 import { resolveIntroOutroEffect } from "./introOutro";
+import {
+  AttunementState, cycleAttunementMode,
+  getAttunementAtkMult, getAttunementCritRateBonus, getAttunementDefMult,
+} from "./attunement";
 import { AllyActionTarget } from "./allyActions";
 import { addConcertoEnergy } from "./concertoEnergy";
 import { DebuffState, applyDebuff, tickDebuffs, getWeakenedMult } from "./debuffs";
@@ -378,12 +382,14 @@ export async function handleEncounterFight(
   const stats   = applyBonuses(dbUser, bonuses);
   let secondWindUsed = false;
 
-  // ── Milestone 1: two-unit team state (dev guild only) ────────────────────────
+  // ── Milestone 1/2a: two-unit team state (dev guild only) ─────────────────────
   let activeUnit: "player" | "ally" = "player";
-  let allyHp    = PLACEHOLDER_ALLY.hpMax;
-  const allyHpMax = PLACEHOLDER_ALLY.hpMax;
+  let allyHp    = SOLACE.hpMax;
+  const allyHpMax = SOLACE.hpMax;
   let concertoEnergy: number = 0;
   let playerDebuffs: DebuffState = [];
+  let attunement: AttunementState = { mode: null };
+  let attunementDoubleTurnsLeft = 0; // set by Solace's Ultimate; see Task 4
 
   // Scale enemy to the fighter's progression + gear (still lighter than dedicated boss
   // fights, but bumped 2026-07-03 — chat encounters were reported as trivially easy)
@@ -439,13 +445,23 @@ export async function handleEncounterFight(
   function buildEncounterButtons(): ActionRowBuilder<ButtonBuilder>[] {
     const rows: ActionRowBuilder<ButtonBuilder>[] = [];
 
-    // Milestone 1: when the benched teammate is active, it has no real kit yet —
-    // the only available action is to swap back to your own character. This
-    // avoids needing a fake AI-driven ally turn, which is out of scope here.
+    // Milestone 2a: Solace has a real kit now, so BOTH activeUnit states get a
+    // full Basic/Skill/Ultimate/Flee row — the player's row keeps its Echo
+    // Skill button (from her own equipped echo), Solace's row never has one
+    // (she has no echoes equipped in this test context). Skill/Ultimate labels
+    // differ because Solace's Skill is Attunement (no cooldown, always
+    // available — it's a mode switch, not a charge-gated move) and her
+    // Ultimate spends Concerto Energy rather than personal Energy.
     if (isDevGuild && activeUnit === "ally") {
-      rows.push(new ActionRowBuilder<ButtonBuilder>().addComponents(
+      const modeLabel = attunement.mode ? `(${attunement.mode})` : "(inactive)";
+      const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
+        new ButtonBuilder().setCustomId("enc_basic").setLabel("⚔️  Chime Strike").setStyle(ButtonStyle.Primary),
+        new ButtonBuilder().setCustomId("enc_skill").setLabel(`✦  Attunement ${modeLabel}`).setStyle(ButtonStyle.Secondary),
+        new ButtonBuilder().setCustomId("enc_ultimate").setLabel("⚡  Convergence")
+          .setStyle(ButtonStyle.Success).setDisabled(concertoEnergy < 100),
         new ButtonBuilder().setCustomId("enc_flee").setLabel("↩  Flee").setStyle(ButtonStyle.Danger),
-      ));
+      );
+      rows.push(row);
     } else {
       const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
         new ButtonBuilder().setCustomId("enc_basic").setLabel("⚔️  Basic").setStyle(ButtonStyle.Primary),
@@ -472,7 +488,7 @@ export async function handleEncounterFight(
     if (isDevGuild) {
       rows.push(new ActionRowBuilder<ButtonBuilder>().addComponents(
         new ButtonBuilder().setCustomId("enc_swap")
-          .setLabel(activeUnit === "player" ? `🔄  Swap to ${PLACEHOLDER_ALLY.name}` : `🔄  Swap to ${displayName}`)
+          .setLabel(activeUnit === "player" ? `🔄  Swap to ${SOLACE.name}` : `🔄  Swap to ${displayName}`)
           .setStyle(ButtonStyle.Secondary),
       ));
     }
@@ -482,7 +498,7 @@ export async function handleEncounterFight(
 
   function teamStatusLine(): string {
     if (!isDevGuild) return "";
-    const benchedName = activeUnit === "player" ? PLACEHOLDER_ALLY.name : displayName;
+    const benchedName = activeUnit === "player" ? SOLACE.name : displayName;
     const benchedHp   = activeUnit === "player" ? allyHp : state.playerHp;
     const benchedMax  = activeUnit === "player" ? allyHpMax : state.playerHpMax;
     const debuffLine  = playerDebuffs.length > 0
@@ -548,10 +564,16 @@ export async function handleEncounterFight(
             ? { hp: allyHp, hpMax: allyHpMax }
             : { hp: state.playerHp, hpMax: state.playerHpMax };
 
-          const outroEffect = outgoingIsPlayer ? PLAYER_SELF_OUTRO : PLACEHOLDER_ALLY.outro;
-          const introEffect = outgoingIsPlayer ? PLACEHOLDER_ALLY.intro : PLAYER_SELF_INTRO;
+          const outroEffect = outgoingIsPlayer ? PLAYER_SELF_OUTRO : SOLACE.outro;
+          const introEffect = outgoingIsPlayer ? SOLACE.intro : PLAYER_SELF_INTRO;
           const outroResult = resolveIntroOutroEffect(outroEffect, incomingTarget);
           const introResult = resolveIntroOutroEffect(introEffect, incomingTarget);
+
+          // Solace's Outro also arms a guaranteed crit for whoever swaps in —
+          // no AllyAction primitive covers this, so it reuses the existing
+          // nextAttackCritArmed variable (already wired for the Echo Skill
+          // system elsewhere in this file) rather than inventing a new one.
+          if (!outgoingIsPlayer) nextAttackCritArmed = true;
 
           // Milestone 1 has no separate shield stat yet — shieldDelta is folded
           // into a flat HP bonus, capped at max HP like a heal. Real shield state
@@ -581,11 +603,11 @@ export async function handleEncounterFight(
 
           activeUnit = outgoingIsPlayer ? "ally" : "player";
           moveName = actualGain > 0
-            ? `🔄 **Concerto Combo!** Swapped to **${outgoingIsPlayer ? PLACEHOLDER_ALLY.name : displayName}** — Outro + Intro triggered, +${actualGain} HP.`
-            : `🔄 **Concerto Combo!** Swapped to **${outgoingIsPlayer ? PLACEHOLDER_ALLY.name : displayName}** — Outro + Intro triggered (already at full HP, no heal needed).`;
+            ? `🔄 **Concerto Combo!** Swapped to **${outgoingIsPlayer ? SOLACE.name : displayName}** — Outro + Intro triggered, +${actualGain} HP.`
+            : `🔄 **Concerto Combo!** Swapped to **${outgoingIsPlayer ? SOLACE.name : displayName}** — Outro + Intro triggered (already at full HP, no heal needed).`;
         } else {
           activeUnit = outgoingIsPlayer ? "ally" : "player";
-          moveName = `🔄 Swapped to **${outgoingIsPlayer ? PLACEHOLDER_ALLY.name : displayName}** — Concerto Energy not full, no combo triggered.`;
+          moveName = `🔄 Swapped to **${outgoingIsPlayer ? SOLACE.name : displayName}** — Concerto Energy not full, no combo triggered.`;
         }
 
         state.lastMove = moveName;
@@ -603,7 +625,8 @@ export async function handleEncounterFight(
       let   isCrit = false;
 
       if (btn.customId === "enc_basic") {
-        const r  = calcPlayerDamage(stats.atk * getWeakenedMult(playerDebuffs), defVal, forcedCritActive ? 1 : cRate, stats.critDmg, 1.0, isWeak, state.isShattered);
+        const atkMult = getWeakenedMult(playerDebuffs) * (isDevGuild ? getAttunementAtkMult(attunement) : 1);
+        const r  = calcPlayerDamage(stats.atk * atkMult, defVal, forcedCritActive ? 1 : Math.min(1, cRate + (isDevGuild ? getAttunementCritRateBonus(attunement) : 0)), stats.critDmg, 1.0, isWeak, state.isShattered);
         let base = Math.floor(r.damage * (1 + stats.elemDmgBonus));
         base     = Math.floor(base * elemWindstrideMult(bonuses.elementPassive, state.turn, "BASIC"));
         // Ignite is a separate proc effect, not part of the base attack roll —
@@ -616,7 +639,19 @@ export async function handleEncounterFight(
         state.playerEnergy = Math.min(100, state.playerEnergy + ENERGY_PER_TURN + elemDischargeEnergy(bonuses.elementPassive, r.isCrit));
       }
 
-      if (btn.customId === "enc_skill") {
+      if (btn.customId === "enc_skill" && isDevGuild && activeUnit === "ally") {
+        // Solace's Skill is Attunement — a mode cycle, not a damage move. No
+        // cooldown (always available), no personal Energy interaction. Deals a
+        // small hit so it's not purely administrative, using her own baseline
+        // (reuses the player's ATK/DEF context since Solace has no stat block
+        // of her own yet in this test milestone, same simplification the
+        // placeholder ally used).
+        attunement.mode = cycleAttunementMode(attunement.mode);
+        const r  = calcPlayerDamage(stats.atk, defVal, cRate, stats.critDmg, 0.6, isWeak, state.isShattered);
+        playerDmg = Math.floor(r.damage * (1 + stats.elemDmgBonus)); isCrit = r.isCrit;
+        moveType = "SKILL"; vibFrac = 0.3;
+        moveName = `✦ Attunement — now in **${attunement.mode}** mode! ${playerDmg} DMG${r.isCrit ? " **(CRIT)**" : ""}`;
+      } else if (btn.customId === "enc_skill") {
         const r  = calcPlayerDamage(stats.atk * getWeakenedMult(playerDebuffs), defVal, forcedCritActive ? 1 : Math.min(1, cRate + 0.1), stats.critDmg, 1.8, isWeak, state.isShattered);
         let base = Math.floor(r.damage * (1 + stats.elemDmgBonus));
         base     = Math.floor(base * elemWindstrideMult(bonuses.elementPassive, state.turn, "SKILL"));
@@ -631,8 +666,9 @@ export async function handleEncounterFight(
         state.playerEnergy  = Math.min(100, state.playerEnergy + ENERGY_PER_TURN + elemDischargeEnergy(bonuses.elementPassive, r.isCrit));
       }
 
-      if (btn.customId === "enc_ultimate") {
-        const r = calcPlayerDamage(stats.atk * getWeakenedMult(playerDebuffs), defVal, 1.0, stats.critDmg, 3.5, isWeak, state.isShattered);
+      if (btn.customId === "enc_ultimate" && !(isDevGuild && activeUnit === "ally")) {
+        const atkMult = getWeakenedMult(playerDebuffs) * (isDevGuild ? getAttunementAtkMult(attunement) : 1);
+        const r = calcPlayerDamage(stats.atk * atkMult, defVal, 1.0, stats.critDmg, 3.5, isWeak, state.isShattered);
         playerDmg = Math.floor(r.damage * (1 + stats.elemDmgBonus)); isCrit = true;
         moveType = "ULT"; vibFrac = 0.8;
         moveName  = `⚡ ULTIMATE — ${playerDmg} DMG`;
@@ -789,7 +825,8 @@ export async function handleEncounterFight(
         }
       } else {
         const move     = boss.moves[Math.floor(Math.random() * boss.moves.length)];
-        let bossDmg    = calcEnemyDamage(scaledEnemy.atk, stats.def, move.damage);
+        const attunementDefMult = isDevGuild ? getAttunementDefMult(attunement, attunementDoubleTurnsLeft > 0) : 1;
+        let bossDmg    = calcEnemyDamage(scaledEnemy.atk, stats.def * attunementDefMult, move.damage);
         const shield   = elemFrostShield(bonuses.elementPassive, bossDmg);
         bossDmg        = shield.dmg;
 
@@ -809,7 +846,7 @@ export async function handleEncounterFight(
           state.playerHp = Math.max(0, state.playerHp - bossDmg);
           if (radRegen > 0) state.playerHp = Math.min(state.playerHpMax, state.playerHp + radRegen);
         }
-        state.lastMove += `\n◇ ${enc.enemy.name} ${move.effect} — **${bossDmg} DMG**${allyIsActive ? ` *(hit ${PLACEHOLDER_ALLY.name})*` : ""}${shield.blocked ? " *(Frost Shield!)*" : ""}${radRegen > 0 ? ` *(+${radRegen} Radiance)*` : ""}`;
+        state.lastMove += `\n◇ ${enc.enemy.name} ${move.effect} — **${bossDmg} DMG**${allyIsActive ? ` *(hit ${SOLACE.name})*` : ""}${shield.blocked ? " *(Frost Shield!)*" : ""}${radRegen > 0 ? ` *(+${radRegen} Radiance)*` : ""}`;
         state.playerEnergy = Math.min(100, state.playerEnergy + 15);
 
         // The placeholder ally has no real kit and can't act — if it goes
@@ -817,7 +854,7 @@ export async function handleEncounterFight(
         // encounter over a fixture NPC's HP hitting 0.
         if (allyIsActive && allyHp <= 0) {
           activeUnit = "player";
-          state.lastMove += `\n◇ **${PLACEHOLDER_ALLY.name} was knocked out** — swapped back to ${displayName}.`;
+          state.lastMove += `\n◇ **${SOLACE.name} was knocked out** — swapped back to ${displayName}.`;
         }
 
         // Milestone 1: exercises the debuff system inside a real fight.
