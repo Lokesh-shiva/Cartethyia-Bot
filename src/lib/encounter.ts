@@ -32,7 +32,7 @@ import {
 } from "./attunement";
 import { AllyActionTarget } from "./allyActions";
 import { addConcertoEnergy } from "./concertoEnergy";
-import { DebuffState, applyDebuff, tickDebuffs, getWeakenedMult } from "./debuffs";
+import { DebuffState, applyDebuff, tickDebuffs, getWeakenedMult, cleanseDebuffs } from "./debuffs";
 
 // ── In-memory guild settings cache ───────────────────────────────────────────
 
@@ -673,6 +673,27 @@ export async function handleEncounterFight(
         moveType = "ULT"; vibFrac = 0.8;
         moveName  = `⚡ ULTIMATE — ${playerDmg} DMG`;
         state.playerEnergy = 0;
+      } else if (btn.customId === "enc_ultimate" && isDevGuild && activeUnit === "ally") {
+        // Solace's Ultimate spends Concerto Energy, not personal Energy — team
+        // heal + cleanse + doubles the current Attunement mode's effect for
+        // 3 turns (base version; the Forte-triggered "all 3 modes at once"
+        // upgrade is a later milestone once Forte exists).
+        const target: AllyActionTarget = { hp: state.playerHp, hpMax: state.playerHpMax };
+        const healResult = resolveIntroOutroEffect({ actions: [
+          { type: "HEAL_ALLY", value: 0.30 },
+          { type: "CLEANSE_ALLY", value: 1 },
+        ] }, target);
+        const before = state.playerHp;
+        state.playerHp = Math.min(state.playerHpMax, state.playerHp + healResult.hpDelta);
+        const actualHeal = state.playerHp - before;
+        playerDebuffs = cleanseDebuffs(playerDebuffs, healResult.cleanseCount);
+
+        attunementDoubleTurnsLeft = SOLACE_ULTIMATE_DOUBLE_TURNS;
+        concertoEnergy = 0;
+
+        playerDmg = 0; isCrit = false; moveType = "ULT"; vibFrac = 0;
+        moveName = `⚡ **Convergence!** Team healed +${actualHeal} HP, debuffs cleansed, ` +
+          `**${attunement.mode ?? "no"} mode doubled for ${SOLACE_ULTIMATE_DOUBLE_TURNS} turns!**`;
       }
 
       let echoLifestealPct = 0;
@@ -872,6 +893,7 @@ export async function handleEncounterFight(
       if (state.skillCooldown > 0) state.skillCooldown--;
       if (echoSkillCooldown > 0) echoSkillCooldown--;
       if (enemyDefShredTurnsLeft > 0) enemyDefShredTurnsLeft--;
+      if (isDevGuild && attunementDoubleTurnsLeft > 0) attunementDoubleTurnsLeft--;
       if (forcedCritActive) nextAttackCritArmed = false;
 
       // ── Second Wind: survive a lethal blow once at 1 HP ────────────────────
