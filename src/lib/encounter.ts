@@ -24,6 +24,11 @@ import {
 import { compositeHasSecondWind } from "./abilityEffects";
 import { echoSkillBaseMult, applyEchoSkill } from "./echoSkills";
 import { generateEchoCard, echoRowToCard } from "./echoCard";
+import { PLACEHOLDER_ALLY, PLAYER_SELF_INTRO, PLAYER_SELF_OUTRO } from "./placeholderAlly";
+import { resolveIntroOutroEffect } from "./introOutro";
+import { AllyActionTarget } from "./allyActions";
+import { addConcertoEnergy } from "./concertoEnergy";
+import { DebuffState, applyDebuff, tickDebuffs, getWeakenedMult } from "./debuffs";
 
 // ── In-memory guild settings cache ───────────────────────────────────────────
 
@@ -363,10 +368,22 @@ export async function handleEncounterFight(
 
   const displayName = (interaction.member as any)?.displayName ?? interaction.user.displayName;
 
+  // Milestone 1: team mechanics (swap, Intro/Outro, Concerto Energy, debuffs) are
+  // gated to the dev guild only. Every other server keeps the exact current 1v1
+  // /encounter flow, byte-for-byte unchanged. See design spec + Milestone 1 plan.
+  const isDevGuild = interaction.guildId === process.env.GUILD_ID;
+
   // Resolve full combat stats (echoes + weapon + set bonuses + unique ability)
   const bonuses = await resolvePlayerBonuses(interaction.user.id);
   const stats   = applyBonuses(dbUser, bonuses);
   let secondWindUsed = false;
+
+  // ── Milestone 1: two-unit team state (dev guild only) ────────────────────────
+  let activeUnit: "player" | "ally" = "player";
+  let allyHp    = PLACEHOLDER_ALLY.hpMax;
+  const allyHpMax = PLACEHOLDER_ALLY.hpMax;
+  let concertoEnergy: number = 0;
+  let playerDebuffs: DebuffState = [];
 
   // Scale enemy to the fighter's progression + gear (still lighter than dedicated boss
   // fights, but bumped 2026-07-03 — chat encounters were reported as trivially easy)
@@ -419,27 +436,60 @@ export async function handleEncounterFight(
   let enemyDefShredPct       = 0;
   let nextAttackCritArmed    = false;
 
-  function buildEncounterButtons(): ActionRowBuilder<ButtonBuilder> {
-    const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
-      new ButtonBuilder().setCustomId("enc_basic").setLabel("⚔️  Basic").setStyle(ButtonStyle.Primary),
-      new ButtonBuilder().setCustomId("enc_skill")
-        .setLabel(state.skillCooldown === 0 ? "✦  Skill" : `✦  Skill (${state.skillCooldown}🔄)`)
-        .setStyle(ButtonStyle.Secondary).setDisabled(state.skillCooldown > 0),
-      new ButtonBuilder().setCustomId("enc_ultimate").setLabel("⚡  Ultimate")
-        .setStyle(ButtonStyle.Success).setDisabled(state.playerEnergy < 100),
-    );
-    if (bonuses.echoSkill) {
-      const echoReady = echoSkillCooldown === 0;
-      row.addComponents(
-        new ButtonBuilder().setCustomId("enc_echoskill")
-          .setLabel(echoReady ? `🌀  ${bonuses.echoSkill.name}` : `🌀  ${bonuses.echoSkill.name} (${echoSkillCooldown}🔄)`)
-          .setStyle(ButtonStyle.Secondary).setDisabled(!echoReady),
+  function buildEncounterButtons(): ActionRowBuilder<ButtonBuilder>[] {
+    const rows: ActionRowBuilder<ButtonBuilder>[] = [];
+
+    // Milestone 1: when the benched teammate is active, it has no real kit yet —
+    // the only available action is to swap back to your own character. This
+    // avoids needing a fake AI-driven ally turn, which is out of scope here.
+    if (isDevGuild && activeUnit === "ally") {
+      rows.push(new ActionRowBuilder<ButtonBuilder>().addComponents(
+        new ButtonBuilder().setCustomId("enc_flee").setLabel("↩  Flee").setStyle(ButtonStyle.Danger),
+      ));
+    } else {
+      const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
+        new ButtonBuilder().setCustomId("enc_basic").setLabel("⚔️  Basic").setStyle(ButtonStyle.Primary),
+        new ButtonBuilder().setCustomId("enc_skill")
+          .setLabel(state.skillCooldown === 0 ? "✦  Skill" : `✦  Skill (${state.skillCooldown}🔄)`)
+          .setStyle(ButtonStyle.Secondary).setDisabled(state.skillCooldown > 0),
+        new ButtonBuilder().setCustomId("enc_ultimate").setLabel("⚡  Ultimate")
+          .setStyle(ButtonStyle.Success).setDisabled(state.playerEnergy < 100),
       );
+      if (bonuses.echoSkill) {
+        const echoReady = echoSkillCooldown === 0;
+        row.addComponents(
+          new ButtonBuilder().setCustomId("enc_echoskill")
+            .setLabel(echoReady ? `🌀  ${bonuses.echoSkill.name}` : `🌀  ${bonuses.echoSkill.name} (${echoSkillCooldown}🔄)`)
+            .setStyle(ButtonStyle.Secondary).setDisabled(!echoReady),
+        );
+      }
+      row.addComponents(
+        new ButtonBuilder().setCustomId("enc_flee").setLabel("↩  Flee").setStyle(ButtonStyle.Danger),
+      );
+      rows.push(row);
     }
-    row.addComponents(
-      new ButtonBuilder().setCustomId("enc_flee").setLabel("↩  Flee").setStyle(ButtonStyle.Danger),
-    );
-    return row;
+
+    if (isDevGuild) {
+      rows.push(new ActionRowBuilder<ButtonBuilder>().addComponents(
+        new ButtonBuilder().setCustomId("enc_swap")
+          .setLabel(activeUnit === "player" ? `🔄  Swap to ${PLACEHOLDER_ALLY.name}` : `🔄  Swap to ${displayName}`)
+          .setStyle(ButtonStyle.Secondary),
+      ));
+    }
+
+    return rows;
+  }
+
+  function teamStatusLine(): string {
+    if (!isDevGuild) return "";
+    const benchedName = activeUnit === "player" ? PLACEHOLDER_ALLY.name : displayName;
+    const benchedHp   = activeUnit === "player" ? allyHp : state.playerHp;
+    const benchedMax  = activeUnit === "player" ? allyHpMax : state.playerHpMax;
+    const debuffLine  = playerDebuffs.length > 0
+      ? `  ·  ${playerDebuffs.map(d => `${d.type} (${d.turnsLeft})`).join(", ")}`
+      : "";
+    return `\n\n🔄 Benched: **${benchedName}** — ${benchedHp}/${benchedMax} HP  ·  ` +
+           `Concerto Energy: **${concertoEnergy}/100**${debuffLine}`;
   }
 
   // Send the battle card as a new message
@@ -448,8 +498,9 @@ export async function handleEncounterFight(
     const attach = new AttachmentBuilder(buf, { name: "encounter.webp" });
     const embed  = new EmbedBuilder()
       .setColor(ELEMENT_COLORS[enc.enemy.element])
-      .setImage("attachment://encounter.webp");
-    return (interaction.channel as TextChannel).send({ embeds: [embed], files: [attach], components: [buildEncounterButtons()] });
+      .setImage("attachment://encounter.webp")
+      .setDescription(teamStatusLine() || null);
+    return (interaction.channel as TextChannel).send({ embeds: [embed], files: [attach], components: buildEncounterButtons() });
   })();
 
   if (!battleMsg) { removeEncounter(interaction.message.id); return; }
@@ -467,6 +518,7 @@ export async function handleEncounterFight(
 
       let moveName = "";
       let playerDmg = 0;
+      let forcedCritActive = false; // set inside the damage-dealing branch below; a swap never arms/consumes it
 
       if (btn.customId === "enc_flee") {
         removeEncounter(interaction.message.id);
@@ -478,21 +530,56 @@ export async function handleEncounterFight(
         return;
       }
 
+      // ── Milestone 1: swap — consumes the turn, fires Outro (outgoing) + Intro
+      // (incoming) via the Milestone 0 primitives. Falls through to the shared
+      // enemy-turn block below (skipping the damage-dealing section, since a
+      // swap deals no damage) since swapping still costs the turn. ─────────────
+      if (btn.customId === "enc_swap" && isDevGuild) {
+        const outgoingIsPlayer = activeUnit === "player";
+        const incomingTarget: AllyActionTarget = outgoingIsPlayer
+          ? { hp: allyHp, hpMax: allyHpMax }
+          : { hp: state.playerHp, hpMax: state.playerHpMax };
+
+        const outroEffect = outgoingIsPlayer ? PLAYER_SELF_OUTRO : PLACEHOLDER_ALLY.outro;
+        const introEffect = outgoingIsPlayer ? PLACEHOLDER_ALLY.intro : PLAYER_SELF_INTRO;
+        const outroResult = resolveIntroOutroEffect(outroEffect, incomingTarget);
+        const introResult = resolveIntroOutroEffect(introEffect, incomingTarget);
+
+        // Milestone 1 has no separate shield stat yet — shieldDelta is folded
+        // into a flat HP bonus, capped at max HP like a heal. Real shield state
+        // (absorbing damage before HP) is a later-milestone concern once a
+        // second real character exists to make the distinction matter.
+        const totalBonus = outroResult.hpDelta + introResult.hpDelta + outroResult.shieldDelta + introResult.shieldDelta;
+
+        if (outgoingIsPlayer) {
+          allyHp = Math.min(allyHpMax, allyHp + totalBonus);
+        } else {
+          state.playerHp = Math.min(state.playerHpMax, state.playerHp + totalBonus);
+        }
+
+        concertoEnergy = addConcertoEnergy(concertoEnergy, 15);
+        activeUnit = outgoingIsPlayer ? "ally" : "player";
+        moveName = `🔄 Swapped to **${outgoingIsPlayer ? PLACEHOLDER_ALLY.name : displayName}** — Outro + Intro triggered, +${totalBonus} HP.`;
+        state.lastMove = moveName;
+      } else {
+
       const defShredActive = enemyDefShredTurnsLeft > 0;
       const defVal     = state.isShattered ? 0 : scaledEnemy.def * (defShredActive ? (1 - enemyDefShredPct) : 1);
       const enemyHpPct = state.bossHpNow / state.bossHpMax;
       const radCrit    = elemRadianceCrit(bonuses.elementPassive, state.playerHp, state.playerHpMax);
       const cRate      = abilityCritRate(bonuses, Math.min(1, stats.critRate + radCrit), state.playerHp, state.playerHpMax);
       const vibMult    = abilityVib(bonuses);
-      const forcedCritActive = nextAttackCritArmed && btn.customId !== "enc_flee";
+      forcedCritActive = nextAttackCritArmed && btn.customId !== "enc_flee";
       let   vibFrac    = 0.3;
       let   moveType: "BASIC" | "SKILL" | "ULT" = "BASIC";
       let   isCrit = false;
 
       if (btn.customId === "enc_basic") {
-        const r  = calcPlayerDamage(stats.atk, defVal, forcedCritActive ? 1 : cRate, stats.critDmg, 1.0, isWeak, state.isShattered);
+        const r  = calcPlayerDamage(stats.atk * getWeakenedMult(playerDebuffs), defVal, forcedCritActive ? 1 : cRate, stats.critDmg, 1.0, isWeak, state.isShattered);
         let base = Math.floor(r.damage * (1 + stats.elemDmgBonus));
         base     = Math.floor(base * elemWindstrideMult(bonuses.elementPassive, state.turn, "BASIC"));
+        // Ignite is a separate proc effect, not part of the base attack roll —
+        // intentionally NOT scoped by WEAKENED, unlike the calcPlayerDamage call above.
         const ignite = elemIgniteProc(bonuses.elementPassive, stats.atk);
         playerDmg = base + ignite.dmg; isCrit = r.isCrit;
         moveType = "BASIC"; vibFrac = 0.3;
@@ -502,9 +589,11 @@ export async function handleEncounterFight(
       }
 
       if (btn.customId === "enc_skill") {
-        const r  = calcPlayerDamage(stats.atk, defVal, forcedCritActive ? 1 : Math.min(1, cRate + 0.1), stats.critDmg, 1.8, isWeak, state.isShattered);
+        const r  = calcPlayerDamage(stats.atk * getWeakenedMult(playerDebuffs), defVal, forcedCritActive ? 1 : Math.min(1, cRate + 0.1), stats.critDmg, 1.8, isWeak, state.isShattered);
         let base = Math.floor(r.damage * (1 + stats.elemDmgBonus));
         base     = Math.floor(base * elemWindstrideMult(bonuses.elementPassive, state.turn, "SKILL"));
+        // Ignite is a separate proc effect, not part of the base attack roll —
+        // intentionally NOT scoped by WEAKENED, unlike the calcPlayerDamage call above.
         const ignite = elemIgniteProc(bonuses.elementPassive, stats.atk);
         playerDmg = base + ignite.dmg; isCrit = r.isCrit;
         moveType = "SKILL"; vibFrac = 0.6;
@@ -515,7 +604,7 @@ export async function handleEncounterFight(
       }
 
       if (btn.customId === "enc_ultimate") {
-        const r = calcPlayerDamage(stats.atk, defVal, 1.0, stats.critDmg, 3.5, isWeak, state.isShattered);
+        const r = calcPlayerDamage(stats.atk * getWeakenedMult(playerDebuffs), defVal, 1.0, stats.critDmg, 3.5, isWeak, state.isShattered);
         playerDmg = Math.floor(r.damage * (1 + stats.elemDmgBonus)); isCrit = true;
         moveType = "ULT"; vibFrac = 0.8;
         moveName  = `⚡ ULTIMATE — ${playerDmg} DMG`;
@@ -586,6 +675,8 @@ export async function handleEncounterFight(
 
       state.lastMove = moveName;
 
+      } // end of the damage-dealing else-branch opened in the swap check above
+
       // ── Win ────────────────────────────────────────────────────────────────
       if (state.bossHpNow <= 0) {
         removeEncounter(interaction.message.id);
@@ -628,6 +719,17 @@ export async function handleEncounterFight(
         return;
       }
 
+      // Debuffs tick down at the START of resolving the enemy's turn — this way
+      // any WEAKENED applied by the attack below isn't touched until NEXT round's
+      // tick, giving it the full 2 turns its own flavor text advertises, instead
+      // of being decremented in the same cycle it's created.
+      if (isDevGuild) {
+        const tickResult = tickDebuffs(playerDebuffs);
+        playerDebuffs = tickResult.state;
+        // No BLEED sources exist yet in this milestone, but tickDebuffs still
+        // needs calling every round to decrement WEAKENED's duration correctly.
+      }
+
       // ── Enemy turn ─────────────────────────────────────────────────────────
       if (shatterTurnsLeft > 0) {
         shatterTurnsLeft--;
@@ -648,6 +750,14 @@ export async function handleEncounterFight(
         if (radRegen > 0) state.playerHp = Math.min(state.playerHpMax, state.playerHp + radRegen);
         state.lastMove += `\n◇ ${enc.enemy.name} ${move.effect} — **${bossDmg} DMG**${shield.blocked ? " *(Frost Shield!)*" : ""}${radRegen > 0 ? ` *(+${radRegen} Radiance)*` : ""}`;
         state.playerEnergy = Math.min(100, state.playerEnergy + 15);
+
+        // Milestone 1: exercises the debuff system inside a real fight.
+        // 25% chance per enemy attack, only when the dev-guild team mechanics are
+        // active — keeps this invisible to every other server.
+        if (isDevGuild && Math.random() < 0.25) {
+          playerDebuffs = applyDebuff(playerDebuffs, "WEAKENED", 0.2, 2);
+          state.lastMove += `\n◇ *${enc.enemy.name}'s strike leaves you* **WEAKENED** *(-20% ATK, 2 turns)*`;
+        }
       }
 
       state.turn++;
@@ -679,10 +789,11 @@ export async function handleEncounterFight(
       const attach = new AttachmentBuilder(buf, { name: "encounter.webp" });
       const embed  = new EmbedBuilder()
         .setColor(ELEMENT_COLORS[enc.enemy.element])
-        .setImage("attachment://encounter.webp");
+        .setImage("attachment://encounter.webp")
+        .setDescription(teamStatusLine() || null);
       await battleMsg!.edit({
         embeds: [embed], files: [attach],
-        components: [buildEncounterButtons()],
+        components: buildEncounterButtons(),
         attachments: [],
       } as any).catch(() => {});
 
