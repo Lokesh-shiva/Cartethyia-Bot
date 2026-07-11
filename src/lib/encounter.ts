@@ -30,6 +30,10 @@ import {
   AttunementState, cycleAttunementMode,
   getAttunementAtkMult, getAttunementCritRateBonus, getAttunementDefMult,
 } from "./attunement";
+import {
+  WELLSPRING_BASE_ATK_MULT, WELLSPRING_BASE_ENERGY_BONUS,
+  getWellspringAtkBonus, getWellspringCritRateBonus, getWellspringDefBonus,
+} from "./wellspring";
 import { AllyActionTarget } from "./allyActions";
 import { addConcertoEnergy } from "./concertoEnergy";
 import { DebuffState, applyDebuff, tickDebuffs, getWeakenedMult, cleanseDebuffs } from "./debuffs";
@@ -625,8 +629,15 @@ export async function handleEncounterFight(
       let   isCrit = false;
 
       if (btn.customId === "enc_basic") {
-        const atkMult = getWeakenedMult(playerDebuffs) * (isDevGuild ? getAttunementAtkMult(attunement, attunementDoubleTurnsLeft > 0) : 1);
-        const r  = calcPlayerDamage(stats.atk * atkMult, defVal, forcedCritActive ? 1 : Math.min(1, cRate + (isDevGuild ? getAttunementCritRateBonus(attunement, attunementDoubleTurnsLeft > 0) : 0)), stats.critDmg, 1.0, isWeak, state.isShattered);
+        // Wellspring: base ATK boost only while Solace is actually attacking
+        // (it's hardcoded onto her, not the player's own weapon); the mode
+        // amplifier applies regardless of who's attacking, same scope as
+        // Attunement's own bonus.
+        const wellspringAtkMult   = isDevGuild && activeUnit === "ally" ? WELLSPRING_BASE_ATK_MULT : 1;
+        const wellspringAtkBonus  = isDevGuild ? getWellspringAtkBonus(attunement) : 0;
+        const wellspringCritBonus = isDevGuild ? getWellspringCritRateBonus(attunement) : 0;
+        const atkMult = getWeakenedMult(playerDebuffs) * (isDevGuild ? getAttunementAtkMult(attunement, attunementDoubleTurnsLeft > 0) : 1) * wellspringAtkMult * (1 + wellspringAtkBonus);
+        const r  = calcPlayerDamage(stats.atk * atkMult, defVal, forcedCritActive ? 1 : Math.min(1, cRate + (isDevGuild ? getAttunementCritRateBonus(attunement, attunementDoubleTurnsLeft > 0) : 0) + wellspringCritBonus), stats.critDmg, 1.0, isWeak, state.isShattered);
         let base = Math.floor(r.damage * (1 + stats.elemDmgBonus));
         base     = Math.floor(base * elemWindstrideMult(bonuses.elementPassive, state.turn, "BASIC"));
         // Ignite is a separate proc effect, not part of the base attack roll —
@@ -667,7 +678,11 @@ export async function handleEncounterFight(
       }
 
       if (btn.customId === "enc_ultimate" && !(isDevGuild && activeUnit === "ally")) {
-        const atkMult = getWeakenedMult(playerDebuffs) * (isDevGuild ? getAttunementAtkMult(attunement, attunementDoubleTurnsLeft > 0) : 1);
+        // No base ATK boost here — this branch only ever runs for the
+        // player's own Ultimate (Solace's Ultimate is the else-if branch
+        // below, which deals no damage), and the base boost is Solace-only.
+        const wellspringAtkBonus = isDevGuild ? getWellspringAtkBonus(attunement) : 0;
+        const atkMult = getWeakenedMult(playerDebuffs) * (isDevGuild ? getAttunementAtkMult(attunement, attunementDoubleTurnsLeft > 0) : 1) * (1 + wellspringAtkBonus);
         const r = calcPlayerDamage(stats.atk * atkMult, defVal, 1.0, stats.critDmg, 3.5, isWeak, state.isShattered);
         playerDmg = Math.floor(r.damage * (1 + stats.elemDmgBonus)); isCrit = true;
         moveType = "ULT"; vibFrac = 0.8;
@@ -746,7 +761,11 @@ export async function handleEncounterFight(
         enc_ultimate: 35,
       };
       if (isDevGuild) {
-        const concertoGain = CONCERTO_GAIN_BY_MOVE[btn.customId] ?? 0;
+        let concertoGain = CONCERTO_GAIN_BY_MOVE[btn.customId] ?? 0;
+        // Wellspring's Energy Regen passive — only while Solace is the one
+        // acting (it's hardcoded onto her, not a shared account-level weapon,
+        // so it shouldn't boost the player's own turns).
+        if (concertoGain > 0 && activeUnit === "ally") concertoGain += WELLSPRING_BASE_ENERGY_BONUS;
         if (concertoGain > 0) concertoEnergy = addConcertoEnergy(concertoEnergy, concertoGain);
       }
 
@@ -846,7 +865,8 @@ export async function handleEncounterFight(
         }
       } else {
         const move     = boss.moves[Math.floor(Math.random() * boss.moves.length)];
-        const attunementDefMult = isDevGuild ? getAttunementDefMult(attunement, attunementDoubleTurnsLeft > 0) : 1;
+        const wellspringDefBonus = isDevGuild ? getWellspringDefBonus(attunement) : 0;
+        const attunementDefMult = (isDevGuild ? getAttunementDefMult(attunement, attunementDoubleTurnsLeft > 0) : 1) * (1 + wellspringDefBonus);
         let bossDmg    = calcEnemyDamage(scaledEnemy.atk, stats.def * attunementDefMult, move.damage);
         const shield   = elemFrostShield(bonuses.elementPassive, bossDmg);
         bossDmg        = shield.dmg;
