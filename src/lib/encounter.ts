@@ -551,15 +551,26 @@ export async function handleEncounterFight(
         // second real character exists to make the distinction matter.
         const totalBonus = outroResult.hpDelta + introResult.hpDelta + outroResult.shieldDelta + introResult.shieldDelta;
 
+        // Report what actually landed (post-clamp), not the raw theoretical
+        // amount — if the incoming unit was already at/near max HP, the real
+        // gain is smaller than totalBonus (or zero), and the message should
+        // say so rather than claiming a heal that got silently capped away.
+        let actualGain: number;
         if (outgoingIsPlayer) {
+          const before = allyHp;
           allyHp = Math.min(allyHpMax, allyHp + totalBonus);
+          actualGain = allyHp - before;
         } else {
+          const before = state.playerHp;
           state.playerHp = Math.min(state.playerHpMax, state.playerHp + totalBonus);
+          actualGain = state.playerHp - before;
         }
 
         concertoEnergy = addConcertoEnergy(concertoEnergy, 15);
         activeUnit = outgoingIsPlayer ? "ally" : "player";
-        moveName = `🔄 Swapped to **${outgoingIsPlayer ? PLACEHOLDER_ALLY.name : displayName}** — Outro + Intro triggered, +${totalBonus} HP.`;
+        moveName = actualGain > 0
+          ? `🔄 Swapped to **${outgoingIsPlayer ? PLACEHOLDER_ALLY.name : displayName}** — Outro + Intro triggered, +${actualGain} HP.`
+          : `🔄 Swapped to **${outgoingIsPlayer ? PLACEHOLDER_ALLY.name : displayName}** — Outro + Intro triggered (already at full HP, no heal needed).`;
         state.lastMove = moveName;
       } else {
 
