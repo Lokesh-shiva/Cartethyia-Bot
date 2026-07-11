@@ -505,6 +505,7 @@ export async function handleEncounterFight(
 
       let moveName = "";
       let playerDmg = 0;
+      let forcedCritActive = false; // set inside the damage-dealing branch below; a swap never arms/consumes it
 
       if (btn.customId === "enc_flee") {
         removeEncounter(interaction.message.id);
@@ -516,13 +517,46 @@ export async function handleEncounterFight(
         return;
       }
 
+      // ── Milestone 1: swap — consumes the turn, fires Outro (outgoing) + Intro
+      // (incoming) via the Milestone 0 primitives. Falls through to the shared
+      // enemy-turn block below (skipping the damage-dealing section, since a
+      // swap deals no damage) since swapping still costs the turn. ─────────────
+      if (btn.customId === "enc_swap" && isDevGuild) {
+        const outgoingIsPlayer = activeUnit === "player";
+        const incomingTarget: AllyActionTarget = outgoingIsPlayer
+          ? { hp: allyHp, hpMax: allyHpMax }
+          : { hp: state.playerHp, hpMax: state.playerHpMax };
+
+        const outroEffect = outgoingIsPlayer ? PLAYER_SELF_OUTRO : PLACEHOLDER_ALLY.outro;
+        const introEffect = outgoingIsPlayer ? PLACEHOLDER_ALLY.intro : PLAYER_SELF_INTRO;
+        const outroResult = resolveIntroOutroEffect(outroEffect, incomingTarget);
+        const introResult = resolveIntroOutroEffect(introEffect, incomingTarget);
+
+        // Milestone 1 has no separate shield stat yet — shieldDelta is folded
+        // into a flat HP bonus, capped at max HP like a heal. Real shield state
+        // (absorbing damage before HP) is a later-milestone concern once a
+        // second real character exists to make the distinction matter.
+        const totalBonus = outroResult.hpDelta + introResult.hpDelta + outroResult.shieldDelta + introResult.shieldDelta;
+
+        if (outgoingIsPlayer) {
+          allyHp = Math.min(allyHpMax, allyHp + totalBonus);
+        } else {
+          state.playerHp = Math.min(state.playerHpMax, state.playerHp + totalBonus);
+        }
+
+        concertoEnergy = addConcertoEnergy(concertoEnergy, 15);
+        activeUnit = outgoingIsPlayer ? "ally" : "player";
+        moveName = `🔄 Swapped to **${outgoingIsPlayer ? PLACEHOLDER_ALLY.name : displayName}** — Outro + Intro triggered, +${totalBonus} HP.`;
+        state.lastMove = moveName;
+      } else {
+
       const defShredActive = enemyDefShredTurnsLeft > 0;
       const defVal     = state.isShattered ? 0 : scaledEnemy.def * (defShredActive ? (1 - enemyDefShredPct) : 1);
       const enemyHpPct = state.bossHpNow / state.bossHpMax;
       const radCrit    = elemRadianceCrit(bonuses.elementPassive, state.playerHp, state.playerHpMax);
       const cRate      = abilityCritRate(bonuses, Math.min(1, stats.critRate + radCrit), state.playerHp, state.playerHpMax);
       const vibMult    = abilityVib(bonuses);
-      const forcedCritActive = nextAttackCritArmed && btn.customId !== "enc_flee";
+      forcedCritActive = nextAttackCritArmed && btn.customId !== "enc_flee";
       let   vibFrac    = 0.3;
       let   moveType: "BASIC" | "SKILL" | "ULT" = "BASIC";
       let   isCrit = false;
@@ -623,6 +657,8 @@ export async function handleEncounterFight(
       }
 
       state.lastMove = moveName;
+
+      } // end of the damage-dealing else-branch opened in the swap check above
 
       // ── Win ────────────────────────────────────────────────────────────────
       if (state.bossHpNow <= 0) {
