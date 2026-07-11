@@ -27,9 +27,11 @@ This spec covers the full design (all 6 layers, at the depth needed to build the
 
 ## 2. The one identity decision that shapes everything else
 
-**Your own personalized character (AI-generated unique ability, evolves via Ascension) is NOT retrofitted with the new mechanics.** It keeps its existing ability-evolution system exactly as it is today. It becomes one of the 3 team slots and benefits from team-wide effects (Concerto Energy generation, banner-character buffs like Solace's Attunement Modes, swap participation) — but it does not get its own Intro Skill, Outro Skill, or Forte system.
+**Your own personalized character (AI-generated unique ability, evolves via Ascension) is NOT retrofitted with the new mechanics.** It keeps its existing ability-evolution system exactly as it is today. It becomes one of the 3 team slots and benefits from team-wide effects (Concerto Energy generation, banner-character buffs like Solace's Attunement Modes, swap participation) — but it does not get a full Intro/Outro/Forte/Attunement kit like banner characters do.
 
 **Banner characters carry all the new mechanical depth.** This is a deliberate, low-risk boundary: it protects the single most distinctive thing about this bot (personalization) from being diluted or destabilized by a large new system, while still making your existing character feel meaningfully stronger as part of a team.
+
+**Exception — a universal Intro/Outro pair.** Since your own character is *always* one of the 3 team slots, giving it zero Intro/Outro would mean the "swap consumes a turn, but both Outro and Intro fire as the payoff" rule (§4.2) structurally breaks for 1 of every team's 3 members, on every single team, all the time — not a rare edge case. Fix: the player's own character gets **one universal, generic, non-authored Intro/Outro pair** — e.g. Intro: a small flat shield; Outro: a small flat Energy boost to whoever swaps in. Not personalized content (that isn't feasible per-player), just enough to keep the swap economy consistent regardless of team composition.
 
 ## 3. Engine architecture — how this stays evolvable
 
@@ -159,6 +161,7 @@ Full detailed art-generation prompts for Solace and Wellspring were produced dur
 
 ## 11. Banner economics
 
+- **The character banner is fully independent of the existing weapon banner (`/wish`).** Separate pity counter, separate 50/50 tracking, no shared pool. `/wish`'s existing weapon gacha is untouched by any of this — forcing players to choose between "the character I want" and "the weapon I want" on a shared pity counter is exactly the kind of frustrating gacha design every successful game in this genre avoids by keeping banner types independent.
 - **1 character released per banner, ~23-day run.**
 - **Banner #1 (Solace) is guaranteed, not a 50/50** — there is no existing standard-pool character to lose the coin flip into yet. Every 5★ pull on banner #1 is Solace.
 - **From banner #2 onward**, standard mechanic applies: lose the 50/50 → still receive a 5★ (the previous banner character, now "graduated" into the standard pool) → your very next 5★ pull on that banner is then guaranteed to be the new featured character (no re-flip; nobody walks away with nothing).
