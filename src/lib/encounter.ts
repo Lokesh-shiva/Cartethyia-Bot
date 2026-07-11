@@ -792,11 +792,33 @@ export async function handleEncounterFight(
         let bossDmg    = calcEnemyDamage(scaledEnemy.atk, stats.def, move.damage);
         const shield   = elemFrostShield(bonuses.elementPassive, bossDmg);
         bossDmg        = shield.dmg;
-        state.playerHp = Math.max(0, state.playerHp - bossDmg);
-        const radRegen = elemRadianceRegen(bonuses.elementPassive, state.playerHpMax);
-        if (radRegen > 0) state.playerHp = Math.min(state.playerHpMax, state.playerHp + radRegen);
-        state.lastMove += `\n◇ ${enc.enemy.name} ${move.effect} — **${bossDmg} DMG**${shield.blocked ? " *(Frost Shield!)*" : ""}${radRegen > 0 ? ` *(+${radRegen} Radiance)*` : ""}`;
+
+        // Milestone 1 bug fix (caught in playtesting): this always hit
+        // state.playerHp regardless of who was actually active, so benching
+        // yourself behind the dummy did nothing protective — swap was purely
+        // cosmetic. The placeholder ally has no stat block of its own, so the
+        // damage math (DEF, elemental procs) still uses the player's stats —
+        // only WHICH HP pool actually takes the hit changes.
+        const allyIsActive = isDevGuild && activeUnit === "ally";
+        const targetHpMax  = allyIsActive ? allyHpMax : state.playerHpMax;
+        const radRegen     = elemRadianceRegen(bonuses.elementPassive, targetHpMax);
+        if (allyIsActive) {
+          allyHp = Math.max(0, allyHp - bossDmg);
+          if (radRegen > 0) allyHp = Math.min(allyHpMax, allyHp + radRegen);
+        } else {
+          state.playerHp = Math.max(0, state.playerHp - bossDmg);
+          if (radRegen > 0) state.playerHp = Math.min(state.playerHpMax, state.playerHp + radRegen);
+        }
+        state.lastMove += `\n◇ ${enc.enemy.name} ${move.effect} — **${bossDmg} DMG**${allyIsActive ? ` *(hit ${PLACEHOLDER_ALLY.name})*` : ""}${shield.blocked ? " *(Frost Shield!)*" : ""}${radRegen > 0 ? ` *(+${radRegen} Radiance)*` : ""}`;
         state.playerEnergy = Math.min(100, state.playerEnergy + 15);
+
+        // The placeholder ally has no real kit and can't act — if it goes
+        // down, auto-swap back to the player rather than ending the whole
+        // encounter over a fixture NPC's HP hitting 0.
+        if (allyIsActive && allyHp <= 0) {
+          activeUnit = "player";
+          state.lastMove += `\n◇ **${PLACEHOLDER_ALLY.name} was knocked out** — swapped back to ${displayName}.`;
+        }
 
         // Milestone 1: exercises the debuff system inside a real fight.
         // 25% chance per enemy attack, only when the dev-guild team mechanics are
