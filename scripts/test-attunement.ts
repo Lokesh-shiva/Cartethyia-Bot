@@ -47,3 +47,18 @@ state = { mode: "DEF" };
 assert.strictEqual(getAttunementDefMult(state, true), 1.40, "doubled DEF bonus: +20% -> +40%");
 
 console.log("✓ all Attunement primitive tests passed");
+
+// ── Wellspring (Milestone 2b) ────────────────────────────────────────────────
+import { getWellspringAtkBonus, getWellspringCritRateBonus, getWellspringDefBonus } from "../src/lib/wellspring";
+
+assert.strictEqual(getWellspringAtkBonus({ mode: "ATK" }), 0.10, "ATK mode grants Wellspring's ATK amplifier");
+assert.strictEqual(getWellspringAtkBonus({ mode: "CRIT" }), 0, "inactive mode grants nothing");
+assert.strictEqual(getWellspringAtkBonus({ mode: null }), 0, "no mode grants nothing");
+
+assert.strictEqual(getWellspringCritRateBonus({ mode: "CRIT" }), 0.10, "CRIT mode grants Wellspring's crit-rate amplifier");
+assert.strictEqual(getWellspringCritRateBonus({ mode: "ATK" }), 0, "inactive mode grants nothing");
+
+assert.strictEqual(getWellspringDefBonus({ mode: "DEF" }), 0.12, "DEF mode grants Wellspring's DEF amplifier");
+assert.strictEqual(getWellspringDefBonus({ mode: "ATK" }), 0, "inactive mode grants nothing");
+
+console.log("✓ all Wellspring primitive tests passed");
