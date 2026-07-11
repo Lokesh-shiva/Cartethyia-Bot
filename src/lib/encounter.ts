@@ -676,8 +676,22 @@ export async function handleEncounterFight(
 
       // Concerto Energy builds from combat actions (any of the 4 branches
       // above), never from swapping — see the swap branch's header comment.
-      // Flat gain per action, independent of move type, for Milestone 1.
-      if (isDevGuild) concertoEnergy = addConcertoEnergy(concertoEnergy, 10);
+      // Scaled by move weight (roughly matching each move's damage multiplier:
+      // Basic 1.0x / Skill 1.8x / Echo Skill 2.2x / Ultimate 3.5x) so a flurry
+      // of Basics doesn't fill the bar just as fast as committing to bigger
+      // moves — a flat rate made every fight feel slow regardless of playstyle.
+      // moveType alone can't distinguish Skill from Echo Skill (both set
+      // moveType = "SKILL"), so this keys off the button id directly instead.
+      const CONCERTO_GAIN_BY_MOVE: Record<string, number> = {
+        enc_basic:    10,
+        enc_skill:    20,
+        enc_echoskill: 20,
+        enc_ultimate: 35,
+      };
+      if (isDevGuild) {
+        const concertoGain = CONCERTO_GAIN_BY_MOVE[btn.customId] ?? 0;
+        if (concertoGain > 0) concertoEnergy = addConcertoEnergy(concertoEnergy, concertoGain);
+      }
 
       // Apply unique ability effects to this attack
       const ar = applyAbilityAttack(bonuses, playerDmg, isCrit, {
