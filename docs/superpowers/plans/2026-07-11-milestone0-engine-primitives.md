@@ -333,7 +333,7 @@ git commit -m "feat(teams): add composable ally-targeted action primitives (Mile
 
 ### Task 4: Intro/Outro Hook Type
 
-Defines Intro/Outro as their own named concept (per design spec §4.4) — a composed list of `AllyAction`s (Task 3) that fire at a swap moment. This task builds the type and a resolver; wiring "a player actually got swapped in/out" into a real turn loop is Milestone 1+, once a team turn loop exists to trigger from.
+Defines Intro/Outro as their own named concept (per design spec §4.4) — a composed list of `AllyAction`s (Task 3) that fire at a swap moment, PLUS an optional damage component against the enemy (matching WuWa, where Intro Skills especially are often a real attack, not just a buff — Solace's are pure-utility by design since she's a support, but the hook type itself must support damage for future DPS-archetype characters). This task builds the type and a resolver; wiring "a player actually got swapped in/out" into a real turn loop, and resolving the actual damage number (which needs DEF/crit/etc. from a real combat loop), is Milestone 1+.
 
 **Files:**
 - Create: `src/lib/introOutro.ts`
@@ -380,6 +380,21 @@ assert.strictEqual(result.hpDelta, 0);
 assert.strictEqual(result.shieldDelta, 0);
 assert.strictEqual(result.atkBuffPct, 0);
 assert.strictEqual(result.cleanseCount, 0);
+assert.strictEqual(result.dmgMult, 0, "no dmgMult specified should resolve to 0 (no damage)");
+
+// A DPS-archetype Intro Skill: real damage, no utility actions — e.g. a future
+// character whose Intro is "deal 150% ATK damage to the enemy on swap-in"
+const dpsIntro: IntroOutroEffect = { actions: [], dmgMult: 1.5 };
+result = resolveIntroOutroEffect(dpsIntro, target);
+assert.strictEqual(result.dmgMult, 1.5);
+assert.strictEqual(result.hpDelta, 0, "pure-damage hook should not affect ally HP");
+
+// Damage and utility actions can combine on the same hook (e.g. a hybrid Outro:
+// deal some damage AND shield the incoming ally)
+const hybridOutro: IntroOutroEffect = { actions: [{ type: "SHIELD_ALLY", value: 0.1 }], dmgMult: 0.8 };
+result = resolveIntroOutroEffect(hybridOutro, target);
+assert.strictEqual(result.dmgMult, 0.8);
+assert.strictEqual(result.shieldDelta, 100);
 
 console.log("✓ all Intro/Outro hook tests passed");
 ```
@@ -394,23 +409,37 @@ Expected: FAIL — `Cannot find module '../src/lib/introOutro'`
 ```typescript
 // src/lib/introOutro.ts
 // Intro/Outro Skill hook points — see design spec §4.4. A hook is a composed list of
-// ally-actions (allyActions.ts) that fire at a specific swap moment. This milestone
-// defines the type + a single-target resolver; wiring "a character was actually
-// swapped in/out" into a real turn loop is Milestone 1+, once a team turn loop exists
-// to trigger from.
+// ally-actions (allyActions.ts) that fire at a specific swap moment, plus an optional
+// damage component against the enemy — matching WuWa, where Intro Skills especially
+// are often a real attack, not just a buff. Solace's Intro/Outro are pure-utility
+// (dmgMult omitted) since she's a support, but this type supports damage for future
+// DPS-archetype characters.
+//
+// This milestone defines the type + a single-target resolver; wiring "a character
+// was actually swapped in/out" into a real turn loop, and resolving dmgMult into an
+// actual damage number (needs DEF/crit/etc. from a real combat loop), is Milestone 1+.
 
 import { AllyAction, applyAllyAction, AllyActionTarget, AllyActionResult } from "./allyActions";
 
 export interface IntroOutroEffect {
-  actions: AllyAction[];
+  actions:  AllyAction[]; // ally-targeted utility effects (heal/shield/buff/cleanse)
+  dmgMult?: number;       // if present, this hook also deals damage to the enemy —
+                          // damage = wielder's ATK * dmgMult, resolved via the
+                          // standard calcPlayerDamage path once wired in Milestone 1+
 }
 
-// Resolves every action in the hook against a single target, summing the results.
+export interface IntroOutroResult extends AllyActionResult {
+  dmgMult: number; // 0 if this hook deals no damage
+}
+
+// Resolves every ally-action in the hook against a single target, summing the
+// results, and passes dmgMult through unchanged (actual damage resolution needs
+// DEF/crit/etc. that only exists once this is wired into a real combat loop).
 // Individual actions targeting different allies (e.g. Outro shielding the incoming
 // character while something else affects the whole team) is a Milestone 1+ concern
 // once real swap targeting exists — this covers the common single-target case.
-export function resolveIntroOutroEffect(effect: IntroOutroEffect, target: AllyActionTarget): AllyActionResult {
-  const total: AllyActionResult = { hpDelta: 0, shieldDelta: 0, atkBuffPct: 0, cleanseCount: 0 };
+export function resolveIntroOutroEffect(effect: IntroOutroEffect, target: AllyActionTarget): IntroOutroResult {
+  const total: IntroOutroResult = { hpDelta: 0, shieldDelta: 0, atkBuffPct: 0, cleanseCount: 0, dmgMult: effect.dmgMult ?? 0 };
   for (const action of effect.actions) {
     const r = applyAllyAction(action, target);
     total.hpDelta       += r.hpDelta;

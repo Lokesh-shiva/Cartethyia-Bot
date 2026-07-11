@@ -66,6 +66,8 @@ Two new trigger points per banner character:
 - **Intro Skill** — fires when the character is swapped IN.
 - **Outro Skill** — fires when the character is swapped OUT. **Does not level up** (stays fixed regardless of investment) — this is a deliberate asymmetry, not an oversight; see §7.
 
+Both hooks can optionally include a **damage component** against the enemy, alongside (or instead of) ally-targeted utility effects — matching WuWa, where Intro Skills especially are often a real attack, not just a buff. Solace's Intro/Outro are pure-utility by design (she's a support), but the hook type itself supports damage so a future DPS-archetype character's Intro/Outro can hit hard, not just buff.
+
 ### 4.5 Minimal debuff system
 The current codebase has exactly one debuff-shaped mechanic (DEF Shred), and it only targets the *enemy*. Nothing currently applies a debuff to the player's own team. This spec adds a small, composable vocabulary — same "typed list + shared apply/tick/cleanse function" shape as `AbilityEffect`:
 
