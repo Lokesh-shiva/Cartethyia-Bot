@@ -530,47 +530,64 @@ export async function handleEncounterFight(
         return;
       }
 
-      // ── Milestone 1: swap — consumes the turn, fires Outro (outgoing) + Intro
-      // (incoming) via the Milestone 0 primitives. Falls through to the shared
-      // enemy-turn block below (skipping the damage-dealing section, since a
-      // swap deals no damage) since swapping still costs the turn. ─────────────
+      // ── Milestone 1: swap — always consumes the turn, but the Outro (outgoing)
+      // + Intro (incoming) combo only fires if Concerto Energy is full at the
+      // moment of swap (built from combat actions, not from swapping itself —
+      // see design spec §4.1/§4.2, corrected 2026-07-11 after playtesting
+      // showed the original "fires on every swap" version made the energy bar
+      // meaningless). If not full, this is just a plain reposition: activeUnit
+      // flips, nothing else happens. Falls through to the shared enemy-turn
+      // block below either way (skipping the damage-dealing section, since a
+      // swap never deals damage) since swapping still costs the turn. ────────
       if (btn.customId === "enc_swap" && isDevGuild) {
         const outgoingIsPlayer = activeUnit === "player";
-        const incomingTarget: AllyActionTarget = outgoingIsPlayer
-          ? { hp: allyHp, hpMax: allyHpMax }
-          : { hp: state.playerHp, hpMax: state.playerHpMax };
+        const comboReady = concertoEnergy >= 100;
 
-        const outroEffect = outgoingIsPlayer ? PLAYER_SELF_OUTRO : PLACEHOLDER_ALLY.outro;
-        const introEffect = outgoingIsPlayer ? PLACEHOLDER_ALLY.intro : PLAYER_SELF_INTRO;
-        const outroResult = resolveIntroOutroEffect(outroEffect, incomingTarget);
-        const introResult = resolveIntroOutroEffect(introEffect, incomingTarget);
+        if (comboReady) {
+          const incomingTarget: AllyActionTarget = outgoingIsPlayer
+            ? { hp: allyHp, hpMax: allyHpMax }
+            : { hp: state.playerHp, hpMax: state.playerHpMax };
 
-        // Milestone 1 has no separate shield stat yet — shieldDelta is folded
-        // into a flat HP bonus, capped at max HP like a heal. Real shield state
-        // (absorbing damage before HP) is a later-milestone concern once a
-        // second real character exists to make the distinction matter.
-        const totalBonus = outroResult.hpDelta + introResult.hpDelta + outroResult.shieldDelta + introResult.shieldDelta;
+          const outroEffect = outgoingIsPlayer ? PLAYER_SELF_OUTRO : PLACEHOLDER_ALLY.outro;
+          const introEffect = outgoingIsPlayer ? PLACEHOLDER_ALLY.intro : PLAYER_SELF_INTRO;
+          const outroResult = resolveIntroOutroEffect(outroEffect, incomingTarget);
+          const introResult = resolveIntroOutroEffect(introEffect, incomingTarget);
 
-        // Report what actually landed (post-clamp), not the raw theoretical
-        // amount — if the incoming unit was already at/near max HP, the real
-        // gain is smaller than totalBonus (or zero), and the message should
-        // say so rather than claiming a heal that got silently capped away.
-        let actualGain: number;
-        if (outgoingIsPlayer) {
-          const before = allyHp;
-          allyHp = Math.min(allyHpMax, allyHp + totalBonus);
-          actualGain = allyHp - before;
+          // Milestone 1 has no separate shield stat yet — shieldDelta is folded
+          // into a flat HP bonus, capped at max HP like a heal. Real shield state
+          // (absorbing damage before HP) is a later-milestone concern once a
+          // second real character exists to make the distinction matter.
+          const totalBonus = outroResult.hpDelta + introResult.hpDelta + outroResult.shieldDelta + introResult.shieldDelta;
+
+          // Report what actually landed (post-clamp), not the raw theoretical
+          // amount — if the incoming unit was already at/near max HP, the real
+          // gain is smaller than totalBonus (or zero), and the message should
+          // say so rather than claiming a heal that got silently capped away.
+          let actualGain: number;
+          if (outgoingIsPlayer) {
+            const before = allyHp;
+            allyHp = Math.min(allyHpMax, allyHp + totalBonus);
+            actualGain = allyHp - before;
+          } else {
+            const before = state.playerHp;
+            state.playerHp = Math.min(state.playerHpMax, state.playerHp + totalBonus);
+            actualGain = state.playerHp - before;
+          }
+
+          // Combo consumes the bar, then Intro grants a partial head-start back
+          // rather than leaving the incoming character to build from zero.
+          const CONCERTO_INTRO_HEADSTART = 20;
+          concertoEnergy = addConcertoEnergy(0, CONCERTO_INTRO_HEADSTART);
+
+          activeUnit = outgoingIsPlayer ? "ally" : "player";
+          moveName = actualGain > 0
+            ? `🔄 **Concerto Combo!** Swapped to **${outgoingIsPlayer ? PLACEHOLDER_ALLY.name : displayName}** — Outro + Intro triggered, +${actualGain} HP.`
+            : `🔄 **Concerto Combo!** Swapped to **${outgoingIsPlayer ? PLACEHOLDER_ALLY.name : displayName}** — Outro + Intro triggered (already at full HP, no heal needed).`;
         } else {
-          const before = state.playerHp;
-          state.playerHp = Math.min(state.playerHpMax, state.playerHp + totalBonus);
-          actualGain = state.playerHp - before;
+          activeUnit = outgoingIsPlayer ? "ally" : "player";
+          moveName = `🔄 Swapped to **${outgoingIsPlayer ? PLACEHOLDER_ALLY.name : displayName}** — Concerto Energy not full, no combo triggered.`;
         }
 
-        concertoEnergy = addConcertoEnergy(concertoEnergy, 15);
-        activeUnit = outgoingIsPlayer ? "ally" : "player";
-        moveName = actualGain > 0
-          ? `🔄 Swapped to **${outgoingIsPlayer ? PLACEHOLDER_ALLY.name : displayName}** — Outro + Intro triggered, +${actualGain} HP.`
-          : `🔄 Swapped to **${outgoingIsPlayer ? PLACEHOLDER_ALLY.name : displayName}** — Outro + Intro triggered (already at full HP, no heal needed).`;
         state.lastMove = moveName;
       } else {
 
@@ -656,6 +673,11 @@ export async function handleEncounterFight(
         if (def.kind === "FLAT_LIFESTEAL") echoLifestealPct = def.pct;
         if (!result.noDamage) state.bossVibNow = Math.max(0, state.bossVibNow - result.extraVibDrain);
       }
+
+      // Concerto Energy builds from combat actions (any of the 4 branches
+      // above), never from swapping — see the swap branch's header comment.
+      // Flat gain per action, independent of move type, for Milestone 1.
+      if (isDevGuild) concertoEnergy = addConcertoEnergy(concertoEnergy, 10);
 
       // Apply unique ability effects to this attack
       const ar = applyAbilityAttack(bonuses, playerDmg, isCrit, {
