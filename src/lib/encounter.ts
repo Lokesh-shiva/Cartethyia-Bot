@@ -480,13 +480,26 @@ export async function handleEncounterFight(
     return rows;
   }
 
+  function teamStatusLine(): string {
+    if (!isDevGuild) return "";
+    const benchedName = activeUnit === "player" ? PLACEHOLDER_ALLY.name : displayName;
+    const benchedHp   = activeUnit === "player" ? allyHp : state.playerHp;
+    const benchedMax  = activeUnit === "player" ? allyHpMax : state.playerHpMax;
+    const debuffLine  = playerDebuffs.length > 0
+      ? `  ·  ${playerDebuffs.map(d => `${d.type} (${d.turnsLeft})`).join(", ")}`
+      : "";
+    return `\n\n🔄 Benched: **${benchedName}** — ${benchedHp}/${benchedMax} HP  ·  ` +
+           `Concerto Energy: **${concertoEnergy}/100**${debuffLine}`;
+  }
+
   // Send the battle card as a new message
   let battleMsg = await (async () => {
     const buf    = await generateBattleCard(state);
     const attach = new AttachmentBuilder(buf, { name: "encounter.webp" });
     const embed  = new EmbedBuilder()
       .setColor(ELEMENT_COLORS[enc.enemy.element])
-      .setImage("attachment://encounter.webp");
+      .setImage("attachment://encounter.webp")
+      .setDescription(teamStatusLine() || null);
     return (interaction.channel as TextChannel).send({ embeds: [embed], files: [attach], components: buildEncounterButtons() });
   })();
 
@@ -562,9 +575,11 @@ export async function handleEncounterFight(
       let   isCrit = false;
 
       if (btn.customId === "enc_basic") {
-        const r  = calcPlayerDamage(stats.atk, defVal, forcedCritActive ? 1 : cRate, stats.critDmg, 1.0, isWeak, state.isShattered);
+        const r  = calcPlayerDamage(stats.atk * getWeakenedMult(playerDebuffs), defVal, forcedCritActive ? 1 : cRate, stats.critDmg, 1.0, isWeak, state.isShattered);
         let base = Math.floor(r.damage * (1 + stats.elemDmgBonus));
         base     = Math.floor(base * elemWindstrideMult(bonuses.elementPassive, state.turn, "BASIC"));
+        // Ignite is a separate proc effect, not part of the base attack roll —
+        // intentionally NOT scoped by WEAKENED, unlike the calcPlayerDamage call above.
         const ignite = elemIgniteProc(bonuses.elementPassive, stats.atk);
         playerDmg = base + ignite.dmg; isCrit = r.isCrit;
         moveType = "BASIC"; vibFrac = 0.3;
@@ -574,9 +589,11 @@ export async function handleEncounterFight(
       }
 
       if (btn.customId === "enc_skill") {
-        const r  = calcPlayerDamage(stats.atk, defVal, forcedCritActive ? 1 : Math.min(1, cRate + 0.1), stats.critDmg, 1.8, isWeak, state.isShattered);
+        const r  = calcPlayerDamage(stats.atk * getWeakenedMult(playerDebuffs), defVal, forcedCritActive ? 1 : Math.min(1, cRate + 0.1), stats.critDmg, 1.8, isWeak, state.isShattered);
         let base = Math.floor(r.damage * (1 + stats.elemDmgBonus));
         base     = Math.floor(base * elemWindstrideMult(bonuses.elementPassive, state.turn, "SKILL"));
+        // Ignite is a separate proc effect, not part of the base attack roll —
+        // intentionally NOT scoped by WEAKENED, unlike the calcPlayerDamage call above.
         const ignite = elemIgniteProc(bonuses.elementPassive, stats.atk);
         playerDmg = base + ignite.dmg; isCrit = r.isCrit;
         moveType = "SKILL"; vibFrac = 0.6;
@@ -587,7 +604,7 @@ export async function handleEncounterFight(
       }
 
       if (btn.customId === "enc_ultimate") {
-        const r = calcPlayerDamage(stats.atk, defVal, 1.0, stats.critDmg, 3.5, isWeak, state.isShattered);
+        const r = calcPlayerDamage(stats.atk * getWeakenedMult(playerDebuffs), defVal, 1.0, stats.critDmg, 3.5, isWeak, state.isShattered);
         playerDmg = Math.floor(r.damage * (1 + stats.elemDmgBonus)); isCrit = true;
         moveType = "ULT"; vibFrac = 0.8;
         moveName  = `⚡ ULTIMATE — ${playerDmg} DMG`;
@@ -702,6 +719,17 @@ export async function handleEncounterFight(
         return;
       }
 
+      // Debuffs tick down at the START of resolving the enemy's turn — this way
+      // any WEAKENED applied by the attack below isn't touched until NEXT round's
+      // tick, giving it the full 2 turns its own flavor text advertises, instead
+      // of being decremented in the same cycle it's created.
+      if (isDevGuild) {
+        const tickResult = tickDebuffs(playerDebuffs);
+        playerDebuffs = tickResult.state;
+        // No BLEED sources exist yet in this milestone, but tickDebuffs still
+        // needs calling every round to decrement WEAKENED's duration correctly.
+      }
+
       // ── Enemy turn ─────────────────────────────────────────────────────────
       if (shatterTurnsLeft > 0) {
         shatterTurnsLeft--;
@@ -722,6 +750,14 @@ export async function handleEncounterFight(
         if (radRegen > 0) state.playerHp = Math.min(state.playerHpMax, state.playerHp + radRegen);
         state.lastMove += `\n◇ ${enc.enemy.name} ${move.effect} — **${bossDmg} DMG**${shield.blocked ? " *(Frost Shield!)*" : ""}${radRegen > 0 ? ` *(+${radRegen} Radiance)*` : ""}`;
         state.playerEnergy = Math.min(100, state.playerEnergy + 15);
+
+        // Milestone 1: exercises the debuff system inside a real fight.
+        // 25% chance per enemy attack, only when the dev-guild team mechanics are
+        // active — keeps this invisible to every other server.
+        if (isDevGuild && Math.random() < 0.25) {
+          playerDebuffs = applyDebuff(playerDebuffs, "WEAKENED", 0.2, 2);
+          state.lastMove += `\n◇ *${enc.enemy.name}'s strike leaves you* **WEAKENED** *(-20% ATK, 2 turns)*`;
+        }
       }
 
       state.turn++;
@@ -753,7 +789,8 @@ export async function handleEncounterFight(
       const attach = new AttachmentBuilder(buf, { name: "encounter.webp" });
       const embed  = new EmbedBuilder()
         .setColor(ELEMENT_COLORS[enc.enemy.element])
-        .setImage("attachment://encounter.webp");
+        .setImage("attachment://encounter.webp")
+        .setDescription(teamStatusLine() || null);
       await battleMsg!.edit({
         embeds: [embed], files: [attach],
         components: buildEncounterButtons(),
