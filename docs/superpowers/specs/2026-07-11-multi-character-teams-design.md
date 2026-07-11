@@ -51,12 +51,19 @@ The codebase already has two proven examples of exactly the "adaptable, evolves 
 ## 4. New Layer 1 primitives
 
 ### 4.1 Concerto Energy
-A new **shared, team-wide** resource (distinct from each character's existing personal Energy meter). Only one character acts per turn (the others are benched), so this fills from whichever character is currently active — the distinction from personal Energy is that it **persists across swaps** rather than being tied to one character's turns (personal Energy is per-character and doesn't carry over when that character is swapped out). Gates team-wide payoff moments (e.g. Solace's Constellation 3 grants a burst on mode-switch). Does not replace per-character Energy — sits alongside it.
+A new **shared, team-wide** resource (distinct from each character's existing personal Energy meter). Only one character acts per turn (the others are benched), so this fills from whichever character is currently active's **combat actions** (Basic/Skill/Ultimate) — the distinction from personal Energy is that it **persists across swaps** rather than being tied to one character's turns (personal Energy is per-character and doesn't carry over when that character is swapped out). Does not replace per-character Energy — sits alongside it.
+
+**Correction (2026-07-11, caught during Milestone 1 playtesting):** the original version of this spec had Concerto Energy filling *from swapping itself* and Outro/Intro firing unconditionally on every swap. That's backwards — it made Concerto Energy meaningless (a resource with no gate isn't a resource) and made every swap identically "free" regardless of team state, with no strategic tension. The corrected mechanic, matching WuWa's actual design:
+
+- Concerto Energy fills from combat actions only, never from swapping.
+- **Outro/Intro do NOT fire unconditionally.** They're gated behind the shared bar being full.
+- On swap: if Concerto Energy is full, both the outgoing character's Outro Skill AND the incoming character's Intro Skill fire together as a combo, and the bar **resets to 0**. If not full, it's a plain swap — `activeUnit` changes, nothing else happens.
+- The Intro Skill, when it fires as part of a triggered combo, grants a **flat Concerto Energy head-start** back to the reset bar (e.g. +20 of the 100 max) — so the incoming character isn't starting completely from zero after cashing in a combo.
 
 ### 4.2 Swap mechanics
-Swapping the active character **consumes the turn** (not free). Rejected alternative: free swap + a per-character cooldown to prevent spam — rejected because it effectively grants 2 actions per turn in a system where the enemy only acts once per player turn, a real exploit surface.
+Swapping the active character **consumes the turn** (not free), regardless of whether Concerto Energy is full — this part is unchanged. Rejected alternative: free swap + a per-character cooldown to prevent spam — rejected because it effectively grants 2 actions per turn in a system where the enemy only acts once per player turn, a real exploit surface.
 
-The compensating design lever: **both the outgoing character's Outro Skill AND the incoming character's Intro Skill fire on the same swap action** — one turn "spent" buys two payoffs, which is what makes the cost feel worthwhile instead of purely administrative.
+The compensating design lever is now conditional, not guaranteed: **if Concerto Energy is full at the moment of swap, both the outgoing character's Outro Skill AND the incoming character's Intro Skill fire together** — one turn "spent" buys two payoffs, but only if you've built up to it through combat first. Swapping before the bar is full still costs the turn but has no payoff — this is what creates the real strategic tension (swap now for tempo with nothing to show for it, or hold and keep attacking until the bar caps for the full combo).
 
 ### 4.3 Ally-targeted actions
 New action category: heal an ally, shield an ally, buff an ally, cleanse an ally's debuffs. Doesn't exist today — combat is currently solo-vs-enemy or shared-boss-vs-many, with no concept of "an ally to target."
