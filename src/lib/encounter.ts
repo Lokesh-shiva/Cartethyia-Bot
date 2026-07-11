@@ -24,6 +24,11 @@ import {
 import { compositeHasSecondWind } from "./abilityEffects";
 import { echoSkillBaseMult, applyEchoSkill } from "./echoSkills";
 import { generateEchoCard, echoRowToCard } from "./echoCard";
+import { PLACEHOLDER_ALLY, PLAYER_SELF_INTRO, PLAYER_SELF_OUTRO } from "./placeholderAlly";
+import { resolveIntroOutroEffect } from "./introOutro";
+import { AllyActionTarget } from "./allyActions";
+import { addConcertoEnergy } from "./concertoEnergy";
+import { DebuffState, applyDebuff, tickDebuffs, getWeakenedMult } from "./debuffs";
 
 // ── In-memory guild settings cache ───────────────────────────────────────────
 
@@ -363,10 +368,22 @@ export async function handleEncounterFight(
 
   const displayName = (interaction.member as any)?.displayName ?? interaction.user.displayName;
 
+  // Milestone 1: team mechanics (swap, Intro/Outro, Concerto Energy, debuffs) are
+  // gated to the dev guild only. Every other server keeps the exact current 1v1
+  // /encounter flow, byte-for-byte unchanged. See design spec + Milestone 1 plan.
+  const isDevGuild = interaction.guildId === process.env.GUILD_ID;
+
   // Resolve full combat stats (echoes + weapon + set bonuses + unique ability)
   const bonuses = await resolvePlayerBonuses(interaction.user.id);
   const stats   = applyBonuses(dbUser, bonuses);
   let secondWindUsed = false;
+
+  // ── Milestone 1: two-unit team state (dev guild only) ────────────────────────
+  let activeUnit: "player" | "ally" = "player";
+  let allyHp    = PLACEHOLDER_ALLY.hpMax;
+  const allyHpMax = PLACEHOLDER_ALLY.hpMax;
+  let concertoEnergy: number = 0;
+  let playerDebuffs: DebuffState = [];
 
   // Scale enemy to the fighter's progression + gear (still lighter than dedicated boss
   // fights, but bumped 2026-07-03 — chat encounters were reported as trivially easy)
@@ -419,27 +436,48 @@ export async function handleEncounterFight(
   let enemyDefShredPct       = 0;
   let nextAttackCritArmed    = false;
 
-  function buildEncounterButtons(): ActionRowBuilder<ButtonBuilder> {
-    const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
-      new ButtonBuilder().setCustomId("enc_basic").setLabel("⚔️  Basic").setStyle(ButtonStyle.Primary),
-      new ButtonBuilder().setCustomId("enc_skill")
-        .setLabel(state.skillCooldown === 0 ? "✦  Skill" : `✦  Skill (${state.skillCooldown}🔄)`)
-        .setStyle(ButtonStyle.Secondary).setDisabled(state.skillCooldown > 0),
-      new ButtonBuilder().setCustomId("enc_ultimate").setLabel("⚡  Ultimate")
-        .setStyle(ButtonStyle.Success).setDisabled(state.playerEnergy < 100),
-    );
-    if (bonuses.echoSkill) {
-      const echoReady = echoSkillCooldown === 0;
-      row.addComponents(
-        new ButtonBuilder().setCustomId("enc_echoskill")
-          .setLabel(echoReady ? `🌀  ${bonuses.echoSkill.name}` : `🌀  ${bonuses.echoSkill.name} (${echoSkillCooldown}🔄)`)
-          .setStyle(ButtonStyle.Secondary).setDisabled(!echoReady),
+  function buildEncounterButtons(): ActionRowBuilder<ButtonBuilder>[] {
+    const rows: ActionRowBuilder<ButtonBuilder>[] = [];
+
+    // Milestone 1: when the benched teammate is active, it has no real kit yet —
+    // the only available action is to swap back to your own character. This
+    // avoids needing a fake AI-driven ally turn, which is out of scope here.
+    if (isDevGuild && activeUnit === "ally") {
+      rows.push(new ActionRowBuilder<ButtonBuilder>().addComponents(
+        new ButtonBuilder().setCustomId("enc_flee").setLabel("↩  Flee").setStyle(ButtonStyle.Danger),
+      ));
+    } else {
+      const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
+        new ButtonBuilder().setCustomId("enc_basic").setLabel("⚔️  Basic").setStyle(ButtonStyle.Primary),
+        new ButtonBuilder().setCustomId("enc_skill")
+          .setLabel(state.skillCooldown === 0 ? "✦  Skill" : `✦  Skill (${state.skillCooldown}🔄)`)
+          .setStyle(ButtonStyle.Secondary).setDisabled(state.skillCooldown > 0),
+        new ButtonBuilder().setCustomId("enc_ultimate").setLabel("⚡  Ultimate")
+          .setStyle(ButtonStyle.Success).setDisabled(state.playerEnergy < 100),
       );
+      if (bonuses.echoSkill) {
+        const echoReady = echoSkillCooldown === 0;
+        row.addComponents(
+          new ButtonBuilder().setCustomId("enc_echoskill")
+            .setLabel(echoReady ? `🌀  ${bonuses.echoSkill.name}` : `🌀  ${bonuses.echoSkill.name} (${echoSkillCooldown}🔄)`)
+            .setStyle(ButtonStyle.Secondary).setDisabled(!echoReady),
+        );
+      }
+      row.addComponents(
+        new ButtonBuilder().setCustomId("enc_flee").setLabel("↩  Flee").setStyle(ButtonStyle.Danger),
+      );
+      rows.push(row);
     }
-    row.addComponents(
-      new ButtonBuilder().setCustomId("enc_flee").setLabel("↩  Flee").setStyle(ButtonStyle.Danger),
-    );
-    return row;
+
+    if (isDevGuild) {
+      rows.push(new ActionRowBuilder<ButtonBuilder>().addComponents(
+        new ButtonBuilder().setCustomId("enc_swap")
+          .setLabel(activeUnit === "player" ? `🔄  Swap to ${PLACEHOLDER_ALLY.name}` : `🔄  Swap to ${displayName}`)
+          .setStyle(ButtonStyle.Secondary),
+      ));
+    }
+
+    return rows;
   }
 
   // Send the battle card as a new message
@@ -449,7 +487,7 @@ export async function handleEncounterFight(
     const embed  = new EmbedBuilder()
       .setColor(ELEMENT_COLORS[enc.enemy.element])
       .setImage("attachment://encounter.webp");
-    return (interaction.channel as TextChannel).send({ embeds: [embed], files: [attach], components: [buildEncounterButtons()] });
+    return (interaction.channel as TextChannel).send({ embeds: [embed], files: [attach], components: buildEncounterButtons() });
   })();
 
   if (!battleMsg) { removeEncounter(interaction.message.id); return; }
@@ -682,7 +720,7 @@ export async function handleEncounterFight(
         .setImage("attachment://encounter.webp");
       await battleMsg!.edit({
         embeds: [embed], files: [attach],
-        components: [buildEncounterButtons()],
+        components: buildEncounterButtons(),
         attachments: [],
       } as any).catch(() => {});
 
