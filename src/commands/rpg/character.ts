@@ -36,6 +36,11 @@ const TRACK_LABELS: Record<KitTrack, string> = {
   forte:    "🌟  Forte",
 };
 
+const VALID_TRACKS = new Set<string>(Object.keys(TRACK_LABELS));
+function isKitTrack(value: string): value is KitTrack {
+  return VALID_TRACKS.has(value);
+}
+
 async function buildKitLevelsView(userId: string, characterId: string) {
   const [progress, dbUser] = await Promise.all([
     getOrCreateCharacterProgress(userId, characterId),
@@ -123,7 +128,17 @@ const command: Command = {
 
       if (i.customId.startsWith("charlvl:") && i.isButton()) {
         const btn = i as ButtonInteraction;
-        const [, characterId, track] = btn.customId.split(":") as [string, string, KitTrack];
+        const [, characterId, trackRaw] = btn.customId.split(":");
+
+        // Never trust the customId or the disabled-button state alone — a
+        // forged/malformed customId could reference a nonexistent character
+        // or track, so validate both before touching the DB (mirrors the
+        // select-menu handler's CHARACTERS check above).
+        if (!CHARACTERS[characterId] || !isKitTrack(trackRaw)) {
+          await btn.deferUpdate().catch(() => {});
+          return;
+        }
+        const track = trackRaw;
 
         // Never trust the disabled-button state alone — re-verify affordability
         // and max-level server-side, since the message could be stale.
@@ -140,17 +155,34 @@ const command: Command = {
           return;
         }
 
-        await prisma.$transaction([
-          prisma.user.update({ where: { id: interaction.user.id }, data: { forgingOres: { decrement: cost } } }),
-          prisma.characterProgress.update({
-            where: { userId_characterId: { userId: interaction.user.id, characterId } },
-            data:  { [TRACK_FIELD[track]]: { increment: 1 } },
-          }),
-        ]);
-        auditSpend(interaction.user.id, { forgingOres: cost }, "character-kit-level");
+        try {
+          await prisma.$transaction(async (tx) => {
+            // Guarded, atomic decrement: only succeeds if the balance is
+            // still sufficient at write time. If a concurrent click already
+            // spent the balance down between our read above and now, this
+            // updateMany matches zero rows — treat that as insufficient
+            // funds and roll back rather than letting the balance go
+            // negative.
+            const spend = await tx.user.updateMany({
+              where: { id: interaction.user.id, forgingOres: { gte: cost } },
+              data:  { forgingOres: { decrement: cost } },
+            });
+            if (spend.count === 0) {
+              throw new Error("insufficient-funds-race");
+            }
+            await tx.characterProgress.update({
+              where: { userId_characterId: { userId: interaction.user.id, characterId } },
+              data:  { [TRACK_FIELD[track]]: { increment: 1 } },
+            });
+          });
+          auditSpend(interaction.user.id, { forgingOres: cost }, "character-kit-level");
 
-        const { embed, trackButtons } = await buildKitLevelsView(interaction.user.id, characterId);
-        await btn.update({ embeds: [embed], components: [selectRow, trackButtons] }).catch(() => {});
+          const { embed, trackButtons } = await buildKitLevelsView(interaction.user.id, characterId);
+          await btn.update({ embeds: [embed], components: [selectRow, trackButtons] }).catch(() => {});
+        } catch (err) {
+          console.error("[character] kit-level-up transaction failed", err);
+          await btn.deferUpdate().catch(() => {});
+        }
       }
     });
 
