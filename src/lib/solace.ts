@@ -46,3 +46,21 @@ export const SOLACE_ULTIMATE_DOUBLE_TURNS = 3;
 // they move here rather than getting a separate file of their own.
 export const PLAYER_SELF_INTRO: IntroOutroEffect = { actions: [{ type: "HEAL_ALLY", value: 0.05 }] };
 export const PLAYER_SELF_OUTRO: IntroOutroEffect = { actions: [{ type: "SHIELD_ALLY", value: 0.05 }] };
+
+// ── Forte (Milestone 2c) ──────────────────────────────────────────────────
+// Solace's specific gauge tuning and full-charge payoff. forte.ts itself
+// knows nothing about any of this — see design spec §2/§3.
+import { ForteConfig } from "./forte";
+
+export const SOLACE_FORTE_CONFIG: ForteConfig = { phaseThresholds: [100] }; // single phase, matches her "steady build" identity
+export const SOLACE_FORTE_GAIN_PER_BASIC = 20; // Chime Strike fills the gauge — 5 hits to max
+export const SOLACE_FORTE_EMPOWERED_TURNS = SOLACE_ULTIMATE_DOUBLE_TURNS; // reuse the existing 3-turn constant for consistency
+
+// Empowered Ultimate's payoff: reduced flat bonuses, applied REGARDLESS of
+// which single Attunement mode is currently active — deliberately additive
+// alongside (not a replacement for) attunement.ts's own per-mode getters, so
+// attunement.ts needs zero changes. Roughly half of Attunement's own
+// 15%/15%/20% bonuses.
+export function getSolaceForteAtkBonus(empowered: boolean): number { return empowered ? 0.08 : 0; }
+export function getSolaceForteCritRateBonus(empowered: boolean): number { return empowered ? 0.08 : 0; }
+export function getSolaceForteDefBonus(empowered: boolean): number { return empowered ? 0.10 : 0; }

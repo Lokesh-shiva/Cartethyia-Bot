@@ -98,3 +98,23 @@ assert.deepStrictEqual(capped, { phase: 3, charge: 0 }, "overflow past the final
 assert.deepStrictEqual(resetForte(), { phase: 0, charge: 0 }, "resetForte returns to empty");
 
 console.log("✓ all Forte primitive tests passed");
+
+// ── Solace's Forte payoff (Milestone 2c) ─────────────────────────────────────
+import {
+  SOLACE_FORTE_CONFIG, SOLACE_FORTE_GAIN_PER_BASIC, SOLACE_FORTE_EMPOWERED_TURNS,
+  getSolaceForteAtkBonus, getSolaceForteCritRateBonus, getSolaceForteDefBonus,
+  SOLACE_ULTIMATE_DOUBLE_TURNS,
+} from "../src/lib/solace";
+
+assert.deepStrictEqual(SOLACE_FORTE_CONFIG, { phaseThresholds: [100] }, "Solace uses a single-phase gauge");
+assert.strictEqual(SOLACE_FORTE_GAIN_PER_BASIC, 20, "5 Chime Strikes to fill the gauge");
+assert.strictEqual(SOLACE_FORTE_EMPOWERED_TURNS, SOLACE_ULTIMATE_DOUBLE_TURNS, "reuses the existing 3-turn constant for consistency");
+
+assert.strictEqual(getSolaceForteAtkBonus(true), 0.08, "empowered grants the ATK bonus");
+assert.strictEqual(getSolaceForteAtkBonus(false), 0, "not empowered grants nothing");
+assert.strictEqual(getSolaceForteCritRateBonus(true), 0.08, "empowered grants the crit-rate bonus");
+assert.strictEqual(getSolaceForteCritRateBonus(false), 0, "not empowered grants nothing");
+assert.strictEqual(getSolaceForteDefBonus(true), 0.10, "empowered grants the DEF bonus");
+assert.strictEqual(getSolaceForteDefBonus(false), 0, "not empowered grants nothing");
+
+console.log("✓ all Solace Forte payoff tests passed");
