@@ -12,10 +12,6 @@ export interface AttunementState {
   mode: AttunementMode | null;
 }
 
-const ATTUNEMENT_ATK_BONUS  = 0.15; // +15% ATK while in ATK mode
-const ATTUNEMENT_CRIT_BONUS = 0.15; // +15% Crit Rate while in CRIT mode
-const ATTUNEMENT_DEF_BONUS  = 0.20; // +20% DEF while in DEF mode
-
 // Cycles ATK -> CRIT -> DEF -> ATK. No-mode (null) starts at ATK.
 export function cycleAttunementMode(current: AttunementMode | null): AttunementMode {
   if (current === "ATK")  return "CRIT";
@@ -23,20 +19,27 @@ export function cycleAttunementMode(current: AttunementMode | null): AttunementM
   return "ATK"; // covers both `null` (first activation) and "DEF" (wrap around)
 }
 
+// `bonus` is the magnitude for whichever mode IS active (e.g. Solace's
+// Skill-level-scaled value, computed by the caller — see solace.ts). No
+// default: Milestone 2e deliberately removed the old hardcoded 0.15/0.15/0.20
+// constants so a future character reusing this mechanic can't silently
+// inherit Solace's numbers by omission — every caller must supply its own
+// character's magnitude explicitly.
+//
 // `doubled` is Solace's Ultimate ("Convergence") temporarily doubling whichever
 // mode is currently active — it doubles the BONUS portion (the amount above the
 // neutral 1.0/0 baseline), not the whole multiplier.
-export function getAttunementAtkMult(state: AttunementState, doubled = false): number {
+export function getAttunementAtkMult(state: AttunementState, bonus: number, doubled = false): number {
   if (state.mode !== "ATK") return 1;
-  return 1 + ATTUNEMENT_ATK_BONUS * (doubled ? 2 : 1);
+  return 1 + bonus * (doubled ? 2 : 1);
 }
 
-export function getAttunementCritRateBonus(state: AttunementState, doubled = false): number {
+export function getAttunementCritRateBonus(state: AttunementState, bonus: number, doubled = false): number {
   if (state.mode !== "CRIT") return 0;
-  return ATTUNEMENT_CRIT_BONUS * (doubled ? 2 : 1);
+  return bonus * (doubled ? 2 : 1);
 }
 
-export function getAttunementDefMult(state: AttunementState, doubled = false): number {
+export function getAttunementDefMult(state: AttunementState, bonus: number, doubled = false): number {
   if (state.mode !== "DEF") return 1;
-  return 1 + ATTUNEMENT_DEF_BONUS * (doubled ? 2 : 1);
+  return 1 + bonus * (doubled ? 2 : 1);
 }

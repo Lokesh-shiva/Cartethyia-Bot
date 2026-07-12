@@ -12,39 +12,49 @@ assert.strictEqual(cycleAttunementMode("ATK"), "CRIT");
 assert.strictEqual(cycleAttunementMode("CRIT"), "DEF");
 assert.strictEqual(cycleAttunementMode("DEF"), "ATK");
 
-// Only the active mode's getter returns a bonus; the other two stay neutral
+// Only the active mode's getter returns a bonus; the other two stay neutral.
+// Bonus values below (0.15/0.15/0.20) match Solace's OLD hardcoded constants
+// from before this milestone — proving the parameterized version is a
+// behavior-preserving refactor at those specific values, not a behavior change.
 let state: AttunementState = { mode: "ATK" };
-assert.strictEqual(getAttunementAtkMult(state), 1.15);
-assert.strictEqual(getAttunementCritRateBonus(state), 0);
-assert.strictEqual(getAttunementDefMult(state), 1);
+assert.strictEqual(getAttunementAtkMult(state, 0.15), 1.15);
+assert.strictEqual(getAttunementCritRateBonus(state, 0.15), 0);
+assert.strictEqual(getAttunementDefMult(state, 0.20), 1);
 
 state = { mode: "CRIT" };
-assert.strictEqual(getAttunementAtkMult(state), 1);
-assert.strictEqual(getAttunementCritRateBonus(state), 0.15);
-assert.strictEqual(getAttunementDefMult(state), 1);
+assert.strictEqual(getAttunementAtkMult(state, 0.15), 1);
+assert.strictEqual(getAttunementCritRateBonus(state, 0.15), 0.15);
+assert.strictEqual(getAttunementDefMult(state, 0.20), 1);
 
 state = { mode: "DEF" };
-assert.strictEqual(getAttunementAtkMult(state), 1);
-assert.strictEqual(getAttunementCritRateBonus(state), 0);
-assert.strictEqual(getAttunementDefMult(state), 1.2);
+assert.strictEqual(getAttunementAtkMult(state, 0.15), 1);
+assert.strictEqual(getAttunementCritRateBonus(state, 0.15), 0);
+assert.strictEqual(getAttunementDefMult(state, 0.20), 1.2);
 
-// No mode active (null) = fully neutral
+// No mode active (null) = fully neutral regardless of bonus magnitude
 state = { mode: null };
-assert.strictEqual(getAttunementAtkMult(state), 1);
-assert.strictEqual(getAttunementCritRateBonus(state), 0);
-assert.strictEqual(getAttunementDefMult(state), 1);
+assert.strictEqual(getAttunementAtkMult(state, 0.15), 1);
+assert.strictEqual(getAttunementCritRateBonus(state, 0.15), 0);
+assert.strictEqual(getAttunementDefMult(state, 0.20), 1);
 
 // doubled=true (Ultimate's effect) doubles the ACTIVE mode's bonus above the
 // baseline 1.0/0 — i.e. the bonus portion doubles, not the whole multiplier
 state = { mode: "ATK" };
-assert.strictEqual(getAttunementAtkMult(state, true), 1.30, "doubled ATK bonus: +15% -> +30%");
-assert.strictEqual(getAttunementCritRateBonus(state, true), 0, "inactive mode stays 0 even when doubled=true");
+assert.strictEqual(getAttunementAtkMult(state, 0.15, true), 1.30, "doubled ATK bonus: +15% -> +30%");
+assert.strictEqual(getAttunementCritRateBonus(state, 0.15, true), 0, "inactive mode stays 0 even when doubled=true");
 
 state = { mode: "CRIT" };
-assert.strictEqual(getAttunementCritRateBonus(state, true), 0.30, "doubled CRIT bonus: +15% -> +30%");
+assert.strictEqual(getAttunementCritRateBonus(state, 0.15, true), 0.30, "doubled CRIT bonus: +15% -> +30%");
 
 state = { mode: "DEF" };
-assert.strictEqual(getAttunementDefMult(state, true), 1.40, "doubled DEF bonus: +20% -> +40%");
+assert.strictEqual(getAttunementDefMult(state, 0.20, true), 1.40, "doubled DEF bonus: +20% -> +40%");
+
+// A DIFFERENT bonus magnitude (e.g. a leveled-up value) scales correctly too —
+// proves the parameter genuinely drives the output, not just the old constant
+// in disguise.
+state = { mode: "ATK" };
+assert.strictEqual(getAttunementAtkMult(state, 0.30), 1.30, "a bigger bonus magnitude produces a bigger multiplier");
+assert.strictEqual(getAttunementAtkMult(state, 0.30, true), 1.60, "doubling scales from whatever magnitude was passed in, not a fixed old value");
 
 console.log("✓ all Attunement primitive tests passed");
 
