@@ -11,18 +11,11 @@
 
 import { IntroOutroEffect } from "./introOutro";
 import { ForteConfig } from "./forte";
+import { MAX_KIT_LEVEL } from "./characterProgress";
 
 export const SOLACE = {
   name:  "Solace",
   hpMax: 1100,
-
-  // Intro Skill: instant heal + cleanse, zero ramp-up (design spec §6).
-  intro: {
-    actions: [
-      { type: "HEAL_ALLY",    value: 0.20 },
-      { type: "CLEANSE_ALLY", value: 1 },
-    ],
-  } as IntroOutroEffect,
 
   // Outro Skill: shields the incoming ally. The "guarantees their next attack
   // crits" half of her Outro (per spec) has no AllyAction primitive for it yet
@@ -30,13 +23,27 @@ export const SOLACE = {
   // later task wires that part directly in encounter.ts by reusing the
   // existing nextAttackCritArmed variable already in that file (from the Echo
   // Skill system), rather than inventing a new primitive for a single one-off
-  // use.
+  // use. Outro deliberately does NOT level (design spec §6/§8) — stays fixed
+  // regardless of investment, unlike Intro below.
   outro: {
     actions: [
       { type: "SHIELD_ALLY", value: 0.15 },
     ],
   } as IntroOutroEffect,
 };
+
+// Intro Skill: instant heal + cleanse, zero ramp-up (design spec §6). Unlike
+// Outro, Intro's heal % scales with Intro level (Milestone 2e) — so it's a
+// function, not a static object, to avoid a second, silently-stale source of
+// truth for the heal value.
+export function solaceIntroEffect(introLevel: number): IntroOutroEffect {
+  return {
+    actions: [
+      { type: "HEAL_ALLY",    value: solaceIntroHealPct(introLevel) },
+      { type: "CLEANSE_ALLY", value: 1 },
+    ],
+  };
+}
 
 // Ultimate's doubled-Attunement-effect duration (design spec §6: "3 turns").
 export const SOLACE_ULTIMATE_DOUBLE_TURNS = 3;
@@ -61,11 +68,49 @@ export const SOLACE_FORTE_GAIN_PER_BASIC = 20; // Chime Strike fills the gauge �
 // same knob — if tuning one, check whether you meant to affect both.
 export const SOLACE_FORTE_EMPOWERED_TURNS = SOLACE_ULTIMATE_DOUBLE_TURNS;
 
-// Empowered Ultimate's payoff: reduced flat bonuses, applied REGARDLESS of
-// which single Attunement mode is currently active — deliberately additive
+// Empowered Ultimate's payoff: reduced bonuses, applied REGARDLESS of which
+// single Attunement mode is currently active — deliberately additive
 // alongside (not a replacement for) attunement.ts's own per-mode getters, so
-// attunement.ts needs zero changes. Roughly half of Attunement's own
-// 15%/15%/20% bonuses.
-export function getSolaceForteAtkBonus(empowered: boolean): number { return empowered ? 0.08 : 0; }
-export function getSolaceForteCritRateBonus(empowered: boolean): number { return empowered ? 0.08 : 0; }
-export function getSolaceForteDefBonus(empowered: boolean): number { return empowered ? 0.10 : 0; }
+// attunement.ts needs zero changes. Magnitude scales with Forte level
+// (Milestone 2e) — Lv1 matches the original Milestone 2c flat values exactly
+// (0.08/0.08/0.10, roughly half of Attunement's own baseline 15%/15%/20%),
+// doubling by Lv10. See design spec §3/§6 for why these numbers were chosen
+// to stay clear of Constellation 6's eventual territory.
+export function getSolaceForteAtkBonus(forteLevel: number, empowered: boolean): number {
+  return empowered ? solaceForteEmpoweredAtkCritBonus(forteLevel) : 0;
+}
+export function getSolaceForteCritRateBonus(forteLevel: number, empowered: boolean): number {
+  return empowered ? solaceForteEmpoweredAtkCritBonus(forteLevel) : 0;
+}
+export function getSolaceForteDefBonus(forteLevel: number, empowered: boolean): number {
+  return empowered ? solaceForteEmpoweredDefBonus(forteLevel) : 0;
+}
+
+// ── Kit-leveling scaling curves (Milestone 2e) ────────────────────────────
+// Linear interpolation from Lv1 to Lv10 for every track. Lv1 values match
+// each track's ORIGINAL pre-Milestone-2e hardcoded constant exactly — a fresh
+// Lv1 character must play identically to how she did before this milestone.
+// See design spec §3 for the full table and §6 for the Constellation-6
+// balance reasoning behind the chosen Lv10 ceilings.
+
+export function solaceBasicDamageMult(basicLevel: number): number {
+  return 1.0 + (1.8 - 1.0) * (basicLevel - 1) / (MAX_KIT_LEVEL - 1);
+}
+export function solaceAttunementAtkCritBonus(skillLevel: number): number {
+  return 0.15 + (0.30 - 0.15) * (skillLevel - 1) / (MAX_KIT_LEVEL - 1);
+}
+export function solaceAttunementDefBonus(skillLevel: number): number {
+  return 0.20 + (0.40 - 0.20) * (skillLevel - 1) / (MAX_KIT_LEVEL - 1);
+}
+export function solaceConvergenceHealPct(ultimateLevel: number): number {
+  return 0.30 + (0.60 - 0.30) * (ultimateLevel - 1) / (MAX_KIT_LEVEL - 1);
+}
+export function solaceIntroHealPct(introLevel: number): number {
+  return 0.20 + (0.40 - 0.20) * (introLevel - 1) / (MAX_KIT_LEVEL - 1);
+}
+export function solaceForteEmpoweredAtkCritBonus(forteLevel: number): number {
+  return 0.08 + (0.16 - 0.08) * (forteLevel - 1) / (MAX_KIT_LEVEL - 1);
+}
+export function solaceForteEmpoweredDefBonus(forteLevel: number): number {
+  return 0.10 + (0.20 - 0.10) * (forteLevel - 1) / (MAX_KIT_LEVEL - 1);
+}

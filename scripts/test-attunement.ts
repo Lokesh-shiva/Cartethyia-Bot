@@ -109,7 +109,7 @@ assert.deepStrictEqual(resetForte(), { phase: 0, charge: 0 }, "resetForte return
 
 console.log("✓ all Forte primitive tests passed");
 
-// ── Solace's Forte payoff (Milestone 2c) ─────────────────────────────────────
+// ── Solace's Forte payoff (Milestone 2c, level-scaled in Milestone 2e) ───────
 import {
   SOLACE_FORTE_CONFIG, SOLACE_FORTE_GAIN_PER_BASIC, SOLACE_FORTE_EMPOWERED_TURNS,
   getSolaceForteAtkBonus, getSolaceForteCritRateBonus, getSolaceForteDefBonus,
@@ -120,11 +120,53 @@ assert.deepStrictEqual(SOLACE_FORTE_CONFIG, { phaseThresholds: [100] }, "Solace 
 assert.strictEqual(SOLACE_FORTE_GAIN_PER_BASIC, 20, "5 Chime Strikes to fill the gauge");
 assert.strictEqual(SOLACE_FORTE_EMPOWERED_TURNS, SOLACE_ULTIMATE_DOUBLE_TURNS, "reuses the existing 3-turn constant for consistency");
 
-assert.strictEqual(getSolaceForteAtkBonus(true), 0.08, "empowered grants the ATK bonus");
-assert.strictEqual(getSolaceForteAtkBonus(false), 0, "not empowered grants nothing");
-assert.strictEqual(getSolaceForteCritRateBonus(true), 0.08, "empowered grants the crit-rate bonus");
-assert.strictEqual(getSolaceForteCritRateBonus(false), 0, "not empowered grants nothing");
-assert.strictEqual(getSolaceForteDefBonus(true), 0.10, "empowered grants the DEF bonus");
-assert.strictEqual(getSolaceForteDefBonus(false), 0, "not empowered grants nothing");
+// Not empowered: always 0, regardless of level.
+assert.strictEqual(getSolaceForteAtkBonus(1, false), 0, "not empowered grants nothing at Lv1");
+assert.strictEqual(getSolaceForteAtkBonus(10, false), 0, "not empowered grants nothing at Lv10 either");
+
+// Empowered: scales from the old flat Milestone 2c values (Lv1) up to double at Lv10.
+assert.strictEqual(getSolaceForteAtkBonus(1, true), 0.08, "Lv1 empowered ATK bonus matches the old Milestone 2c flat value");
+assert.strictEqual(getSolaceForteCritRateBonus(1, true), 0.08, "Lv1 empowered crit bonus matches the old Milestone 2c flat value");
+assert.strictEqual(getSolaceForteDefBonus(1, true), 0.10, "Lv1 empowered DEF bonus matches the old Milestone 2c flat value");
+assert.strictEqual(getSolaceForteAtkBonus(10, true), 0.16, "Lv10 empowered ATK bonus is double the Lv1 value");
+assert.strictEqual(getSolaceForteCritRateBonus(10, true), 0.16, "Lv10 empowered crit bonus is double the Lv1 value");
+assert.strictEqual(getSolaceForteDefBonus(10, true), 0.20, "Lv10 empowered DEF bonus is double the Lv1 value");
 
 console.log("✓ all Solace Forte payoff tests passed");
+
+// ── Solace's other kit-leveling scaling functions (Milestone 2e) ────────────
+import {
+  solaceBasicDamageMult, solaceAttunementAtkCritBonus, solaceAttunementDefBonus,
+  solaceConvergenceHealPct, solaceIntroHealPct,
+} from "../src/lib/solace";
+
+// Basic (Chime Strike): 1.0x at Lv1 (matches the pre-Milestone-2e hardcoded
+// value exactly — a fresh Lv1 Solace must play identically to before this
+// milestone), up to 1.8x at Lv10.
+assert.strictEqual(solaceBasicDamageMult(1), 1.0, "Lv1 Basic multiplier matches the pre-2e baseline exactly");
+assert.strictEqual(solaceBasicDamageMult(10), 1.8, "Lv10 Basic multiplier reaches the target max");
+
+// Skill (Attunement): 15%/15% ATK+Crit and 20% DEF at Lv1 (matches the old
+// hardcoded constants), doubling to 30%/30%/40% at Lv10.
+assert.strictEqual(solaceAttunementAtkCritBonus(1), 0.15, "Lv1 ATK/Crit bonus matches the pre-2e baseline");
+assert.strictEqual(solaceAttunementAtkCritBonus(10), 0.30, "Lv10 ATK/Crit bonus doubles");
+assert.strictEqual(solaceAttunementDefBonus(1), 0.20, "Lv1 DEF bonus matches the pre-2e baseline");
+assert.strictEqual(solaceAttunementDefBonus(10), 0.40, "Lv10 DEF bonus doubles");
+
+// Ultimate (Convergence): 30% heal at Lv1 (matches old baseline), 60% at Lv10.
+assert.strictEqual(solaceConvergenceHealPct(1), 0.30, "Lv1 heal matches the pre-2e baseline");
+assert.strictEqual(solaceConvergenceHealPct(10), 0.60, "Lv10 heal doubles");
+
+// Intro: 20% heal at Lv1 (matches old baseline), 40% at Lv10.
+assert.strictEqual(solaceIntroHealPct(1), 0.20, "Lv1 heal matches the pre-2e baseline");
+assert.strictEqual(solaceIntroHealPct(10), 0.40, "Lv10 heal doubles");
+
+// Midpoint sanity check (Lv5.5 doesn't exist, but the interpolation formula
+// should still be linear and monotonic — spot-check Lv6, roughly 5/9 of the
+// way from Lv1 to Lv10) to catch an interpolation math error the endpoint
+// checks alone wouldn't.
+const lv6Basic = solaceBasicDamageMult(6);
+assert.ok(lv6Basic > 1.0 && lv6Basic < 1.8, "Lv6 Basic multiplier sits strictly between Lv1 and Lv10");
+assert.strictEqual(Math.round(lv6Basic * 1000), 1444, "Lv6 Basic multiplier matches the expected linear-interpolation value (~1.444x)");
+
+console.log("✓ all Solace kit-leveling scaling functions tests passed");
