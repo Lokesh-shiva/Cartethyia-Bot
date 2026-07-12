@@ -170,10 +170,21 @@ const command: Command = {
             if (spend.count === 0) {
               throw new Error("insufficient-funds-race");
             }
-            await tx.characterProgress.update({
-              where: { userId_characterId: { userId: interaction.user.id, characterId } },
-              data:  { [TRACK_FIELD[track]]: { increment: 1 } },
+            // Same guard shape as the currency spend above: only increment if
+            // the track is still below max at write time. If a concurrent
+            // click already maxed it out between our read above and now,
+            // this updateMany matches zero rows — roll back rather than
+            // silently pushing the level past MAX_KIT_LEVEL.
+            const levelUp = await tx.characterProgress.updateMany({
+              where: {
+                userId: interaction.user.id, characterId,
+                [TRACK_FIELD[track]]: { lt: MAX_KIT_LEVEL },
+              },
+              data: { [TRACK_FIELD[track]]: { increment: 1 } },
             });
+            if (levelUp.count === 0) {
+              throw new Error("already-maxed-race");
+            }
           });
           auditSpend(interaction.user.id, { forgingOres: cost }, "character-kit-level");
 
