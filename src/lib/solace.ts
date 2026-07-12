@@ -10,6 +10,7 @@
 // the Forte gauge to exist first.
 
 import { IntroOutroEffect } from "./introOutro";
+import { ForteConfig } from "./forte";
 
 export const SOLACE = {
   name:  "Solace",
@@ -50,11 +51,15 @@ export const PLAYER_SELF_OUTRO: IntroOutroEffect = { actions: [{ type: "SHIELD_A
 // ── Forte (Milestone 2c) ──────────────────────────────────────────────────
 // Solace's specific gauge tuning and full-charge payoff. forte.ts itself
 // knows nothing about any of this — see design spec §2/§3.
-import { ForteConfig } from "./forte";
 
 export const SOLACE_FORTE_CONFIG: ForteConfig = { phaseThresholds: [100] }; // single phase, matches her "steady build" identity
 export const SOLACE_FORTE_GAIN_PER_BASIC = 20; // Chime Strike fills the gauge — 5 hits to max
-export const SOLACE_FORTE_EMPOWERED_TURNS = SOLACE_ULTIMATE_DOUBLE_TURNS; // reuse the existing 3-turn constant for consistency
+
+// These are separate concepts that happen to share a duration today: Ultimate's
+// own "double the active Attunement mode" window vs. Forte's "Empowered
+// Ultimate" window. They're aliased for consistency, not because they're the
+// same knob — if tuning one, check whether you meant to affect both.
+export const SOLACE_FORTE_EMPOWERED_TURNS = SOLACE_ULTIMATE_DOUBLE_TURNS;
 
 // Empowered Ultimate's payoff: reduced flat bonuses, applied REGARDLESS of
 // which single Attunement mode is currently active — deliberately additive
