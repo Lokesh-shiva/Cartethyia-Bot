@@ -24,7 +24,11 @@ import {
 import { compositeHasSecondWind } from "./abilityEffects";
 import { echoSkillBaseMult, applyEchoSkill } from "./echoSkills";
 import { generateEchoCard, echoRowToCard } from "./echoCard";
-import { SOLACE, SOLACE_ULTIMATE_DOUBLE_TURNS, PLAYER_SELF_INTRO, PLAYER_SELF_OUTRO } from "./solace";
+import {
+  SOLACE, SOLACE_ULTIMATE_DOUBLE_TURNS, PLAYER_SELF_INTRO, PLAYER_SELF_OUTRO,
+  SOLACE_FORTE_CONFIG, SOLACE_FORTE_GAIN_PER_BASIC, SOLACE_FORTE_EMPOWERED_TURNS,
+  getSolaceForteAtkBonus, getSolaceForteCritRateBonus, getSolaceForteDefBonus,
+} from "./solace";
 import { resolveIntroOutroEffect } from "./introOutro";
 import {
   AttunementState, cycleAttunementMode,
@@ -34,6 +38,7 @@ import {
   WELLSPRING_BASE_ATK_MULT, WELLSPRING_BASE_ENERGY_BONUS,
   getWellspringAtkBonus, getWellspringCritRateBonus, getWellspringDefBonus,
 } from "./wellspring";
+import { ForteState, addForteCharge, isForteMaxed, resetForte } from "./forte";
 import { AllyActionTarget } from "./allyActions";
 import { addConcertoEnergy } from "./concertoEnergy";
 import { DebuffState, applyDebuff, tickDebuffs, getWeakenedMult, cleanseDebuffs } from "./debuffs";
@@ -393,7 +398,9 @@ export async function handleEncounterFight(
   let concertoEnergy: number = 0;
   let playerDebuffs: DebuffState = [];
   let attunement: AttunementState = { mode: null };
-  let attunementDoubleTurnsLeft = 0; // set by Solace's Ultimate; see Task 4
+  let attunementDoubleTurnsLeft = 0; // set by a normal (non-Empowered) Convergence
+  let solaceForte: ForteState = { phase: 0, charge: 0 };
+  let forteEmpoweredTurnsLeft = 0; // set by an Empowered Convergence; mutually exclusive with attunementDoubleTurnsLeft
 
   // Scale enemy to the fighter's progression + gear (still lighter than dedicated boss
   // fights, but bumped 2026-07-03 — chat encounters were reported as trivially easy)
@@ -636,8 +643,10 @@ export async function handleEncounterFight(
         const wellspringAtkMult   = isDevGuild && activeUnit === "ally" ? WELLSPRING_BASE_ATK_MULT : 1;
         const wellspringAtkBonus  = isDevGuild ? getWellspringAtkBonus(attunement) : 0;
         const wellspringCritBonus = isDevGuild ? getWellspringCritRateBonus(attunement) : 0;
-        const atkMult = getWeakenedMult(playerDebuffs) * (isDevGuild ? getAttunementAtkMult(attunement, attunementDoubleTurnsLeft > 0) : 1) * wellspringAtkMult * (1 + wellspringAtkBonus);
-        const r  = calcPlayerDamage(stats.atk * atkMult, defVal, forcedCritActive ? 1 : Math.min(1, cRate + (isDevGuild ? getAttunementCritRateBonus(attunement, attunementDoubleTurnsLeft > 0) : 0) + wellspringCritBonus), stats.critDmg, 1.0, isWeak, state.isShattered);
+        const forteAtkBonus  = isDevGuild ? getSolaceForteAtkBonus(forteEmpoweredTurnsLeft > 0) : 0;
+        const forteCritBonus = isDevGuild ? getSolaceForteCritRateBonus(forteEmpoweredTurnsLeft > 0) : 0;
+        const atkMult = getWeakenedMult(playerDebuffs) * (isDevGuild ? getAttunementAtkMult(attunement, attunementDoubleTurnsLeft > 0) : 1) * wellspringAtkMult * (1 + wellspringAtkBonus) * (1 + forteAtkBonus);
+        const r  = calcPlayerDamage(stats.atk * atkMult, defVal, forcedCritActive ? 1 : Math.min(1, cRate + (isDevGuild ? getAttunementCritRateBonus(attunement, attunementDoubleTurnsLeft > 0) : 0) + wellspringCritBonus + forteCritBonus), stats.critDmg, 1.0, isWeak, state.isShattered);
         let base = Math.floor(r.damage * (1 + stats.elemDmgBonus));
         base     = Math.floor(base * elemWindstrideMult(bonuses.elementPassive, state.turn, "BASIC"));
         // Ignite is a separate proc effect, not part of the base attack roll —
@@ -648,6 +657,21 @@ export async function handleEncounterFight(
         moveName  = r.isCrit ? `Basic Attack — **CRITICAL** (${playerDmg} DMG)` : `Basic Attack — ${playerDmg} DMG`;
         if (ignite.tag) moveName += `  ✦${ignite.tag}`;
         state.playerEnergy = Math.min(100, state.playerEnergy + ENERGY_PER_TURN + elemDischargeEnergy(bonuses.elementPassive, r.isCrit));
+
+        // Forte fills only from Solace's own Chime Strike — announce only on
+        // the turn a threshold is actually crossed, not every hit (no
+        // permanent visible bar, per design spec §3).
+        if (isDevGuild && activeUnit === "ally") {
+          const forteBefore = solaceForte;
+          solaceForte = addForteCharge(solaceForte, SOLACE_FORTE_CONFIG, SOLACE_FORTE_GAIN_PER_BASIC);
+          const wasHalf = forteBefore.charge >= SOLACE_FORTE_CONFIG.phaseThresholds[0] / 2;
+          const isHalf  = solaceForte.charge >= SOLACE_FORTE_CONFIG.phaseThresholds[0] / 2 && !isForteMaxed(solaceForte, SOLACE_FORTE_CONFIG);
+          if (isForteMaxed(solaceForte, SOLACE_FORTE_CONFIG) && !isForteMaxed(forteBefore, SOLACE_FORTE_CONFIG)) {
+            moveName += `\n✨ Forte is **FULLY CHARGED** — next Convergence will be Empowered!`;
+          } else if (isHalf && !wasHalf) {
+            moveName += `\n✨ Forte is **HALF CHARGED**.`;
+          }
+        }
       }
 
       if (btn.customId === "enc_skill" && isDevGuild && activeUnit === "ally") {
@@ -682,7 +706,8 @@ export async function handleEncounterFight(
         // player's own Ultimate (Solace's Ultimate is the else-if branch
         // below, which deals no damage), and the base boost is Solace-only.
         const wellspringAtkBonus = isDevGuild ? getWellspringAtkBonus(attunement) : 0;
-        const atkMult = getWeakenedMult(playerDebuffs) * (isDevGuild ? getAttunementAtkMult(attunement, attunementDoubleTurnsLeft > 0) : 1) * (1 + wellspringAtkBonus);
+        const forteAtkBonus = isDevGuild ? getSolaceForteAtkBonus(forteEmpoweredTurnsLeft > 0) : 0;
+        const atkMult = getWeakenedMult(playerDebuffs) * (isDevGuild ? getAttunementAtkMult(attunement, attunementDoubleTurnsLeft > 0) : 1) * (1 + wellspringAtkBonus) * (1 + forteAtkBonus);
         const r = calcPlayerDamage(stats.atk * atkMult, defVal, 1.0, stats.critDmg, 3.5, isWeak, state.isShattered);
         playerDmg = Math.floor(r.damage * (1 + stats.elemDmgBonus)); isCrit = true;
         moveType = "ULT"; vibFrac = 0.8;
@@ -703,12 +728,22 @@ export async function handleEncounterFight(
         const actualHeal = state.playerHp - before;
         playerDebuffs = cleanseDebuffs(playerDebuffs, healResult.cleanseCount);
 
-        attunementDoubleTurnsLeft = SOLACE_ULTIMATE_DOUBLE_TURNS;
         concertoEnergy = 0;
-
         playerDmg = 0; isCrit = false; moveType = "ULT"; vibFrac = 0;
-        moveName = `⚡ **Convergence!** Team healed +${actualHeal} HP, debuffs cleansed, ` +
-          `**${attunement.mode ?? "no"} mode doubled for ${SOLACE_ULTIMATE_DOUBLE_TURNS} turns!**`;
+
+        if (isDevGuild && isForteMaxed(solaceForte, SOLACE_FORTE_CONFIG)) {
+          // Empowered Convergence — instead of doubling only the active mode,
+          // a smaller version of all 3 applies at once (design spec §3).
+          // Mutually exclusive with the normal doubling path below.
+          forteEmpoweredTurnsLeft = SOLACE_FORTE_EMPOWERED_TURNS;
+          solaceForte = resetForte();
+          moveName = `⚡ **Empowered Convergence!** Team healed +${actualHeal} HP, debuffs cleansed, ` +
+            `**all 3 Attunement Modes empowered for ${SOLACE_FORTE_EMPOWERED_TURNS} turns!**`;
+        } else {
+          attunementDoubleTurnsLeft = SOLACE_ULTIMATE_DOUBLE_TURNS;
+          moveName = `⚡ **Convergence!** Team healed +${actualHeal} HP, debuffs cleansed, ` +
+            `**${attunement.mode ?? "no"} mode doubled for ${SOLACE_ULTIMATE_DOUBLE_TURNS} turns!**`;
+        }
       }
 
       let echoLifestealPct = 0;
@@ -866,7 +901,8 @@ export async function handleEncounterFight(
       } else {
         const move     = boss.moves[Math.floor(Math.random() * boss.moves.length)];
         const wellspringDefBonus = isDevGuild ? getWellspringDefBonus(attunement) : 0;
-        const attunementDefMult = (isDevGuild ? getAttunementDefMult(attunement, attunementDoubleTurnsLeft > 0) : 1) * (1 + wellspringDefBonus);
+        const forteDefBonus = isDevGuild ? getSolaceForteDefBonus(forteEmpoweredTurnsLeft > 0) : 0;
+        const attunementDefMult = (isDevGuild ? getAttunementDefMult(attunement, attunementDoubleTurnsLeft > 0) : 1) * (1 + wellspringDefBonus) * (1 + forteDefBonus);
         let bossDmg    = calcEnemyDamage(scaledEnemy.atk, stats.def * attunementDefMult, move.damage);
         const shield   = elemFrostShield(bonuses.elementPassive, bossDmg);
         bossDmg        = shield.dmg;
@@ -914,6 +950,7 @@ export async function handleEncounterFight(
       if (echoSkillCooldown > 0) echoSkillCooldown--;
       if (enemyDefShredTurnsLeft > 0) enemyDefShredTurnsLeft--;
       if (isDevGuild && attunementDoubleTurnsLeft > 0) attunementDoubleTurnsLeft--;
+      if (isDevGuild && forteEmpoweredTurnsLeft > 0) forteEmpoweredTurnsLeft--;
       if (forcedCritActive) nextAttackCritArmed = false;
 
       // ── Second Wind: survive a lethal blow once at 1 HP ────────────────────
