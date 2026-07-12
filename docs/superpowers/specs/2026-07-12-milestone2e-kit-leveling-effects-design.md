@@ -37,7 +37,7 @@ Linear interpolation from Lv1 to Lv10 for every track (`value(level) = base + (m
 
 | Track | What scales | Lv1 | Lv10 |
 |---|---|---|---|
-| Basic (Chime Strike) | Damage multiplier | 0.6x | 1.2x |
+| Basic (Chime Strike) | Damage multiplier | 1.0x | 1.8x |
 | Skill (Attunement) | ATK/Crit bonus magnitude | 15% | 30% |
 | Skill (Attunement) | DEF bonus magnitude | 20% | 40% |
 | Ultimate (Convergence) | Heal % | 30% | 60% |
@@ -47,7 +47,7 @@ Linear interpolation from Lv1 to Lv10 for every track (`value(level) = base + (m
 
 ```typescript
 export function solaceBasicDamageMult(basicLevel: number): number {
-  return 0.6 + (1.2 - 0.6) * (basicLevel - 1) / (MAX_KIT_LEVEL - 1);
+  return 1.0 + (1.8 - 1.0) * (basicLevel - 1) / (MAX_KIT_LEVEL - 1);
 }
 export function solaceAttunementAtkCritBonus(skillLevel: number): number {
   return 0.15 + (0.30 - 0.15) * (skillLevel - 1) / (MAX_KIT_LEVEL - 1);
