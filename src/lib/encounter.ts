@@ -978,10 +978,18 @@ export async function handleEncounterFight(
       // ── Next turn: update battle card ──────────────────────────────────────
       const buf    = await generateBattleCard(state);
       const attach = new AttachmentBuilder(buf, { name: "encounter.webp" });
+      // The card image only ever shows state.lastMove's FIRST line (see
+      // battleCard.ts's `.split("\n")[0]`, a hard 90-char single-line budget
+      // under the character art) — every line after that (Forte status
+      // notes, Shatter, Void Surge, WEAKENED, boss-retaliation flavor, etc.)
+      // was previously appended to lastMove but never actually rendered
+      // anywhere. Surface those extra lines in the embed description instead.
+      const moveExtraLines = state.lastMove.split("\n").slice(1).join("\n");
+      const description = [moveExtraLines, teamStatusLine()].filter(Boolean).join("\n");
       const embed  = new EmbedBuilder()
         .setColor(ELEMENT_COLORS[enc.enemy.element])
         .setImage("attachment://encounter.webp")
-        .setDescription(teamStatusLine() || null);
+        .setDescription(description || null);
       await battleMsg!.edit({
         embeds: [embed], files: [attach],
         components: buildEncounterButtons(),
