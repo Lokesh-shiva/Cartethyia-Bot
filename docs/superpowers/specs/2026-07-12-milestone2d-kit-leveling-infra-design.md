@@ -42,6 +42,8 @@ Per explicit user direction: reuse the existing `forgingOres` balance on `User` 
 
 **Left open for later:** a future milestone could add a weekly-capped *additional* source of Forging Ores (e.g. a specific boss's new drop-table entry, capped at 3 kills/week × 3 items = 9/week, per spec §8's original target shape) without touching this milestone's code at all — `CharacterProgress` only tracks levels, never currency income, so the two stay fully decoupled. Nothing in this design assumes Forging Ores has a single source.
 
+**Explicit future gate, noted now so it isn't lost:** once the weekly-capped material exists, levels **1→6 stay purchasable with plain (uncapped) Forging Ores**, but **levels 7→10 will require the weekly-capped item** specifically — not just more plain Forging Ores. This milestone does NOT implement that gate (there's no weekly-capped item yet to gate on), but the cost-curve function built in Task 2 of the implementation plan should be structured so a future milestone can slot in a "requires weekly item above level 6" check without restructuring the whole leveling flow (e.g. keep the cost-per-level lookup as a single well-isolated function, not inlined ad-hoc across the command handler).
+
 **Cost curve:** leveling a track from level N costs `N` Forging Ores (Lv1→2 costs 1, Lv9→10 costs 9). Maxing one track costs 45 Ores total (1+2+...+9); all 5 tracks to max costs 225 Ores. Max level is **10** for every track.
 
 ## 4. Command — `/character`, generic and select-driven
