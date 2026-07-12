@@ -62,3 +62,39 @@ assert.strictEqual(getWellspringDefBonus({ mode: "DEF" }), 0.12, "DEF mode grant
 assert.strictEqual(getWellspringDefBonus({ mode: "ATK" }), 0, "inactive mode grants nothing");
 
 console.log("✓ all Wellspring primitive tests passed");
+
+// ── Forte (Milestone 2c) — generic gauge primitive ───────────────────────────
+import { addForteCharge, isForteMaxed, resetForte, ForteConfig, ForteState } from "../src/lib/forte";
+
+const singlePhase: ForteConfig = { phaseThresholds: [100] };
+const multiPhase:  ForteConfig = { phaseThresholds: [50, 50, 100] };
+
+// Single-phase accumulation
+let fs: ForteState = { phase: 0, charge: 0 };
+fs = addForteCharge(fs, singlePhase, 30);
+assert.deepStrictEqual(fs, { phase: 0, charge: 30 }, "charge accumulates within the only phase");
+assert.strictEqual(isForteMaxed(fs, singlePhase), false, "not maxed until the phase threshold is hit");
+
+fs = addForteCharge(fs, singlePhase, 70);
+assert.deepStrictEqual(fs, { phase: 1, charge: 0 }, "phase completes exactly at threshold, no overflow into a nonexistent phase 2");
+assert.strictEqual(isForteMaxed(fs, singlePhase), true, "maxed once the only phase is complete");
+
+// Multi-phase rollover — a single large addition crosses more than one phase boundary
+let mfs: ForteState = { phase: 0, charge: 0 };
+mfs = addForteCharge(mfs, multiPhase, 120); // 50 (phase 0->1) + 50 (phase 1->2) + 20 into phase 2
+assert.deepStrictEqual(mfs, { phase: 2, charge: 20 }, "a big single addition rolls over multiple phase boundaries correctly");
+assert.strictEqual(isForteMaxed(mfs, multiPhase), false, "phase 2 of 3 needs 100 more, not maxed yet");
+
+mfs = addForteCharge(mfs, multiPhase, 80);
+assert.deepStrictEqual(mfs, { phase: 3, charge: 0 }, "final phase completes exactly at its threshold");
+assert.strictEqual(isForteMaxed(mfs, multiPhase), true, "maxed once ALL phases are complete");
+
+// Cap at final phase — does not roll past the last phase even with excess charge
+let capped: ForteState = { phase: 2, charge: 90 };
+capped = addForteCharge(capped, multiPhase, 500);
+assert.deepStrictEqual(capped, { phase: 3, charge: 0 }, "overflow past the final phase's threshold is discarded, not carried anywhere");
+
+// Reset
+assert.deepStrictEqual(resetForte(), { phase: 0, charge: 0 }, "resetForte returns to empty");
+
+console.log("✓ all Forte primitive tests passed");
