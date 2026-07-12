@@ -156,6 +156,7 @@ model User {
   combatSessions   CombatSession[]
   dungeonCooldowns DungeonCooldown[]
   bossCooldowns    BossCooldown[]
+  characterProgress CharacterProgress[]
 
   // Resonance Aura — shared stamina for dungeons & boss re-challenges
   resonanceAura  Int      @default(5)   // current charges (patron-aware max)
@@ -317,6 +318,27 @@ model BossCooldown {
   @@id([userId, bossId])
   @@index([userId])
   @@map("boss_cooldowns")
+}
+
+// Milestone 2d — out-of-combat kit-leveling (Basic/Skill/Ultimate/Intro/Forte).
+// characterId is a free string ("solace" today) rather than a foreign key to
+// a Character table, because no such table exists yet (no gacha/ownership
+// system) — see design spec docs/superpowers/specs/2026-07-12-milestone2d-kit-leveling-infra-design.md §2.
+model CharacterProgress {
+  id            String @id @default(cuid())
+  userId        String
+  user          User   @relation(fields: [userId], references: [id])
+  characterId   String // "solace" for now; future characters use their own id string
+
+  basicLevel    Int @default(1)
+  skillLevel    Int @default(1)
+  ultimateLevel Int @default(1)
+  introLevel    Int @default(1)
+  forteLevel    Int @default(1)
+  // Outro deliberately excluded — per design spec, it does not level.
+
+  @@unique([userId, characterId])
+  @@map("character_progress")
 }
 
 // ─── Active Fight ────────────────────────────────────────────────────────────
