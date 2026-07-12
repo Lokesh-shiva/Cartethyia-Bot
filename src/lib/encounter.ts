@@ -716,8 +716,8 @@ export async function handleEncounterFight(
       } else if (btn.customId === "enc_ultimate" && isDevGuild && activeUnit === "ally") {
         // Solace's Ultimate spends Concerto Energy, not personal Energy — team
         // heal + cleanse + doubles the current Attunement mode's effect for
-        // 3 turns (base version; the Forte-triggered "all 3 modes at once"
-        // upgrade is a later milestone once Forte exists).
+        // 3 turns (base version). If Forte is maxed, this instead becomes an
+        // Empowered Convergence — all 3 modes empowered at once — see below.
         const target: AllyActionTarget = { hp: state.playerHp, hpMax: state.playerHpMax };
         const healResult = resolveIntroOutroEffect({ actions: [
           { type: "HEAL_ALLY", value: 0.30 },
@@ -731,16 +731,20 @@ export async function handleEncounterFight(
         concertoEnergy = 0;
         playerDmg = 0; isCrit = false; moveType = "ULT"; vibFrac = 0;
 
-        if (isDevGuild && isForteMaxed(solaceForte, SOLACE_FORTE_CONFIG)) {
+        if (isForteMaxed(solaceForte, SOLACE_FORTE_CONFIG)) {
           // Empowered Convergence — instead of doubling only the active mode,
           // a smaller version of all 3 applies at once (design spec §3).
-          // Mutually exclusive with the normal doubling path below.
+          // Mutually exclusive with the normal doubling path below — both
+          // counters are explicitly set here so tuning either duration
+          // constant can't accidentally leave both nonzero at once.
           forteEmpoweredTurnsLeft = SOLACE_FORTE_EMPOWERED_TURNS;
+          attunementDoubleTurnsLeft = 0;
           solaceForte = resetForte();
           moveName = `⚡ **Empowered Convergence!** Team healed +${actualHeal} HP, debuffs cleansed, ` +
             `**all 3 Attunement Modes empowered for ${SOLACE_FORTE_EMPOWERED_TURNS} turns!**`;
         } else {
           attunementDoubleTurnsLeft = SOLACE_ULTIMATE_DOUBLE_TURNS;
+          forteEmpoweredTurnsLeft = 0;
           moveName = `⚡ **Convergence!** Team healed +${actualHeal} HP, debuffs cleansed, ` +
             `**${attunement.mode ?? "no"} mode doubled for ${SOLACE_ULTIMATE_DOUBLE_TURNS} turns!**`;
         }
