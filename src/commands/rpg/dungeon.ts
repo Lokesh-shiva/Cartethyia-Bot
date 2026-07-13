@@ -1063,8 +1063,11 @@ async function runWave(
         if (btn.customId !== "dg_swap") ws.firstActionDone = true;
 
         // SPD quick-strike — once per dungeon run, if invested SPD clears the wave enemy's derived SPD
-        // (excludes dg_swap too — a swap deals no damage, so Quick Strike shouldn't fire on it)
-        if (!ws.quickStrikeUsed && btn.customId !== "dg_flee" && btn.customId !== "dg_swap" && hasQuickStrike(stats.spd, dbUser.level)) {
+        // (excludes dg_swap too — a swap deals no damage, so Quick Strike shouldn't fire on it.
+        // Also excludes Solace's Convergence — a zero-damage support Ultimate that deliberately
+        // deals no damage, unlike the player's own Ultimate which remains eligible.)
+        const isSolaceConvergence = btn.customId === "dg_ultimate" && ws.isDevGuild && ws.activeUnit === "ally";
+        if (!ws.quickStrikeUsed && btn.customId !== "dg_flee" && btn.customId !== "dg_swap" && !isSolaceConvergence && hasQuickStrike(stats.spd, dbUser.level)) {
           ws.quickStrikeUsed = true;
           const bonusDmg = Math.max(1, Math.floor(stats.atk * (1 - defReduction)));
           playerDmg += bonusDmg;
