@@ -770,7 +770,7 @@ async function runWave(
           const wellspringCritBonus = ws.isDevGuild ? getWellspringCritRateBonus(ws.attunement) : 0;
           const forteAtkBonus  = ws.isDevGuild ? getSolaceForteAtkBonus(ws.solaceForteLevel, ws.forteEmpoweredTurnsLeft > 0) : 0;
           const forteCritBonus = ws.isDevGuild ? getSolaceForteCritRateBonus(ws.solaceForteLevel, ws.forteEmpoweredTurnsLeft > 0) : 0;
-          const teamMult = teamAtkMult * wellspringAtkMult * (1 + wellspringAtkBonus) * (1 + forteAtkBonus);
+          const teamMult = getWeakenedMult(ws.playerDebuffs) * teamAtkMult * wellspringAtkMult * (1 + wellspringAtkBonus) * (1 + forteAtkBonus);
           // Solace's own Basic-track level multiplier — Solace-only (this
           // handler is shared with the player's own Basic Attack), matching
           // how /encounter gates its equivalent `basicMoveMult`.
@@ -844,7 +844,7 @@ async function runWave(
           const wellspringCritBonus = ws.isDevGuild ? getWellspringCritRateBonus(ws.attunement) : 0;
           const forteAtkBonus  = ws.isDevGuild ? getSolaceForteAtkBonus(ws.solaceForteLevel, ws.forteEmpoweredTurnsLeft > 0) : 0;
           const forteCritBonus = ws.isDevGuild ? getSolaceForteCritRateBonus(ws.solaceForteLevel, ws.forteEmpoweredTurnsLeft > 0) : 0;
-          const teamMult = teamAtkMult * (1 + wellspringAtkBonus) * (1 + forteAtkBonus);
+          const teamMult = getWeakenedMult(ws.playerDebuffs) * teamAtkMult * (1 + wellspringAtkBonus) * (1 + forteAtkBonus);
           const crit   = forcedCritActive || Math.random() < Math.min(1, cRate + 0.1 + teamCritBonus + wellspringCritBonus + forteCritBonus); abilCrit = crit;
           const smolderMult = bonuses.activeNamedSetId === "SMOLDERING_SOVEREIGN"
             ? smolderingSovereignOnAction(ws.namedState) : 1;
@@ -884,7 +884,7 @@ async function runWave(
           const teamAtkMult = ws.isDevGuild ? getAttunementAtkMult(ws.attunement, solaceAttunementAtkCritBonus(ws.solaceSkillLevel), ws.attunementDoubleTurnsLeft > 0) : 1;
           const wellspringAtkBonus = ws.isDevGuild ? getWellspringAtkBonus(ws.attunement) : 0;
           const forteAtkBonus = ws.isDevGuild ? getSolaceForteAtkBonus(ws.solaceForteLevel, ws.forteEmpoweredTurnsLeft > 0) : 0;
-          const teamMult = teamAtkMult * (1 + wellspringAtkBonus) * (1 + forteAtkBonus);
+          const teamMult = getWeakenedMult(ws.playerDebuffs) * teamAtkMult * (1 + wellspringAtkBonus) * (1 + forteAtkBonus);
           const smolderMultUlt = bonuses.activeNamedSetId === "SMOLDERING_SOVEREIGN"
             ? smolderingSovereignOnAction(ws.namedState) : 1;
           const extraElemBonusUlt = ws.glacioShieldTurnsLeft > 0 ? ws.glacioShieldElemBonus : 0;
@@ -1102,6 +1102,15 @@ async function runWave(
           return;
         }
 
+        // Debuffs tick down at the START of resolving the enemy's turn — this way
+        // any WEAKENED applied by the attack below isn't touched until NEXT round's
+        // tick, giving it the full 2 turns its own flavor text advertises, instead
+        // of being decremented in the same cycle it's created.
+        if (ws.isDevGuild) {
+          const tickResult = tickDebuffs(ws.playerDebuffs);
+          ws.playerDebuffs = tickResult.state;
+        }
+
         // Enemy counter
         if (shatterLeft > 0) {
           shatterLeft--;
@@ -1167,6 +1176,13 @@ async function runWave(
           if (radRegen > 0) ws.playerHp = Math.min(ws.playerHpMax, ws.playerHp + radRegen);
           ws.playerEnergy = Math.min(100, ws.playerEnergy + 15);
           moveLine      += `\n◇ ${enemy.name} ${move} — **${bossDmg} DMG**${shield.blocked ? " *(Frost Shield!)*" : ""}${radRegen > 0 ? ` *(+${radRegen} Radiance)*` : ""}`;
+
+          // Milestone 3a: exercises the debuff system inside a real fight. 25% chance
+          // per enemy attack, only when dev-guild team mechanics are active.
+          if (ws.isDevGuild && Math.random() < 0.25) {
+            ws.playerDebuffs = applyDebuff(ws.playerDebuffs, "WEAKENED", 0.2, 2);
+            moveLine += `\n◇ *${enemy.name}'s strike leaves you* **WEAKENED** *(-20% ATK, 2 turns)*`;
+          }
         }
 
         if (ws.skillCooldown > 0) ws.skillCooldown--;
