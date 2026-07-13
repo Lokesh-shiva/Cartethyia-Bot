@@ -31,6 +31,27 @@ import { computeAura, consumeAura, auraBar, fmtAuraRegen, getMaxAura } from "../
 import { CE, echoEmoji } from "../../lib/emojiManager";
 import { trackEvolutionProgress } from "../../lib/abilityEvolution";
 import { incrementWeaponBond } from "../../lib/weaponAwakening";
+import {
+  SOLACE, SOLACE_ULTIMATE_DOUBLE_TURNS, PLAYER_SELF_INTRO, PLAYER_SELF_OUTRO,
+  SOLACE_FORTE_CONFIG, SOLACE_FORTE_GAIN_PER_BASIC, SOLACE_FORTE_EMPOWERED_TURNS,
+  getSolaceForteAtkBonus, getSolaceForteCritRateBonus, getSolaceForteDefBonus,
+  solaceIntroEffect, solaceBasicDamageMult, solaceAttunementAtkCritBonus,
+  solaceAttunementDefBonus, solaceConvergenceHealPct,
+} from "../../lib/solace";
+import { resolveIntroOutroEffect, IntroOutroEffect } from "../../lib/introOutro";
+import {
+  AttunementState, cycleAttunementMode,
+  getAttunementAtkMult, getAttunementCritRateBonus, getAttunementDefMult,
+} from "../../lib/attunement";
+import {
+  WELLSPRING_BASE_ATK_MULT, WELLSPRING_BASE_ENERGY_BONUS,
+  getWellspringAtkBonus, getWellspringCritRateBonus, getWellspringDefBonus,
+} from "../../lib/wellspring";
+import { ForteState, addForteCharge, isForteMaxed, resetForte } from "../../lib/forte";
+import { AllyActionTarget } from "../../lib/allyActions";
+import { addConcertoEnergy } from "../../lib/concertoEnergy";
+import { DebuffState, applyDebuff, tickDebuffs, getWeakenedMult, cleanseDebuffs } from "../../lib/debuffs";
+import { getOrCreateCharacterProgress } from "../../lib/characterProgress";
 
 const SKILL_CD     = 3;
 const ECHO_SKILL_COOLDOWN = 4;
@@ -258,6 +279,14 @@ async function runDungeon(
   dungeon:     DungeonDefinition,
   dbUser:      DungeonUser,
 ) {
+  const isDevGuild = interaction.guildId === process.env.GUILD_ID;
+  const solaceProgress = isDevGuild ? await getOrCreateCharacterProgress(interaction.user.id, "solace") : null;
+  const solaceBasicLevel    = solaceProgress?.basicLevel    ?? 1;
+  const solaceSkillLevel    = solaceProgress?.skillLevel    ?? 1;
+  const solaceUltimateLevel = solaceProgress?.ultimateLevel ?? 1;
+  const solaceIntroLevel    = solaceProgress?.introLevel    ?? 1;
+  const solaceForteLevel    = solaceProgress?.forteLevel    ?? 1;
+
   const displayName = interaction.guild?.members.cache.get(interaction.user.id)?.displayName
     ?? interaction.user.displayName;
 
@@ -317,6 +346,18 @@ async function runDungeon(
     let nextAttackCritArmed    = false;
     let survivedAll            = true;
 
+    // ── Milestone 3a: team state (dev guild only), carried across waves the
+    // same way playerHp/skillCooldown/etc. already are above. ────────────────
+    let activeUnit: "player" | "ally" = "player";
+    let allyHp    = SOLACE.hpMax;
+    const allyHpMax = SOLACE.hpMax;
+    let concertoEnergy: number = 0;
+    let playerDebuffs: DebuffState = [];
+    let attunement: AttunementState = { mode: null };
+    let attunementDoubleTurnsLeft = 0;
+    let solaceForte: ForteState = { phase: 0, charge: 0 };
+    let forteEmpoweredTurnsLeft = 0;
+
     for (let waveIdx = 0; waveIdx < dungeon.waves.length; waveIdx++) {
       const result = await runWave(
         thread, interaction.user.id, dungeon, waveIdx, currentDbUser, stats, bonuses,
@@ -325,6 +366,10 @@ async function runDungeon(
           namedState, glacioShieldTurnsLeft, glacioShieldElemBonus, stormBuffTurnsLeft, stormBuffCritBonus,
           havocFrenzyAtkMult, havocFrenzyLifesteal, havocFrenzyDefIgnore, quickStrikeUsed,
           echoSkillCooldown, enemyDefShredTurnsLeft, enemyDefShredPct, nextAttackCritArmed,
+          isDevGuild, activeUnit, allyHp, allyHpMax, concertoEnergy, playerDebuffs, attunement,
+          attunementDoubleTurnsLeft, solaceForte, forteEmpoweredTurnsLeft,
+          solaceBasicLevel, solaceSkillLevel, solaceUltimateLevel, solaceIntroLevel, solaceForteLevel,
+          displayName,
         },
         displayName,
       );
@@ -365,6 +410,20 @@ async function runDungeon(
       enemyDefShredTurnsLeft  = result.enemyDefShredTurnsLeft;
       enemyDefShredPct        = result.enemyDefShredPct;
       nextAttackCritArmed     = result.nextAttackCritArmed;
+
+      // Milestone 3a: carry team state between waves too, same mechanism.
+      // attunementDoubleTurnsLeft/forteEmpoweredTurnsLeft get the same
+      // between-wave decrement skillCooldown already gets above — a wave
+      // transition is treated as consuming a turn-equivalent for any
+      // cooldown-shaped state, per design spec §2.
+      activeUnit    = result.activeUnit;
+      allyHp        = result.allyHp;
+      concertoEnergy = result.concertoEnergy;
+      playerDebuffs = result.playerDebuffs;
+      attunement    = result.attunement;
+      attunementDoubleTurnsLeft = Math.max(0, result.attunementDoubleTurnsLeft - 1);
+      solaceForte   = result.solaceForte;
+      forteEmpoweredTurnsLeft = Math.max(0, result.forteEmpoweredTurnsLeft - 1);
 
       if (waveIdx < dungeon.waves.length - 1) {
         await thread.send({
@@ -466,6 +525,23 @@ interface WaveState {
   enemyDefShredTurnsLeft: number;
   enemyDefShredPct:       number;
   nextAttackCritArmed:    boolean;
+  // ── Milestone 3a: team state ──────────────────────────────────────────
+  isDevGuild: boolean;
+  activeUnit: "player" | "ally";
+  allyHp: number;
+  allyHpMax: number;
+  concertoEnergy: number;
+  playerDebuffs: DebuffState;
+  attunement: AttunementState;
+  attunementDoubleTurnsLeft: number;
+  solaceForte: ForteState;
+  forteEmpoweredTurnsLeft: number;
+  solaceBasicLevel: number;
+  solaceSkillLevel: number;
+  solaceUltimateLevel: number;
+  solaceIntroLevel: number;
+  solaceForteLevel: number;
+  displayName: string;
 }
 
 interface WaveResult extends WaveState {
