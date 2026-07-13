@@ -759,11 +759,27 @@ async function runWave(
         if (btn.customId === "dg_basic") {
           const windExplosion = bonuses.activeNamedSetId === "WINDSTRIDERS_LEGACY"
             ? windstridersLegacyCheckExplosion(ws.namedState) : { proc: false, guaranteedCrit: false, bonusMult: 1.0 };
-          const crit   = forcedCritActive || windExplosion.guaranteedCrit || Math.random() < cRate; abilCrit = crit;
+          // Milestone 3a: same Attunement/Wellspring/Forte/kit-level terms as
+          // /encounter's Basic Attack, folded into this move's crit-rate
+          // computation and damage formula below instead of a shared
+          // calcPlayerDamage() call (this file doesn't use that helper).
+          const teamAtkMult  = ws.isDevGuild ? getAttunementAtkMult(ws.attunement, solaceAttunementAtkCritBonus(ws.solaceSkillLevel), ws.attunementDoubleTurnsLeft > 0) : 1;
+          const teamCritBonus = ws.isDevGuild ? getAttunementCritRateBonus(ws.attunement, solaceAttunementAtkCritBonus(ws.solaceSkillLevel), ws.attunementDoubleTurnsLeft > 0) : 0;
+          const wellspringAtkMult   = ws.isDevGuild && ws.activeUnit === "ally" ? WELLSPRING_BASE_ATK_MULT : 1;
+          const wellspringAtkBonus  = ws.isDevGuild ? getWellspringAtkBonus(ws.attunement) : 0;
+          const wellspringCritBonus = ws.isDevGuild ? getWellspringCritRateBonus(ws.attunement) : 0;
+          const forteAtkBonus  = ws.isDevGuild ? getSolaceForteAtkBonus(ws.solaceForteLevel, ws.forteEmpoweredTurnsLeft > 0) : 0;
+          const forteCritBonus = ws.isDevGuild ? getSolaceForteCritRateBonus(ws.solaceForteLevel, ws.forteEmpoweredTurnsLeft > 0) : 0;
+          const teamMult = teamAtkMult * wellspringAtkMult * (1 + wellspringAtkBonus) * (1 + forteAtkBonus);
+          // Solace's own Basic-track level multiplier — Solace-only (this
+          // handler is shared with the player's own Basic Attack), matching
+          // how /encounter gates its equivalent `basicMoveMult`.
+          const basicMoveMult = ws.isDevGuild && ws.activeUnit === "ally" ? solaceBasicDamageMult(ws.solaceBasicLevel) : 1.0;
+          const crit   = forcedCritActive || windExplosion.guaranteedCrit || Math.random() < Math.min(1, cRate + teamCritBonus + wellspringCritBonus + forteCritBonus); abilCrit = crit;
           const smolderMult = bonuses.activeNamedSetId === "SMOLDERING_SOVEREIGN"
             ? smolderingSovereignOnAction(ws.namedState) : 1;
           const extraElemBonus = ws.glacioShieldTurnsLeft > 0 ? ws.glacioShieldElemBonus : 0;
-          let dmg      = Math.max(1, Math.floor(stats.atk * smolderMult * havocAtkMult * (1 - defReduction) * (crit ? stats.critDmg : 1) * (isWeak ? 1.5 : 1) * (1 + bonuses.elemDmgBonus + extraElemBonus) * radiantDmgMult));
+          let dmg      = Math.max(1, Math.floor(stats.atk * teamMult * basicMoveMult * smolderMult * havocAtkMult * (1 - defReduction) * (crit ? stats.critDmg : 1) * (isWeak ? 1.5 : 1) * (1 + bonuses.elemDmgBonus + extraElemBonus) * radiantDmgMult));
           if (roll4pcDoubleHit(bonuses)) dmg *= 2;
           dmg          = apply5pcFirstHit(bonuses, dmg, !ws.firstActionDone);
           dmg          = apply5pcFullHpDmg(bonuses, dmg, ws.playerHp, ws.playerHpMax);
@@ -795,12 +811,30 @@ async function runWave(
           if (bonuses.activeNamedSetId === "STORMCALLERS_OATH") stormcallersOathCheckThunderbolt(ws.namedState, ws.playerEnergy);
         }
 
-        if (btn.customId === "dg_skill") {
-          const crit   = forcedCritActive || Math.random() < Math.min(1, cRate + 0.1); abilCrit = crit;
+        if (btn.customId === "dg_skill" && ws.isDevGuild && ws.activeUnit === "ally") {
+          // Solace's Skill is Attunement — a mode cycle, not a damage move.
+          // Deals a small hit using the player's own stat block (Solace has
+          // no independent stat block yet — same simplification /encounter
+          // uses). Ported from encounter.ts's Milestone 2a Skill branch.
+          ws.attunement.mode = cycleAttunementMode(ws.attunement.mode);
+          const crit = Math.random() < cRate; abilCrit = crit;
+          const dmg  = Math.max(1, Math.floor(stats.atk * 0.6 * (1 - defReduction) * (crit ? stats.critDmg : 1) * (isWeak ? 1.5 : 1) * (1 + bonuses.elemDmgBonus)));
+          playerDmg  = dmg;
+          moveLine   = `✦ Attunement — now in **${ws.attunement.mode}** mode! ${playerDmg} DMG${crit ? " **(CRIT)**" : ""}`;
+          vibBar     = Math.max(0, vibBar - Math.floor(playerDmg * 0.3 * totalVibMult));
+        } else if (btn.customId === "dg_skill") {
+          const teamAtkMult  = ws.isDevGuild ? getAttunementAtkMult(ws.attunement, solaceAttunementAtkCritBonus(ws.solaceSkillLevel), ws.attunementDoubleTurnsLeft > 0) : 1;
+          const teamCritBonus = ws.isDevGuild ? getAttunementCritRateBonus(ws.attunement, solaceAttunementAtkCritBonus(ws.solaceSkillLevel), ws.attunementDoubleTurnsLeft > 0) : 0;
+          const wellspringAtkBonus  = ws.isDevGuild ? getWellspringAtkBonus(ws.attunement) : 0;
+          const wellspringCritBonus = ws.isDevGuild ? getWellspringCritRateBonus(ws.attunement) : 0;
+          const forteAtkBonus  = ws.isDevGuild ? getSolaceForteAtkBonus(ws.solaceForteLevel, ws.forteEmpoweredTurnsLeft > 0) : 0;
+          const forteCritBonus = ws.isDevGuild ? getSolaceForteCritRateBonus(ws.solaceForteLevel, ws.forteEmpoweredTurnsLeft > 0) : 0;
+          const teamMult = teamAtkMult * (1 + wellspringAtkBonus) * (1 + forteAtkBonus);
+          const crit   = forcedCritActive || Math.random() < Math.min(1, cRate + 0.1 + teamCritBonus + wellspringCritBonus + forteCritBonus); abilCrit = crit;
           const smolderMult = bonuses.activeNamedSetId === "SMOLDERING_SOVEREIGN"
             ? smolderingSovereignOnAction(ws.namedState) : 1;
           const extraElemBonusSkill = ws.glacioShieldTurnsLeft > 0 ? ws.glacioShieldElemBonus : 0;
-          let dmg      = Math.max(1, Math.floor(stats.atk * smolderMult * havocAtkMult * 1.8 * (1 - defReduction) * (crit ? stats.critDmg : 1) * (isWeak ? 1.5 : 1) * (1 + bonuses.elemDmgBonus + extraElemBonusSkill) * radiantDmgMult));
+          let dmg      = Math.max(1, Math.floor(stats.atk * teamMult * smolderMult * havocAtkMult * 1.8 * (1 - defReduction) * (crit ? stats.critDmg : 1) * (isWeak ? 1.5 : 1) * (1 + bonuses.elemDmgBonus + extraElemBonusSkill) * radiantDmgMult));
           dmg          = apply4pcSkillBonus(bonuses, dmg, !ws.firstSkillUsed);
           dmg          = apply5pcFirstHit(bonuses, dmg, !ws.firstActionDone);
           dmg          = Math.floor(dmg * elemWindstrideMult(bonuses.elementPassive, 1, "SKILL"));
@@ -827,12 +861,19 @@ async function runWave(
           ws.firstSkillUsed = true;
         }
 
-        if (btn.customId === "dg_ultimate") {
+        if (btn.customId === "dg_ultimate" && !(ws.isDevGuild && ws.activeUnit === "ally")) {
+          // No base ATK boost here — Wellspring's base boost is Solace-only,
+          // and this branch only ever runs for the player's own Ultimate
+          // (Solace's own Ultimate/Convergence is a separate branch, Task 5).
           abilCrit  = true;
+          const teamAtkMult = ws.isDevGuild ? getAttunementAtkMult(ws.attunement, solaceAttunementAtkCritBonus(ws.solaceSkillLevel), ws.attunementDoubleTurnsLeft > 0) : 1;
+          const wellspringAtkBonus = ws.isDevGuild ? getWellspringAtkBonus(ws.attunement) : 0;
+          const forteAtkBonus = ws.isDevGuild ? getSolaceForteAtkBonus(ws.solaceForteLevel, ws.forteEmpoweredTurnsLeft > 0) : 0;
+          const teamMult = teamAtkMult * (1 + wellspringAtkBonus) * (1 + forteAtkBonus);
           const smolderMultUlt = bonuses.activeNamedSetId === "SMOLDERING_SOVEREIGN"
             ? smolderingSovereignOnAction(ws.namedState) : 1;
           const extraElemBonusUlt = ws.glacioShieldTurnsLeft > 0 ? ws.glacioShieldElemBonus : 0;
-          let dmg   = Math.max(1, Math.floor(stats.atk * smolderMultUlt * havocAtkMult * 3.5 * stats.critDmg * (isWeak ? 1.5 : 1) * (1 + bonuses.elemDmgBonus + extraElemBonusUlt) * radiantDmgMult));
+          let dmg   = Math.max(1, Math.floor(stats.atk * teamMult * smolderMultUlt * havocAtkMult * 3.5 * stats.critDmg * (isWeak ? 1.5 : 1) * (1 + bonuses.elemDmgBonus + extraElemBonusUlt) * radiantDmgMult));
           dmg       = apply4pcUltBonus(bonuses, dmg);
           if (bonuses.activeNamedSetId === "WINDSTRIDERS_LEGACY") dmg = Math.floor(dmg * windstridersLegacyOnHit(ws.namedState));
           const ar_u = applyAbilityAttack(bonuses, dmg, true, { ...abilCtxBase, moveType: "ULT" });
@@ -996,7 +1037,11 @@ async function runWave(
           else moveLine += `\n◇ Enemy stunned (${shatterLeft} turn${shatterLeft > 1 ? "s" : ""} left).`;
         } else {
           const move    = ["strikes back", "retaliates", "lashes out"][Math.floor(Math.random() * 3)];
-          let bossDmg   = Math.max(1, Math.floor(scaled.atk * 0.9 - stats.def * 0.4));
+          const wellspringDefBonus = ws.isDevGuild ? getWellspringDefBonus(ws.attunement) : 0;
+          const forteDefBonus = ws.isDevGuild ? getSolaceForteDefBonus(ws.solaceForteLevel, ws.forteEmpoweredTurnsLeft > 0) : 0;
+          const attunementDefBonus = solaceAttunementDefBonus(ws.solaceSkillLevel);
+          const attunementDefMult = (ws.isDevGuild ? getAttunementDefMult(ws.attunement, attunementDefBonus, ws.attunementDoubleTurnsLeft > 0) : 1) * (1 + wellspringDefBonus) * (1 + forteDefBonus);
+          let bossDmg   = Math.max(1, Math.floor(scaled.atk * 0.9 - stats.def * attunementDefMult * 0.4));
           bossDmg       = roll4pcBlock(bonuses, bossDmg);
           const shield  = elemFrostShield(bonuses.elementPassive, bossDmg);
           bossDmg       = shield.dmg;
