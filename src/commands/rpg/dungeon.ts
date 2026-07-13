@@ -948,10 +948,13 @@ async function runWave(
         if (v2Regen.healHp  > 0) ws.playerHp     = Math.min(ws.playerHpMax, ws.playerHp + v2Regen.healHp);
         if (v2Regen.energy  > 0) ws.playerEnergy = Math.min(100, ws.playerEnergy + v2Regen.energy);
 
-        ws.firstActionDone = true;
+        // Milestone 3a: a swap isn't a real attack, so it shouldn't burn the
+        // 5pc "first hit" set bonus before the player's first actual hit.
+        if (btn.customId !== "dg_swap") ws.firstActionDone = true;
 
         // SPD quick-strike — once per dungeon run, if invested SPD clears the wave enemy's derived SPD
-        if (!ws.quickStrikeUsed && btn.customId !== "dg_flee" && hasQuickStrike(stats.spd, dbUser.level)) {
+        // (excludes dg_swap too — a swap deals no damage, so Quick Strike shouldn't fire on it)
+        if (!ws.quickStrikeUsed && btn.customId !== "dg_flee" && btn.customId !== "dg_swap" && hasQuickStrike(stats.spd, dbUser.level)) {
           ws.quickStrikeUsed = true;
           const bonusDmg = Math.max(1, Math.floor(stats.atk * (1 - defReduction)));
           playerDmg += bonusDmg;
@@ -1047,7 +1050,12 @@ async function runWave(
         if (ws.namedState.spectroFractureTurnsLeft > 0) ws.namedState.spectroFractureTurnsLeft--;
         if (ws.echoSkillCooldown > 0) ws.echoSkillCooldown--;
         if (ws.enemyDefShredTurnsLeft > 0) ws.enemyDefShredTurnsLeft--;
-        if (forcedCritActive) ws.nextAttackCritArmed = false;
+        // Milestone 3a: don't consume an armed crit on a swap turn — swap
+        // deals no damage, so the armed crit should survive to whenever the
+        // player actually attacks next (encounter.ts achieves this structurally
+        // via its swap branch being a separate if/else from the damage branch;
+        // here we get the same outcome with an explicit customId exclusion).
+        if (forcedCritActive && btn.customId !== "dg_swap") ws.nextAttackCritArmed = false;
 
         // Lose
         if (ws.playerHp <= 0) {
