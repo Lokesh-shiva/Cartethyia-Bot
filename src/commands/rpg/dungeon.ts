@@ -610,32 +610,55 @@ async function runWave(
       .setFooter({ text: `CARTETHYIA  ·  Dungeon  ·  8 min per turn` });
   }
 
-  function buildButtons(): ActionRowBuilder<ButtonBuilder> {
-    const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
-      new ButtonBuilder().setCustomId("dg_basic").setLabel("⚔️  Basic").setStyle(ButtonStyle.Primary),
-      new ButtonBuilder().setCustomId("dg_skill")
-        .setLabel(ws.skillCooldown === 0 ? "✦  Skill" : `✦  Skill (${ws.skillCooldown}🔄)`)
-        .setStyle(ButtonStyle.Secondary).setDisabled(ws.skillCooldown > 0),
-      new ButtonBuilder().setCustomId("dg_ultimate")
-        .setLabel("⚡  Ultimate").setStyle(ButtonStyle.Success).setDisabled(ws.playerEnergy < 100),
-    );
-    if (bonuses.echoSkill) {
-      const echoReady = ws.echoSkillCooldown === 0;
-      row.addComponents(
-        new ButtonBuilder().setCustomId("dg_echoskill")
-          .setLabel(echoReady ? `🌀  ${bonuses.echoSkill.name}` : `🌀  ${bonuses.echoSkill.name} (${ws.echoSkillCooldown}🔄)`)
-          .setStyle(ButtonStyle.Secondary).setDisabled(!echoReady),
+  function buildButtons(): ActionRowBuilder<ButtonBuilder>[] {
+    const rows: ActionRowBuilder<ButtonBuilder>[] = [];
+
+    if (ws.isDevGuild && ws.activeUnit === "ally") {
+      const modeLabel = ws.attunement.mode ? `(${ws.attunement.mode})` : "(inactive)";
+      rows.push(new ActionRowBuilder<ButtonBuilder>().addComponents(
+        new ButtonBuilder().setCustomId("dg_basic").setLabel("⚔️  Chime Strike").setStyle(ButtonStyle.Primary),
+        new ButtonBuilder().setCustomId("dg_skill").setLabel(`✦  Attunement ${modeLabel}`).setStyle(ButtonStyle.Secondary),
+        new ButtonBuilder().setCustomId("dg_ultimate").setLabel("⚡  Convergence")
+          .setStyle(ButtonStyle.Success).setDisabled(ws.concertoEnergy < 100),
+        new ButtonBuilder().setCustomId("dg_flee").setLabel("↩  Flee").setStyle(ButtonStyle.Danger),
+      ));
+    } else {
+      const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
+        new ButtonBuilder().setCustomId("dg_basic").setLabel("⚔️  Basic").setStyle(ButtonStyle.Primary),
+        new ButtonBuilder().setCustomId("dg_skill")
+          .setLabel(ws.skillCooldown === 0 ? "✦  Skill" : `✦  Skill (${ws.skillCooldown}🔄)`)
+          .setStyle(ButtonStyle.Secondary).setDisabled(ws.skillCooldown > 0),
+        new ButtonBuilder().setCustomId("dg_ultimate")
+          .setLabel("⚡  Ultimate").setStyle(ButtonStyle.Success).setDisabled(ws.playerEnergy < 100),
       );
+      if (bonuses.echoSkill) {
+        const echoReady = ws.echoSkillCooldown === 0;
+        row.addComponents(
+          new ButtonBuilder().setCustomId("dg_echoskill")
+            .setLabel(echoReady ? `🌀  ${bonuses.echoSkill.name}` : `🌀  ${bonuses.echoSkill.name} (${ws.echoSkillCooldown}🔄)`)
+            .setStyle(ButtonStyle.Secondary).setDisabled(!echoReady),
+        );
+      }
+      row.addComponents(
+        new ButtonBuilder().setCustomId("dg_flee").setLabel("↩  Flee").setStyle(ButtonStyle.Danger),
+      );
+      rows.push(row);
     }
-    row.addComponents(
-      new ButtonBuilder().setCustomId("dg_flee").setLabel("↩  Flee").setStyle(ButtonStyle.Danger),
-    );
-    return row;
+
+    if (ws.isDevGuild) {
+      rows.push(new ActionRowBuilder<ButtonBuilder>().addComponents(
+        new ButtonBuilder().setCustomId("dg_swap")
+          .setLabel(ws.activeUnit === "player" ? `🔄  Swap to ${SOLACE.name}` : `🔄  Swap to ${ws.displayName}`)
+          .setStyle(ButtonStyle.Secondary),
+      ));
+    }
+
+    return rows;
   }
 
   let battleMsg = await thread.send({
     embeds: [buildWaveEmbed(`*${enemy.name} emerged. Strike it down.*`)],
-    components: [buildButtons()],
+    components: buildButtons(),
   });
 
   return new Promise<WaveResult>((resolve) => {
@@ -989,7 +1012,7 @@ async function runWave(
         try {
           const newMsg = await thread.send({
             embeds: [buildWaveEmbed(moveLine)],
-            components: [buildButtons()],
+            components: buildButtons(),
           });
           await battleMsg.edit({ components: [] }).catch(() => {});
           battleMsg = newMsg;
