@@ -876,6 +876,12 @@ async function runWave(
           ws.firstSkillUsed = true;
         }
 
+        // Set inside Solace's Convergence branch below — Convergence resets
+        // ws.concertoEnergy to 0, so the generic per-move gain further down
+        // must skip granting anything back on the same turn, or Convergence
+        // would silently refund ~35-47% of the bar it just spent.
+        let convergenceUsedThisTurn = false;
+
         if (btn.customId === "dg_ultimate" && !(ws.isDevGuild && ws.activeUnit === "ally")) {
           // No base ATK boost here — Wellspring's base boost is Solace-only,
           // and this branch only ever runs for the player's own Ultimate
@@ -935,6 +941,7 @@ async function runWave(
           ws.playerDebuffs = cleanseDebuffs(ws.playerDebuffs, healResult.cleanseCount);
 
           ws.concertoEnergy = 0;
+          convergenceUsedThisTurn = true;
           playerDmg = 0; abilCrit = false;
 
           const healSummary = `${ws.displayName} +${actualHealPlayer} HP, ${SOLACE.name} +${actualHealAlly} HP`;
@@ -1047,7 +1054,7 @@ async function runWave(
         const CONCERTO_GAIN_BY_MOVE: Record<string, number> = {
           dg_basic: 10, dg_skill: 20, dg_echoskill: 20, dg_ultimate: 35,
         };
-        if (ws.isDevGuild) {
+        if (ws.isDevGuild && !convergenceUsedThisTurn) {
           let concertoGain = CONCERTO_GAIN_BY_MOVE[btn.customId] ?? 0;
           if (concertoGain > 0 && ws.activeUnit === "ally") concertoGain += WELLSPRING_BASE_ENERGY_BONUS;
           if (concertoGain > 0) ws.concertoEnergy = addConcertoEnergy(ws.concertoEnergy, concertoGain);

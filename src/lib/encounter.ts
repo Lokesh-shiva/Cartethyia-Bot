@@ -723,6 +723,12 @@ export async function handleEncounterFight(
         state.playerEnergy  = Math.min(100, state.playerEnergy + ENERGY_PER_TURN + elemDischargeEnergy(bonuses.elementPassive, r.isCrit));
       }
 
+      // Set inside Solace's Convergence branch below — Convergence resets
+      // concertoEnergy to 0, so the generic per-move gain further down must
+      // skip granting anything back on the same turn, or Convergence would
+      // silently refund ~35-47% of the bar it just spent.
+      let convergenceUsedThisTurn = false;
+
       if (btn.customId === "enc_ultimate" && !(isDevGuild && activeUnit === "ally")) {
         // No base ATK boost here — this branch only ever runs for the
         // player's own Ultimate (Solace's Ultimate is the else-if branch
@@ -764,6 +770,7 @@ export async function handleEncounterFight(
         playerDebuffs = cleanseDebuffs(playerDebuffs, healResult.cleanseCount);
 
         concertoEnergy = 0;
+        convergenceUsedThisTurn = true;
         playerDmg = 0; isCrit = false; moveType = "ULT"; vibFrac = 0;
 
         const healSummary = `${displayName} +${actualHealPlayer} HP, ${SOLACE.name} +${actualHealAlly} HP`;
@@ -836,7 +843,7 @@ export async function handleEncounterFight(
         enc_echoskill: 20,
         enc_ultimate: 35,
       };
-      if (isDevGuild) {
+      if (isDevGuild && !convergenceUsedThisTurn) {
         let concertoGain = CONCERTO_GAIN_BY_MOVE[btn.customId] ?? 0;
         // Wellspring's Energy Regen passive — only while Solace is the one
         // acting (it's hardcoded onto her, not a shared account-level weapon,
