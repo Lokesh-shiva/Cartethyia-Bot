@@ -809,6 +809,21 @@ async function runWave(
           ws.playerHp      = Math.min(ws.playerHpMax, ws.playerHp + ar_b.healHp);
           ws.playerHp      = applyLifesteal(bonuses.lifesteal + havocLifesteal + (ar_b.lifesteal ?? 0), playerDmg, ws.playerHp, ws.playerHpMax);
           if (bonuses.activeNamedSetId === "STORMCALLERS_OATH") stormcallersOathCheckThunderbolt(ws.namedState, ws.playerEnergy);
+
+          // Forte fills only from Solace's own Chime Strike — announce only
+          // on the turn a threshold is actually crossed, matching
+          // encounter.ts's Milestone 2c Forte-fill logic.
+          if (ws.isDevGuild && ws.activeUnit === "ally") {
+            const forteBefore = ws.solaceForte;
+            ws.solaceForte = addForteCharge(ws.solaceForte, SOLACE_FORTE_CONFIG, SOLACE_FORTE_GAIN_PER_BASIC);
+            const wasHalf = forteBefore.charge >= SOLACE_FORTE_CONFIG.phaseThresholds[0] / 2;
+            const isHalf  = ws.solaceForte.charge >= SOLACE_FORTE_CONFIG.phaseThresholds[0] / 2 && !isForteMaxed(ws.solaceForte, SOLACE_FORTE_CONFIG);
+            if (isForteMaxed(ws.solaceForte, SOLACE_FORTE_CONFIG) && !isForteMaxed(forteBefore, SOLACE_FORTE_CONFIG)) {
+              moveLine += `\n✨ Forte is **FULLY CHARGED** — next Convergence will be Empowered!`;
+            } else if (isHalf && !wasHalf) {
+              moveLine += `\n✨ Forte is **HALF CHARGED**.`;
+            }
+          }
         }
 
         if (btn.customId === "dg_skill" && ws.isDevGuild && ws.activeUnit === "ally") {
@@ -893,6 +908,48 @@ async function runWave(
             const surge = stormcallersOathOnUltimate();
             ws.stormBuffTurnsLeft = surge.turnsLeft + 1;
             ws.stormBuffCritBonus = surge.critRateBonus;
+          }
+        } else if (btn.customId === "dg_ultimate" && ws.isDevGuild && ws.activeUnit === "ally") {
+          // Solace's Ultimate spends Concerto Energy, not personal Energy —
+          // team heal (both HP pools, level-scaled %) + cleanse + doubles the
+          // active Attunement mode for 3 turns (or, if Forte is maxed,
+          // Empowered Convergence — all 3 modes at once). Ported from
+          // encounter.ts's Milestone 2a/2c/2e Convergence branch.
+          const healPct = solaceConvergenceHealPct(ws.solaceUltimateLevel);
+          const healResult = resolveIntroOutroEffect({ actions: [
+            { type: "HEAL_ALLY", value: healPct },
+            { type: "CLEANSE_ALLY", value: 1 },
+          ] }, { hp: ws.playerHp, hpMax: ws.playerHpMax });
+          const allyHealResult = resolveIntroOutroEffect({ actions: [
+            { type: "HEAL_ALLY", value: healPct },
+          ] }, { hp: ws.allyHp, hpMax: ws.allyHpMax });
+
+          const beforePlayer = ws.playerHp;
+          ws.playerHp = Math.min(ws.playerHpMax, ws.playerHp + healResult.hpDelta);
+          const actualHealPlayer = ws.playerHp - beforePlayer;
+
+          const beforeAlly = ws.allyHp;
+          ws.allyHp = Math.min(ws.allyHpMax, ws.allyHp + allyHealResult.hpDelta);
+          const actualHealAlly = ws.allyHp - beforeAlly;
+
+          ws.playerDebuffs = cleanseDebuffs(ws.playerDebuffs, healResult.cleanseCount);
+
+          ws.concertoEnergy = 0;
+          playerDmg = 0; abilCrit = false;
+
+          const healSummary = `${ws.displayName} +${actualHealPlayer} HP, ${SOLACE.name} +${actualHealAlly} HP`;
+
+          if (isForteMaxed(ws.solaceForte, SOLACE_FORTE_CONFIG)) {
+            ws.forteEmpoweredTurnsLeft = SOLACE_FORTE_EMPOWERED_TURNS;
+            ws.attunementDoubleTurnsLeft = 0;
+            ws.solaceForte = resetForte();
+            moveLine = `⚡ **Empowered Convergence!** Team healed (${healSummary}), debuffs cleansed, ` +
+              `**all 3 Attunement Modes empowered for ${SOLACE_FORTE_EMPOWERED_TURNS} turns!**`;
+          } else {
+            ws.attunementDoubleTurnsLeft = SOLACE_ULTIMATE_DOUBLE_TURNS;
+            ws.forteEmpoweredTurnsLeft = 0;
+            moveLine = `⚡ **Convergence!** Team healed (${healSummary}), debuffs cleansed, ` +
+              `**${ws.attunement.mode ?? "no"} mode doubled for ${SOLACE_ULTIMATE_DOUBLE_TURNS} turns!**`;
           }
         }
 
@@ -984,6 +1041,18 @@ async function runWave(
           }
         }
 
+        // Concerto Energy builds from combat actions, never from swapping —
+        // scaled by move weight, ported from encounter.ts's Milestone 1/2b
+        // CONCERTO_GAIN_BY_MOVE logic.
+        const CONCERTO_GAIN_BY_MOVE: Record<string, number> = {
+          dg_basic: 10, dg_skill: 20, dg_echoskill: 20, dg_ultimate: 35,
+        };
+        if (ws.isDevGuild) {
+          let concertoGain = CONCERTO_GAIN_BY_MOVE[btn.customId] ?? 0;
+          if (concertoGain > 0 && ws.activeUnit === "ally") concertoGain += WELLSPRING_BASE_ENERGY_BONUS;
+          if (concertoGain > 0) ws.concertoEnergy = addConcertoEnergy(ws.concertoEnergy, concertoGain);
+        }
+
         // V2 turn-start regen (applied each enemy counter phase = start of next player turn)
         const v2Regen = abilityV2TurnRegen(bonuses, ws.playerHpMax);
         if (v2Regen.healHp  > 0) ws.playerHp     = Math.min(ws.playerHpMax, ws.playerHp + v2Regen.healHp);
@@ -1045,7 +1114,15 @@ async function runWave(
           bossDmg       = roll4pcBlock(bonuses, bossDmg);
           const shield  = elemFrostShield(bonuses.elementPassive, bossDmg);
           bossDmg       = shield.dmg;
-          ws.playerHp   = Math.max(0, ws.playerHp - bossDmg);
+          // Milestone 3a: route damage to whichever unit is actually active,
+          // fixing the same bug class Milestone 1 fixed in encounter.ts (damage
+          // must not always hit the player regardless of who's benched).
+          const allyIsActive = ws.isDevGuild && ws.activeUnit === "ally";
+          if (allyIsActive) {
+            ws.allyHp = Math.max(0, ws.allyHp - bossDmg);
+          } else {
+            ws.playerHp = Math.max(0, ws.playerHp - bossDmg);
+          }
           if (bonuses.activeNamedSetId === "SMOLDERING_SOVEREIGN") smolderingSovereignOnDamageTaken(ws.namedState);
           if (bonuses.activeNamedSetId === "WINDSTRIDERS_LEGACY") windstridersLegacyOnBigHitTaken(ws.namedState, bossDmg, ws.playerHpMax);
           if (bonuses.activeNamedSetId === "VOIDBORN_REMNANT") {
@@ -1095,12 +1172,22 @@ async function runWave(
         if (ws.namedState.spectroFractureTurnsLeft > 0) ws.namedState.spectroFractureTurnsLeft--;
         if (ws.echoSkillCooldown > 0) ws.echoSkillCooldown--;
         if (ws.enemyDefShredTurnsLeft > 0) ws.enemyDefShredTurnsLeft--;
+        if (ws.isDevGuild && ws.attunementDoubleTurnsLeft > 0) ws.attunementDoubleTurnsLeft--;
+        if (ws.isDevGuild && ws.forteEmpoweredTurnsLeft > 0) ws.forteEmpoweredTurnsLeft--;
         // Milestone 3a: don't consume an armed crit on a swap turn — swap
         // deals no damage, so the armed crit should survive to whenever the
         // player actually attacks next (encounter.ts achieves this structurally
         // via its swap branch being a separate if/else from the damage branch;
         // here we get the same outcome with an explicit customId exclusion).
         if (forcedCritActive && btn.customId !== "dg_swap") ws.nextAttackCritArmed = false;
+
+        // Ally KO'd — auto-swap back to the player rather than ending the run
+        // over a benched unit's HP (matches encounter.ts's Milestone 1 fix).
+        if (ws.isDevGuild && ws.activeUnit === "ally" && ws.allyHp <= 0) {
+          ws.allyHp = 0;
+          ws.activeUnit = "player";
+          moveLine += `\n◇ **${SOLACE.name} was knocked out** — swapped back to ${ws.displayName}.`;
+        }
 
         // Lose
         if (ws.playerHp <= 0) {
