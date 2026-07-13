@@ -541,6 +541,10 @@ interface WaveState {
   solaceUltimateLevel: number;
   solaceIntroLevel: number;
   solaceForteLevel: number;
+  // Staged ahead of Tasks 3/5 (swap handler, Solace's Convergence) — those will
+  // read ws.displayName inside runWave's turn-handling logic for swap/heal
+  // messages, mirroring how encounter.ts reads displayName from function
+  // scope. Not consumed yet; not dead weight.
   displayName: string;
 }
 
