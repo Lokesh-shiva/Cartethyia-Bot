@@ -679,66 +679,6 @@ async function runWave(
           return;
         }
 
-        // Milestone 3a: swap — always consumes the turn, but the Outro
-        // (outgoing) + Intro (incoming) combo only fires if Concerto Energy
-        // is full at the moment of swap. Ported from encounter.ts's Milestone
-        // 1/2a swap handler — same logic, same field names via `ws.` instead
-        // of `state.`.
-        if (btn.customId === "dg_swap" && ws.isDevGuild) {
-          const outgoingIsPlayer = ws.activeUnit === "player";
-          const comboReady = ws.concertoEnergy >= 100;
-          let swapMoveLine: string;
-
-          if (comboReady) {
-            const incomingTarget: AllyActionTarget = outgoingIsPlayer
-              ? { hp: ws.allyHp, hpMax: ws.allyHpMax }
-              : { hp: ws.playerHp, hpMax: ws.playerHpMax };
-
-            const outroEffect = outgoingIsPlayer ? PLAYER_SELF_OUTRO : SOLACE.outro;
-            const introEffect: IntroOutroEffect = outgoingIsPlayer ? solaceIntroEffect(ws.solaceIntroLevel) : PLAYER_SELF_INTRO;
-            const outroResult = resolveIntroOutroEffect(outroEffect, incomingTarget);
-            const introResult = resolveIntroOutroEffect(introEffect, incomingTarget);
-
-            if (!outgoingIsPlayer) ws.nextAttackCritArmed = true;
-
-            const totalBonus = outroResult.hpDelta + introResult.hpDelta + outroResult.shieldDelta + introResult.shieldDelta;
-
-            let actualGain: number;
-            if (outgoingIsPlayer) {
-              const before = ws.allyHp;
-              ws.allyHp = Math.min(ws.allyHpMax, ws.allyHp + totalBonus);
-              actualGain = ws.allyHp - before;
-            } else {
-              const before = ws.playerHp;
-              ws.playerHp = Math.min(ws.playerHpMax, ws.playerHp + totalBonus);
-              actualGain = ws.playerHp - before;
-            }
-
-            swapMoveLine = actualGain > 0
-              ? `🔄 Swapped to **${outgoingIsPlayer ? SOLACE.name : ws.displayName}** — Outro+Intro combo! +${actualGain} HP.`
-              : `🔄 Swapped to **${outgoingIsPlayer ? SOLACE.name : ws.displayName}** — Outro+Intro combo! (already at full HP, no heal needed)`;
-            ws.concertoEnergy = addConcertoEnergy(0, 20); // headstart, matches CONCERTO_INTRO_HEADSTART in encounter.ts
-          } else {
-            swapMoveLine = `🔄 Swapped to **${outgoingIsPlayer ? SOLACE.name : ws.displayName}** — Concerto Energy not full, no combo triggered.`;
-          }
-
-          ws.activeUnit = outgoingIsPlayer ? "ally" : "player";
-
-          try {
-            const newMsg = await thread.send({
-              embeds: [buildWaveEmbed(swapMoveLine)],
-              components: buildButtons(),
-            });
-            await battleMsg.edit({ components: [] }).catch(() => {});
-            battleMsg = newMsg;
-            runTurn();
-          } catch (err) {
-            console.error("[Dungeon] wave message failed:", err);
-            resolve({ ...ws, survived: false });
-          }
-          return;
-        }
-
         let radiantDmgMult = 1.0;
         if (bonuses.activeNamedSetId === "RADIANT_CONVERGENCE") {
           const heal = radiantConvergenceOnTurnHeal(ws.namedState, ws.playerHpMax);
@@ -766,6 +706,55 @@ async function runWave(
         let playerDmg = 0;
         let moveLine  = "";
         let abilCrit  = false;
+
+        // Milestone 3a: swap deals 0 damage and just sets moveLine, then falls
+        // through to the shared turn-resolution tail below — same as every
+        // other action — so the enemy still gets to act and all per-turn
+        // state (cooldowns, buff durations, etc.) still ticks down, exactly
+        // like /encounter's swap handler. The Outro (outgoing) + Intro
+        // (incoming) combo only fires if Concerto Energy is full at the
+        // moment of swap. Ported from encounter.ts's Milestone 1/2a swap
+        // handler — same logic, same field names via `ws.` instead of `state.`.
+        if (btn.customId === "dg_swap" && ws.isDevGuild) {
+          const outgoingIsPlayer = ws.activeUnit === "player";
+          const comboReady = ws.concertoEnergy >= 100;
+
+          if (comboReady) {
+            const incomingTarget: AllyActionTarget = outgoingIsPlayer
+              ? { hp: ws.allyHp, hpMax: ws.allyHpMax }
+              : { hp: ws.playerHp, hpMax: ws.playerHpMax };
+
+            const outroEffect = outgoingIsPlayer ? PLAYER_SELF_OUTRO : SOLACE.outro;
+            const introEffect: IntroOutroEffect = outgoingIsPlayer ? solaceIntroEffect(ws.solaceIntroLevel) : PLAYER_SELF_INTRO;
+            const outroResult = resolveIntroOutroEffect(outroEffect, incomingTarget);
+            const introResult = resolveIntroOutroEffect(introEffect, incomingTarget);
+
+            if (!outgoingIsPlayer) ws.nextAttackCritArmed = true;
+
+            const totalBonus = outroResult.hpDelta + introResult.hpDelta + outroResult.shieldDelta + introResult.shieldDelta;
+
+            let actualGain: number;
+            if (outgoingIsPlayer) {
+              const before = ws.allyHp;
+              ws.allyHp = Math.min(ws.allyHpMax, ws.allyHp + totalBonus);
+              actualGain = ws.allyHp - before;
+            } else {
+              const before = ws.playerHp;
+              ws.playerHp = Math.min(ws.playerHpMax, ws.playerHp + totalBonus);
+              actualGain = ws.playerHp - before;
+            }
+
+            moveLine = actualGain > 0
+              ? `🔄 Swapped to **${outgoingIsPlayer ? SOLACE.name : ws.displayName}** — Outro+Intro combo! +${actualGain} HP.`
+              : `🔄 Swapped to **${outgoingIsPlayer ? SOLACE.name : ws.displayName}** — Outro+Intro combo! (already at full HP, no heal needed)`;
+            ws.concertoEnergy = addConcertoEnergy(0, 20); // headstart, matches CONCERTO_INTRO_HEADSTART in encounter.ts
+          } else {
+            moveLine = `🔄 Swapped to **${outgoingIsPlayer ? SOLACE.name : ws.displayName}** — Concerto Energy not full, no combo triggered.`;
+          }
+
+          ws.activeUnit = outgoingIsPlayer ? "ally" : "player";
+          playerDmg = 0;
+        }
 
         if (btn.customId === "dg_basic") {
           const windExplosion = bonuses.activeNamedSetId === "WINDSTRIDERS_LEGACY"
