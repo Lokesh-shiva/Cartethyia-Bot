@@ -582,12 +582,25 @@ async function runWave(
   let shatterLeft = 0;
   const vibMult   = get5pcVibDrainMult(bonuses);
 
+  function teamStatusLine(): string {
+    if (!ws.isDevGuild) return "";
+    const benchedName = ws.activeUnit === "player" ? SOLACE.name : ws.displayName;
+    const benchedHp   = ws.activeUnit === "player" ? ws.allyHp : ws.playerHp;
+    const benchedMax  = ws.activeUnit === "player" ? ws.allyHpMax : ws.playerHpMax;
+    const debuffLine  = ws.playerDebuffs.length > 0
+      ? `  ·  ${ws.playerDebuffs.map(d => `${d.type} (${d.turnsLeft})`).join(", ")}`
+      : "";
+    return `\n\n🔄 Benched: **${benchedName}** — ${benchedHp}/${benchedMax} HP  ·  ` +
+           `Concerto Energy: **${ws.concertoEnergy}/100**${debuffLine}`;
+  }
+
   function buildWaveEmbed(lastAction: string): EmbedBuilder {
     const ePct = Math.round((enemyHp / scaled.hp) * 100);
     const pPct = Math.round((ws.playerHp / ws.playerHpMax) * 100);
     return new EmbedBuilder()
       .setColor(dungeon.color)
       .setTitle(`${dungeon.emoji}  Wave ${waveIdx + 1} / ${dungeon.waves.length} — ${enemy.name}`)
+      .setDescription(teamStatusLine() || null)
       .addFields(
         {
           name:   `${elementEmoji(enemy.element)}  ${enemy.name}  (${enemy.cost}-cost)`,
