@@ -42,6 +42,27 @@ import {
 } from "../../lib/namedSets";
 import { echoSkillBaseMult, applyEchoSkill } from "../../lib/echoSkills";
 import {
+  SOLACE, SOLACE_ULTIMATE_DOUBLE_TURNS, PLAYER_SELF_INTRO, PLAYER_SELF_OUTRO,
+  SOLACE_FORTE_CONFIG, SOLACE_FORTE_GAIN_PER_BASIC, SOLACE_FORTE_EMPOWERED_TURNS,
+  getSolaceForteAtkBonus, getSolaceForteCritRateBonus, getSolaceForteDefBonus,
+  solaceIntroEffect, solaceBasicDamageMult, solaceAttunementAtkCritBonus,
+  solaceAttunementDefBonus, solaceConvergenceHealPct,
+} from "../../lib/solace";
+import { resolveIntroOutroEffect, IntroOutroEffect } from "../../lib/introOutro";
+import {
+  AttunementState, cycleAttunementMode,
+  getAttunementAtkMult, getAttunementCritRateBonus, getAttunementDefMult,
+} from "../../lib/attunement";
+import {
+  WELLSPRING_BASE_ATK_MULT, WELLSPRING_BASE_ENERGY_BONUS,
+  getWellspringAtkBonus, getWellspringCritRateBonus, getWellspringDefBonus,
+} from "../../lib/wellspring";
+import { ForteState, addForteCharge, isForteMaxed, resetForte } from "../../lib/forte";
+import { AllyActionTarget } from "../../lib/allyActions";
+import { addConcertoEnergy } from "../../lib/concertoEnergy";
+import { DebuffState, applyDebuff, tickDebuffs, getWeakenedMult, cleanseDebuffs } from "../../lib/debuffs";
+import { getOrCreateCharacterProgress } from "../../lib/characterProgress";
+import {
   rollRarity, rollMainStat, rollSubstats, rollSubstatValue,
   calcMainStatValue, substatCount, RARITY_STARS,
   ELEMENT_EMOJI, ELEMENT_COLORS, scaledFieldBossRarityWeights,
@@ -86,43 +107,77 @@ function fieldToBoss(fb: FieldBoss): Boss {
 async function sendBattleCard(
   thread: TextChannel | ThreadChannel,
   state: BattleCardState,
-  buttons: ActionRowBuilder<ButtonBuilder>,
+  buttons: ActionRowBuilder<ButtonBuilder>[],
+  teamStatus?: string,
 ) {
   const buffer = await generateBattleCard(state);
   const attach = new AttachmentBuilder(buffer, { name: "battle.webp" });
   const embed  = new EmbedBuilder()
     .setColor(ELEMENT_HEX[state.playerElement] ?? 0x6366F1)
-    .setImage("attachment://battle.webp");
-  return thread.send({ embeds: [embed], files: [attach], components: [buttons] });
+    .setImage("attachment://battle.webp")
+    .setDescription(teamStatus || null);
+  return thread.send({ embeds: [embed], files: [attach], components: buttons });
+}
+
+interface TeamButtonContext {
+  isDevGuild: boolean;
+  activeUnit: "player" | "ally";
+  displayName: string;
+  attunement: AttunementState;
+  concertoEnergy: number;
 }
 
 function buildButtons(
   state: BattleCardState,
   echoSkill?: { name: string; cooldown: number } | null,
-): ActionRowBuilder<ButtonBuilder> {
-  const skillReady = state.skillCooldown === 0;
-  const ultReady   = state.playerEnergy >= 100;
-  const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
-    new ButtonBuilder().setCustomId("fb_basic").setLabel("⚔️  Basic Attack").setStyle(ButtonStyle.Primary),
-    new ButtonBuilder()
-      .setCustomId("fb_skill")
-      .setLabel(skillReady ? "✦  Resonance Skill" : `✦  Skill (${state.skillCooldown}🔄)`)
-      .setStyle(ButtonStyle.Secondary).setDisabled(!skillReady),
-    new ButtonBuilder().setCustomId("fb_ultimate").setLabel("⚡  Ultimate").setStyle(ButtonStyle.Success).setDisabled(!ultReady),
-  );
-  if (echoSkill) {
-    const echoReady = echoSkill.cooldown === 0;
-    row.addComponents(
+  team?: TeamButtonContext | null,
+): ActionRowBuilder<ButtonBuilder>[] {
+  const rows: ActionRowBuilder<ButtonBuilder>[] = [];
+
+  if (team?.isDevGuild && team.activeUnit === "ally") {
+    const modeLabel = team.attunement.mode ? `(${team.attunement.mode})` : "(inactive)";
+    rows.push(new ActionRowBuilder<ButtonBuilder>().addComponents(
+      new ButtonBuilder().setCustomId("fb_basic").setLabel("⚔️  Chime Strike").setStyle(ButtonStyle.Primary),
+      new ButtonBuilder().setCustomId("fb_skill").setLabel(`✦  Attunement ${modeLabel}`).setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder().setCustomId("fb_ultimate").setLabel("⚡  Convergence")
+        .setStyle(ButtonStyle.Success).setDisabled(team.concertoEnergy < 100),
+      new ButtonBuilder().setCustomId("fb_flee").setLabel("🚪  Flee").setStyle(ButtonStyle.Danger),
+    ));
+  } else {
+    const skillReady = state.skillCooldown === 0;
+    const ultReady   = state.playerEnergy >= 100;
+    const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
+      new ButtonBuilder().setCustomId("fb_basic").setLabel("⚔️  Basic Attack").setStyle(ButtonStyle.Primary),
       new ButtonBuilder()
-        .setCustomId("fb_echoskill")
-        .setLabel(echoReady ? `🌀  ${echoSkill.name}` : `🌀  ${echoSkill.name} (${echoSkill.cooldown}🔄)`)
-        .setStyle(ButtonStyle.Secondary).setDisabled(!echoReady),
+        .setCustomId("fb_skill")
+        .setLabel(skillReady ? "✦  Resonance Skill" : `✦  Skill (${state.skillCooldown}🔄)`)
+        .setStyle(ButtonStyle.Secondary).setDisabled(!skillReady),
+      new ButtonBuilder().setCustomId("fb_ultimate").setLabel("⚡  Ultimate").setStyle(ButtonStyle.Success).setDisabled(!ultReady),
     );
+    if (echoSkill) {
+      const echoReady = echoSkill.cooldown === 0;
+      row.addComponents(
+        new ButtonBuilder()
+          .setCustomId("fb_echoskill")
+          .setLabel(echoReady ? `🌀  ${echoSkill.name}` : `🌀  ${echoSkill.name} (${echoSkill.cooldown}🔄)`)
+          .setStyle(ButtonStyle.Secondary).setDisabled(!echoReady),
+      );
+    }
+    row.addComponents(
+      new ButtonBuilder().setCustomId("fb_flee").setLabel("🚪  Flee").setStyle(ButtonStyle.Danger),
+    );
+    rows.push(row);
   }
-  row.addComponents(
-    new ButtonBuilder().setCustomId("fb_flee").setLabel("🚪  Flee").setStyle(ButtonStyle.Danger),
-  );
-  return row;
+
+  if (team?.isDevGuild) {
+    rows.push(new ActionRowBuilder<ButtonBuilder>().addComponents(
+      new ButtonBuilder().setCustomId("fb_swap")
+        .setLabel(team.activeUnit === "player" ? `🔄  Swap to ${SOLACE.name}` : `🔄  Swap to ${team.displayName}`)
+        .setStyle(ButtonStyle.Secondary),
+    ));
+  }
+
+  return rows;
 }
 
 const command: Command = {
@@ -283,6 +338,40 @@ const command: Command = {
       let havocFrenzyLifesteal   = 0;
       let havocFrenzyDefIgnore   = 0;
 
+      // ── Milestone 3c-ii: team state (dev guild only) ──────────────────────────
+      const isDevGuild = interaction.guildId === process.env.GUILD_ID;
+      const solaceProgress = isDevGuild ? await getOrCreateCharacterProgress(interaction.user.id, "solace") : null;
+      const solaceBasicLevel    = solaceProgress?.basicLevel    ?? 1;
+      const solaceSkillLevel    = solaceProgress?.skillLevel    ?? 1;
+      const solaceUltimateLevel = solaceProgress?.ultimateLevel ?? 1;
+      const solaceIntroLevel    = solaceProgress?.introLevel    ?? 1;
+      const solaceForteLevel    = solaceProgress?.forteLevel    ?? 1;
+      let activeUnit: "player" | "ally" = "player";
+      let allyHp    = SOLACE.hpMax;
+      const allyHpMax = SOLACE.hpMax;
+      let concertoEnergy: number = 0;
+      let playerDebuffs: DebuffState = [];
+      let attunement: AttunementState = { mode: null };
+      let attunementDoubleTurnsLeft = 0;
+      let solaceForte: ForteState = { phase: 0, charge: 0 };
+      let forteEmpoweredTurnsLeft = 0;
+
+      function teamStatusLine(): string {
+        if (!isDevGuild) return "";
+        const benchedName = activeUnit === "player" ? SOLACE.name : displayName;
+        const benchedHp   = activeUnit === "player" ? allyHp : state.playerHp;
+        const benchedMax  = activeUnit === "player" ? allyHpMax : state.playerHpMax;
+        const debuffLine  = playerDebuffs.length > 0
+          ? `  ·  ${playerDebuffs.map(d => `${d.type} (${d.turnsLeft})`).join(", ")}`
+          : "";
+        return `\n\n🔄 Benched: **${benchedName}** — ${benchedHp}/${benchedMax} HP  ·  ` +
+               `Concerto Energy: **${concertoEnergy}/100**${debuffLine}`;
+      }
+
+      function teamButtonContext(): TeamButtonContext {
+        return { isDevGuild, activeUnit, displayName, attunement, concertoEnergy };
+      }
+
       const state: BattleCardState = {
         boss,
         bossHpNow:     scaled.hp,
@@ -368,9 +457,9 @@ const command: Command = {
 
       // Battle loop
       const runTurn = async () => {
-        const buttons = buildButtons(state, bonuses.echoSkill ? { name: bonuses.echoSkill.name, cooldown: echoSkillCooldown } : null);
+        const buttons = buildButtons(state, bonuses.echoSkill ? { name: bonuses.echoSkill.name, cooldown: echoSkillCooldown } : null, teamButtonContext());
         if (battleMsg) await battleMsg.edit({ components: [] }).catch(() => {});
-        battleMsg = await sendBattleCard(thread as any, state, buttons);
+        battleMsg = await sendBattleCard(thread as any, state, buttons, teamStatusLine());
 
         const collector = battleMsg.createMessageComponentCollector({
           componentType: ComponentType.Button,
@@ -642,7 +731,7 @@ const command: Command = {
           state.lastMove = moveName;
 
           if (state.bossHpNow <= 0) {
-            await sendBattleCard(thread as any, { ...state, lastMove: `${moveName} — **DEFEATED!**` }, buildButtons(state, bonuses.echoSkill ? { name: bonuses.echoSkill.name, cooldown: echoSkillCooldown } : null));
+            await sendBattleCard(thread as any, { ...state, lastMove: `${moveName} — **DEFEATED!**` }, buildButtons(state, bonuses.echoSkill ? { name: bonuses.echoSkill.name, cooldown: echoSkillCooldown } : null, teamButtonContext()), teamStatusLine());
             collector.stop();
             await cleanup(true);
             return;
@@ -771,7 +860,7 @@ const command: Command = {
 
           if (state.playerHp <= 0) {
             state.playerHp = 0;
-            await sendBattleCard(thread as any, { ...state, lastMove: state.lastMove + " — **YOU FELL.**" }, buildButtons(state, bonuses.echoSkill ? { name: bonuses.echoSkill.name, cooldown: echoSkillCooldown } : null));
+            await sendBattleCard(thread as any, { ...state, lastMove: state.lastMove + " — **YOU FELL.**" }, buildButtons(state, bonuses.echoSkill ? { name: bonuses.echoSkill.name, cooldown: echoSkillCooldown } : null, teamButtonContext()), teamStatusLine());
             await thread.send({
               embeds: [new EmbedBuilder().setColor(0x334155)
                 .setDescription(`◈ Defeated by **${fb.name}**. Use **/field-boss** to try again.`)
