@@ -409,6 +409,51 @@ const command: Command = {
         };
         let abilCrit = false;
 
+        // Milestone 3c: swap — always consumes the turn, falls through to the
+        // shared tail below (Win-check/Boss-turn/decrements/Lose-check/next
+        // turn), same as every other action. Ported from boss.ts's Milestone
+        // 3b swap handler (itself ported from encounter.ts's Milestone 1/2a).
+        if (btn.customId === "battle_swap" && isDevGuild) {
+          const outgoingIsPlayer = activeUnit === "player";
+          const comboReady = concertoEnergy >= 100;
+
+          if (comboReady) {
+            const incomingTarget: AllyActionTarget = outgoingIsPlayer
+              ? { hp: allyHp, hpMax: allyHpMax }
+              : { hp: state.playerHp, hpMax: state.playerHpMax };
+
+            const outroEffect = outgoingIsPlayer ? PLAYER_SELF_OUTRO : SOLACE.outro;
+            const introEffect: IntroOutroEffect = outgoingIsPlayer ? solaceIntroEffect(solaceIntroLevel) : PLAYER_SELF_INTRO;
+            const outroResult = resolveIntroOutroEffect(outroEffect, incomingTarget);
+            const introResult = resolveIntroOutroEffect(introEffect, incomingTarget);
+
+            if (!outgoingIsPlayer) nextAttackCritArmed = true;
+
+            const totalBonus = outroResult.hpDelta + introResult.hpDelta + outroResult.shieldDelta + introResult.shieldDelta;
+
+            let actualGain: number;
+            if (outgoingIsPlayer) {
+              const before = allyHp;
+              allyHp = Math.min(allyHpMax, allyHp + totalBonus);
+              actualGain = allyHp - before;
+            } else {
+              const before = state.playerHp;
+              state.playerHp = Math.min(state.playerHpMax, state.playerHp + totalBonus);
+              actualGain = state.playerHp - before;
+            }
+
+            moveName = actualGain > 0
+              ? `🔄 Swapped to **${outgoingIsPlayer ? SOLACE.name : displayName}** — Outro+Intro combo! +${actualGain} HP.`
+              : `🔄 Swapped to **${outgoingIsPlayer ? SOLACE.name : displayName}** — Outro+Intro combo! (already at full HP, no heal needed)`;
+            concertoEnergy = addConcertoEnergy(0, 20); // headstart, matches CONCERTO_INTRO_HEADSTART in encounter.ts
+          } else {
+            moveName = `🔄 Swapped to **${outgoingIsPlayer ? SOLACE.name : displayName}** — Concerto Energy not full, no combo triggered.`;
+          }
+
+          activeUnit = outgoingIsPlayer ? "ally" : "player";
+          playerDmg = 0;
+        }
+
         if (btn.customId === "battle_basic") {
           const windExplosion = bonuses.activeNamedSetId === "WINDSTRIDERS_LEGACY"
             ? windstridersLegacyCheckExplosion(namedState) : { proc: false, guaranteedCrit: false, bonusMult: 1.0 };
@@ -608,14 +653,14 @@ const command: Command = {
         if (v2Regen.energy > 0) state.playerEnergy = Math.min(100, state.playerEnergy + v2Regen.energy);
 
         // SPD quick-strike — once per fight, if invested SPD clears the boss's derived SPD
-        if (!quickStrikeUsed && btn.customId !== "battle_flee" && hasQuickStrike(stats.spd, WORLD_LEVEL_CAPS[boss.worldLevel] ?? 20)) {
+        if (!quickStrikeUsed && btn.customId !== "battle_flee" && btn.customId !== "battle_swap" && hasQuickStrike(stats.spd, WORLD_LEVEL_CAPS[boss.worldLevel] ?? 20)) {
           quickStrikeUsed = true;
           const bonusDmg = Math.max(1, Math.floor(stats.atk * (1 - defReduction)));
           playerDmg += bonusDmg;
           moveName  += `\n⚡ **Quick Strike** — your speed caught them off guard! +${bonusDmg} bonus DMG!`;
         }
 
-        firstActionDone = true;
+        if (btn.customId !== "battle_swap") firstActionDone = true;
         state.bossHpNow = Math.max(0, state.bossHpNow - playerDmg);
 
         // Enrage check — triggers once when boss HP drops to 40%
@@ -797,7 +842,7 @@ const command: Command = {
         if (namedState.spectroFractureTurnsLeft > 0) namedState.spectroFractureTurnsLeft--;
         if (echoSkillCooldown > 0) echoSkillCooldown--;
         if (enemyDefShredTurnsLeft > 0) enemyDefShredTurnsLeft--;
-        if (forcedCritActive) nextAttackCritArmed = false;
+        if (forcedCritActive && btn.customId !== "battle_swap") nextAttackCritArmed = false;
 
         // ── Second Wind — survive a lethal blow once ──────────────────────────
         if (state.playerHp <= 0 && compositeHasSecondWind(bonuses.abilityEffects) && !secondWindUsed) {
