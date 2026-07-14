@@ -586,6 +586,20 @@ const command: Command = {
             state.playerHp     = Math.min(state.playerHpMax, state.playerHp + ar_b.healHp);
             state.playerHp     = applyLifesteal(bonuses.lifesteal + havocLifesteal + (ar_b.lifesteal ?? 0), playerDmg, state.playerHp, state.playerHpMax);
             if (bonuses.activeNamedSetId === "STORMCALLERS_OATH") stormcallersOathCheckThunderbolt(namedState, state.playerEnergy);
+
+            // Forte fills only from Solace's own Chime Strike — announce only
+            // on the turn a threshold is actually crossed.
+            if (isDevGuild && activeUnit === "ally") {
+              const forteBefore = solaceForte;
+              solaceForte = addForteCharge(solaceForte, SOLACE_FORTE_CONFIG, SOLACE_FORTE_GAIN_PER_BASIC);
+              const wasHalf = forteBefore.charge >= SOLACE_FORTE_CONFIG.phaseThresholds[0] / 2;
+              const isHalf  = solaceForte.charge >= SOLACE_FORTE_CONFIG.phaseThresholds[0] / 2 && !isForteMaxed(solaceForte, SOLACE_FORTE_CONFIG);
+              if (isForteMaxed(solaceForte, SOLACE_FORTE_CONFIG) && !isForteMaxed(forteBefore, SOLACE_FORTE_CONFIG)) {
+                moveName += `\n✨ Forte is **FULLY CHARGED** — next Convergence will be Empowered!`;
+              } else if (isHalf && !wasHalf) {
+                moveName += `\n✨ Forte is **HALF CHARGED**.`;
+              }
+            }
           }
 
           if (btn.customId === "boss_skill" && isDevGuild && activeUnit === "ally") {
@@ -636,6 +650,14 @@ const command: Command = {
             firstSkillUsed = true;
           }
 
+          // Set inside Solace's Convergence branch below — Convergence resets
+          // concertoEnergy to 0, so the generic per-move gain further down
+          // must skip granting anything back on the same turn, or Convergence
+          // would silently refund 35-47% of the bar it just spent (a bug
+          // caught and fixed in Milestone 3a's port — built in from the start
+          // here instead).
+          let convergenceUsedThisTurn = false;
+
           if (btn.customId === "boss_ultimate" && !(isDevGuild && activeUnit === "ally")) {
             abilCrit     = true;
             const teamAtkMult = isDevGuild ? getAttunementAtkMult(attunement, solaceAttunementAtkCritBonus(solaceSkillLevel), attunementDoubleTurnsLeft > 0) : 1;
@@ -667,6 +689,45 @@ const command: Command = {
               state.playerEnergy = Math.min(100, state.playerEnergy + surge.bonusEnergy);
               stormBuffTurnsLeft = surge.turnsLeft + 1; // +1 compensates for the same-round decrement that fires immediately after this triggers
               stormBuffCritBonus = surge.critRateBonus;
+            }
+          } else if (btn.customId === "boss_ultimate" && isDevGuild && activeUnit === "ally") {
+            // Solace's Ultimate spends Concerto Energy, not personal Energy.
+            const healPct = solaceConvergenceHealPct(solaceUltimateLevel);
+            const healResult = resolveIntroOutroEffect({ actions: [
+              { type: "HEAL_ALLY", value: healPct },
+              { type: "CLEANSE_ALLY", value: 1 },
+            ] }, { hp: state.playerHp, hpMax: state.playerHpMax });
+            const allyHealResult = resolveIntroOutroEffect({ actions: [
+              { type: "HEAL_ALLY", value: healPct },
+            ] }, { hp: allyHp, hpMax: allyHpMax });
+
+            const beforePlayer = state.playerHp;
+            state.playerHp = Math.min(state.playerHpMax, state.playerHp + healResult.hpDelta);
+            const actualHealPlayer = state.playerHp - beforePlayer;
+
+            const beforeAlly = allyHp;
+            allyHp = Math.min(allyHpMax, allyHp + allyHealResult.hpDelta);
+            const actualHealAlly = allyHp - beforeAlly;
+
+            playerDebuffs = cleanseDebuffs(playerDebuffs, healResult.cleanseCount);
+
+            concertoEnergy = 0;
+            convergenceUsedThisTurn = true;
+            playerDmg = 0; abilCrit = false;
+
+            const healSummary = `${displayName} +${actualHealPlayer} HP, ${SOLACE.name} +${actualHealAlly} HP`;
+
+            if (isForteMaxed(solaceForte, SOLACE_FORTE_CONFIG)) {
+              forteEmpoweredTurnsLeft = SOLACE_FORTE_EMPOWERED_TURNS;
+              attunementDoubleTurnsLeft = 0;
+              solaceForte = resetForte();
+              moveName = `⚡ **Empowered Convergence!** Team healed (${healSummary}), debuffs cleansed, ` +
+                `**all 3 Attunement Modes empowered for ${SOLACE_FORTE_EMPOWERED_TURNS} turns!**`;
+            } else {
+              attunementDoubleTurnsLeft = SOLACE_ULTIMATE_DOUBLE_TURNS;
+              forteEmpoweredTurnsLeft = 0;
+              moveName = `⚡ **Convergence!** Team healed (${healSummary}), debuffs cleansed, ` +
+                `**${attunement.mode ?? "no"} mode doubled for ${SOLACE_ULTIMATE_DOUBLE_TURNS} turns!**`;
             }
           }
 
@@ -759,13 +820,24 @@ const command: Command = {
             }
           }
 
+          // Concerto Energy builds from combat actions, never from swapping.
+          const CONCERTO_GAIN_BY_MOVE: Record<string, number> = {
+            boss_basic: 10, boss_skill: 20, boss_echoskill: 20, boss_ultimate: 35,
+          };
+          if (isDevGuild && !convergenceUsedThisTurn) {
+            let concertoGain = CONCERTO_GAIN_BY_MOVE[btn.customId] ?? 0;
+            if (concertoGain > 0 && activeUnit === "ally") concertoGain += WELLSPRING_BASE_ENERGY_BONUS;
+            if (concertoGain > 0) concertoEnergy = addConcertoEnergy(concertoEnergy, concertoGain);
+          }
+
           // V2 turn-start regen (fires each turn)
           const v2Regen = abilityV2TurnRegen(bonuses, state.playerHpMax);
           if (v2Regen.healHp > 0) state.playerHp     = Math.min(state.playerHpMax, state.playerHp + v2Regen.healHp);
           if (v2Regen.energy > 0) state.playerEnergy = Math.min(100, state.playerEnergy + v2Regen.energy);
 
           // SPD quick-strike — once per fight, if invested SPD clears the boss's derived SPD
-          if (!quickStrikeUsed && btn.customId !== "boss_flee" && btn.customId !== "boss_swap" && hasQuickStrike(stats.spd, fightLevel)) {
+          const isSolaceConvergence = btn.customId === "boss_ultimate" && isDevGuild && activeUnit === "ally";
+          if (!quickStrikeUsed && btn.customId !== "boss_flee" && btn.customId !== "boss_swap" && !isSolaceConvergence && hasQuickStrike(stats.spd, fightLevel)) {
             quickStrikeUsed = true;
             const bonusDmg = Math.max(1, Math.floor(stats.atk * (1 - defReduction)));
             playerDmg += bonusDmg;
@@ -846,7 +918,12 @@ const command: Command = {
             bossDmg       = roll4pcBlock(bonuses, bossDmg);
             const shield  = elemFrostShield(bonuses.elementPassive, bossDmg);
             bossDmg       = shield.dmg;
-            state.playerHp = Math.max(0, state.playerHp - bossDmg);
+            const allyIsActive = isDevGuild && activeUnit === "ally";
+            if (allyIsActive) {
+              allyHp = Math.max(0, allyHp - bossDmg);
+            } else {
+              state.playerHp = Math.max(0, state.playerHp - bossDmg);
+            }
             if (bonuses.activeNamedSetId === "SMOLDERING_SOVEREIGN") smolderingSovereignOnDamageTaken(namedState);
             if (bonuses.activeNamedSetId === "WINDSTRIDERS_LEGACY") windstridersLegacyOnBigHitTaken(namedState, bossDmg, state.playerHpMax);
             if (bonuses.activeNamedSetId === "VOIDBORN_REMNANT") {
@@ -905,7 +982,17 @@ const command: Command = {
           if (namedState.spectroFractureTurnsLeft > 0) namedState.spectroFractureTurnsLeft--;
           if (echoSkillCooldown > 0) echoSkillCooldown--;
           if (enemyDefShredTurnsLeft > 0) enemyDefShredTurnsLeft--;
+          if (isDevGuild && attunementDoubleTurnsLeft > 0) attunementDoubleTurnsLeft--;
+          if (isDevGuild && forteEmpoweredTurnsLeft > 0) forteEmpoweredTurnsLeft--;
           if (forcedCritActive && btn.customId !== "boss_swap") nextAttackCritArmed = false;
+
+          // Ally KO'd — auto-swap back to the player rather than ending the
+          // fight over a benched unit's HP.
+          if (isDevGuild && activeUnit === "ally" && allyHp <= 0) {
+            allyHp = 0;
+            activeUnit = "player";
+            state.lastMove += `\n◇ **${SOLACE.name} was knocked out** — swapped back to ${displayName}.`;
+          }
 
           // Second Wind
           if (state.playerHp <= 0 && compositeHasSecondWind(bonuses.abilityEffects) && !secondWindUsed) {
