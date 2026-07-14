@@ -781,13 +781,13 @@ export async function handleEncounterFight(
           // Mutually exclusive with the normal doubling path below — both
           // counters are explicitly set here so tuning either duration
           // constant can't accidentally leave both nonzero at once.
-          forteEmpoweredTurnsLeft = SOLACE_FORTE_EMPOWERED_TURNS;
+          forteEmpoweredTurnsLeft = SOLACE_FORTE_EMPOWERED_TURNS + 1; // +1 compensates for the same-round decrement
           attunementDoubleTurnsLeft = 0;
           solaceForte = resetForte();
           moveName = `⚡ **Empowered Convergence!** Team healed (${healSummary}), debuffs cleansed, ` +
             `**all 3 Attunement Modes empowered for ${SOLACE_FORTE_EMPOWERED_TURNS} turns!**`;
         } else {
-          attunementDoubleTurnsLeft = SOLACE_ULTIMATE_DOUBLE_TURNS;
+          attunementDoubleTurnsLeft = SOLACE_ULTIMATE_DOUBLE_TURNS + 1; // +1 compensates for the same-round decrement
           forteEmpoweredTurnsLeft = 0;
           moveName = `⚡ **Convergence!** Team healed (${healSummary}), debuffs cleansed, ` +
             `**${attunement.mode ?? "no"} mode doubled for ${SOLACE_ULTIMATE_DOUBLE_TURNS} turns!**`;

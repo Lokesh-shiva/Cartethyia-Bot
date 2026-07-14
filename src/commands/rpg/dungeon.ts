@@ -960,13 +960,13 @@ async function runWave(
           const healSummary = `${ws.displayName} +${actualHealPlayer} HP, ${SOLACE.name} +${actualHealAlly} HP`;
 
           if (isForteMaxed(ws.solaceForte, SOLACE_FORTE_CONFIG)) {
-            ws.forteEmpoweredTurnsLeft = SOLACE_FORTE_EMPOWERED_TURNS;
+            ws.forteEmpoweredTurnsLeft = SOLACE_FORTE_EMPOWERED_TURNS + 1; // +1 compensates for the same-round decrement
             ws.attunementDoubleTurnsLeft = 0;
             ws.solaceForte = resetForte();
             moveLine = `⚡ **Empowered Convergence!** Team healed (${healSummary}), debuffs cleansed, ` +
               `**all 3 Attunement Modes empowered for ${SOLACE_FORTE_EMPOWERED_TURNS} turns!**`;
           } else {
-            ws.attunementDoubleTurnsLeft = SOLACE_ULTIMATE_DOUBLE_TURNS;
+            ws.attunementDoubleTurnsLeft = SOLACE_ULTIMATE_DOUBLE_TURNS + 1; // +1 compensates for the same-round decrement
             ws.forteEmpoweredTurnsLeft = 0;
             moveLine = `⚡ **Convergence!** Team healed (${healSummary}), debuffs cleansed, ` +
               `**${ws.attunement.mode ?? "no"} mode doubled for ${SOLACE_ULTIMATE_DOUBLE_TURNS} turns!**`;
