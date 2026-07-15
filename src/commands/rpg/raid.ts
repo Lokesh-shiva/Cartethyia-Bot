@@ -995,6 +995,12 @@ async function launchRaid(
       let vibFrac   = 0;
       let moveType: "BASIC" | "SKILL" | "ULT" = "BASIC";
       let isCrit    = false;
+      let forteAnnounce = "";
+      // Convergence resets concertoEnergy to 0 — the generic per-move gain
+      // below must skip granting anything back on the same turn, or
+      // Convergence would silently refund a chunk of the bar it just spent
+      // (built in from the start here, per boss.ts's Milestone 3a fix).
+      let convergenceUsedThisTurn = false;
 
       // Milestone 3d: swap — always consumes the turn, falls through to the
       // shared tail below (AoE counter-attack / decrements / next-turn send),
@@ -1061,6 +1067,19 @@ async function launchRaid(
         const basicMoveMult = isSolaceActing ? solaceBasicDamageMult(current.solaceBasicLevel) : 1.0;
         const wellspringSelfAtkMult = isSolaceActing ? WELLSPRING_BASE_ATK_MULT : 1;
         const teamMult = weakenedMult * party.atkMult * wellspringSelfAtkMult * basicMoveMult;
+        // Forte fills only from Solace's own Chime Strike — announce only on
+        // the turn a threshold is actually crossed (mirrors boss.ts).
+        if (isSolaceActing) {
+          const forteBefore = current.solaceForte;
+          current.solaceForte = addForteCharge(current.solaceForte, SOLACE_FORTE_CONFIG, SOLACE_FORTE_GAIN_PER_BASIC);
+          const wasHalf = forteBefore.charge >= SOLACE_FORTE_CONFIG.phaseThresholds[0] / 2;
+          const isHalf  = current.solaceForte.charge >= SOLACE_FORTE_CONFIG.phaseThresholds[0] / 2 && !isForteMaxed(current.solaceForte, SOLACE_FORTE_CONFIG);
+          if (isForteMaxed(current.solaceForte, SOLACE_FORTE_CONFIG) && !isForteMaxed(forteBefore, SOLACE_FORTE_CONFIG)) {
+            forteAnnounce = `\n✨ Forte is **FULLY CHARGED** — next Convergence will be Empowered!`;
+          } else if (isHalf && !wasHalf) {
+            forteAnnounce = `\n✨ Forte is **HALF CHARGED**.`;
+          }
+        }
         const r    = calcPlayerDamage(current.atk * smolderMult * havocAtkMult * teamMult, defVal, forcedCrit ? 1 : Math.min(1, aCrit + party.critBonus), current.critDmg, 1.0, isWeak, raid.isShattered);
         let base   = Math.floor(r.damage * (1 + current.elemDmg + extraElemBonus) * radiantDmgMult);
         base       = Math.floor(base * elemWindstrideMult(current.bonuses.elementPassive, raid.turn, "BASIC"));
@@ -1077,7 +1096,7 @@ async function launchRaid(
         const ign  = elemIgniteProc(current.bonuses.elementPassive, current.atk);
         if (mySetId === "RADIANT_CONVERGENCE" && r.isCrit) radiantConvergenceOnCrit(current.namedState, current.hp, current.hpMax);
         damage = base + ign.dmg; isCrit = r.isCrit; vibFrac = 0.3;
-        moveLine = `${current.name} — ${isSolaceActing ? "✦ Chime Strike" : "Basic Attack"}${r.isCrit ? " **(CRIT)**" : ""}${isWeak ? " **(WEAK)**" : ""}${ign.tag ? `  ✦${ign.tag}` : ""}`;
+        moveLine = `${current.name} — ${isSolaceActing ? "✦ Chime Strike" : "Basic Attack"}${r.isCrit ? " **(CRIT)**" : ""}${isWeak ? " **(WEAK)**" : ""}${ign.tag ? `  ✦${ign.tag}` : ""}${forteAnnounce}`;
         current.energy = Math.min(100, current.energy + ENERGY_PER_TURN + Math.floor(current.bonuses.spdFlat / 20) + elemDischargeEnergy(current.bonuses.elementPassive, r.isCrit) + thunderboltEnergy);
         if (mySetId === "STORMCALLERS_OATH") stormcallersOathCheckThunderbolt(current.namedState, current.energy);
 
@@ -1130,6 +1149,55 @@ async function launchRaid(
           const surge = stormcallersOathOnUltimate();
           current.stormBuffTurnsLeft = surge.turnsLeft + 1;
           current.stormBuffCritBonus = surge.critRateBonus;
+        }
+      } else if (raid.isDevGuild && current.activeUnit === "ally" && btn.customId === "raid_ultimate") {
+        // Solace's Ultimate (Convergence) spends Concerto Energy, not personal
+        // Energy, and heals the WHOLE living party (not just the caster) —
+        // this is the one place /raid genuinely diverges from boss.ts's
+        // single-owner shape.
+        const healPct = solaceConvergenceHealPct(current.solaceUltimateLevel);
+        const healLines: string[] = [];
+        for (const p of raid.participants.filter(pp => !pp.isDefeated)) {
+          const bodyResult = resolveIntroOutroEffect({ actions: [
+            { type: "HEAL_ALLY", value: healPct },
+            { type: "CLEANSE_ALLY", value: 1 },
+          ] }, { hp: p.hp, hpMax: p.hpMax });
+          const allyResult = resolveIntroOutroEffect({ actions: [
+            { type: "HEAL_ALLY", value: healPct },
+          ] }, { hp: p.allyHp, hpMax: p.allyHpMax });
+
+          const beforeBody = p.hp;
+          p.hp = Math.min(p.hpMax, p.hp + bodyResult.hpDelta);
+          const actualBody = p.hp - beforeBody;
+
+          const beforeAlly = p.allyHp;
+          p.allyHp = Math.min(p.allyHpMax, p.allyHp + allyResult.hpDelta);
+          const actualAlly = p.allyHp - beforeAlly;
+
+          p.playerDebuffs = cleanseDebuffs(p.playerDebuffs, bodyResult.cleanseCount);
+
+          if (actualBody > 0 || actualAlly > 0) {
+            healLines.push(`${p.name} +${actualBody} HP${p.hasSolace ? `, ${SOLACE.name} +${actualAlly} HP` : ""}`);
+          }
+        }
+
+        current.concertoEnergy = 0;
+        convergenceUsedThisTurn = true;
+        damage = 0; isCrit = false; moveType = "ULT";
+
+        const healSummary = healLines.length > 0 ? healLines.join("  ·  ") : "party already at full HP";
+
+        if (isForteMaxed(current.solaceForte, SOLACE_FORTE_CONFIG)) {
+          current.forteEmpoweredTurnsLeft = SOLACE_FORTE_EMPOWERED_TURNS + 1; // +1 compensates for the same-round decrement
+          current.attunementDoubleTurnsLeft = 0;
+          current.solaceForte = resetForte();
+          moveLine = `${current.name} — ⚡ **Empowered Convergence!** Team healed (${healSummary}), debuffs cleansed, ` +
+            `**all 3 Attunement Modes empowered for ${SOLACE_FORTE_EMPOWERED_TURNS} turns!**`;
+        } else {
+          current.attunementDoubleTurnsLeft = SOLACE_ULTIMATE_DOUBLE_TURNS + 1; // +1 compensates for the same-round decrement
+          current.forteEmpoweredTurnsLeft = 0;
+          moveLine = `${current.name} — ⚡ **Convergence!** Team healed (${healSummary}), debuffs cleansed, ` +
+            `**${current.attunement.mode ?? "no"} mode doubled for ${SOLACE_ULTIMATE_DOUBLE_TURNS} turns!**`;
         }
       } else if (btn.customId === "raid_echoskill" && current.bonuses.echoSkill) {
         const def = current.bonuses.echoSkill;
@@ -1241,6 +1309,18 @@ async function launchRaid(
             moveLine += `\n🌑 **${current.name}'s Voidborn Rupture** — +${bonusDmg} bonus DMG, +${healAmt} HP!`;
           }
         }
+      }
+
+      // Concerto Energy builds from combat actions, never from swapping —
+      // and Convergence itself must not refund energy on the same turn it
+      // spends the bar (see convergenceUsedThisTurn declaration above).
+      const CONCERTO_GAIN_BY_MOVE: Record<string, number> = {
+        raid_basic: 10, raid_skill: 20, raid_echoskill: 20, raid_ultimate: 35,
+      };
+      if (raid.isDevGuild && !convergenceUsedThisTurn) {
+        let concertoGain = CONCERTO_GAIN_BY_MOVE[btn.customId] ?? 0;
+        if (concertoGain > 0 && current.activeUnit === "ally") concertoGain += WELLSPRING_BASE_ENERGY_BONUS;
+        if (concertoGain > 0) current.concertoEnergy = addConcertoEnergy(current.concertoEnergy, concertoGain);
       }
 
       current.dmgDealt += damage;
@@ -1374,6 +1454,8 @@ async function launchRaid(
 
       if (current.skillCd > 0) current.skillCd--;
       if (current.echoSkillCd > 0) current.echoSkillCd--;
+      if (raid.isDevGuild && current.attunementDoubleTurnsLeft > 0) current.attunementDoubleTurnsLeft--;
+      if (raid.isDevGuild && current.forteEmpoweredTurnsLeft > 0) current.forteEmpoweredTurnsLeft--;
       if (raid.bossDefShredTurnsLeft > 0) raid.bossDefShredTurnsLeft--;
       if (forcedCritActive && btn.customId !== "raid_swap") current.nextCritArmed = false;
 
