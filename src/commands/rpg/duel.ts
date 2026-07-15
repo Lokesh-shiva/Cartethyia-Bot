@@ -541,7 +541,23 @@ export async function execute(interaction: ChatInputCommandInteraction) {
         const myHavocDefIgnore = havocFrenzyActive ? (isChallenger ? state.cHavocFrenzyDefIgnore  : state.dHavocFrenzyDefIgnore) : 0;
         const oppDefShredTurns = isChallenger ? state.dDefShredTurnsLeft : state.cDefShredTurnsLeft;
         const oppDefShredPct   = isChallenger ? state.dDefShredPct      : state.cDefShredPct;
-        const effectiveOppDef  = oppDef * (1 - myHavocDefIgnore) * (oppDefShredTurns > 0 ? (1 - oppDefShredPct) : 1);
+
+        // Milestone 3e fix: defender-side (opp) Attunement/Wellspring/Forte DEF
+        // bonuses — mirror the my* locals but from the OPPOSITE side (opp relative
+        // to the acting player), matching boss.ts's un-gated (not activeUnit-gated)
+        // standing-bonus pattern.
+        const oppAttunement          = isChallenger ? state.dAttunement : state.cAttunement;
+        const oppAttunementDblTurns  = isChallenger ? state.dAttunementDoubleTurnsLeft : state.cAttunementDoubleTurnsLeft;
+        const oppSolaceSkillLevel    = isChallenger ? state.dSolaceSkillLevel : state.cSolaceSkillLevel;
+        const oppForteEmpoweredTurns = isChallenger ? state.dForteEmpoweredTurnsLeft : state.cForteEmpoweredTurnsLeft;
+        const oppSolaceForteLevel    = isChallenger ? state.dSolaceForteLevel : state.cSolaceForteLevel;
+        const oppWellspringDefBonus  = isDevGuild ? getWellspringDefBonus(oppAttunement) : 0;
+        const oppForteDefBonus       = isDevGuild ? getSolaceForteDefBonus(oppSolaceForteLevel, oppForteEmpoweredTurns > 0) : 0;
+        const oppAttunementDefBonus  = solaceAttunementDefBonus(oppSolaceSkillLevel);
+        const oppAttunementDefMult   = (isDevGuild ? getAttunementDefMult(oppAttunement, oppAttunementDefBonus, oppAttunementDblTurns > 0) : 1)
+          * (1 + oppWellspringDefBonus) * (1 + oppForteDefBonus);
+
+        const effectiveOppDef  = oppDef * (1 - myHavocDefIgnore) * (oppDefShredTurns > 0 ? (1 - oppDefShredPct) : 1) * oppAttunementDefMult;
         const extraElemBonus   = myGlacioTurns > 0 ? myGlacioBonus : 0;
         const myEchoCd         = isChallenger ? state.cEchoSkillCd : state.dEchoSkillCd;
         const myNextCritArmed  = isChallenger ? state.cNextCritArmed : state.dNextCritArmed;
