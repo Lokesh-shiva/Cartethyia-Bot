@@ -963,6 +963,50 @@ async function launchRaid(
       let moveType: "BASIC" | "SKILL" | "ULT" = "BASIC";
       let isCrit    = false;
 
+      // Milestone 3d: swap — always consumes the turn, falls through to the
+      // shared tail below (AoE counter-attack / decrements / next-turn send),
+      // same as every other action. Ported from boss.ts's Milestone 3b Task 2
+      // swap handler, adapted to per-participant team state.
+      if (btn.customId === "raid_swap" && raid.isDevGuild && current.hasSolace) {
+        const outgoingIsPlayer = current.activeUnit === "player";
+        const comboReady = current.concertoEnergy >= 100;
+
+        if (comboReady) {
+          const incomingTarget: AllyActionTarget = outgoingIsPlayer
+            ? { hp: current.allyHp, hpMax: current.allyHpMax }
+            : { hp: current.hp, hpMax: current.hpMax };
+
+          const outroEffect = outgoingIsPlayer ? PLAYER_SELF_OUTRO : SOLACE.outro;
+          const introEffect: IntroOutroEffect = outgoingIsPlayer ? solaceIntroEffect(current.solaceIntroLevel) : PLAYER_SELF_INTRO;
+          const outroResult = resolveIntroOutroEffect(outroEffect, incomingTarget);
+          const introResult = resolveIntroOutroEffect(introEffect, incomingTarget);
+
+          if (!outgoingIsPlayer) current.nextCritArmed = true;
+
+          const totalBonus = outroResult.hpDelta + introResult.hpDelta + outroResult.shieldDelta + introResult.shieldDelta;
+
+          let actualGain: number;
+          if (outgoingIsPlayer) {
+            const before = current.allyHp;
+            current.allyHp = Math.min(current.allyHpMax, current.allyHp + totalBonus);
+            actualGain = current.allyHp - before;
+          } else {
+            const before = current.hp;
+            current.hp = Math.min(current.hpMax, current.hp + totalBonus);
+            actualGain = current.hp - before;
+          }
+
+          moveLine = actualGain > 0
+            ? `🔄 ${current.name} swapped to **${outgoingIsPlayer ? SOLACE.name : current.name}** — Outro+Intro combo! +${actualGain} HP.`
+            : `🔄 ${current.name} swapped to **${outgoingIsPlayer ? SOLACE.name : current.name}** — Outro+Intro combo! (already at full HP, no heal needed)`;
+          current.concertoEnergy = addConcertoEnergy(0, 20); // headstart, matches CONCERTO_INTRO_HEADSTART in boss.ts
+        } else {
+          moveLine = `🔄 ${current.name} swapped to **${outgoingIsPlayer ? SOLACE.name : current.name}** — Concerto Energy not full, no combo triggered.`;
+        }
+
+        current.activeUnit = outgoingIsPlayer ? "ally" : "player";
+      }
+
       if (btn.customId === "raid_retreat") {
         current.isDefeated = true;
         moveLine = `${current.name} retreated from the raid.`;
@@ -1225,7 +1269,7 @@ async function launchRaid(
       if (current.skillCd > 0) current.skillCd--;
       if (current.echoSkillCd > 0) current.echoSkillCd--;
       if (raid.bossDefShredTurnsLeft > 0) raid.bossDefShredTurnsLeft--;
-      if (forcedCritActive) current.nextCritArmed = false;
+      if (forcedCritActive && btn.customId !== "raid_swap") current.nextCritArmed = false;
 
       // All defeated?
       if (raid.participants.every(p => p.isDefeated)) {
