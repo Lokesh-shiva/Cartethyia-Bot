@@ -559,10 +559,19 @@ const command: Command = {
           if (btn.customId === "fb_basic") {
             const windExplosion = bonuses.activeNamedSetId === "WINDSTRIDERS_LEGACY"
               ? windstridersLegacyCheckExplosion(namedState) : { proc: false, guaranteedCrit: false, bonusMult: 1.0 };
-            const crit = forcedCritActive || windExplosion.guaranteedCrit || Math.random() < activeCritRate; abilCrit = crit;
+            const teamAtkMult  = isDevGuild ? getAttunementAtkMult(attunement, solaceAttunementAtkCritBonus(solaceSkillLevel), attunementDoubleTurnsLeft > 0) : 1;
+            const teamCritBonus = isDevGuild ? getAttunementCritRateBonus(attunement, solaceAttunementAtkCritBonus(solaceSkillLevel), attunementDoubleTurnsLeft > 0) : 0;
+            const wellspringAtkMult   = isDevGuild && activeUnit === "ally" ? WELLSPRING_BASE_ATK_MULT : 1;
+            const wellspringAtkBonus  = isDevGuild ? getWellspringAtkBonus(attunement) : 0;
+            const wellspringCritBonus = isDevGuild ? getWellspringCritRateBonus(attunement) : 0;
+            const forteAtkBonus  = isDevGuild ? getSolaceForteAtkBonus(solaceForteLevel, forteEmpoweredTurnsLeft > 0) : 0;
+            const forteCritBonus = isDevGuild ? getSolaceForteCritRateBonus(solaceForteLevel, forteEmpoweredTurnsLeft > 0) : 0;
+            const teamMult = getWeakenedMult(playerDebuffs) * teamAtkMult * wellspringAtkMult * (1 + wellspringAtkBonus) * (1 + forteAtkBonus);
+            const basicMoveMult = isDevGuild && activeUnit === "ally" ? solaceBasicDamageMult(solaceBasicLevel) : 1.0;
+            const crit = forcedCritActive || windExplosion.guaranteedCrit || Math.random() < Math.min(1, activeCritRate + teamCritBonus + wellspringCritBonus + forteCritBonus); abilCrit = crit;
             const smolderMult = bonuses.activeNamedSetId === "SMOLDERING_SOVEREIGN"
               ? smolderingSovereignOnAction(namedState) : 1;
-            const base = Math.max(1, Math.floor(stats.atk * smolderMult * havocAtkMult * radiantDmgMult * (1 - defReduction)));
+            const base = Math.max(1, Math.floor(stats.atk * teamMult * basicMoveMult * smolderMult * havocAtkMult * radiantDmgMult * (1 - defReduction)));
             const extraElemBonus = glacioShieldTurnsLeft > 0 ? glacioShieldElemBonus : 0;
             let dmg    = Math.floor(base * (crit ? stats.critDmg : 1) * (isWeak ? 1.5 : 1) * (1 + bonuses.elemDmgBonus + extraElemBonus));
             if (bonuses.activeNamedSetId === "WINDSTRIDERS_LEGACY") {
@@ -597,11 +606,26 @@ const command: Command = {
             if (bonuses.activeNamedSetId === "STORMCALLERS_OATH") stormcallersOathCheckThunderbolt(namedState, state.playerEnergy);
           }
 
-          if (btn.customId === "fb_skill") {
-            const crit = forcedCritActive || Math.random() < Math.min(1, activeCritRate + 0.1); abilCrit = crit;
+          if (btn.customId === "fb_skill" && isDevGuild && activeUnit === "ally") {
+            // Solace's Skill is Attunement — a mode cycle, not a damage move.
+            attunement.mode = cycleAttunementMode(attunement.mode);
+            const crit = Math.random() < activeCritRate; abilCrit = crit;
+            const dmg  = Math.max(1, Math.floor(stats.atk * 0.6 * (1 - defReduction) * (crit ? stats.critDmg : 1) * (isWeak ? 1.5 : 1) * (1 + bonuses.elemDmgBonus)));
+            playerDmg  = dmg;
+            moveName   = `✦ Attunement — now in **${attunement.mode}** mode! ${playerDmg} DMG${crit ? " **(CRIT)**" : ""}`;
+            state.bossVibNow = Math.max(0, state.bossVibNow - Math.floor(playerDmg * 0.3 * totalVibMult));
+          } else if (btn.customId === "fb_skill") {
+            const teamAtkMult  = isDevGuild ? getAttunementAtkMult(attunement, solaceAttunementAtkCritBonus(solaceSkillLevel), attunementDoubleTurnsLeft > 0) : 1;
+            const teamCritBonus = isDevGuild ? getAttunementCritRateBonus(attunement, solaceAttunementAtkCritBonus(solaceSkillLevel), attunementDoubleTurnsLeft > 0) : 0;
+            const wellspringAtkBonus  = isDevGuild ? getWellspringAtkBonus(attunement) : 0;
+            const wellspringCritBonus = isDevGuild ? getWellspringCritRateBonus(attunement) : 0;
+            const forteAtkBonus  = isDevGuild ? getSolaceForteAtkBonus(solaceForteLevel, forteEmpoweredTurnsLeft > 0) : 0;
+            const forteCritBonus = isDevGuild ? getSolaceForteCritRateBonus(solaceForteLevel, forteEmpoweredTurnsLeft > 0) : 0;
+            const teamMult = getWeakenedMult(playerDebuffs) * teamAtkMult * (1 + wellspringAtkBonus) * (1 + forteAtkBonus);
+            const crit = forcedCritActive || Math.random() < Math.min(1, activeCritRate + 0.1 + teamCritBonus + wellspringCritBonus + forteCritBonus); abilCrit = crit;
             const smolderMult = bonuses.activeNamedSetId === "SMOLDERING_SOVEREIGN"
               ? smolderingSovereignOnAction(namedState) : 1;
-            const base = Math.max(1, Math.floor(stats.atk * smolderMult * havocAtkMult * radiantDmgMult * 1.8 * (1 - defReduction)));
+            const base = Math.max(1, Math.floor(stats.atk * teamMult * smolderMult * havocAtkMult * radiantDmgMult * 1.8 * (1 - defReduction)));
             const extraElemBonusSkill = glacioShieldTurnsLeft > 0 ? glacioShieldElemBonus : 0;
             let dmg    = Math.floor(base * (crit ? stats.critDmg : 1) * (isWeak ? 1.5 : 1) * (1 + bonuses.elemDmgBonus + extraElemBonusSkill));
             dmg        = apply4pcSkillBonus(bonuses, dmg, state.skillCooldown === 0);
@@ -627,11 +651,15 @@ const command: Command = {
             if (bonuses.set5pc?.type === "POST_ULT_SKILL") state.skillCooldown = 0;
           }
 
-          if (btn.customId === "fb_ultimate") {
+          if (btn.customId === "fb_ultimate" && !(isDevGuild && activeUnit === "ally")) {
             abilCrit   = true;
+            const teamAtkMult = isDevGuild ? getAttunementAtkMult(attunement, solaceAttunementAtkCritBonus(solaceSkillLevel), attunementDoubleTurnsLeft > 0) : 1;
+            const wellspringAtkBonus = isDevGuild ? getWellspringAtkBonus(attunement) : 0;
+            const forteAtkBonus = isDevGuild ? getSolaceForteAtkBonus(solaceForteLevel, forteEmpoweredTurnsLeft > 0) : 0;
+            const teamMult = getWeakenedMult(playerDebuffs) * teamAtkMult * (1 + wellspringAtkBonus) * (1 + forteAtkBonus);
             const smolderMult = bonuses.activeNamedSetId === "SMOLDERING_SOVEREIGN"
               ? smolderingSovereignOnAction(namedState) : 1;
-            const base = Math.max(1, Math.floor(stats.atk * smolderMult * havocAtkMult * radiantDmgMult * 3.5 * stats.critDmg * (1 - defReduction)));
+            const base = Math.max(1, Math.floor(stats.atk * teamMult * smolderMult * havocAtkMult * radiantDmgMult * 3.5 * stats.critDmg * (1 - defReduction)));
             const extraElemBonusUlt = glacioShieldTurnsLeft > 0 ? glacioShieldElemBonus : 0;
             let dmg    = Math.floor(base * (isWeak ? 1.5 : 1) * (1 + bonuses.elemDmgBonus + extraElemBonusUlt));
             dmg        = apply4pcUltBonus(bonuses, dmg);
@@ -781,6 +809,16 @@ const command: Command = {
             return;
           }
 
+          // Debuffs tick down at the START of resolving the boss's turn — this
+          // way any WEAKENED applied by the attack below isn't touched until
+          // NEXT round's tick, giving it the full 2 turns its own flavor text
+          // advertises, instead of being decremented in the same cycle it's
+          // created.
+          if (isDevGuild) {
+            const tickResult = tickDebuffs(playerDebuffs);
+            playerDebuffs = tickResult.state;
+          }
+
           // Boss turn
           if (shatterTurnsLeft > 0) {
             shatterTurnsLeft--;
@@ -793,7 +831,11 @@ const command: Command = {
             }
           } else {
             const move    = fb.moves[Math.floor(Math.random() * fb.moves.length)];
-            let bossDmg   = Math.max(1, Math.floor(scaled.atk * move.damage - stats.def * 0.4));
+            const wellspringDefBonus = isDevGuild ? getWellspringDefBonus(attunement) : 0;
+            const forteDefBonus = isDevGuild ? getSolaceForteDefBonus(solaceForteLevel, forteEmpoweredTurnsLeft > 0) : 0;
+            const attunementDefBonus = solaceAttunementDefBonus(solaceSkillLevel);
+            const attunementDefMult = (isDevGuild ? getAttunementDefMult(attunement, attunementDefBonus, attunementDoubleTurnsLeft > 0) : 1) * (1 + wellspringDefBonus) * (1 + forteDefBonus);
+            let bossDmg   = Math.max(1, Math.floor(scaled.atk * move.damage - stats.def * attunementDefMult * 0.4));
             if (fb.mechanicId === "MOLTEN_BUILDUP") {
               const interrupted = btn.customId === "fb_skill" || btn.customId === "fb_ultimate";
               const molten = moltenBuildupOnBossTurn(bossMechState, interrupted);
@@ -885,6 +927,14 @@ const command: Command = {
             const v2Regen = abilityV2TurnRegen(bonuses, state.playerHpMax);
             if (v2Regen.healHp > 0) state.playerHp = Math.min(state.playerHpMax, state.playerHp + v2Regen.healHp);
             if (v2Regen.energy > 0) state.playerEnergy = Math.min(100, state.playerEnergy + v2Regen.energy);
+
+            // Milestone 3c-ii: exercises the debuff system inside a real fight.
+            // 25% chance per enemy attack, only when dev-guild team mechanics
+            // are active.
+            if (isDevGuild && Math.random() < 0.25) {
+              playerDebuffs = applyDebuff(playerDebuffs, "WEAKENED", 0.2, 2);
+              state.lastMove += `\n◇ *${fb.name}'s strike leaves you* **WEAKENED** *(-20% ATK, 2 turns)*`;
+            }
           }
 
           state.turn++;
