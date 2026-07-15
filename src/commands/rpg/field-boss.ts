@@ -501,6 +501,50 @@ const command: Command = {
           };
           let abilCrit = false;
 
+          // Milestone 3c-ii: swap — always consumes the turn, falls through to the
+          // shared tail below (win-check/boss-turn/decrements/lose-check/next
+          // turn), same as every other action. Ported from boss.ts@f75a797.
+          if (btn.customId === "fb_swap" && isDevGuild) {
+            const outgoingIsPlayer = activeUnit === "player";
+            const comboReady = concertoEnergy >= 100;
+
+            if (comboReady) {
+              const incomingTarget: AllyActionTarget = outgoingIsPlayer
+                ? { hp: allyHp, hpMax: allyHpMax }
+                : { hp: state.playerHp, hpMax: state.playerHpMax };
+
+              const outroEffect = outgoingIsPlayer ? PLAYER_SELF_OUTRO : SOLACE.outro;
+              const introEffect: IntroOutroEffect = outgoingIsPlayer ? solaceIntroEffect(solaceIntroLevel) : PLAYER_SELF_INTRO;
+              const outroResult = resolveIntroOutroEffect(outroEffect, incomingTarget);
+              const introResult = resolveIntroOutroEffect(introEffect, incomingTarget);
+
+              if (!outgoingIsPlayer) nextAttackCritArmed = true;
+
+              const totalBonus = outroResult.hpDelta + introResult.hpDelta + outroResult.shieldDelta + introResult.shieldDelta;
+
+              let actualGain: number;
+              if (outgoingIsPlayer) {
+                const before = allyHp;
+                allyHp = Math.min(allyHpMax, allyHp + totalBonus);
+                actualGain = allyHp - before;
+              } else {
+                const before = state.playerHp;
+                state.playerHp = Math.min(state.playerHpMax, state.playerHp + totalBonus);
+                actualGain = state.playerHp - before;
+              }
+
+              moveName = actualGain > 0
+                ? `🔄 Swapped to **${outgoingIsPlayer ? SOLACE.name : displayName}** — Outro+Intro combo! +${actualGain} HP.`
+                : `🔄 Swapped to **${outgoingIsPlayer ? SOLACE.name : displayName}** — Outro+Intro combo! (already at full HP, no heal needed)`;
+              concertoEnergy = addConcertoEnergy(0, 20); // headstart, matches CONCERTO_INTRO_HEADSTART in encounter.ts
+            } else {
+              moveName = `🔄 Swapped to **${outgoingIsPlayer ? SOLACE.name : displayName}** — Concerto Energy not full, no combo triggered.`;
+            }
+
+            activeUnit = outgoingIsPlayer ? "ally" : "player";
+            playerDmg = 0;
+          }
+
           if (btn.customId === "fb_flee") {
             await thread.send({
               embeds: [new EmbedBuilder().setColor(0x334155)
@@ -699,7 +743,7 @@ const command: Command = {
           }
 
           // SPD quick-strike — once per fight, if invested SPD clears the boss's derived SPD
-          if (!quickStrikeUsed && btn.customId !== "fb_flee" && hasQuickStrike(stats.spd, fightLevel)) {
+          if (!quickStrikeUsed && btn.customId !== "fb_flee" && btn.customId !== "fb_swap" && hasQuickStrike(stats.spd, fightLevel)) {
             quickStrikeUsed = true;
             const bonusDmg = Math.max(1, Math.floor(stats.atk * (1 - defReduction)));
             playerDmg += bonusDmg;
@@ -850,7 +894,7 @@ const command: Command = {
           if (namedState.spectroFractureTurnsLeft > 0) namedState.spectroFractureTurnsLeft--;
           if (echoSkillCooldown > 0) echoSkillCooldown--;
           if (enemyDefShredTurnsLeft > 0) enemyDefShredTurnsLeft--;
-          if (forcedCritActive) nextAttackCritArmed = false;
+          if (forcedCritActive && btn.customId !== "fb_swap") nextAttackCritArmed = false;
 
           if (state.playerHp <= 0 && compositeHasSecondWind(bonuses.abilityEffects) && !secondWindUsed) {
             secondWindUsed = true;
