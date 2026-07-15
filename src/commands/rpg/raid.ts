@@ -36,6 +36,27 @@ import {
   BOSS_ECHO_DEFINITIONS, rollRarity, rollMainStat, substatCount,
   rollSubstats, rollSubstatValue, calcMainStatValue, scaledFieldBossRarityWeights,
 } from "../../lib/echoes";
+import {
+  SOLACE, SOLACE_ULTIMATE_DOUBLE_TURNS, PLAYER_SELF_INTRO, PLAYER_SELF_OUTRO,
+  SOLACE_FORTE_CONFIG, SOLACE_FORTE_GAIN_PER_BASIC, SOLACE_FORTE_EMPOWERED_TURNS,
+  getSolaceForteAtkBonus, getSolaceForteCritRateBonus, getSolaceForteDefBonus,
+  solaceIntroEffect, solaceBasicDamageMult, solaceAttunementAtkCritBonus,
+  solaceAttunementDefBonus, solaceConvergenceHealPct,
+} from "../../lib/solace";
+import { resolveIntroOutroEffect, IntroOutroEffect } from "../../lib/introOutro";
+import {
+  AttunementState, cycleAttunementMode,
+  getAttunementAtkMult, getAttunementCritRateBonus, getAttunementDefMult,
+} from "../../lib/attunement";
+import {
+  WELLSPRING_BASE_ATK_MULT, WELLSPRING_BASE_ENERGY_BONUS,
+  getWellspringAtkBonus, getWellspringCritRateBonus, getWellspringDefBonus,
+} from "../../lib/wellspring";
+import { ForteState, addForteCharge, isForteMaxed, resetForte } from "../../lib/forte";
+import { AllyActionTarget } from "../../lib/allyActions";
+import { addConcertoEnergy } from "../../lib/concertoEnergy";
+import { DebuffState, applyDebuff, tickDebuffs, getWeakenedMult, cleanseDebuffs } from "../../lib/debuffs";
+import { getOrCreateCharacterProgress } from "../../lib/characterProgress";
 
 // ── Unified boss handle (works for both World bosses and Field bosses) ─────────
 interface RaidBossConfig {
@@ -223,6 +244,22 @@ interface RaidParticipant {
   havocFrenzyDefIgnore:  number;
   echoSkillCd:           number;
   nextCritArmed:         boolean;
+  // ── Milestone 3d: per-participant team state (dev guild only) ────────────────
+  hasSolace:      boolean;
+  solaceBasicLevel: number;
+  solaceSkillLevel: number;
+  solaceUltimateLevel: number;
+  solaceIntroLevel: number;
+  solaceForteLevel: number;
+  activeUnit:     "player" | "ally";
+  allyHp:         number;
+  allyHpMax:      number;
+  concertoEnergy: number;
+  playerDebuffs:  DebuffState;
+  attunement:     AttunementState;
+  attunementDoubleTurnsLeft: number;
+  solaceForte:    ForteState;
+  forteEmpoweredTurnsLeft:   number;
 }
 
 interface ActiveRaid {
@@ -246,6 +283,7 @@ interface ActiveRaid {
   organizerId:   string;
   recruitMsg?:   any;      // reference to the recruiting embed message for live updates
   joinCollector?: any;     // stopped when the raid ends so stale collectors don't bleed into new raids
+  isDevGuild:    boolean;  // Milestone 3d: gates team-mechanic state/buttons/status line
 }
 
 const activeRaids  = new Map<string, ActiveRaid>(); // channelId → raid
@@ -270,6 +308,31 @@ function elementEmoji(el: string): string {
   return m[el] ?? "◇";
 }
 
+/**
+ * Milestone 3d: party-wide team status line. Empty string outside dev guilds.
+ * Lists every participant who has Solace unlocked, their currently-active unit,
+ * and (for whoever is piloting Solace right now) her HP + Concerto Energy —
+ * this visibility gap (missing Concerto Energy) was the exact bug that shipped
+ * in /dungeon's Milestone 3a port, so it's called out explicitly here.
+ */
+function raidTeamStatusLine(raid: ActiveRaid): string {
+  if (!raid.isDevGuild) return "";
+  const withSolace = raid.participants.filter(p => p.hasSolace);
+  if (withSolace.length === 0) return "";
+
+  const lines = withSolace.map(p => {
+    if (p.activeUnit === "ally") {
+      const debuffTag = p.playerDebuffs.length > 0
+        ? `  ·  ${p.playerDebuffs.map(d => `${d.type} (${d.turnsLeft})`).join(", ")}`
+        : "";
+      return `🔄 **${p.name}** → *${SOLACE.name}* — ${p.allyHp}/${p.allyHpMax} HP  ·  Concerto Energy: **${p.concertoEnergy}/100**${debuffTag}`;
+    }
+    return `◇ **${p.name}** — *${SOLACE.name}* benched  ·  Concerto Energy: **${p.concertoEnergy}/100**`;
+  });
+
+  return `\n\n${lines.join("\n")}`;
+}
+
 function raidEmbed(raid: ActiveRaid, boss: RaidBossConfig, lastAction: string): EmbedBuilder {
   const alive = raid.participants.filter(p => !p.isDefeated);
   const current = raid.participants[raid.currentIdx];
@@ -282,6 +345,7 @@ function raidEmbed(raid: ActiveRaid, boss: RaidBossConfig, lastAction: string): 
   return new EmbedBuilder()
     .setColor(0xEC4899)
     .setTitle(`☄️  Calamity Raid — Turn ${raid.turn}`)
+    .setDescription(raidTeamStatusLine(raid) || null)
     .addFields(
       {
         name:  `⚔️  ${boss.name}`,
@@ -304,28 +368,52 @@ function raidEmbed(raid: ActiveRaid, boss: RaidBossConfig, lastAction: string): 
     .setFooter({ text: `CARTETHYIA  ·  Raid  ·  ${current?.name ?? "?"}'s turn  ·  5 min/turn` });
 }
 
-function buildRaidButtons(p: RaidParticipant): ActionRowBuilder<ButtonBuilder> {
-  const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
-    new ButtonBuilder().setCustomId("raid_basic").setLabel("⚔️  Basic Attack").setStyle(ButtonStyle.Primary),
-    new ButtonBuilder().setCustomId("raid_skill")
-      .setLabel(p.skillCd === 0 ? "✦  Skill" : `✦  Skill (${p.skillCd}🔄)`)
-      .setStyle(ButtonStyle.Secondary).setDisabled(p.skillCd > 0),
-    new ButtonBuilder().setCustomId("raid_ultimate")
-      .setLabel("⚡  Ultimate").setStyle(ButtonStyle.Success).setDisabled(p.energy < 100),
-  );
-  if (p.bonuses.echoSkill) {
-    const echoReady = p.echoSkillCd === 0;
-    row.addComponents(
-      new ButtonBuilder().setCustomId("raid_echoskill")
-        .setLabel(echoReady ? `🌀  ${p.bonuses.echoSkill.name}` : `🌀  ${p.bonuses.echoSkill.name} (${p.echoSkillCd}🔄)`)
-        .setStyle(ButtonStyle.Secondary).setDisabled(!echoReady),
+function buildRaidButtons(p: RaidParticipant, isDevGuild: boolean): ActionRowBuilder<ButtonBuilder>[] {
+  const rows: ActionRowBuilder<ButtonBuilder>[] = [];
+
+  if (isDevGuild && p.hasSolace && p.activeUnit === "ally") {
+    const modeLabel = p.attunement.mode ? `(${p.attunement.mode})` : "(inactive)";
+    rows.push(new ActionRowBuilder<ButtonBuilder>().addComponents(
+      new ButtonBuilder().setCustomId("raid_basic").setLabel("⚔️  Chime Strike").setStyle(ButtonStyle.Primary),
+      new ButtonBuilder().setCustomId("raid_skill").setLabel(`✦  Attunement ${modeLabel}`).setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder().setCustomId("raid_ultimate").setLabel("⚡  Convergence")
+        .setStyle(ButtonStyle.Success).setDisabled(p.concertoEnergy < 100),
+      new ButtonBuilder().setCustomId("raid_retreat")
+        .setLabel("↩  Retreat").setStyle(ButtonStyle.Danger),
+    ));
+  } else {
+    const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
+      new ButtonBuilder().setCustomId("raid_basic").setLabel("⚔️  Basic Attack").setStyle(ButtonStyle.Primary),
+      new ButtonBuilder().setCustomId("raid_skill")
+        .setLabel(p.skillCd === 0 ? "✦  Skill" : `✦  Skill (${p.skillCd}🔄)`)
+        .setStyle(ButtonStyle.Secondary).setDisabled(p.skillCd > 0),
+      new ButtonBuilder().setCustomId("raid_ultimate")
+        .setLabel("⚡  Ultimate").setStyle(ButtonStyle.Success).setDisabled(p.energy < 100),
     );
+    if (p.bonuses.echoSkill) {
+      const echoReady = p.echoSkillCd === 0;
+      row.addComponents(
+        new ButtonBuilder().setCustomId("raid_echoskill")
+          .setLabel(echoReady ? `🌀  ${p.bonuses.echoSkill.name}` : `🌀  ${p.bonuses.echoSkill.name} (${p.echoSkillCd}🔄)`)
+          .setStyle(ButtonStyle.Secondary).setDisabled(!echoReady),
+      );
+    }
+    row.addComponents(
+      new ButtonBuilder().setCustomId("raid_retreat")
+        .setLabel("↩  Retreat").setStyle(ButtonStyle.Danger),
+    );
+    rows.push(row);
   }
-  row.addComponents(
-    new ButtonBuilder().setCustomId("raid_retreat")
-      .setLabel("↩  Retreat").setStyle(ButtonStyle.Danger),
-  );
-  return row;
+
+  if (isDevGuild && p.hasSolace) {
+    rows.push(new ActionRowBuilder<ButtonBuilder>().addComponents(
+      new ButtonBuilder().setCustomId("raid_swap")
+        .setLabel(p.activeUnit === "player" ? `🔄  Swap to ${SOLACE.name}` : `🔄  Swap to ${p.name}`)
+        .setStyle(ButtonStyle.Secondary),
+    ));
+  }
+
+  return rows;
 }
 
 function nextParticipant(raid: ActiveRaid): RaidParticipant | null {
@@ -433,6 +521,7 @@ async function startRaid(interaction: ChatInputCommandInteraction) {
     channelId:    interaction.channelId,
     guildId:      interaction.guildId!,
     organizerId:  interaction.user.id,
+    isDevGuild:   interaction.guildId === process.env.GUILD_ID,
   };
   activeRaids.set(interaction.channelId, raid);
 
@@ -524,6 +613,9 @@ async function addParticipant(raid: ActiveRaid, userId: string, displayName: str
   const bonuses = await resolvePlayerBonuses(userId);
   const stats   = applyBonuses(db, bonuses);
 
+  // Milestone 3d: per-participant Solace progress (dev guild only)
+  const solaceProgress = raid.isDevGuild ? await getOrCreateCharacterProgress(userId, "solace") : null;
+
   raid.participants.push({
     userId, name: displayName, element: db.element, worldLevel: db.worldLevel,
     hp: stats.hp, hpMax: stats.hp, energy: 0, skillCd: 0,
@@ -537,6 +629,20 @@ async function addParticipant(raid: ActiveRaid, userId: string, displayName: str
     stormBuffTurnsLeft: 0, stormBuffCritBonus: 0,
     havocFrenzyAtkMult: 1.0, havocFrenzyLifesteal: 0, havocFrenzyDefIgnore: 0,
     echoSkillCd: 0, nextCritArmed: false,
+    hasSolace: solaceProgress !== null,
+    solaceBasicLevel:    solaceProgress?.basicLevel    ?? 1,
+    solaceSkillLevel:    solaceProgress?.skillLevel    ?? 1,
+    solaceUltimateLevel: solaceProgress?.ultimateLevel ?? 1,
+    solaceIntroLevel:    solaceProgress?.introLevel    ?? 1,
+    solaceForteLevel:    solaceProgress?.forteLevel    ?? 1,
+    activeUnit: "player",
+    allyHp: SOLACE.hpMax, allyHpMax: SOLACE.hpMax,
+    concertoEnergy: 0,
+    playerDebuffs: [],
+    attunement: { mode: null },
+    attunementDoubleTurnsLeft: 0,
+    solaceForte: resetForte(),
+    forteEmpoweredTurnsLeft: 0,
   });
   return true;
 }
@@ -693,7 +799,7 @@ async function launchRaid(
 
   let battleMsg = await thread.send({
     embeds:     [raidEmbed(raid, boss, "*The Calamity manifests. First Resonator, strike!*")],
-    components: [buildRaidButtons(raid.participants[0]!)],
+    components: buildRaidButtons(raid.participants[0]!, raid.isDevGuild),
   });
 
   const finishRaid = async (won: boolean) => {
@@ -1132,7 +1238,7 @@ async function launchRaid(
       const nextP    = raid.participants[raid.currentIdx];
       const newMsg   = await thread.send({
         embeds:     [raidEmbed(raid, boss, moveLine)],
-        components: nextP ? [buildRaidButtons(nextP)] : [],
+        components: nextP ? buildRaidButtons(nextP, raid.isDevGuild) : [],
       });
       await battleMsg.edit({ components: [] }).catch(() => {});
       battleMsg = newMsg;
@@ -1147,7 +1253,7 @@ async function launchRaid(
       raid.turn++;
       const newMsg = await thread.send({
         embeds:     [raidEmbed(raid, boss, skip)],
-        components: nextP ? [buildRaidButtons(nextP)] : [],
+        components: nextP ? buildRaidButtons(nextP, raid.isDevGuild) : [],
       });
       await battleMsg.edit({ components: [] }).catch(() => {});
       battleMsg = newMsg;
