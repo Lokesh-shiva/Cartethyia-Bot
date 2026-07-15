@@ -558,6 +558,12 @@ export async function execute(interaction: ChatInputCommandInteraction) {
         let damage = 0;
         let moveLine = "";
 
+        // Debuffs tick down at the start of the acting side's own turn.
+        if (isDevGuild) {
+          const tickResult = tickDebuffs(myPlayerDebuffs);
+          if (isChallenger) state.cPlayerDebuffs = tickResult.state; else state.dPlayerDebuffs = tickResult.state;
+        }
+
         // Milestone 3e: swap — always consumes the turn, falls through to the
         // shared tail below, same as every other action. Ported from
         // boss.ts's Milestone 3b swap handler.
@@ -630,11 +636,20 @@ export async function execute(interaction: ChatInputCommandInteraction) {
         let isCrit = false;
 
         if (btn.customId === "duel_basic") {
+          const teamAtkMult   = isDevGuild ? getAttunementAtkMult(myAttunement, solaceAttunementAtkCritBonus(mySolaceSkillLevel), myAttunementDblTurns > 0) : 1;
+          const teamCritBonus = isDevGuild ? getAttunementCritRateBonus(myAttunement, solaceAttunementAtkCritBonus(mySolaceSkillLevel), myAttunementDblTurns > 0) : 0;
+          const wellspringAtkMult   = isDevGuild && myActiveUnit === "ally" ? WELLSPRING_BASE_ATK_MULT : 1;
+          const wellspringAtkBonus  = isDevGuild ? getWellspringAtkBonus(myAttunement) : 0;
+          const wellspringCritBonus = isDevGuild ? getWellspringCritRateBonus(myAttunement) : 0;
+          const forteAtkBonus  = isDevGuild ? getSolaceForteAtkBonus(mySolaceForteLevel, myForteEmpoweredTurns > 0) : 0;
+          const forteCritBonus = isDevGuild ? getSolaceForteCritRateBonus(mySolaceForteLevel, myForteEmpoweredTurns > 0) : 0;
+          const teamMult = getWeakenedMult(myPlayerDebuffs) * teamAtkMult * wellspringAtkMult * (1 + wellspringAtkBonus) * (1 + forteAtkBonus);
+          const basicMoveMult = isDevGuild && myActiveUnit === "ally" ? solaceBasicDamageMult(mySolaceBasicLevel) : 1.0;
           const windExplosion = mySetId === "WINDSTRIDERS_LEGACY"
             ? windstridersLegacyCheckExplosion(myNamedState) : { proc: false, guaranteedCrit: false, bonusMult: 1.0 };
           const smolderMult = mySetId === "SMOLDERING_SOVEREIGN" ? smolderingSovereignOnAction(myNamedState) : 1;
           const forcedCrit = forcedCritActive || windExplosion.guaranteedCrit;
-          const r      = calcPlayerDamage(myAtk * smolderMult * myHavocAtkMult, effectiveOppDef, forcedCrit ? 1 : aCrit, myCritDmg, 1.0, isWeak, false);
+          const r      = calcPlayerDamage(myAtk * teamMult * basicMoveMult * smolderMult * myHavocAtkMult, effectiveOppDef, forcedCrit ? 1 : Math.min(1, aCrit + teamCritBonus + wellspringCritBonus + forteCritBonus), myCritDmg, 1.0, isWeak, false);
           let base     = Math.floor(r.damage * (1 + myElemDmg + extraElemBonus) * radiantDmgMult);
           base         = Math.floor(base * elemWindstrideMult(myBonus.elementPassive, state.turn, "BASIC"));
           if (mySetId === "WINDSTRIDERS_LEGACY") {
@@ -657,9 +672,28 @@ export async function execute(interaction: ChatInputCommandInteraction) {
           if (mySetId === "STORMCALLERS_OATH") stormcallersOathCheckThunderbolt(myNamedState, isChallenger ? state.cEnergy : state.dEnergy);
         }
 
-        if (btn.customId === "duel_skill") {
+        if (btn.customId === "duel_skill" && isDevGuild && myActiveUnit === "ally") {
+          // Solace's Skill is Attunement — a mode cycle, not a damage move.
+          const newMode = cycleAttunementMode(myAttunement.mode);
+          if (isChallenger) state.cAttunement.mode = newMode; else state.dAttunement.mode = newMode;
+          const crit = Math.random() < aCrit;
+          const r    = calcPlayerDamage(myAtk * 0.6, effectiveOppDef, crit ? 1 : 0, myCritDmg, 1.0, isWeak, false);
+          damage = Math.floor(r.damage * (1 + myElemDmg + extraElemBonus));
+          isCrit = r.isCrit; moveType = "SKILL";
+          moveLine = `${myName} — ✦ Attunement — now in **${newMode}** mode!`;
+          const enGain = ENERGY_PER_TURN;
+          if (isChallenger) state.cEnergy = Math.min(100, state.cEnergy + enGain);
+          else              state.dEnergy = Math.min(100, state.dEnergy + enGain);
+        } else if (btn.customId === "duel_skill") {
+          const teamAtkMult    = isDevGuild ? getAttunementAtkMult(myAttunement, solaceAttunementAtkCritBonus(mySolaceSkillLevel), myAttunementDblTurns > 0) : 1;
+          const teamCritBonus  = isDevGuild ? getAttunementCritRateBonus(myAttunement, solaceAttunementAtkCritBonus(mySolaceSkillLevel), myAttunementDblTurns > 0) : 0;
+          const wellspringAtkBonus  = isDevGuild ? getWellspringAtkBonus(myAttunement) : 0;
+          const wellspringCritBonus = isDevGuild ? getWellspringCritRateBonus(myAttunement) : 0;
+          const forteAtkBonus  = isDevGuild ? getSolaceForteAtkBonus(mySolaceForteLevel, myForteEmpoweredTurns > 0) : 0;
+          const forteCritBonus = isDevGuild ? getSolaceForteCritRateBonus(mySolaceForteLevel, myForteEmpoweredTurns > 0) : 0;
+          const teamMult = getWeakenedMult(myPlayerDebuffs) * teamAtkMult * (1 + wellspringAtkBonus) * (1 + forteAtkBonus);
           const smolderMult = mySetId === "SMOLDERING_SOVEREIGN" ? smolderingSovereignOnAction(myNamedState) : 1;
-          const r      = calcPlayerDamage(myAtk * smolderMult * myHavocAtkMult, effectiveOppDef, forcedCritActive ? 1 : Math.min(1, aCrit + 0.1), myCritDmg, 1.8, isWeak, false);
+          const r      = calcPlayerDamage(myAtk * teamMult * smolderMult * myHavocAtkMult, effectiveOppDef, forcedCritActive ? 1 : Math.min(1, aCrit + 0.1 + teamCritBonus + wellspringCritBonus + forteCritBonus), myCritDmg, 1.8, isWeak, false);
           let base     = Math.floor(r.damage * (1 + myElemDmg + extraElemBonus) * radiantDmgMult);
           base         = Math.floor(base * elemWindstrideMult(myBonus.elementPassive, state.turn, "SKILL"));
           if (mySetId === "WINDSTRIDERS_LEGACY") base = Math.floor(base * windstridersLegacyOnHit(myNamedState));
@@ -677,9 +711,13 @@ export async function execute(interaction: ChatInputCommandInteraction) {
           else              { state.dSkillCd = mySkillCd; state.dEnergy = Math.min(100, state.dEnergy + enGain); }
         }
 
-        if (btn.customId === "duel_ultimate") {
+        if (btn.customId === "duel_ultimate" && !(isDevGuild && myActiveUnit === "ally")) {
+          const teamAtkMult   = isDevGuild ? getAttunementAtkMult(myAttunement, solaceAttunementAtkCritBonus(mySolaceSkillLevel), myAttunementDblTurns > 0) : 1;
+          const wellspringAtkBonus = isDevGuild ? getWellspringAtkBonus(myAttunement) : 0;
+          const forteAtkBonus = isDevGuild ? getSolaceForteAtkBonus(mySolaceForteLevel, myForteEmpoweredTurns > 0) : 0;
+          const teamMult = getWeakenedMult(myPlayerDebuffs) * teamAtkMult * (1 + wellspringAtkBonus) * (1 + forteAtkBonus);
           const smolderMult = mySetId === "SMOLDERING_SOVEREIGN" ? smolderingSovereignOnAction(myNamedState) : 1;
-          const r  = calcPlayerDamage(myAtk * smolderMult * myHavocAtkMult, effectiveOppDef, 1.0, myCritDmg, 3.5, isWeak, false);
+          const r  = calcPlayerDamage(myAtk * teamMult * smolderMult * myHavocAtkMult, effectiveOppDef, 1.0, myCritDmg, 3.5, isWeak, false);
           let base = Math.floor(r.damage * (1 + myElemDmg + extraElemBonus) * radiantDmgMult);
           if (mySetId === "WINDSTRIDERS_LEGACY") base = Math.floor(base * windstridersLegacyOnHit(myNamedState));
           if (mySetId === "RADIANT_CONVERGENCE") radiantConvergenceOnCrit(myNamedState, myHp, myHpMax);
@@ -828,6 +866,16 @@ export async function execute(interaction: ChatInputCommandInteraction) {
         // Apply damage to opponent
         if (isChallenger) state.dHp = Math.max(0, state.dHp - damage);
         else              state.cHp = Math.max(0, state.cHp - damage);
+
+        // Milestone 3e: landing a real attack has a 25% chance to leave the
+        // opponent WEAKENED, mirroring /boss's retaliation-side chance.
+        // Excluded from swap (damage === 0 anyway, so this is a no-op safety
+        // net, not load-bearing).
+        if (isDevGuild && damage > 0 && Math.random() < 0.25) {
+          if (isChallenger) state.dPlayerDebuffs = applyDebuff(state.dPlayerDebuffs, "WEAKENED", 0.2, 2);
+          else              state.cPlayerDebuffs = applyDebuff(state.cPlayerDebuffs, "WEAKENED", 0.2, 2);
+          moveLine += `\n◇ *Leaves ${isChallenger ? state.challengedName : state.challengerName}* **WEAKENED** *(-20% ATK, 2 turns)*`;
+        }
 
         // Opponent's reactive named-set mechanics (they just took a hit) — skipped for swap,
         // since swap deals 0 damage and isn't a real attack the opponent "took."
