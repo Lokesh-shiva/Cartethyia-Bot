@@ -511,6 +511,24 @@ export async function execute(interaction: ChatInputCommandInteraction) {
         const oppSpd   = isChallenger ? state.dSpd : state.cSpd;
         const isWeak   = myElem === COUNTER_ELEMENT[oppElem];
 
+        // Milestone 3e: per-side team-state locals
+        const myHasSolace          = isChallenger ? state.cHasSolace : state.dHasSolace;
+        const myActiveUnit         = isChallenger ? state.cActiveUnit : state.dActiveUnit;
+        const myAllyHpVal          = isChallenger ? state.cAllyHp : state.dAllyHp;
+        const myAllyHpMaxVal       = isChallenger ? state.cAllyHpMax : state.dAllyHpMax;
+        const myConcertoEnergy     = isChallenger ? state.cConcertoEnergy : state.dConcertoEnergy;
+        const myPlayerDebuffs      = isChallenger ? state.cPlayerDebuffs : state.dPlayerDebuffs;
+        const myAttunement         = isChallenger ? state.cAttunement : state.dAttunement;
+        const myAttunementDblTurns = isChallenger ? state.cAttunementDoubleTurnsLeft : state.dAttunementDoubleTurnsLeft;
+        const mySolaceForte        = isChallenger ? state.cSolaceForte : state.dSolaceForte;
+        const myForteEmpoweredTurns= isChallenger ? state.cForteEmpoweredTurnsLeft : state.dForteEmpoweredTurnsLeft;
+        const mySolaceBasicLevel   = isChallenger ? state.cSolaceBasicLevel : state.dSolaceBasicLevel;
+        const mySolaceSkillLevel   = isChallenger ? state.cSolaceSkillLevel : state.dSolaceSkillLevel;
+        const mySolaceUltimateLvl  = isChallenger ? state.cSolaceUltimateLevel : state.dSolaceUltimateLevel;
+        const mySolaceIntroLevel   = isChallenger ? state.cSolaceIntroLevel : state.dSolaceIntroLevel;
+        const mySolaceForteLevel   = isChallenger ? state.cSolaceForteLevel : state.dSolaceForteLevel;
+        let convergenceUsedThisTurn = false;
+
         const myNamedState  = isChallenger ? state.cNamedState : state.dNamedState;
         const mySetId       = myBonus.activeNamedSetId;
         const myGlacioTurns = isChallenger ? state.cGlacioShieldTurnsLeft : state.dGlacioShieldTurnsLeft;
@@ -539,6 +557,55 @@ export async function execute(interaction: ChatInputCommandInteraction) {
 
         let damage = 0;
         let moveLine = "";
+
+        // Milestone 3e: swap — always consumes the turn, falls through to the
+        // shared tail below, same as every other action. Ported from
+        // boss.ts's Milestone 3b swap handler.
+        if (btn.customId === "duel_swap" && isDevGuild && myHasSolace) {
+          const outgoingIsPlayer = myActiveUnit === "player";
+          const comboReady = myConcertoEnergy >= 100;
+
+          if (comboReady) {
+            const incomingTarget: AllyActionTarget = outgoingIsPlayer
+              ? { hp: myAllyHpVal, hpMax: myAllyHpMaxVal }
+              : { hp: myHp, hpMax: myHpMax };
+
+            const outroEffect = outgoingIsPlayer ? PLAYER_SELF_OUTRO : SOLACE.outro;
+            const introEffect: IntroOutroEffect = outgoingIsPlayer ? solaceIntroEffect(mySolaceIntroLevel) : PLAYER_SELF_INTRO;
+            const outroResult = resolveIntroOutroEffect(outroEffect, incomingTarget);
+            const introResult = resolveIntroOutroEffect(introEffect, incomingTarget);
+
+            if (!outgoingIsPlayer) {
+              if (isChallenger) state.cNextCritArmed = true; else state.dNextCritArmed = true;
+            }
+
+            const totalBonus = outroResult.hpDelta + introResult.hpDelta + outroResult.shieldDelta + introResult.shieldDelta;
+            let actualGain: number;
+            if (outgoingIsPlayer) {
+              const before = myAllyHpVal;
+              const after  = Math.min(myAllyHpMaxVal, myAllyHpVal + totalBonus);
+              actualGain = after - before;
+              if (isChallenger) state.cAllyHp = after; else state.dAllyHp = after;
+            } else {
+              const before = myHp;
+              const after  = Math.min(myHpMax, myHp + totalBonus);
+              actualGain = after - before;
+              if (isChallenger) state.cHp = after; else state.dHp = after;
+            }
+
+            moveLine = actualGain > 0
+              ? `${myName} — 🔄 Swapped to **${outgoingIsPlayer ? SOLACE.name : myName}** — Outro+Intro combo! +${actualGain} HP.`
+              : `${myName} — 🔄 Swapped to **${outgoingIsPlayer ? SOLACE.name : myName}** — Outro+Intro combo! (already full HP, no heal needed)`;
+            const newConcerto = addConcertoEnergy(0, 20); // headstart, matches CONCERTO_INTRO_HEADSTART
+            if (isChallenger) state.cConcertoEnergy = newConcerto; else state.dConcertoEnergy = newConcerto;
+          } else {
+            moveLine = `${myName} — 🔄 Swapped to **${outgoingIsPlayer ? SOLACE.name : myName}** — Concerto Energy not full, no combo triggered.`;
+          }
+
+          if (isChallenger) state.cActiveUnit = outgoingIsPlayer ? "ally" : "player";
+          else              state.dActiveUnit = outgoingIsPlayer ? "ally" : "player";
+          damage = 0;
+        }
 
         if (btn.customId === "duel_forfeit") {
           const winnerId = isChallenger ? state.challengedId : state.challengerId;
@@ -720,8 +787,12 @@ export async function execute(interaction: ChatInputCommandInteraction) {
           else              state.dV2Stacks = ar.newStacks;
         }
 
-        // SPD first-strike — whoever has the SPD edge gets bonus damage on the duel's very first action
-        if (state.turn === 1 && mySpd > oppSpd) {
+        // SPD first-strike — whoever has the SPD edge gets bonus damage on the duel's very first action.
+        // Excludes swap (free repositioning, deals 0 damage anyway) and Solace's Convergence
+        // (a real action, but shouldn't get a damage bonus it can't use), mirroring the
+        // Quick-Strike exclusion already applied to Convergence in /boss and /ascend.
+        if (state.turn === 1 && mySpd > oppSpd && btn.customId !== "duel_swap" &&
+            !(btn.customId === "duel_ultimate" && isDevGuild && myActiveUnit === "ally")) {
           const bonusDmg = Math.floor(damage * 0.15);
           damage += bonusDmg;
           moveLine += `\n⚡ **First Strike** — you got the jump on them! +${bonusDmg} bonus DMG!`;
@@ -744,11 +815,11 @@ export async function execute(interaction: ChatInputCommandInteraction) {
         if (isChallenger) {
           state.cHp = Math.min(state.cHpMax, state.cHp + Math.max(0, healed));
           state.cEnergy = Math.min(100, state.cEnergy + ar.bonusEnergy);
-          state.cFirstAction = false;
+          if (btn.customId !== "duel_swap") state.cFirstAction = false;
         } else {
           state.dHp = Math.min(state.dHpMax, state.dHp + Math.max(0, healed));
           state.dEnergy = Math.min(100, state.dEnergy + ar.bonusEnergy);
-          state.dFirstAction = false;
+          if (btn.customId !== "duel_swap") state.dFirstAction = false;
         }
 
         // Apply damage to opponent
@@ -827,14 +898,14 @@ export async function execute(interaction: ChatInputCommandInteraction) {
           if (state.cNamedState.spectroFractureTurnsLeft > 0) state.cNamedState.spectroFractureTurnsLeft--;
           if (state.cEchoSkillCd > 0) state.cEchoSkillCd--;
           if (state.cDefShredTurnsLeft > 0) state.cDefShredTurnsLeft--;
-          if (forcedCritActive) state.cNextCritArmed = false;
+          if (forcedCritActive && btn.customId !== "duel_swap") state.cNextCritArmed = false;
         } else {
           if (state.dGlacioShieldTurnsLeft > 0) state.dGlacioShieldTurnsLeft--;
           if (state.dStormBuffTurnsLeft > 0) state.dStormBuffTurnsLeft--;
           if (state.dNamedState.spectroFractureTurnsLeft > 0) state.dNamedState.spectroFractureTurnsLeft--;
           if (state.dEchoSkillCd > 0) state.dEchoSkillCd--;
           if (state.dDefShredTurnsLeft > 0) state.dDefShredTurnsLeft--;
-          if (forcedCritActive) state.dNextCritArmed = false;
+          if (forcedCritActive && btn.customId !== "duel_swap") state.dNextCritArmed = false;
         }
 
         // Check win
