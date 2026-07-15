@@ -29,6 +29,27 @@ import {
 import { echoSkillBaseMult, applyEchoSkill } from "../../lib/echoSkills";
 import { incrementWeaponBond } from "../../lib/weaponAwakening";
 import { generateVersusCard, Fighter } from "../../lib/versusCard";
+import {
+  SOLACE, SOLACE_ULTIMATE_DOUBLE_TURNS, PLAYER_SELF_INTRO, PLAYER_SELF_OUTRO,
+  SOLACE_FORTE_CONFIG, SOLACE_FORTE_GAIN_PER_BASIC, SOLACE_FORTE_EMPOWERED_TURNS,
+  getSolaceForteAtkBonus, getSolaceForteCritRateBonus, getSolaceForteDefBonus,
+  solaceIntroEffect, solaceBasicDamageMult, solaceAttunementAtkCritBonus,
+  solaceAttunementDefBonus, solaceConvergenceHealPct,
+} from "../../lib/solace";
+import { resolveIntroOutroEffect, IntroOutroEffect } from "../../lib/introOutro";
+import {
+  AttunementState, cycleAttunementMode,
+  getAttunementAtkMult, getAttunementCritRateBonus, getAttunementDefMult,
+} from "../../lib/attunement";
+import {
+  WELLSPRING_BASE_ATK_MULT, WELLSPRING_BASE_ENERGY_BONUS,
+  getWellspringAtkBonus, getWellspringCritRateBonus, getWellspringDefBonus,
+} from "../../lib/wellspring";
+import { ForteState, addForteCharge, isForteMaxed, resetForte } from "../../lib/forte";
+import { AllyActionTarget } from "../../lib/allyActions";
+import { addConcertoEnergy } from "../../lib/concertoEnergy";
+import { DebuffState, applyDebuff, tickDebuffs, getWeakenedMult, cleanseDebuffs } from "../../lib/debuffs";
+import { getOrCreateCharacterProgress } from "../../lib/characterProgress";
 import { AttachmentBuilder } from "discord.js";
 
 // ── In-memory active duels ────────────────────────────────────────────────────
@@ -49,6 +70,14 @@ interface DuelState {
   cStormBuffTurnsLeft: number; cStormBuffCritBonus: number;
   cHavocFrenzyAtkMult: number; cHavocFrenzyLifesteal: number; cHavocFrenzyDefIgnore: number;
   cEchoSkillCd: number; cDefShredTurnsLeft: number; cDefShredPct: number; cNextCritArmed: boolean;
+  // Milestone 3e: challenger team state (dev guild only)
+  cHasSolace: boolean;
+  cSolaceBasicLevel: number; cSolaceSkillLevel: number; cSolaceUltimateLevel: number;
+  cSolaceIntroLevel: number; cSolaceForteLevel: number;
+  cActiveUnit: "player" | "ally"; cAllyHp: number; cAllyHpMax: number;
+  cConcertoEnergy: number; cPlayerDebuffs: DebuffState;
+  cAttunement: AttunementState; cAttunementDoubleTurnsLeft: number;
+  cSolaceForte: ForteState; cForteEmpoweredTurnsLeft: number;
   // Challenged stats
   dHp:     number; dHpMax: number; dEnergy:  number; dSkillCd: number;
   dAtk:    number; dDef:   number; dSpd: number; dCritRate: number; dCritDmg: number; dElement: string;
@@ -59,6 +88,14 @@ interface DuelState {
   dStormBuffTurnsLeft: number; dStormBuffCritBonus: number;
   dHavocFrenzyAtkMult: number; dHavocFrenzyLifesteal: number; dHavocFrenzyDefIgnore: number;
   dEchoSkillCd: number; dDefShredTurnsLeft: number; dDefShredPct: number; dNextCritArmed: boolean;
+  // Milestone 3e: challenged team state (dev guild only)
+  dHasSolace: boolean;
+  dSolaceBasicLevel: number; dSolaceSkillLevel: number; dSolaceUltimateLevel: number;
+  dSolaceIntroLevel: number; dSolaceForteLevel: number;
+  dActiveUnit: "player" | "ally"; dAllyHp: number; dAllyHpMax: number;
+  dConcertoEnergy: number; dPlayerDebuffs: DebuffState;
+  dAttunement: AttunementState; dAttunementDoubleTurnsLeft: number;
+  dSolaceForte: ForteState; dForteEmpoweredTurnsLeft: number;
   // Turn tracking
   currentTurn: string; // userId
   turn:        number;
@@ -108,37 +145,81 @@ function duelEmbed(state: DuelState, lastMove: string, _color: number): EmbedBui
         inline: false,
       },
     )
+    .setDescription(duelTeamStatusLine(state))
     .setFooter({ text: `CARTETHYIA  ·  ${turnName}'s turn  ·  10 min to act` });
 }
 
-function buildDuelButtons(state: DuelState, forUserId: string): ActionRowBuilder<ButtonBuilder> {
-  const isChallenger = forUserId === state.challengerId;
-  const myEnergy     = isChallenger ? state.cEnergy  : state.dEnergy;
-  const mySkillCd    = isChallenger ? state.cSkillCd : state.dSkillCd;
-  const myBonus      = isChallenger ? state.cBonuses : state.dBonuses;
-  const myEchoCd     = isChallenger ? state.cEchoSkillCd : state.dEchoSkillCd;
+function duelTeamStatusLine(state: DuelState): string | null {
+  const lines: string[] = [];
+  if (state.cHasSolace) lines.push(duelSideStatusLine(state.challengerName, state.cActiveUnit, state.cAllyHp, state.cAllyHpMax, state.cConcertoEnergy, state.cPlayerDebuffs));
+  if (state.dHasSolace) lines.push(duelSideStatusLine(state.challengedName, state.dActiveUnit, state.dAllyHp, state.dAllyHpMax, state.dConcertoEnergy, state.dPlayerDebuffs));
+  return lines.length > 0 ? lines.join("\n") : null;
+}
 
-  const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
-    new ButtonBuilder().setCustomId("duel_basic").setLabel("⚔️  Basic Attack").setStyle(ButtonStyle.Primary),
-    new ButtonBuilder().setCustomId("duel_skill")
-      .setLabel(mySkillCd === 0 ? "✦  Skill" : `✦  Skill (${mySkillCd}🔄)`)
-      .setStyle(ButtonStyle.Secondary).setDisabled(mySkillCd > 0),
-    new ButtonBuilder().setCustomId("duel_ultimate")
-      .setLabel("⚡  Ultimate").setStyle(ButtonStyle.Success).setDisabled(myEnergy < 100),
-  );
-  if (myBonus.echoSkill) {
-    const echoReady = myEchoCd === 0;
-    row.addComponents(
-      new ButtonBuilder().setCustomId("duel_echoskill")
-        .setLabel(echoReady ? `🌀  ${myBonus.echoSkill.name}` : `🌀  ${myBonus.echoSkill.name} (${myEchoCd}🔄)`)
-        .setStyle(ButtonStyle.Secondary).setDisabled(!echoReady),
+function duelSideStatusLine(
+  name: string, activeUnit: "player" | "ally", allyHp: number, allyHpMax: number,
+  concertoEnergy: number, debuffs: DebuffState,
+): string {
+  const debuffLine = debuffs.length > 0 ? `  ·  ${debuffs.map(d => `${d.type} (${d.turnsLeft})`).join(", ")}` : "";
+  const soloLine = activeUnit === "ally" ? `  ·  ${SOLACE.name} ${allyHp}/${allyHpMax} HP` : "";
+  return `🔄 **${name}**: Concerto Energy **${concertoEnergy}/100**${soloLine}${debuffLine}`;
+}
+
+function buildDuelButtons(state: DuelState, forUserId: string, isDevGuild: boolean): ActionRowBuilder<ButtonBuilder>[] {
+  const isChallenger  = forUserId === state.challengerId;
+  const myEnergy       = isChallenger ? state.cEnergy  : state.dEnergy;
+  const mySkillCd       = isChallenger ? state.cSkillCd : state.dSkillCd;
+  const myBonus         = isChallenger ? state.cBonuses : state.dBonuses;
+  const myEchoCd         = isChallenger ? state.cEchoSkillCd : state.dEchoSkillCd;
+  const myHasSolace       = isChallenger ? state.cHasSolace : state.dHasSolace;
+  const myActiveUnit       = isChallenger ? state.cActiveUnit : state.dActiveUnit;
+  const myConcertoEnergy    = isChallenger ? state.cConcertoEnergy : state.dConcertoEnergy;
+  const myAttunement          = isChallenger ? state.cAttunement : state.dAttunement;
+  const myName                 = isChallenger ? state.challengerName : state.challengedName;
+
+  const rows: ActionRowBuilder<ButtonBuilder>[] = [];
+
+  if (isDevGuild && myHasSolace && myActiveUnit === "ally") {
+    const modeLabel = myAttunement.mode ? `(${myAttunement.mode})` : "(inactive)";
+    rows.push(new ActionRowBuilder<ButtonBuilder>().addComponents(
+      new ButtonBuilder().setCustomId("duel_basic").setLabel("⚔️  Chime Strike").setStyle(ButtonStyle.Primary),
+      new ButtonBuilder().setCustomId("duel_skill").setLabel(`✦  Attunement ${modeLabel}`).setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder().setCustomId("duel_ultimate").setLabel("⚡  Convergence")
+        .setStyle(ButtonStyle.Success).setDisabled(myConcertoEnergy < 100),
+      new ButtonBuilder().setCustomId("duel_forfeit").setLabel("🏳️  Forfeit").setStyle(ButtonStyle.Danger),
+    ));
+  } else {
+    const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
+      new ButtonBuilder().setCustomId("duel_basic").setLabel("⚔️  Basic Attack").setStyle(ButtonStyle.Primary),
+      new ButtonBuilder().setCustomId("duel_skill")
+        .setLabel(mySkillCd === 0 ? "✦  Skill" : `✦  Skill (${mySkillCd}🔄)`)
+        .setStyle(ButtonStyle.Secondary).setDisabled(mySkillCd > 0),
+      new ButtonBuilder().setCustomId("duel_ultimate")
+        .setLabel("⚡  Ultimate").setStyle(ButtonStyle.Success).setDisabled(myEnergy < 100),
     );
+    if (myBonus.echoSkill) {
+      const echoReady = myEchoCd === 0;
+      row.addComponents(
+        new ButtonBuilder().setCustomId("duel_echoskill")
+          .setLabel(echoReady ? `🌀  ${myBonus.echoSkill.name}` : `🌀  ${myBonus.echoSkill.name} (${myEchoCd}🔄)`)
+          .setStyle(ButtonStyle.Secondary).setDisabled(!echoReady),
+      );
+    }
+    row.addComponents(
+      new ButtonBuilder().setCustomId("duel_forfeit").setLabel("🏳️  Forfeit").setStyle(ButtonStyle.Danger),
+    );
+    rows.push(row);
   }
-  row.addComponents(
-    new ButtonBuilder().setCustomId("duel_forfeit")
-      .setLabel("🏳️  Forfeit").setStyle(ButtonStyle.Danger),
-  );
-  return row;
+
+  if (isDevGuild && myHasSolace) {
+    rows.push(new ActionRowBuilder<ButtonBuilder>().addComponents(
+      new ButtonBuilder().setCustomId("duel_swap")
+        .setLabel(myActiveUnit === "player" ? `🔄  Swap to ${SOLACE.name}` : `🔄  Swap to ${myName}`)
+        .setStyle(ButtonStyle.Secondary),
+    ));
+  }
+
+  return rows;
 }
 
 function elementEmoji(el: string): string {
@@ -266,6 +347,14 @@ export async function execute(interaction: ChatInputCommandInteraction) {
 
     // locks already held for both players
 
+    const isDevGuild = interaction.guildId === process.env.GUILD_ID;
+    const [cSolaceProgress, dSolaceProgress] = isDevGuild
+      ? await Promise.all([
+          getOrCreateCharacterProgress(interaction.user.id, "solace"),
+          getOrCreateCharacterProgress(target.id, "solace"),
+        ])
+      : [null, null];
+
     const state: DuelState = {
       challengerId: interaction.user.id, challengedId: target.id,
       challengerName: cName, challengedName: dName,
@@ -280,6 +369,14 @@ export async function execute(interaction: ChatInputCommandInteraction) {
       cStormBuffTurnsLeft: 0, cStormBuffCritBonus: 0,
       cHavocFrenzyAtkMult: 1.0, cHavocFrenzyLifesteal: 0, cHavocFrenzyDefIgnore: 0,
       cEchoSkillCd: 0, cDefShredTurnsLeft: 0, cDefShredPct: 0, cNextCritArmed: false,
+      cHasSolace: cSolaceProgress !== null,
+      cSolaceBasicLevel: cSolaceProgress?.basicLevel ?? 1, cSolaceSkillLevel: cSolaceProgress?.skillLevel ?? 1,
+      cSolaceUltimateLevel: cSolaceProgress?.ultimateLevel ?? 1, cSolaceIntroLevel: cSolaceProgress?.introLevel ?? 1,
+      cSolaceForteLevel: cSolaceProgress?.forteLevel ?? 1,
+      cActiveUnit: "player", cAllyHp: SOLACE.hpMax, cAllyHpMax: SOLACE.hpMax,
+      cConcertoEnergy: 0, cPlayerDebuffs: [],
+      cAttunement: { mode: null }, cAttunementDoubleTurnsLeft: 0,
+      cSolaceForte: { phase: 0, charge: 0 }, cForteEmpoweredTurnsLeft: 0,
       dHp: dStats.hp, dHpMax: dStats.hp, dEnergy: 0, dSkillCd: 0,
       dAtk: dStats.atk, dDef: dStats.def, dSpd: dStats.spd,
       dCritRate: dStats.critRate, dCritDmg: dStats.critDmg,
@@ -291,6 +388,14 @@ export async function execute(interaction: ChatInputCommandInteraction) {
       dStormBuffTurnsLeft: 0, dStormBuffCritBonus: 0,
       dHavocFrenzyAtkMult: 1.0, dHavocFrenzyLifesteal: 0, dHavocFrenzyDefIgnore: 0,
       dEchoSkillCd: 0, dDefShredTurnsLeft: 0, dDefShredPct: 0, dNextCritArmed: false,
+      dHasSolace: dSolaceProgress !== null,
+      dSolaceBasicLevel: dSolaceProgress?.basicLevel ?? 1, dSolaceSkillLevel: dSolaceProgress?.skillLevel ?? 1,
+      dSolaceUltimateLevel: dSolaceProgress?.ultimateLevel ?? 1, dSolaceIntroLevel: dSolaceProgress?.introLevel ?? 1,
+      dSolaceForteLevel: dSolaceProgress?.forteLevel ?? 1,
+      dActiveUnit: "player", dAllyHp: SOLACE.hpMax, dAllyHpMax: SOLACE.hpMax,
+      dConcertoEnergy: 0, dPlayerDebuffs: [],
+      dAttunement: { mode: null }, dAttunementDoubleTurnsLeft: 0,
+      dSolaceForte: { phase: 0, charge: 0 }, dForteEmpoweredTurnsLeft: 0,
       // Higher SPD acts first; ties keep the challenger-first default
       currentTurn: dStats.spd > cStats.spd ? target.id : interaction.user.id,
       turn: 1,
@@ -332,7 +437,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
 
     let battleMsg = await thread.send({
       embeds:  [duelEmbed(state, "*The duel begins.*", color)],
-      components: [buildDuelButtons(state, state.currentTurn)],
+      components: buildDuelButtons(state, state.currentTurn, isDevGuild),
     });
 
     const cleanup = async (
@@ -763,7 +868,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
         const newMsg  = await thread.send({
           content:    `<@${state.currentTurn}>`,
           embeds:     [updated],
-          components: [buildDuelButtons(state, state.currentTurn)],
+          components: buildDuelButtons(state, state.currentTurn, isDevGuild),
         });
         await battleMsg.edit({ components: [] }).catch(() => {});
         battleMsg = newMsg;
