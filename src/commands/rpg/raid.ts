@@ -429,6 +429,39 @@ function nextParticipant(raid: ActiveRaid): RaidParticipant | null {
   return raid.participants[idx];
 }
 
+// Milestone 3d Task 3: folds together Attunement/Wellspring/Forte contributions
+// from EVERY participant currently `activeUnit === "ally"` — unlike boss.ts's
+// solo case (exactly one owner, or none), a raid can have 0, 1, or several
+// participants with their own Solace active simultaneously (each on their own
+// turn). Multiplicative mults are folded via product (stacking naturally),
+// additive bonuses via sum. Applies party-wide: the caller uses this result for
+// whichever participant is acting/being hit, regardless of whose ally is active.
+function partyWideTeamBonuses(raid: ActiveRaid): {
+  atkMult: number; critBonus: number; defMult: number;
+} {
+  let atkMult   = 1;
+  let critBonus = 0;
+  let defMult   = 1;
+  for (const ally of raid.participants) {
+    if (ally.activeUnit !== "ally") continue;
+    const attuneAtkBonus = solaceAttunementAtkCritBonus(ally.solaceSkillLevel);
+    const attuneDefBonus = solaceAttunementDefBonus(ally.solaceSkillLevel);
+    const doubled = ally.attunementDoubleTurnsLeft > 0;
+    const forteActive = ally.forteEmpoweredTurnsLeft > 0;
+
+    atkMult *= getAttunementAtkMult(ally.attunement, attuneAtkBonus, doubled);
+    critBonus += getAttunementCritRateBonus(ally.attunement, attuneAtkBonus, doubled);
+    critBonus += getWellspringCritRateBonus(ally.attunement);
+    critBonus += getSolaceForteCritRateBonus(ally.solaceForteLevel, forteActive);
+    atkMult *= 1 + getWellspringAtkBonus(ally.attunement);
+    atkMult *= 1 + getSolaceForteAtkBonus(ally.solaceForteLevel, forteActive);
+    defMult *= getAttunementDefMult(ally.attunement, attuneDefBonus, doubled);
+    defMult *= 1 + getWellspringDefBonus(ally.attunement);
+    defMult *= 1 + getSolaceForteDefBonus(ally.solaceForteLevel, forteActive);
+  }
+  return { atkMult, critBonus, defMult };
+}
+
 // ── Command definition ────────────────────────────────────────────────────────
 export const data = new SlashCommandBuilder()
   .setName("raid")
@@ -1016,7 +1049,19 @@ async function launchRaid(
           ? windstridersLegacyCheckExplosion(current.namedState) : { proc: false, guaranteedCrit: false, bonusMult: 1.0 };
         const smolderMult = mySetId === "SMOLDERING_SOVEREIGN" ? smolderingSovereignOnAction(current.namedState) : 1;
         const forcedCrit = forcedCritActive || windExplosion.guaranteedCrit;
-        const r    = calcPlayerDamage(current.atk * smolderMult * havocAtkMult, defVal, forcedCrit ? 1 : aCrit, current.critDmg, 1.0, isWeak, raid.isShattered);
+        // Milestone 3d: party-wide Attunement/Wellspring/Forte bonuses from
+        // whichever participant(s) currently have their Solace active, folded
+        // into WHOEVER is acting this turn (not just the ally's own owner).
+        const party = raid.isDevGuild ? partyWideTeamBonuses(raid) : { atkMult: 1, critBonus: 0, defMult: 1 };
+        const weakenedMult = raid.isDevGuild ? getWeakenedMult(current.playerDebuffs) : 1;
+        // Solace's own Basic ("Chime Strike") uses her own level-scaled
+        // multiplier instead of the player's plain Basic — and gets Wellspring's
+        // base +18% ATK on top, same as boss.ts's single-owner case.
+        const isSolaceActing = raid.isDevGuild && current.activeUnit === "ally";
+        const basicMoveMult = isSolaceActing ? solaceBasicDamageMult(current.solaceBasicLevel) : 1.0;
+        const wellspringSelfAtkMult = isSolaceActing ? WELLSPRING_BASE_ATK_MULT : 1;
+        const teamMult = weakenedMult * party.atkMult * wellspringSelfAtkMult * basicMoveMult;
+        const r    = calcPlayerDamage(current.atk * smolderMult * havocAtkMult * teamMult, defVal, forcedCrit ? 1 : Math.min(1, aCrit + party.critBonus), current.critDmg, 1.0, isWeak, raid.isShattered);
         let base   = Math.floor(r.damage * (1 + current.elemDmg + extraElemBonus) * radiantDmgMult);
         base       = Math.floor(base * elemWindstrideMult(current.bonuses.elementPassive, raid.turn, "BASIC"));
         if (mySetId === "WINDSTRIDERS_LEGACY") {
@@ -1032,13 +1077,29 @@ async function launchRaid(
         const ign  = elemIgniteProc(current.bonuses.elementPassive, current.atk);
         if (mySetId === "RADIANT_CONVERGENCE" && r.isCrit) radiantConvergenceOnCrit(current.namedState, current.hp, current.hpMax);
         damage = base + ign.dmg; isCrit = r.isCrit; vibFrac = 0.3;
-        moveLine = `${current.name} — Basic Attack${r.isCrit ? " **(CRIT)**" : ""}${isWeak ? " **(WEAK)**" : ""}${ign.tag ? `  ✦${ign.tag}` : ""}`;
+        moveLine = `${current.name} — ${isSolaceActing ? "✦ Chime Strike" : "Basic Attack"}${r.isCrit ? " **(CRIT)**" : ""}${isWeak ? " **(WEAK)**" : ""}${ign.tag ? `  ✦${ign.tag}` : ""}`;
         current.energy = Math.min(100, current.energy + ENERGY_PER_TURN + Math.floor(current.bonuses.spdFlat / 20) + elemDischargeEnergy(current.bonuses.elementPassive, r.isCrit) + thunderboltEnergy);
         if (mySetId === "STORMCALLERS_OATH") stormcallersOathCheckThunderbolt(current.namedState, current.energy);
 
+      } else if (raid.isDevGuild && current.activeUnit === "ally" && btn.customId === "raid_skill") {
+        // Solace's Skill is Attunement — a mode cycle, not a damage move.
+        // The ORIGINAL player Skill logic below is untouched and only runs
+        // when this branch's condition is false.
+        current.attunement.mode = cycleAttunementMode(current.attunement.mode);
+        // NOTE: WEAKENED deliberately NOT folded in here — it's a debuff on
+        // the player, not on Solace, and this is her own Attunement-cycle hit.
+        const crit = forcedCritActive || Math.random() < aCrit;
+        const r = calcPlayerDamage(current.atk * havocAtkMult, defVal, crit ? 1 : 0, current.critDmg, 0.6, isWeak, raid.isShattered);
+        const base = Math.floor(r.damage * (1 + current.elemDmg + extraElemBonus) * radiantDmgMult);
+        damage = base; isCrit = r.isCrit; vibFrac = 0.3;
+        moveLine = `${current.name} — ✦ Attunement — now in **${current.attunement.mode}** mode!`;
+
       } else if (btn.customId === "raid_skill") {
         const smolderMult = mySetId === "SMOLDERING_SOVEREIGN" ? smolderingSovereignOnAction(current.namedState) : 1;
-        const r    = calcPlayerDamage(current.atk * smolderMult * havocAtkMult, defVal, forcedCritActive ? 1 : Math.min(1, aCrit + 0.1), current.critDmg, 1.8, isWeak, raid.isShattered);
+        const party = raid.isDevGuild ? partyWideTeamBonuses(raid) : { atkMult: 1, critBonus: 0, defMult: 1 };
+        const weakenedMult = raid.isDevGuild ? getWeakenedMult(current.playerDebuffs) : 1;
+        const teamMult = weakenedMult * party.atkMult;
+        const r    = calcPlayerDamage(current.atk * smolderMult * havocAtkMult * teamMult, defVal, forcedCritActive ? 1 : Math.min(1, aCrit + 0.1 + party.critBonus), current.critDmg, 1.8, isWeak, raid.isShattered);
         let base   = Math.floor(r.damage * (1 + current.elemDmg + extraElemBonus) * radiantDmgMult);
         base       = Math.floor(base * elemWindstrideMult(current.bonuses.elementPassive, raid.turn, "SKILL"));
         if (mySetId === "WINDSTRIDERS_LEGACY") base = Math.floor(base * windstridersLegacyOnHit(current.namedState));
@@ -1053,9 +1114,12 @@ async function launchRaid(
         current.skillCd = effectiveSkillCooldown(current.bonuses, SKILL_CD);
         current.energy  = Math.min(100, current.energy + ENERGY_PER_TURN + Math.floor(current.bonuses.spdFlat / 20) + elemDischargeEnergy(current.bonuses.elementPassive, r.isCrit));
 
-      } else if (btn.customId === "raid_ultimate") {
+      } else if (btn.customId === "raid_ultimate" && !(raid.isDevGuild && current.activeUnit === "ally")) {
         const smolderMult = mySetId === "SMOLDERING_SOVEREIGN" ? smolderingSovereignOnAction(current.namedState) : 1;
-        const r  = calcPlayerDamage(current.atk * smolderMult * havocAtkMult, defVal, 1.0, current.critDmg, 3.5, isWeak, raid.isShattered);
+        const party = raid.isDevGuild ? partyWideTeamBonuses(raid) : { atkMult: 1, critBonus: 0, defMult: 1 };
+        const weakenedMult = raid.isDevGuild ? getWeakenedMult(current.playerDebuffs) : 1;
+        const teamMult = weakenedMult * party.atkMult;
+        const r  = calcPlayerDamage(current.atk * smolderMult * havocAtkMult * teamMult, defVal, 1.0, current.critDmg, 3.5, isWeak, raid.isShattered);
         let base = Math.floor(r.damage * (1 + current.elemDmg + extraElemBonus) * radiantDmgMult);
         if (mySetId === "WINDSTRIDERS_LEGACY") base = Math.floor(base * windstridersLegacyOnHit(current.namedState));
         if (mySetId === "RADIANT_CONVERGENCE") radiantConvergenceOnCrit(current.namedState, current.hp, current.hpMax);
@@ -1192,6 +1256,14 @@ async function launchRaid(
       // ── Boss counter-attack (AoE vs all living players) ──────────────────────
       nextParticipant(raid);   // advance pointer (side effect: sets raid.currentIdx)
 
+      // Milestone 3d: debuffs tick down at the START of resolving the boss's
+      // turn — mirrors boss.ts's Milestone 3b Task 3 timing, so any WEAKENED
+      // applied by the AoE below isn't touched until NEXT round's tick.
+      if (raid.isDevGuild) {
+        const tickResult = tickDebuffs(current.playerDebuffs);
+        current.playerDebuffs = tickResult.state;
+      }
+
       if (raid.shatterLeft > 0) {
         raid.shatterLeft--;
         if (raid.shatterLeft === 0) {
@@ -1206,14 +1278,28 @@ async function launchRaid(
         const aoeBase = Math.floor(raid.bossAtk * move.damage * 0.6); // AoE = 60% of single-target
         const alive   = raid.participants.filter(p => !p.isDefeated);
         const dmgLines: string[] = [];
+        // Milestone 3d: party-wide DEF bonuses (Attunement DEF-mode/Wellspring/
+        // Forte) from whoever currently has their Solace active apply to
+        // EVERY living participant's damage taken, not just the owner's.
+        const party = raid.isDevGuild ? partyWideTeamBonuses(raid) : { atkMult: 1, critBonus: 0, defMult: 1 };
 
         for (const p of alive) {
-          let bossDmg    = calcEnemyDamage(aoeBase, p.def, 1.0);
+          let bossDmg    = calcEnemyDamage(aoeBase, p.def * party.defMult, 1.0);
           const shield   = elemFrostShield(p.bonuses.elementPassive, bossDmg);
           bossDmg        = shield.dmg;
           const radRegen = elemRadianceRegen(p.bonuses.elementPassive, p.hpMax);
-          p.hp = Math.max(0, p.hp - bossDmg);
-          if (radRegen > 0) p.hp = Math.min(p.hpMax, p.hp + radRegen);
+
+          // Milestone 3d: while a participant's own Solace is active, AoE
+          // damage routes into her ally HP pool instead of the participant's
+          // own HP — depleting it is NOT a defeat, just a forced swap back.
+          const hitsAlly = raid.isDevGuild && p.activeUnit === "ally";
+          if (hitsAlly) {
+            p.allyHp = Math.max(0, p.allyHp - bossDmg);
+            if (radRegen > 0) p.allyHp = Math.min(p.allyHpMax, p.allyHp + radRegen);
+          } else {
+            p.hp = Math.max(0, p.hp - bossDmg);
+            if (radRegen > 0) p.hp = Math.min(p.hpMax, p.hp + radRegen);
+          }
 
           const pSetId = p.bonuses.activeNamedSetId;
           if (pSetId === "SMOLDERING_SOVEREIGN") smolderingSovereignOnDamageTaken(p.namedState);
@@ -1245,7 +1331,18 @@ async function launchRaid(
             }
           }
 
-          if (p.hp <= 0) {
+          if (hitsAlly) {
+            // Ally HP hitting 0 forces a swap back to the player — this is
+            // NOT a defeat (only the player's own p.hp <= 0 is).
+            if (p.allyHp <= 0) {
+              p.allyHp = 0;
+              p.activeUnit = "player";
+              dmgLines.push(`${p.name}'s ${SOLACE.name} -${bossDmg} — swapped back!`);
+            } else {
+              const suffix = shield.blocked ? " 🛡" : radRegen > 0 ? ` +${radRegen}✨` : "";
+              dmgLines.push(`${p.name}'s ${SOLACE.name} -${bossDmg}${suffix}`);
+            }
+          } else if (p.hp <= 0) {
             if (compositeHasSecondWind(p.bonuses.abilityEffects) && !p.secondWindUsed) {
               p.secondWindUsed = true; p.hp = 1;
               dmgLines.push(`${p.name} -${bossDmg} ✦UNDYING`);
@@ -1256,6 +1353,15 @@ async function launchRaid(
           } else {
             const suffix = shield.blocked ? " 🛡" : radRegen > 0 ? ` +${radRegen}✨` : "";
             dmgLines.push(`${p.name} -${bossDmg}${suffix}`);
+          }
+
+          // Milestone 3d: WEAKENED — independent 25% roll per participant hit
+          // by the AoE (not one shared roll for the whole AoE), matching the
+          // recommendation to treat each hit as its own chance, since the AoE
+          // already loops over every living participant individually.
+          if (raid.isDevGuild && !p.isDefeated && Math.random() < 0.25) {
+            p.playerDebuffs = applyDebuff(p.playerDebuffs, "WEAKENED", 0.2, 2);
+            dmgLines.push(`${p.name} WEAKENED`);
           }
 
           if (p.glacioShieldTurnsLeft > 0) p.glacioShieldTurnsLeft--;
