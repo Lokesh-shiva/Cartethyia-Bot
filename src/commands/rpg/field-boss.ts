@@ -42,6 +42,27 @@ import {
 } from "../../lib/namedSets";
 import { echoSkillBaseMult, applyEchoSkill } from "../../lib/echoSkills";
 import {
+  SOLACE, SOLACE_ULTIMATE_DOUBLE_TURNS, PLAYER_SELF_INTRO, PLAYER_SELF_OUTRO,
+  SOLACE_FORTE_CONFIG, SOLACE_FORTE_GAIN_PER_BASIC, SOLACE_FORTE_EMPOWERED_TURNS,
+  getSolaceForteAtkBonus, getSolaceForteCritRateBonus, getSolaceForteDefBonus,
+  solaceIntroEffect, solaceBasicDamageMult, solaceAttunementAtkCritBonus,
+  solaceAttunementDefBonus, solaceConvergenceHealPct,
+} from "../../lib/solace";
+import { resolveIntroOutroEffect, IntroOutroEffect } from "../../lib/introOutro";
+import {
+  AttunementState, cycleAttunementMode,
+  getAttunementAtkMult, getAttunementCritRateBonus, getAttunementDefMult,
+} from "../../lib/attunement";
+import {
+  WELLSPRING_BASE_ATK_MULT, WELLSPRING_BASE_ENERGY_BONUS,
+  getWellspringAtkBonus, getWellspringCritRateBonus, getWellspringDefBonus,
+} from "../../lib/wellspring";
+import { ForteState, addForteCharge, isForteMaxed, resetForte } from "../../lib/forte";
+import { AllyActionTarget } from "../../lib/allyActions";
+import { addConcertoEnergy } from "../../lib/concertoEnergy";
+import { DebuffState, applyDebuff, tickDebuffs, getWeakenedMult, cleanseDebuffs } from "../../lib/debuffs";
+import { getOrCreateCharacterProgress } from "../../lib/characterProgress";
+import {
   rollRarity, rollMainStat, rollSubstats, rollSubstatValue,
   calcMainStatValue, substatCount, RARITY_STARS,
   ELEMENT_EMOJI, ELEMENT_COLORS, scaledFieldBossRarityWeights,
@@ -86,43 +107,77 @@ function fieldToBoss(fb: FieldBoss): Boss {
 async function sendBattleCard(
   thread: TextChannel | ThreadChannel,
   state: BattleCardState,
-  buttons: ActionRowBuilder<ButtonBuilder>,
+  buttons: ActionRowBuilder<ButtonBuilder>[],
+  teamStatus?: string,
 ) {
   const buffer = await generateBattleCard(state);
   const attach = new AttachmentBuilder(buffer, { name: "battle.webp" });
   const embed  = new EmbedBuilder()
     .setColor(ELEMENT_HEX[state.playerElement] ?? 0x6366F1)
-    .setImage("attachment://battle.webp");
-  return thread.send({ embeds: [embed], files: [attach], components: [buttons] });
+    .setImage("attachment://battle.webp")
+    .setDescription(teamStatus || null);
+  return thread.send({ embeds: [embed], files: [attach], components: buttons });
+}
+
+interface TeamButtonContext {
+  isDevGuild: boolean;
+  activeUnit: "player" | "ally";
+  displayName: string;
+  attunement: AttunementState;
+  concertoEnergy: number;
 }
 
 function buildButtons(
   state: BattleCardState,
   echoSkill?: { name: string; cooldown: number } | null,
-): ActionRowBuilder<ButtonBuilder> {
-  const skillReady = state.skillCooldown === 0;
-  const ultReady   = state.playerEnergy >= 100;
-  const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
-    new ButtonBuilder().setCustomId("fb_basic").setLabel("⚔️  Basic Attack").setStyle(ButtonStyle.Primary),
-    new ButtonBuilder()
-      .setCustomId("fb_skill")
-      .setLabel(skillReady ? "✦  Resonance Skill" : `✦  Skill (${state.skillCooldown}🔄)`)
-      .setStyle(ButtonStyle.Secondary).setDisabled(!skillReady),
-    new ButtonBuilder().setCustomId("fb_ultimate").setLabel("⚡  Ultimate").setStyle(ButtonStyle.Success).setDisabled(!ultReady),
-  );
-  if (echoSkill) {
-    const echoReady = echoSkill.cooldown === 0;
-    row.addComponents(
+  team?: TeamButtonContext | null,
+): ActionRowBuilder<ButtonBuilder>[] {
+  const rows: ActionRowBuilder<ButtonBuilder>[] = [];
+
+  if (team?.isDevGuild && team.activeUnit === "ally") {
+    const modeLabel = team.attunement.mode ? `(${team.attunement.mode})` : "(inactive)";
+    rows.push(new ActionRowBuilder<ButtonBuilder>().addComponents(
+      new ButtonBuilder().setCustomId("fb_basic").setLabel("⚔️  Chime Strike").setStyle(ButtonStyle.Primary),
+      new ButtonBuilder().setCustomId("fb_skill").setLabel(`✦  Attunement ${modeLabel}`).setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder().setCustomId("fb_ultimate").setLabel("⚡  Convergence")
+        .setStyle(ButtonStyle.Success).setDisabled(team.concertoEnergy < 100),
+      new ButtonBuilder().setCustomId("fb_flee").setLabel("🚪  Flee").setStyle(ButtonStyle.Danger),
+    ));
+  } else {
+    const skillReady = state.skillCooldown === 0;
+    const ultReady   = state.playerEnergy >= 100;
+    const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
+      new ButtonBuilder().setCustomId("fb_basic").setLabel("⚔️  Basic Attack").setStyle(ButtonStyle.Primary),
       new ButtonBuilder()
-        .setCustomId("fb_echoskill")
-        .setLabel(echoReady ? `🌀  ${echoSkill.name}` : `🌀  ${echoSkill.name} (${echoSkill.cooldown}🔄)`)
-        .setStyle(ButtonStyle.Secondary).setDisabled(!echoReady),
+        .setCustomId("fb_skill")
+        .setLabel(skillReady ? "✦  Resonance Skill" : `✦  Skill (${state.skillCooldown}🔄)`)
+        .setStyle(ButtonStyle.Secondary).setDisabled(!skillReady),
+      new ButtonBuilder().setCustomId("fb_ultimate").setLabel("⚡  Ultimate").setStyle(ButtonStyle.Success).setDisabled(!ultReady),
     );
+    if (echoSkill) {
+      const echoReady = echoSkill.cooldown === 0;
+      row.addComponents(
+        new ButtonBuilder()
+          .setCustomId("fb_echoskill")
+          .setLabel(echoReady ? `🌀  ${echoSkill.name}` : `🌀  ${echoSkill.name} (${echoSkill.cooldown}🔄)`)
+          .setStyle(ButtonStyle.Secondary).setDisabled(!echoReady),
+      );
+    }
+    row.addComponents(
+      new ButtonBuilder().setCustomId("fb_flee").setLabel("🚪  Flee").setStyle(ButtonStyle.Danger),
+    );
+    rows.push(row);
   }
-  row.addComponents(
-    new ButtonBuilder().setCustomId("fb_flee").setLabel("🚪  Flee").setStyle(ButtonStyle.Danger),
-  );
-  return row;
+
+  if (team?.isDevGuild) {
+    rows.push(new ActionRowBuilder<ButtonBuilder>().addComponents(
+      new ButtonBuilder().setCustomId("fb_swap")
+        .setLabel(team.activeUnit === "player" ? `🔄  Swap to ${SOLACE.name}` : `🔄  Swap to ${team.displayName}`)
+        .setStyle(ButtonStyle.Secondary),
+    ));
+  }
+
+  return rows;
 }
 
 const command: Command = {
@@ -283,6 +338,40 @@ const command: Command = {
       let havocFrenzyLifesteal   = 0;
       let havocFrenzyDefIgnore   = 0;
 
+      // ── Milestone 3c-ii: team state (dev guild only) ──────────────────────────
+      const isDevGuild = interaction.guildId === process.env.GUILD_ID;
+      const solaceProgress = isDevGuild ? await getOrCreateCharacterProgress(interaction.user.id, "solace") : null;
+      const solaceBasicLevel    = solaceProgress?.basicLevel    ?? 1;
+      const solaceSkillLevel    = solaceProgress?.skillLevel    ?? 1;
+      const solaceUltimateLevel = solaceProgress?.ultimateLevel ?? 1;
+      const solaceIntroLevel    = solaceProgress?.introLevel    ?? 1;
+      const solaceForteLevel    = solaceProgress?.forteLevel    ?? 1;
+      let activeUnit: "player" | "ally" = "player";
+      let allyHp    = SOLACE.hpMax;
+      const allyHpMax = SOLACE.hpMax;
+      let concertoEnergy: number = 0;
+      let playerDebuffs: DebuffState = [];
+      let attunement: AttunementState = { mode: null };
+      let attunementDoubleTurnsLeft = 0;
+      let solaceForte: ForteState = { phase: 0, charge: 0 };
+      let forteEmpoweredTurnsLeft = 0;
+
+      function teamStatusLine(): string {
+        if (!isDevGuild) return "";
+        const benchedName = activeUnit === "player" ? SOLACE.name : displayName;
+        const benchedHp   = activeUnit === "player" ? allyHp : state.playerHp;
+        const benchedMax  = activeUnit === "player" ? allyHpMax : state.playerHpMax;
+        const debuffLine  = playerDebuffs.length > 0
+          ? `  ·  ${playerDebuffs.map(d => `${d.type} (${d.turnsLeft})`).join(", ")}`
+          : "";
+        return `\n\n🔄 Benched: **${benchedName}** — ${benchedHp}/${benchedMax} HP  ·  ` +
+               `Concerto Energy: **${concertoEnergy}/100**${debuffLine}`;
+      }
+
+      function teamButtonContext(): TeamButtonContext {
+        return { isDevGuild, activeUnit, displayName, attunement, concertoEnergy };
+      }
+
       const state: BattleCardState = {
         boss,
         bossHpNow:     scaled.hp,
@@ -368,9 +457,9 @@ const command: Command = {
 
       // Battle loop
       const runTurn = async () => {
-        const buttons = buildButtons(state, bonuses.echoSkill ? { name: bonuses.echoSkill.name, cooldown: echoSkillCooldown } : null);
+        const buttons = buildButtons(state, bonuses.echoSkill ? { name: bonuses.echoSkill.name, cooldown: echoSkillCooldown } : null, teamButtonContext());
         if (battleMsg) await battleMsg.edit({ components: [] }).catch(() => {});
-        battleMsg = await sendBattleCard(thread as any, state, buttons);
+        battleMsg = await sendBattleCard(thread as any, state, buttons, teamStatusLine());
 
         const collector = battleMsg.createMessageComponentCollector({
           componentType: ComponentType.Button,
@@ -412,6 +501,50 @@ const command: Command = {
           };
           let abilCrit = false;
 
+          // Milestone 3c-ii: swap — always consumes the turn, falls through to the
+          // shared tail below (win-check/boss-turn/decrements/lose-check/next
+          // turn), same as every other action. Ported from boss.ts@f75a797.
+          if (btn.customId === "fb_swap" && isDevGuild) {
+            const outgoingIsPlayer = activeUnit === "player";
+            const comboReady = concertoEnergy >= 100;
+
+            if (comboReady) {
+              const incomingTarget: AllyActionTarget = outgoingIsPlayer
+                ? { hp: allyHp, hpMax: allyHpMax }
+                : { hp: state.playerHp, hpMax: state.playerHpMax };
+
+              const outroEffect = outgoingIsPlayer ? PLAYER_SELF_OUTRO : SOLACE.outro;
+              const introEffect: IntroOutroEffect = outgoingIsPlayer ? solaceIntroEffect(solaceIntroLevel) : PLAYER_SELF_INTRO;
+              const outroResult = resolveIntroOutroEffect(outroEffect, incomingTarget);
+              const introResult = resolveIntroOutroEffect(introEffect, incomingTarget);
+
+              if (!outgoingIsPlayer) nextAttackCritArmed = true;
+
+              const totalBonus = outroResult.hpDelta + introResult.hpDelta + outroResult.shieldDelta + introResult.shieldDelta;
+
+              let actualGain: number;
+              if (outgoingIsPlayer) {
+                const before = allyHp;
+                allyHp = Math.min(allyHpMax, allyHp + totalBonus);
+                actualGain = allyHp - before;
+              } else {
+                const before = state.playerHp;
+                state.playerHp = Math.min(state.playerHpMax, state.playerHp + totalBonus);
+                actualGain = state.playerHp - before;
+              }
+
+              moveName = actualGain > 0
+                ? `🔄 Swapped to **${outgoingIsPlayer ? SOLACE.name : displayName}** — Outro+Intro combo! +${actualGain} HP.`
+                : `🔄 Swapped to **${outgoingIsPlayer ? SOLACE.name : displayName}** — Outro+Intro combo! (already at full HP, no heal needed)`;
+              concertoEnergy = addConcertoEnergy(0, 20); // headstart, matches CONCERTO_INTRO_HEADSTART in encounter.ts
+            } else {
+              moveName = `🔄 Swapped to **${outgoingIsPlayer ? SOLACE.name : displayName}** — Concerto Energy not full, no combo triggered.`;
+            }
+
+            activeUnit = outgoingIsPlayer ? "ally" : "player";
+            playerDmg = 0;
+          }
+
           if (btn.customId === "fb_flee") {
             await thread.send({
               embeds: [new EmbedBuilder().setColor(0x334155)
@@ -426,10 +559,19 @@ const command: Command = {
           if (btn.customId === "fb_basic") {
             const windExplosion = bonuses.activeNamedSetId === "WINDSTRIDERS_LEGACY"
               ? windstridersLegacyCheckExplosion(namedState) : { proc: false, guaranteedCrit: false, bonusMult: 1.0 };
-            const crit = forcedCritActive || windExplosion.guaranteedCrit || Math.random() < activeCritRate; abilCrit = crit;
+            const teamAtkMult  = isDevGuild ? getAttunementAtkMult(attunement, solaceAttunementAtkCritBonus(solaceSkillLevel), attunementDoubleTurnsLeft > 0) : 1;
+            const teamCritBonus = isDevGuild ? getAttunementCritRateBonus(attunement, solaceAttunementAtkCritBonus(solaceSkillLevel), attunementDoubleTurnsLeft > 0) : 0;
+            const wellspringAtkMult   = isDevGuild && activeUnit === "ally" ? WELLSPRING_BASE_ATK_MULT : 1;
+            const wellspringAtkBonus  = isDevGuild ? getWellspringAtkBonus(attunement) : 0;
+            const wellspringCritBonus = isDevGuild ? getWellspringCritRateBonus(attunement) : 0;
+            const forteAtkBonus  = isDevGuild ? getSolaceForteAtkBonus(solaceForteLevel, forteEmpoweredTurnsLeft > 0) : 0;
+            const forteCritBonus = isDevGuild ? getSolaceForteCritRateBonus(solaceForteLevel, forteEmpoweredTurnsLeft > 0) : 0;
+            const teamMult = getWeakenedMult(playerDebuffs) * teamAtkMult * wellspringAtkMult * (1 + wellspringAtkBonus) * (1 + forteAtkBonus);
+            const basicMoveMult = isDevGuild && activeUnit === "ally" ? solaceBasicDamageMult(solaceBasicLevel) : 1.0;
+            const crit = forcedCritActive || windExplosion.guaranteedCrit || Math.random() < Math.min(1, activeCritRate + teamCritBonus + wellspringCritBonus + forteCritBonus); abilCrit = crit;
             const smolderMult = bonuses.activeNamedSetId === "SMOLDERING_SOVEREIGN"
               ? smolderingSovereignOnAction(namedState) : 1;
-            const base = Math.max(1, Math.floor(stats.atk * smolderMult * havocAtkMult * radiantDmgMult * (1 - defReduction)));
+            const base = Math.max(1, Math.floor(stats.atk * teamMult * basicMoveMult * smolderMult * havocAtkMult * radiantDmgMult * (1 - defReduction)));
             const extraElemBonus = glacioShieldTurnsLeft > 0 ? glacioShieldElemBonus : 0;
             let dmg    = Math.floor(base * (crit ? stats.critDmg : 1) * (isWeak ? 1.5 : 1) * (1 + bonuses.elemDmgBonus + extraElemBonus));
             if (bonuses.activeNamedSetId === "WINDSTRIDERS_LEGACY") {
@@ -462,13 +604,42 @@ const command: Command = {
             state.playerEnergy = Math.min(100, state.playerEnergy + ENERGY_PER_TURN + elemDischargeEnergy(bonuses.elementPassive, crit) + ar_b.bonusEnergy + thunderboltEnergy);
             state.playerHp     = Math.min(state.playerHpMax, applyLifesteal(bonuses.lifesteal + havocLifesteal + (ar_b.lifesteal ?? 0), playerDmg, state.playerHp, state.playerHpMax) + ar_b.healHp);
             if (bonuses.activeNamedSetId === "STORMCALLERS_OATH") stormcallersOathCheckThunderbolt(namedState, state.playerEnergy);
+
+            // Forte fills only from Solace's own Chime Strike — announce only
+            // on the turn a threshold is actually crossed.
+            if (isDevGuild && activeUnit === "ally") {
+              const forteBefore = solaceForte;
+              solaceForte = addForteCharge(solaceForte, SOLACE_FORTE_CONFIG, SOLACE_FORTE_GAIN_PER_BASIC);
+              const wasHalf = forteBefore.charge >= SOLACE_FORTE_CONFIG.phaseThresholds[0] / 2;
+              const isHalf  = solaceForte.charge >= SOLACE_FORTE_CONFIG.phaseThresholds[0] / 2 && !isForteMaxed(solaceForte, SOLACE_FORTE_CONFIG);
+              if (isForteMaxed(solaceForte, SOLACE_FORTE_CONFIG) && !isForteMaxed(forteBefore, SOLACE_FORTE_CONFIG)) {
+                moveName += `\n✨ Forte is **FULLY CHARGED** — next Convergence will be Empowered!`;
+              } else if (isHalf && !wasHalf) {
+                moveName += `\n✨ Forte is **HALF CHARGED**.`;
+              }
+            }
           }
 
-          if (btn.customId === "fb_skill") {
-            const crit = forcedCritActive || Math.random() < Math.min(1, activeCritRate + 0.1); abilCrit = crit;
+          if (btn.customId === "fb_skill" && isDevGuild && activeUnit === "ally") {
+            // Solace's Skill is Attunement — a mode cycle, not a damage move.
+            attunement.mode = cycleAttunementMode(attunement.mode);
+            const crit = Math.random() < activeCritRate; abilCrit = crit;
+            const dmg  = Math.max(1, Math.floor(stats.atk * 0.6 * (1 - defReduction) * (crit ? stats.critDmg : 1) * (isWeak ? 1.5 : 1) * (1 + bonuses.elemDmgBonus)));
+            playerDmg  = dmg;
+            moveName   = `✦ Attunement — now in **${attunement.mode}** mode! ${playerDmg} DMG${crit ? " **(CRIT)**" : ""}`;
+            state.bossVibNow = Math.max(0, state.bossVibNow - Math.floor(playerDmg * 0.3 * totalVibMult));
+          } else if (btn.customId === "fb_skill") {
+            const teamAtkMult  = isDevGuild ? getAttunementAtkMult(attunement, solaceAttunementAtkCritBonus(solaceSkillLevel), attunementDoubleTurnsLeft > 0) : 1;
+            const teamCritBonus = isDevGuild ? getAttunementCritRateBonus(attunement, solaceAttunementAtkCritBonus(solaceSkillLevel), attunementDoubleTurnsLeft > 0) : 0;
+            const wellspringAtkBonus  = isDevGuild ? getWellspringAtkBonus(attunement) : 0;
+            const wellspringCritBonus = isDevGuild ? getWellspringCritRateBonus(attunement) : 0;
+            const forteAtkBonus  = isDevGuild ? getSolaceForteAtkBonus(solaceForteLevel, forteEmpoweredTurnsLeft > 0) : 0;
+            const forteCritBonus = isDevGuild ? getSolaceForteCritRateBonus(solaceForteLevel, forteEmpoweredTurnsLeft > 0) : 0;
+            const teamMult = getWeakenedMult(playerDebuffs) * teamAtkMult * (1 + wellspringAtkBonus) * (1 + forteAtkBonus);
+            const crit = forcedCritActive || Math.random() < Math.min(1, activeCritRate + 0.1 + teamCritBonus + wellspringCritBonus + forteCritBonus); abilCrit = crit;
             const smolderMult = bonuses.activeNamedSetId === "SMOLDERING_SOVEREIGN"
               ? smolderingSovereignOnAction(namedState) : 1;
-            const base = Math.max(1, Math.floor(stats.atk * smolderMult * havocAtkMult * radiantDmgMult * 1.8 * (1 - defReduction)));
+            const base = Math.max(1, Math.floor(stats.atk * teamMult * smolderMult * havocAtkMult * radiantDmgMult * 1.8 * (1 - defReduction)));
             const extraElemBonusSkill = glacioShieldTurnsLeft > 0 ? glacioShieldElemBonus : 0;
             let dmg    = Math.floor(base * (crit ? stats.critDmg : 1) * (isWeak ? 1.5 : 1) * (1 + bonuses.elemDmgBonus + extraElemBonusSkill));
             dmg        = apply4pcSkillBonus(bonuses, dmg, state.skillCooldown === 0);
@@ -494,11 +665,23 @@ const command: Command = {
             if (bonuses.set5pc?.type === "POST_ULT_SKILL") state.skillCooldown = 0;
           }
 
-          if (btn.customId === "fb_ultimate") {
+          // Set inside Solace's Convergence branch below — Convergence resets
+          // concertoEnergy to 0, so the generic per-move gain further down
+          // must skip granting anything back on the same turn, or Convergence
+          // would silently refund 35-47% of the bar it just spent (a bug
+          // caught and fixed in Milestone 3a's port — built in from the start
+          // here instead).
+          let convergenceUsedThisTurn = false;
+
+          if (btn.customId === "fb_ultimate" && !(isDevGuild && activeUnit === "ally")) {
             abilCrit   = true;
+            const teamAtkMult = isDevGuild ? getAttunementAtkMult(attunement, solaceAttunementAtkCritBonus(solaceSkillLevel), attunementDoubleTurnsLeft > 0) : 1;
+            const wellspringAtkBonus = isDevGuild ? getWellspringAtkBonus(attunement) : 0;
+            const forteAtkBonus = isDevGuild ? getSolaceForteAtkBonus(solaceForteLevel, forteEmpoweredTurnsLeft > 0) : 0;
+            const teamMult = getWeakenedMult(playerDebuffs) * teamAtkMult * (1 + wellspringAtkBonus) * (1 + forteAtkBonus);
             const smolderMult = bonuses.activeNamedSetId === "SMOLDERING_SOVEREIGN"
               ? smolderingSovereignOnAction(namedState) : 1;
-            const base = Math.max(1, Math.floor(stats.atk * smolderMult * havocAtkMult * radiantDmgMult * 3.5 * stats.critDmg * (1 - defReduction)));
+            const base = Math.max(1, Math.floor(stats.atk * teamMult * smolderMult * havocAtkMult * radiantDmgMult * 3.5 * stats.critDmg * (1 - defReduction)));
             const extraElemBonusUlt = glacioShieldTurnsLeft > 0 ? glacioShieldElemBonus : 0;
             let dmg    = Math.floor(base * (isWeak ? 1.5 : 1) * (1 + bonuses.elemDmgBonus + extraElemBonusUlt));
             dmg        = apply4pcUltBonus(bonuses, dmg);
@@ -519,6 +702,45 @@ const command: Command = {
               state.playerEnergy = Math.min(100, state.playerEnergy + surge.bonusEnergy);
               stormBuffTurnsLeft = surge.turnsLeft + 1; // +1 compensates for the same-round decrement that fires immediately after this triggers (same pattern/reason as Frostveil Bastion's shield fix)
               stormBuffCritBonus = surge.critRateBonus;
+            }
+          } else if (btn.customId === "fb_ultimate" && isDevGuild && activeUnit === "ally") {
+            // Solace's Ultimate spends Concerto Energy, not personal Energy.
+            const healPct = solaceConvergenceHealPct(solaceUltimateLevel);
+            const healResult = resolveIntroOutroEffect({ actions: [
+              { type: "HEAL_ALLY", value: healPct },
+              { type: "CLEANSE_ALLY", value: 1 },
+            ] }, { hp: state.playerHp, hpMax: state.playerHpMax });
+            const allyHealResult = resolveIntroOutroEffect({ actions: [
+              { type: "HEAL_ALLY", value: healPct },
+            ] }, { hp: allyHp, hpMax: allyHpMax });
+
+            const beforePlayer = state.playerHp;
+            state.playerHp = Math.min(state.playerHpMax, state.playerHp + healResult.hpDelta);
+            const actualHealPlayer = state.playerHp - beforePlayer;
+
+            const beforeAlly = allyHp;
+            allyHp = Math.min(allyHpMax, allyHp + allyHealResult.hpDelta);
+            const actualHealAlly = allyHp - beforeAlly;
+
+            playerDebuffs = cleanseDebuffs(playerDebuffs, healResult.cleanseCount);
+
+            concertoEnergy = 0;
+            convergenceUsedThisTurn = true;
+            playerDmg = 0; abilCrit = false;
+
+            const healSummary = `${displayName} +${actualHealPlayer} HP, ${SOLACE.name} +${actualHealAlly} HP`;
+
+            if (isForteMaxed(solaceForte, SOLACE_FORTE_CONFIG)) {
+              forteEmpoweredTurnsLeft = SOLACE_FORTE_EMPOWERED_TURNS + 1; // +1 compensates for the same-round decrement
+              attunementDoubleTurnsLeft = 0;
+              solaceForte = resetForte();
+              moveName = `⚡ **Empowered Convergence!** Team healed (${healSummary}), debuffs cleansed, ` +
+                `**all 3 Attunement Modes empowered for ${SOLACE_FORTE_EMPOWERED_TURNS} turns!**`;
+            } else {
+              attunementDoubleTurnsLeft = SOLACE_ULTIMATE_DOUBLE_TURNS + 1; // +1 compensates for the same-round decrement
+              forteEmpoweredTurnsLeft = 0;
+              moveName = `⚡ **Convergence!** Team healed (${healSummary}), debuffs cleansed, ` +
+                `**${attunement.mode ?? "no"} mode doubled for ${SOLACE_ULTIMATE_DOUBLE_TURNS} turns!**`;
             }
           }
 
@@ -609,8 +831,19 @@ const command: Command = {
             }
           }
 
+          // Concerto Energy builds from combat actions, never from swapping.
+          const CONCERTO_GAIN_BY_MOVE: Record<string, number> = {
+            fb_basic: 10, fb_skill: 20, fb_echoskill: 20, fb_ultimate: 35,
+          };
+          if (isDevGuild && !convergenceUsedThisTurn) {
+            let concertoGain = CONCERTO_GAIN_BY_MOVE[btn.customId] ?? 0;
+            if (concertoGain > 0 && activeUnit === "ally") concertoGain += WELLSPRING_BASE_ENERGY_BONUS;
+            if (concertoGain > 0) concertoEnergy = addConcertoEnergy(concertoEnergy, concertoGain);
+          }
+
           // SPD quick-strike — once per fight, if invested SPD clears the boss's derived SPD
-          if (!quickStrikeUsed && btn.customId !== "fb_flee" && hasQuickStrike(stats.spd, fightLevel)) {
+          const isSolaceConvergence = btn.customId === "fb_ultimate" && isDevGuild && activeUnit === "ally";
+          if (!quickStrikeUsed && btn.customId !== "fb_flee" && btn.customId !== "fb_swap" && !isSolaceConvergence && hasQuickStrike(stats.spd, fightLevel)) {
             quickStrikeUsed = true;
             const bonusDmg = Math.max(1, Math.floor(stats.atk * (1 - defReduction)));
             playerDmg += bonusDmg;
@@ -642,10 +875,20 @@ const command: Command = {
           state.lastMove = moveName;
 
           if (state.bossHpNow <= 0) {
-            await sendBattleCard(thread as any, { ...state, lastMove: `${moveName} — **DEFEATED!**` }, buildButtons(state, bonuses.echoSkill ? { name: bonuses.echoSkill.name, cooldown: echoSkillCooldown } : null));
+            await sendBattleCard(thread as any, { ...state, lastMove: `${moveName} — **DEFEATED!**` }, buildButtons(state, bonuses.echoSkill ? { name: bonuses.echoSkill.name, cooldown: echoSkillCooldown } : null, teamButtonContext()), teamStatusLine());
             collector.stop();
             await cleanup(true);
             return;
+          }
+
+          // Debuffs tick down at the START of resolving the boss's turn — this
+          // way any WEAKENED applied by the attack below isn't touched until
+          // NEXT round's tick, giving it the full 2 turns its own flavor text
+          // advertises, instead of being decremented in the same cycle it's
+          // created.
+          if (isDevGuild) {
+            const tickResult = tickDebuffs(playerDebuffs);
+            playerDebuffs = tickResult.state;
           }
 
           // Boss turn
@@ -660,7 +903,11 @@ const command: Command = {
             }
           } else {
             const move    = fb.moves[Math.floor(Math.random() * fb.moves.length)];
-            let bossDmg   = Math.max(1, Math.floor(scaled.atk * move.damage - stats.def * 0.4));
+            const wellspringDefBonus = isDevGuild ? getWellspringDefBonus(attunement) : 0;
+            const forteDefBonus = isDevGuild ? getSolaceForteDefBonus(solaceForteLevel, forteEmpoweredTurnsLeft > 0) : 0;
+            const attunementDefBonus = solaceAttunementDefBonus(solaceSkillLevel);
+            const attunementDefMult = (isDevGuild ? getAttunementDefMult(attunement, attunementDefBonus, attunementDoubleTurnsLeft > 0) : 1) * (1 + wellspringDefBonus) * (1 + forteDefBonus);
+            let bossDmg   = Math.max(1, Math.floor(scaled.atk * move.damage - stats.def * attunementDefMult * 0.4));
             if (fb.mechanicId === "MOLTEN_BUILDUP") {
               const interrupted = btn.customId === "fb_skill" || btn.customId === "fb_ultimate";
               const molten = moltenBuildupOnBossTurn(bossMechState, interrupted);
@@ -708,7 +955,12 @@ const command: Command = {
               if (frenzy.frenzyTriggered) state.lastMove = (state.lastMove ?? "") + `\n🌑 **Devourer's Frenzy** — the Devourer senses weakness and surges with hunger! (+35% ATK for 3 turns)`;
               if (frenzy.frenzyActive) bossDmg = Math.floor(bossDmg * frenzy.atkMult);
             }
-            state.playerHp = Math.max(0, state.playerHp - bossDmg);
+            const allyIsActive = isDevGuild && activeUnit === "ally";
+            if (allyIsActive) {
+              allyHp = Math.max(0, allyHp - bossDmg);
+            } else {
+              state.playerHp = Math.max(0, state.playerHp - bossDmg);
+            }
             if (bonuses.activeNamedSetId === "SMOLDERING_SOVEREIGN") smolderingSovereignOnDamageTaken(namedState);
             if (bonuses.activeNamedSetId === "WINDSTRIDERS_LEGACY") windstridersLegacyOnBigHitTaken(namedState, bossDmg, state.playerHpMax);
             if (bonuses.activeNamedSetId === "VOIDBORN_REMNANT") {
@@ -752,6 +1004,14 @@ const command: Command = {
             const v2Regen = abilityV2TurnRegen(bonuses, state.playerHpMax);
             if (v2Regen.healHp > 0) state.playerHp = Math.min(state.playerHpMax, state.playerHp + v2Regen.healHp);
             if (v2Regen.energy > 0) state.playerEnergy = Math.min(100, state.playerEnergy + v2Regen.energy);
+
+            // Milestone 3c-ii: exercises the debuff system inside a real fight.
+            // 25% chance per enemy attack, only when dev-guild team mechanics
+            // are active.
+            if (isDevGuild && Math.random() < 0.25) {
+              playerDebuffs = applyDebuff(playerDebuffs, "WEAKENED", 0.2, 2);
+              state.lastMove += `\n◇ *${fb.name}'s strike leaves you* **WEAKENED** *(-20% ATK, 2 turns)*`;
+            }
           }
 
           state.turn++;
@@ -761,7 +1021,17 @@ const command: Command = {
           if (namedState.spectroFractureTurnsLeft > 0) namedState.spectroFractureTurnsLeft--;
           if (echoSkillCooldown > 0) echoSkillCooldown--;
           if (enemyDefShredTurnsLeft > 0) enemyDefShredTurnsLeft--;
-          if (forcedCritActive) nextAttackCritArmed = false;
+          if (isDevGuild && attunementDoubleTurnsLeft > 0) attunementDoubleTurnsLeft--;
+          if (isDevGuild && forteEmpoweredTurnsLeft > 0) forteEmpoweredTurnsLeft--;
+          if (forcedCritActive && btn.customId !== "fb_swap") nextAttackCritArmed = false;
+
+          // Ally KO'd — auto-swap back to the player rather than ending the
+          // fight over a benched unit's HP.
+          if (isDevGuild && activeUnit === "ally" && allyHp <= 0) {
+            allyHp = 0;
+            activeUnit = "player";
+            state.lastMove += `\n◇ **${SOLACE.name} was knocked out** — swapped back to ${displayName}.`;
+          }
 
           if (state.playerHp <= 0 && compositeHasSecondWind(bonuses.abilityEffects) && !secondWindUsed) {
             secondWindUsed = true;
@@ -771,7 +1041,7 @@ const command: Command = {
 
           if (state.playerHp <= 0) {
             state.playerHp = 0;
-            await sendBattleCard(thread as any, { ...state, lastMove: state.lastMove + " — **YOU FELL.**" }, buildButtons(state, bonuses.echoSkill ? { name: bonuses.echoSkill.name, cooldown: echoSkillCooldown } : null));
+            await sendBattleCard(thread as any, { ...state, lastMove: state.lastMove + " — **YOU FELL.**" }, buildButtons(state, bonuses.echoSkill ? { name: bonuses.echoSkill.name, cooldown: echoSkillCooldown } : null, teamButtonContext()), teamStatusLine());
             await thread.send({
               embeds: [new EmbedBuilder().setColor(0x334155)
                 .setDescription(`◈ Defeated by **${fb.name}**. Use **/field-boss** to try again.`)
