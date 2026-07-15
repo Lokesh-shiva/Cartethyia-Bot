@@ -443,7 +443,7 @@ function partyWideTeamBonuses(raid: ActiveRaid): {
   let critBonus = 0;
   let defMult   = 1;
   for (const ally of raid.participants) {
-    if (ally.activeUnit !== "ally") continue;
+    if (ally.activeUnit !== "ally" || ally.isDefeated) continue;
     const attuneAtkBonus = solaceAttunementAtkCritBonus(ally.solaceSkillLevel);
     const attuneDefBonus = solaceAttunementDefBonus(ally.solaceSkillLevel);
     const doubled = ally.attunementDoubleTurnsLeft > 0;
@@ -1048,6 +1048,7 @@ async function launchRaid(
 
       if (btn.customId === "raid_retreat") {
         current.isDefeated = true;
+        current.activeUnit = "player";
         moveLine = `${current.name} retreated from the raid.`;
 
       } else if (btn.customId === "raid_basic") {
