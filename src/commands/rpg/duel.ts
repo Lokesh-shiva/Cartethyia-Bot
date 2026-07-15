@@ -14,7 +14,7 @@ import {
   abilityCritRate, applyLifesteal, PlayerBonuses,
   elemIgniteProc, elemFrostShield, elemDischargeEnergy,
   elemWindstrideMult, elemRadianceRegen, elemRadianceCrit,
-  effectiveSkillCooldown,
+  effectiveSkillCooldown, AbilityAttackResult,
 } from "../../lib/setBonus";
 import { compositeHasSecondWind, abilityLabel } from "../../lib/abilityEffects";
 import {
@@ -774,13 +774,16 @@ export async function execute(interaction: ChatInputCommandInteraction) {
           }
         }
 
-        // Apply unique ability effects
+        // Apply unique ability effects — skipped for swap (no real attack occurred, damage is
+        // always 0), so ON_HIT/ON_BASIC effects like heals/energy/stacking buffs can't be farmed.
         const myV2Stacks = isChallenger ? state.cV2Stacks : state.dV2Stacks;
-        const ar = applyAbilityAttack(myBonus, damage, isCrit, {
-          moveType, currentHp: myHp, maxHp: myHpMax,
-          enemyHpPct: oppHp / oppHpMax, turn: state.turn, isFirstAction: firstAct,
-          isWeak, isShattered: false, v2Stacks: myV2Stacks,
-        });
+        const ar: AbilityAttackResult = btn.customId === "duel_swap"
+          ? { dmg: damage, healHp: 0, bonusEnergy: 0, tag: "" }
+          : applyAbilityAttack(myBonus, damage, isCrit, {
+              moveType, currentHp: myHp, maxHp: myHpMax,
+              enemyHpPct: oppHp / oppHpMax, turn: state.turn, isFirstAction: firstAct,
+              isWeak, isShattered: false, v2Stacks: myV2Stacks,
+            });
         damage = ar.dmg;
         if (ar.newStacks !== undefined) {
           if (isChallenger) state.cV2Stacks = ar.newStacks;
@@ -826,8 +829,9 @@ export async function execute(interaction: ChatInputCommandInteraction) {
         if (isChallenger) state.dHp = Math.max(0, state.dHp - damage);
         else              state.cHp = Math.max(0, state.cHp - damage);
 
-        // Opponent's reactive named-set mechanics (they just took a hit)
-        {
+        // Opponent's reactive named-set mechanics (they just took a hit) — skipped for swap,
+        // since swap deals 0 damage and isn't a real attack the opponent "took."
+        if (btn.customId !== "duel_swap") {
           const oppNamedState = isChallenger ? state.dNamedState : state.cNamedState;
           const oppSetId       = oppBonus.activeNamedSetId;
           const oppHpNow       = isChallenger ? state.dHp    : state.cHp;
