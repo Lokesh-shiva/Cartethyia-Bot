@@ -21,8 +21,10 @@ Fractonite (existing, already drops from combat — currently converts 100:1 int
 `/wish` now always opens with a banner-selection step first, before anything else:
 
 - **Standard** — today's exact evergreen pool, pity, and Fracture-Keys spend. Byte-for-byte unchanged once selected.
-- **Solace** — the character banner. Spends Radiant Keys.
-- **Wellspring** — the weapon banner. Spends Radiant Keys.
+- **Limited Character Banner** — currently featuring Solace. Spends Radiant Keys.
+- **Limited Weapon Banner** — currently featuring Wellspring. Spends Radiant Keys.
+
+The picker's option labels are the generic slot names ("Limited Character Banner" / "Limited Weapon Banner"), not the featured character/weapon's own name — the specific occupant is shown inside that banner's own embed/description once selected ("Featuring: Solace"), not in the top-level picker. This matters because the slot is what's structurally permanent across future banner rotations (Milestone 4's banner #2+, out of scope here) — the option value/customId should key off the slot ("character"/"weapon"), not off "solace"/"wellspring", so swapping in a future banner's occupant later doesn't require renaming option values players' muscle memory already depends on.
 
 This is a deliberate, intentional UX change to `/wish` itself (every player now sees a banner picker on open, not just people touching the new banners) — chosen over a default-to-Standard flow specifically for discoverability of the new limited banners. All three banners reuse `/wish`'s existing pull-resolution shell (pity math, animation triggers, result embeds) parameterized by which banner is active, rather than three separate implementations.
 
