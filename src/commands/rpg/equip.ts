@@ -35,7 +35,7 @@ function weaponBlock(w: any): string {
   const forgeDef  = FORGED_WEAPONS.find(x => x.name === w.name);
 
   const lines: string[] = [];
-  lines.push(`**${displayName}**  ${RARITY_STARS[w.rarity]}`);
+  lines.push(`**${displayName}**  ${RARITY_STARS[w.rarity]}${w.refinement > 1 ? `  ·  R${w.refinement}` : ""}`);
   lines.push(`${WEAPON_TYPE_EMOJI[w.weaponType as WeaponType]}  ${w.weaponType}  ·  Lv${w.level}${w.awakened ? "  ·  ✦ Awakened" : ""}`);
   lines.push(`\`ATK: ${effectiveAtk(w.baseAtk, w.rarity, w.level)}\``);
 
