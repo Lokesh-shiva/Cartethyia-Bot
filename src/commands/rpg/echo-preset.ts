@@ -20,6 +20,10 @@ export const data = new SlashCommandBuilder()
       .addStringOption(o =>
         o.setName("name").setDescription("Preset name, e.g. 'PvP' or 'Farm'").setRequired(true)
       )
+      .addStringOption(o =>
+        o.setName("character").setDescription("Which unit's loadout (default: yourself)").setRequired(false)
+          .addChoices({ name: "Yourself", value: "self" }, { name: "Solace", value: "solace" })
+      )
   )
   .addSubcommand(sub =>
     sub.setName("load")
@@ -27,16 +31,28 @@ export const data = new SlashCommandBuilder()
       .addStringOption(o =>
         o.setName("name").setDescription("Preset name to load").setRequired(true)
       )
+      .addStringOption(o =>
+        o.setName("character").setDescription("Which unit's loadout (default: yourself)").setRequired(false)
+          .addChoices({ name: "Yourself", value: "self" }, { name: "Solace", value: "solace" })
+      )
   )
   .addSubcommand(sub =>
     sub.setName("list")
       .setDescription("List all your saved presets.")
+      .addStringOption(o =>
+        o.setName("character").setDescription("Which unit's presets (default: yourself)").setRequired(false)
+          .addChoices({ name: "Yourself", value: "self" }, { name: "Solace", value: "solace" })
+      )
   )
   .addSubcommand(sub =>
     sub.setName("delete")
       .setDescription("Delete a saved preset.")
       .addStringOption(o =>
         o.setName("name").setDescription("Preset name to delete").setRequired(true)
+      )
+      .addStringOption(o =>
+        o.setName("character").setDescription("Which unit's loadout (default: yourself)").setRequired(false)
+          .addChoices({ name: "Yourself", value: "self" }, { name: "Solace", value: "solace" })
       )
   );
 
@@ -51,20 +67,21 @@ export async function execute(interaction: ChatInputCommandInteraction) {
 
   const color   = ELEMENT_COLORS[dbUser.element as Element] ?? 0x6366F1;
   const sub     = interaction.options.getSubcommand();
+  const characterId = interaction.options.getString("character") ?? "self";
 
-  if      (sub === "save")   await savePreset(interaction, color);
-  else if (sub === "load")   await loadPreset(interaction, color);
-  else if (sub === "list")   await listPresets(interaction, color);
-  else if (sub === "delete") await deletePreset(interaction, color);
+  if      (sub === "save")   await savePreset(interaction, color, characterId);
+  else if (sub === "load")   await loadPreset(interaction, color, characterId);
+  else if (sub === "list")   await listPresets(interaction, color, characterId);
+  else if (sub === "delete") await deletePreset(interaction, color, characterId);
 }
 
 // ── save ──────────────────────────────────────────────────────────────────────
 
-async function savePreset(interaction: ChatInputCommandInteraction, color: number) {
+async function savePreset(interaction: ChatInputCommandInteraction, color: number, characterId: string) {
   const rawName = interaction.options.getString("name", true).trim();
   const name    = rawName.slice(0, 32);
 
-  const count = await prisma.echoPreset.count({ where: { userId: interaction.user.id } });
+  const count = await prisma.echoPreset.count({ where: { userId: interaction.user.id, characterId } });
   if (count >= MAX_PRESETS) {
     await interaction.editReply({
       embeds: [new EmbedBuilder().setColor(0xFF4F6D)
@@ -74,7 +91,7 @@ async function savePreset(interaction: ChatInputCommandInteraction, color: numbe
   }
 
   const echoes = await prisma.echo.findMany({
-    where:  { userId: interaction.user.id, isEquipped: true },
+    where:  { userId: interaction.user.id, characterId, isEquipped: true },
     select: { id: true, equippedSlot: true, name: true, rarity: true, cost: true, element: true },
   });
 
@@ -86,8 +103,8 @@ async function savePreset(interaction: ChatInputCommandInteraction, color: numbe
   }
 
   await (prisma as any).echoPreset.upsert({
-    where:  { userId_name: { userId: interaction.user.id, name } },
-    create: { userId: interaction.user.id, name, slots },
+    where:  { userId_characterId_name: { userId: interaction.user.id, characterId, name } },
+    create: { userId: interaction.user.id, characterId, name, slots },
     update: { slots },
   });
 
@@ -109,11 +126,11 @@ async function savePreset(interaction: ChatInputCommandInteraction, color: numbe
 
 // ── load ──────────────────────────────────────────────────────────────────────
 
-async function loadPreset(interaction: ChatInputCommandInteraction, color: number) {
+async function loadPreset(interaction: ChatInputCommandInteraction, color: number, characterId: string) {
   const name = interaction.options.getString("name", true).trim();
 
   const preset = await (prisma as any).echoPreset.findUnique({
-    where: { userId_name: { userId: interaction.user.id, name } },
+    where: { userId_characterId_name: { userId: interaction.user.id, characterId, name } },
   });
   if (!preset) {
     await interaction.editReply({
@@ -142,14 +159,14 @@ async function loadPreset(interaction: ChatInputCommandInteraction, color: numbe
 
   await prisma.$transaction([
     prisma.echo.updateMany({
-      where: { userId: interaction.user.id, isEquipped: true },
+      where: { userId: interaction.user.id, characterId, isEquipped: true },
       data:  { isEquipped: false, equippedSlot: null },
     }),
     ...equips.map(({ slot, echoId }) =>
-      prisma.echo.update({ where: { id: echoId }, data: { isEquipped: true, equippedSlot: slot } })
+      prisma.echo.update({ where: { id: echoId }, data: { isEquipped: true, equippedSlot: slot, characterId } })
     ),
   ]);
-  invalidateBonusCache(interaction.user.id);
+  invalidateBonusCache(interaction.user.id, characterId);
 
   const equipped: string[] = equips.map(({ slot, echoId }) => {
     const e = valid.find(x => x.id === echoId)!;
@@ -172,9 +189,9 @@ async function loadPreset(interaction: ChatInputCommandInteraction, color: numbe
 
 // ── list ──────────────────────────────────────────────────────────────────────
 
-async function listPresets(interaction: ChatInputCommandInteraction, color: number) {
+async function listPresets(interaction: ChatInputCommandInteraction, color: number, characterId: string) {
   const presets = await (prisma as any).echoPreset.findMany({
-    where:   { userId: interaction.user.id },
+    where:   { userId: interaction.user.id, characterId },
     orderBy: { createdAt: "asc" as const },
   });
 
@@ -204,11 +221,11 @@ async function listPresets(interaction: ChatInputCommandInteraction, color: numb
 
 // ── delete ────────────────────────────────────────────────────────────────────
 
-async function deletePreset(interaction: ChatInputCommandInteraction, color: number) {
+async function deletePreset(interaction: ChatInputCommandInteraction, color: number, characterId: string) {
   const name = interaction.options.getString("name", true).trim();
 
   const result = await (prisma as any).echoPreset.deleteMany({
-    where: { userId: interaction.user.id, name },
+    where: { userId: interaction.user.id, characterId, name },
   });
 
   if (result.count === 0) {

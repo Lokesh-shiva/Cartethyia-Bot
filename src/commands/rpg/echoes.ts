@@ -20,6 +20,15 @@ export const data = new SlashCommandBuilder()
   .setDescription("View your Echo collection and equipped resonance grid.")
   .addUserOption(o =>
     o.setName("user").setDescription("View another player's echoes").setRequired(false)
+  )
+  .addStringOption(o =>
+    o.setName("character")
+      .setDescription("Narrow to one unit's echoes (default: show everything)")
+      .setRequired(false)
+      .addChoices(
+        { name: "Yourself", value: "self"   },
+        { name: "Solace",   value: "solace" },
+      )
   );
 
 export async function execute(interaction: ChatInputCommandInteraction) {
@@ -39,8 +48,9 @@ export async function execute(interaction: ChatInputCommandInteraction) {
     return;
   }
 
+  const filterCharacterId = interaction.options.getString("character"); // null = show everything, no narrowing
   const echoes = await prisma.echo.findMany({
-    where:   { userId: target.id },
+    where:   { userId: target.id, ...(filterCharacterId ? { characterId: filterCharacterId } : {}) },
     orderBy: [{ isEquipped: "desc" }, { rarity: "desc" }, { createdAt: "desc" }],
   });
 

@@ -109,7 +109,16 @@ async function buildCard(w: any, element: string, ownerName: string, ownerAvatar
 const command: Command = {
   data: new SlashCommandBuilder()
     .setName("equip")
-    .setDescription("Switch your equipped weapon from your arsenal."),
+    .setDescription("Switch your equipped weapon from your arsenal.")
+    .addStringOption(o =>
+      o.setName("character")
+        .setDescription("Which unit's weapon slot to edit (default: yourself)")
+        .setRequired(false)
+        .addChoices(
+          { name: "Yourself", value: "self"   },
+          { name: "Solace",   value: "solace" },
+        )
+    ) as SlashCommandBuilder,
 
   async execute(interaction: ChatInputCommandInteraction) {
     await interaction.deferReply({ flags: 64 });
@@ -120,6 +129,22 @@ const command: Command = {
 
     const user    = await getOrCreateUser(interaction.user.id, displayName, avatarUrl);
     const color   = ELEMENT_HEX[user.element] ?? ELEMENT_HEX.NONE;
+    const characterId = interaction.options.getString("character") ?? "self";
+
+    if (characterId !== "self") {
+      const owned = await prisma.characterProgress.findUnique({
+        where: { userId_characterId: { userId: interaction.user.id, characterId } },
+      });
+      if (!owned) {
+        await interaction.editReply({
+          embeds: [new EmbedBuilder().setColor(0xFF4F6D)
+            .setDescription(`◈ You don't own **${characterId}** yet.`)
+            .setFooter({ text: "CARTETHYIA  ·  Arsenal" })],
+        });
+        return;
+      }
+    }
+
     const weapons = await prisma.weapon.findMany({
       where:   { userId: interaction.user.id },
       orderBy: [{ isEquipped: "desc" }, { rarity: "desc" }, { level: "desc" }],
@@ -143,7 +168,7 @@ const command: Command = {
       return;
     }
 
-    const equipped = weapons.find((w) => w.isEquipped);
+    const equipped = weapons.find((w) => w.isEquipped && w.characterId === characterId);
 
     // ── Build select menu ────────────────────────────────────────────────────
     // Discord limit: 25 options per select menu. Slice to top 25 (already ordered by equipped, rarity, level).
@@ -206,7 +231,7 @@ const command: Command = {
       const chosenId = sel.values[0];
       const chosen   = weapons.find((w) => w.id === chosenId)!;
 
-      if (chosen.isEquipped) {
+      if (chosen.isEquipped && chosen.characterId === characterId) {
         await sel.editReply({
           embeds: [new EmbedBuilder().setColor(0x334155)
             .setDescription(`◈ **${(chosen.awakened && chosen.awakenedName) ? chosen.awakenedName : chosen.name}** is already equipped.`)],
@@ -260,11 +285,15 @@ const command: Command = {
           return;
         }
 
-        // Swap in DB
-        await prisma.weapon.updateMany({ where: { userId: interaction.user.id, isEquipped: true }, data: { isEquipped: false } });
-        await prisma.weapon.update({ where: { id: chosenId }, data: { isEquipped: true } });
-        await prisma.user.update({ where: { id: interaction.user.id }, data: { weaponType: chosen.weaponType } });
-        invalidateBonusCache(interaction.user.id);
+        // Swap in DB — only unequips this CHARACTER's previous weapon, not
+        // every weapon on the account (another character's equipped weapon
+        // must be untouched).
+        await prisma.weapon.updateMany({ where: { userId: interaction.user.id, characterId, isEquipped: true }, data: { isEquipped: false } });
+        await prisma.weapon.update({ where: { id: chosenId }, data: { isEquipped: true, characterId } });
+        if (characterId === "self") {
+          await prisma.user.update({ where: { id: interaction.user.id }, data: { weaponType: chosen.weaponType } });
+        }
+        invalidateBonusCache(interaction.user.id, characterId);
 
         // Generate weapon card for confirmation
         const cardBuf = await buildCard(chosen, user.element, displayName, avatarUrl, interaction.user.id === "979379636586819746" ? 7 : 4);

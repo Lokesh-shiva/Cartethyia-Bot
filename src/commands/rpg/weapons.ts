@@ -29,7 +29,16 @@ function effectiveSub(base: number, level: number): number {
 const command: Command = {
   data: new SlashCommandBuilder()
     .setName("weapons")
-    .setDescription("View all weapons in your arsenal.") as SlashCommandBuilder,
+    .setDescription("View all weapons in your arsenal.")
+    .addStringOption(o =>
+      o.setName("character")
+        .setDescription("Narrow to one unit's weapons (default: show everything)")
+        .setRequired(false)
+        .addChoices(
+          { name: "Yourself", value: "self"   },
+          { name: "Solace",   value: "solace" },
+        )
+    ) as SlashCommandBuilder,
 
   async execute(interaction: ChatInputCommandInteraction) {
     await interaction.deferReply({ flags: 64 });
@@ -40,8 +49,9 @@ const command: Command = {
 
     const user    = await getOrCreateUser(interaction.user.id, displayName, avatarUrl);
     const color   = ELEMENT_HEX[user.element] ?? ELEMENT_HEX.NONE;
+    const filterCharacterId = interaction.options.getString("character"); // null = show everything, no narrowing
     const weapons = await prisma.weapon.findMany({
-      where:   { userId: interaction.user.id },
+      where:   { userId: interaction.user.id, ...(filterCharacterId ? { characterId: filterCharacterId } : {}) },
       orderBy: [{ isEquipped: "desc" }, { rarity: "desc" }, { level: "desc" }],
     });
 
@@ -96,7 +106,7 @@ const command: Command = {
       return new EmbedBuilder()
         .setColor(w.awakened ? 0xFCD34D : color)
         .setAuthor({ name: `${displayName}  ·  Arsenal (${weapons.length} weapons)`, iconURL: avatarUrl })
-        .setDescription(w.isEquipped ? `**Currently equipped**` : `◇ Not equipped  ·  use \`/equip\` to switch`)
+        .setDescription(w.isEquipped ? `**Currently equipped**${w.characterId !== "self" ? ` (by ${w.characterId})` : ""}` : `◇ Not equipped  ·  use \`/equip\` to switch`)
         .setImage("attachment://weapon.png")
         .setFooter({ text: w.awakened ? `CARTETHYIA  ·  Arsenal  ·  ✦ Ego Awakened  ·  ${displayName2}` : `CARTETHYIA  ·  Arsenal` });
     };
@@ -106,7 +116,7 @@ const command: Command = {
       .setPlaceholder("Browse your arsenal…")
       .addOptions(weapons.map(w =>
         new StringSelectMenuOptionBuilder()
-          .setLabel(`${(w.awakened && w.awakenedName) ? w.awakenedName : w.name}  ${RARITY_STARS[w.rarity]}${w.isEquipped ? "  ← equipped" : ""}`)
+          .setLabel(`${(w.awakened && w.awakenedName) ? w.awakenedName : w.name}  ${RARITY_STARS[w.rarity]}${w.isEquipped ? `  ← equipped${w.characterId !== "self" ? ` (${w.characterId})` : ""}` : ""}`)
           .setDescription(`Lv${w.level}  ·  ATK ${w.baseAtk}  ·  ${w.weaponType}${w.awakened ? "  ·  ✦ AWAKENED" : ""}`)
           .setValue(w.id)
           .setEmoji(WEAPON_TYPE_EMOJI[w.weaponType as WeaponType])
