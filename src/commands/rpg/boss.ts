@@ -335,7 +335,7 @@ const command: Command = {
       let forteEmpoweredTurnsLeft = 0;
 
       function teamStatusLine(): string {
-        if (!isDevGuild) return "";
+        if (!hasSolace) return "";
         const benchedName = activeUnit === "player" ? SOLACE.name : displayName;
         const benchedHp   = activeUnit === "player" ? allyHp : state.playerHp;
         const benchedMax  = activeUnit === "player" ? allyHpMax : state.playerHpMax;
@@ -986,9 +986,11 @@ const command: Command = {
             state.playerEnergy = Math.min(100, state.playerEnergy + 15);
 
             // Milestone 3b: exercises the debuff system inside a real fight.
-            // 25% chance per enemy attack, only when dev-guild team mechanics
-            // are active.
-            if (isDevGuild && Math.random() < 0.25) {
+            // 25% chance per enemy attack, only when the player has actually
+            // opted into team mechanics via /team (Milestone 3.5a) — was
+            // isDevGuild-only, which meant every dev-guild player took this
+            // debuff regardless of whether they'd ever touched Solace.
+            if (hasSolace && Math.random() < 0.25) {
               playerDebuffs = applyDebuff(playerDebuffs, "WEAKENED", 0.2, 2);
               state.lastMove += `\n◇ *${boss.name}'s strike leaves you* **WEAKENED** *(-20% ATK, 2 turns)*`;
             }

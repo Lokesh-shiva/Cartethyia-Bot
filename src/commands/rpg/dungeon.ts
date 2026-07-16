@@ -593,7 +593,7 @@ async function runWave(
   const vibMult   = get5pcVibDrainMult(bonuses);
 
   function teamStatusLine(): string {
-    if (!ws.isDevGuild) return "";
+    if (!ws.hasSolace) return "";
     const benchedName = ws.activeUnit === "player" ? SOLACE.name : ws.displayName;
     const benchedHp   = ws.activeUnit === "player" ? ws.allyHp : ws.playerHp;
     const benchedMax  = ws.activeUnit === "player" ? ws.allyHpMax : ws.playerHpMax;
@@ -1216,7 +1216,7 @@ async function runWave(
 
           // Milestone 3a: exercises the debuff system inside a real fight. 25% chance
           // per enemy attack, only when dev-guild team mechanics are active.
-          if (ws.isDevGuild && Math.random() < 0.25) {
+          if (ws.hasSolace && Math.random() < 0.25) {
             ws.playerDebuffs = applyDebuff(ws.playerDebuffs, "WEAKENED", 0.2, 2);
             moveLine += `\n◇ *${enemy.name}'s strike leaves you* **WEAKENED** *(-20% ATK, 2 turns)*`;
           }

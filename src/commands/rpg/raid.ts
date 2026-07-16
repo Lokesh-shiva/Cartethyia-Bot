@@ -1457,7 +1457,10 @@ async function launchRaid(
           // by the AoE (not one shared roll for the whole AoE), matching the
           // recommendation to treat each hit as its own chance, since the AoE
           // already loops over every living participant individually.
-          if (raid.isDevGuild && !p.isDefeated && Math.random() < 0.25) {
+          // Milestone 3.5a fix: gated on THIS participant's own hasSolace, not
+          // raid.isDevGuild — a participant who never opted into team
+          // mechanics via /team shouldn't be affected.
+          if (p.hasSolace && !p.isDefeated && Math.random() < 0.25) {
             p.playerDebuffs = applyDebuff(p.playerDebuffs, "WEAKENED", 0.2, 2);
             dmgLines.push(`${p.name} WEAKENED`);
           }

@@ -526,7 +526,7 @@ export async function handleEncounterFight(
   }
 
   function teamStatusLine(): string {
-    if (!isDevGuild) return "";
+    if (!hasSolace) return "";
     const benchedName = activeUnit === "player" ? SOLACE.name : displayName;
     const benchedHp   = activeUnit === "player" ? allyHp : state.playerHp;
     const benchedMax  = activeUnit === "player" ? allyHpMax : state.playerHpMax;
@@ -998,9 +998,10 @@ export async function handleEncounterFight(
         }
 
         // Milestone 1: exercises the debuff system inside a real fight.
-        // 25% chance per enemy attack, only when the dev-guild team mechanics are
-        // active — keeps this invisible to every other server.
-        if (isDevGuild && Math.random() < 0.25) {
+        // 25% chance per enemy attack, only when the player has actually
+        // opted into team mechanics via /team (Milestone 3.5a) — keeps this
+        // invisible to everyone else, dev-guild or not.
+        if (hasSolace && Math.random() < 0.25) {
           playerDebuffs = applyDebuff(playerDebuffs, "WEAKENED", 0.2, 2);
           state.lastMove += `\n◇ *${enc.enemy.name}'s strike leaves you* **WEAKENED** *(-20% ATK, 2 turns)*`;
         }

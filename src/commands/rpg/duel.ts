@@ -990,8 +990,11 @@ export async function execute(interaction: ChatInputCommandInteraction) {
         // Milestone 3e: landing a real attack has a 25% chance to leave the
         // opponent WEAKENED, mirroring /boss's retaliation-side chance.
         // Excluded from swap (damage === 0 anyway, so this is a no-op safety
-        // net, not load-bearing).
-        if (isDevGuild && damage > 0 && Math.random() < 0.25) {
+        // net, not load-bearing). Gated on the DEFENDING side's own hasSolace
+        // (Milestone 3.5a fix) — a player who never opted into team mechanics
+        // via /team shouldn't have their fight affected by them.
+        const oppHasSolace = isChallenger ? state.dHasSolace : state.cHasSolace;
+        if (oppHasSolace && damage > 0 && Math.random() < 0.25) {
           if (isChallenger) state.dPlayerDebuffs = applyDebuff(state.dPlayerDebuffs, "WEAKENED", 0.2, 2);
           else              state.cPlayerDebuffs = applyDebuff(state.cPlayerDebuffs, "WEAKENED", 0.2, 2);
           moveLine += `\n◇ *Leaves ${isChallenger ? state.challengedName : state.challengerName}* **WEAKENED** *(-20% ATK, 2 turns)*`;
