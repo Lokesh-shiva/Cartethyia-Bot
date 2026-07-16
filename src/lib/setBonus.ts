@@ -201,12 +201,18 @@ export interface PlayerBonuses {
 }
 
 // ── Bonus cache — 30s TTL, invalidated on any combat/equip write ──────────────
+// Keyed by `${userId}:${characterId}` — a player's own bonuses and (once
+// Milestone 3.5b wires her up) Solace's own bonuses are cached independently,
+// since they resolve from different Echo/Weapon rows.
 const bonusCache = new Map<string, { val: PlayerBonuses; at: number }>();
-export function invalidateBonusCache(userId: string) { bonusCache.delete(userId); }
+export function invalidateBonusCache(userId: string, characterId: string = "self") {
+  bonusCache.delete(`${userId}:${characterId}`);
+}
 
 // ── Main resolver ─────────────────────────────────────────────────────────────
-export async function resolvePlayerBonuses(userId: string): Promise<PlayerBonuses> {
-  const cached = bonusCache.get(userId);
+export async function resolvePlayerBonuses(userId: string, characterId: string = "self"): Promise<PlayerBonuses> {
+  const cacheKey = `${userId}:${characterId}`;
+  const cached = bonusCache.get(cacheKey);
   if (cached && Date.now() - cached.at < 30_000) return cached.val;
   const [user, echoes, weapon] = await Promise.all([
     prisma.user.findUnique({
@@ -214,7 +220,7 @@ export async function resolvePlayerBonuses(userId: string): Promise<PlayerBonuse
       select: { element: true, uniqueAbilityType: true, uniqueAbilityValue: true, uniqueAbilityEffects: true, uniqueAbilityName: true, abilityEvolved: true, abilityVersion: true },
     }),
     prisma.echo.findMany({
-      where:  { userId, isEquipped: true },
+      where:  { userId, characterId, isEquipped: true },
       select: {
         name: true, cost: true, equippedSlot: true,
         element: true, setId: true, mainStatType: true, mainStatValue: true, revealedSubstats: true,
@@ -227,7 +233,7 @@ export async function resolvePlayerBonuses(userId: string): Promise<PlayerBonuse
       },
     }),
     prisma.weapon.findFirst({
-      where:  { userId, isEquipped: true },
+      where:  { userId, characterId, isEquipped: true },
       select: {
         name: true, baseAtk: true, level: true, rarity: true, subStatType: true, subStatVal: true,
         hiddenSub1Type: true, hiddenSub1Val: true, hiddenSub2Type: true, hiddenSub2Val: true,
@@ -514,7 +520,7 @@ export async function resolvePlayerBonuses(userId: string): Promise<PlayerBonuse
     }
   }
 
-  bonusCache.set(userId, { val: bonuses, at: Date.now() });
+  bonusCache.set(cacheKey, { val: bonuses, at: Date.now() });
   return bonuses;
 }
 
