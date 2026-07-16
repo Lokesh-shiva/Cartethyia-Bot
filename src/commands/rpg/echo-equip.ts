@@ -52,10 +52,24 @@ export const data = new SlashCommandBuilder()
         { name: "3-cost  (field)",  value: 3 },
         { name: "4-cost  (boss)",   value: 4 },
       )
+  )
+  .addStringOption(o =>
+    o.setName("character")
+      .setDescription("Which unit's grid to edit (default: yourself)")
+      .setRequired(false)
+      .addChoices(
+        { name: "Yourself",     value: "self"   },
+        { name: "Solace",       value: "solace" },
+      )
   );
 
 const MAX_GRID_POINTS = 12;
 const CLEAR_VALUE     = "__clear__";
+
+const CHARACTER_LABEL: Record<string, string> = { self: "Yourself", solace: "Solace" };
+function gridTitle(characterId: string): string {
+  return characterId === "self" ? "Resonance Grid" : `Resonance Grid — ${CHARACTER_LABEL[characterId] ?? characterId}`;
+}
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -101,6 +115,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
   const slot          = interaction.options.getInteger("slot", true);
   const filterElement = interaction.options.getString("element")  ?? null;
   const filterCost    = interaction.options.getInteger("cost")    ?? null;
+  const characterId   = interaction.options.getString("character") ?? "self";
 
   const dbUser = await prisma.user.findUnique({
     where:  { id: interaction.user.id },
@@ -108,18 +123,32 @@ export async function execute(interaction: ChatInputCommandInteraction) {
   });
   if (!dbUser) { await replyNotStarted(interaction); return; }
 
+  if (characterId !== "self") {
+    const owned = await prisma.characterProgress.findUnique({
+      where: { userId_characterId: { userId: interaction.user.id, characterId } },
+    });
+    if (!owned) {
+      await interaction.editReply({
+        embeds: [new EmbedBuilder().setColor(0xFF4F6D)
+          .setDescription(`◈ You don't own **${characterId}** yet.`)
+          .setFooter({ text: "CARTETHYIA  ·  Resonance Grid" })],
+      });
+      return;
+    }
+  }
+
   const element = dbUser.element as Element;
   const color   = ELEMENT_COLORS[element];
   const slotName = slot === 0 ? "Main Slot" : `Sub Slot ${slot}`;
 
   // ── Fetch current occupant of this slot ──────────────────────────────────
   const currentEcho = await prisma.echo.findFirst({
-    where: { userId: interaction.user.id, isEquipped: true, equippedSlot: slot },
+    where: { userId: interaction.user.id, characterId, isEquipped: true, equippedSlot: slot },
   });
 
   // ── Fetch all equipped (for point budget) ────────────────────────────────
   const allEquipped = await prisma.echo.findMany({
-    where:  { userId: interaction.user.id, isEquipped: true },
+    where:  { userId: interaction.user.id, characterId, isEquipped: true },
     select: { cost: true, equippedSlot: true },
   });
   const pointsExcludingSlot = allEquipped
@@ -211,14 +240,14 @@ export async function execute(interaction: ChatInputCommandInteraction) {
   await interaction.editReply({
     embeds: [new EmbedBuilder()
       .setColor(color)
-      .setTitle(`${ELEMENT_EMOJI[element]}  Resonance Grid — ${slotName}`)
+      .setTitle(`${ELEMENT_EMOJI[element]}  ${gridTitle(characterId)} — ${slotName}`)
       .setDescription(
         `${currentBlock}\n` +
         `Grid: **${pointsExcludingSlot}** pts used (excl. this slot) / **${MAX_GRID_POINTS}** max.\n\n` +
         `Choose an echo below to swap into **${slotName}**.` +
         (hasMore ? `\n\n*Showing 25 of ${totalCount} — add filters to narrow down.*` : "")
       )
-      .setFooter({ text: "CARTETHYIA  ·  Resonance Grid  ·  Expires in 90s" })],
+      .setFooter({ text: `CARTETHYIA  ·  ${gridTitle(characterId)}  ·  Expires in 90s` })],
     components: [row],
   });
 
@@ -356,15 +385,15 @@ export async function execute(interaction: ChatInputCommandInteraction) {
       if (btn.customId === "equip_confirm") {
         await prisma.$transaction([
           prisma.echo.updateMany({
-            where: { userId: interaction.user.id, equippedSlot: slot, isEquipped: true },
+            where: { userId: interaction.user.id, characterId, equippedSlot: slot, isEquipped: true },
             data:  { isEquipped: false, equippedSlot: null },
           }),
           prisma.echo.update({
             where: { id: incoming.id },
-            data:  { isEquipped: true, equippedSlot: slot },
+            data:  { isEquipped: true, equippedSlot: slot, characterId },
           }),
         ]);
-        invalidateBonusCache(interaction.user.id);
+        invalidateBonusCache(interaction.user.id, characterId);
 
         const mainVal   = calcMainStatValue(incoming.mainStatType, incoming.level, incoming.rarity);
         const mainLabel = MAIN_STAT_LABELS[incoming.mainStatType] ?? incoming.mainStatType;
@@ -372,7 +401,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
         await btn.editReply({
           embeds: [new EmbedBuilder()
             .setColor(incomingColor)
-            .setTitle(`${ELEMENT_EMOJI[incoming.element as Element]}  Echo Equipped`)
+            .setTitle(`${ELEMENT_EMOJI[incoming.element as Element]}  Echo Equipped${characterId !== "self" ? ` — ${CHARACTER_LABEL[characterId] ?? characterId}` : ""}`)
             .setDescription([
               `**${incoming.name}**  ${RARITY_STARS[incoming.rarity]}`,
               `› Slotted into **${slotName}**`,
@@ -380,7 +409,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
               `› Grid now using **${newPoints}/12** points.`,
               currentEcho ? `\n◈ Replaced: **${currentEcho.name}**  (moved to inventory)` : "",
             ].filter(Boolean).join("\n"))
-            .setFooter({ text: "CARTETHYIA  ·  Resonance Grid  ·  Use /echoes to view your grid" })],
+            .setFooter({ text: `CARTETHYIA  ·  ${gridTitle(characterId)}  ·  Use /echoes to view your grid` })],
           components: [],
         });
       } else {
