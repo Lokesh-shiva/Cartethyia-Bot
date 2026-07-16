@@ -51,6 +51,7 @@ model User {
   avatarUrl        String?
   createdAt        DateTime       @default(now())
   lastSeen         DateTime       @default(now())
+  teamAllyCharacterId String?     // null = solo with own character. Non-null = an owned banner character filling the 2nd combat slot (ownership = a CharacterProgress row exists for this userId+characterId).
 
   // RPG Stats
   level            Int            @default(1)
@@ -187,6 +188,8 @@ model Weapon {
   level       Int        @default(1)
   rarity      Int        @default(1)
   isEquipped  Boolean    @default(false)
+  characterId String     @default("self") // see Echo.characterId above
+  refinement  Int        @default(1)      // 1-5, raised by merging duplicate weapon pulls (Milestone 3.5c)
 
   baseAtk     Int        @default(30)
   subStatType String?
@@ -227,7 +230,8 @@ model Echo {
   setId       String?                  // null = original element set; populated = named set (see src/lib/namedSets.ts)
   isEquipped  Boolean    @default(false)
   isLocked    Boolean    @default(false) // player-set guard against accidental discard/reroll targeting
-  equippedSlot Int?                    // 0 = main, 1-4 = sub slots
+  characterId String     @default("self") // "self" = player's own character; future values ("solace") = that unit's own gear
+  equippedSlot Int?                    // 0 = main, 1-4 = sub slots. Unique per (userId, characterId), not per userId alone.
   level       Int        @default(0)
 
   mainStatType  String   @default("HP_FLAT")
@@ -337,6 +341,9 @@ model CharacterProgress {
   forteLevel    Int @default(1)
   // Outro deliberately excluded — per design spec, it does not level.
 
+  constellation       Int @default(0) // 0-6, Resonance Chain rank
+  constellationTokens Int @default(0) // banked currency from duplicate pulls — Milestone 3.5 ships this at 0 for everyone; Milestone 4's gacha is what will ever increment it
+
   @@unique([userId, characterId])
   @@map("character_progress")
 }
@@ -395,14 +402,15 @@ model GuildSettings {
 // ─── Echo Preset ─────────────────────────────────────────────────────────────
 
 model EchoPreset {
-  id        String   @id @default(cuid())
-  userId    String
-  user      User     @relation(fields: [userId], references: [id])
-  name      String
-  slots     Json     // { "0": echoId|null, "1": echoId|null, ..., "4": echoId|null }
-  createdAt DateTime @default(now())
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id])
+  characterId String   @default("self") // which unit this preset's slots belong to
+  name        String
+  slots       Json     // { "0": echoId|null, "1": echoId|null, ..., "4": echoId|null }
+  createdAt   DateTime @default(now())
 
-  @@unique([userId, name])
+  @@unique([userId, characterId, name])
   @@map("echo_presets")
 }
 
