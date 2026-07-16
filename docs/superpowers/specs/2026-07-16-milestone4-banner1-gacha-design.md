@@ -26,6 +26,12 @@ Fractonite (existing, already drops from combat — currently converts 100:1 int
 
 The picker's option labels are the generic slot names ("Limited Character Banner" / "Limited Weapon Banner"), not the featured character/weapon's own name — the specific occupant is shown inside that banner's own embed/description once selected ("Featuring: Solace"), not in the top-level picker. This matters because the slot is what's structurally permanent across future banner rotations (Milestone 4's banner #2+, out of scope here) — the option value/customId should key off the slot ("character"/"weapon"), not off "solace"/"wellspring", so swapping in a future banner's occupant later doesn't require renaming option values players' muscle memory already depends on.
 
+Each banner also carries a flavor **title**, shown inside its own embed alongside "Featuring: X" — a poetic name, not built from mechanic vocabulary, and deliberately personality-agnostic so it reads naturally for any future character/weapon, not just this banner's occupants:
+- Character banner title: **"The Rising Overture"** ("overture" — the piece that opens a performance, before the main story begins; fits "a new character entering your roster" regardless of who that character is).
+- Weapon banner title: **"The Tempered Vow"** ("tempered" — forged steel; "vow" — a pact/oath, the genre-standard naming register for weapon banners).
+
+These titles are presentational only (embed text) — they do not replace the generic slot-based option labels/customIds from the paragraph above, and are not expected to change per banner rotation unless a future banner's design explicitly calls for a new title.
+
 This is a deliberate, intentional UX change to `/wish` itself (every player now sees a banner picker on open, not just people touching the new banners) — chosen over a default-to-Standard flow specifically for discoverability of the new limited banners. All three banners reuse `/wish`'s existing pull-resolution shell (pity math, animation triggers, result embeds) parameterized by which banner is active, rather than three separate implementations.
 
 **Pity curve:** all three banners share the exact same shape as `/wish`'s already-proven curve — 0.6% base 5★ rate, soft pity starting at 65, hard pity at 80 — but each banner tracks its own independent pity counter and guarantee flag. A player's Solace-banner pity has no relationship to their Wellspring-banner pity or their Standard `/wish` pity.
