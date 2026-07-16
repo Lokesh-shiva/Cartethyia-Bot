@@ -44,6 +44,14 @@ model CharacterProgress {
 
 **Uniqueness change:** `equippedSlot` (0 = main, 1-4 = sub) is currently unique per `userId` implicitly (one account-wide equip state). It becomes scoped per `(userId, characterId)` — slot 0 is unique per character, not per account. Same for `Weapon.isEquipped` — "equipped" now means "equipped by this specific character," so two different characters can each have their own equipped weapon simultaneously (this is exactly why weapon duplicates stay separately equippable, per your explicit callout — unlike characters, there's no "convert extra copies into a token" step for weapons; each copy is its own item, and refinement is an opt-in merge you choose to perform, not automatic).
 
+## 2.5. Solace's own stat block (discovered during planning — real scope addition)
+
+Solace currently has no independent stats: `SOLACE = { name, hpMax, outro }` in `src/lib/solace.ts`, and every combat formula for her Basic/Skill/Ultimate reuses the *player's own* resolved `myAtk`/`myDef`/`myCritRate`/`myCritDmg` (her kit multipliers apply on top of the player's stats, not her own). Per-character echoes have nothing to plug into under this shape — equipping different gear onto her would change nothing about her damage.
+
+**Fix:** `SOLACE` gains a real base stat line (`baseAtk`, `baseDef`, `baseSpeed`, `critRate`, `critDmg` — a fixed level-1-equivalent starting block, not a leveling system of her own; her existing kit-level tracks (Basic/Skill/Ultimate/Intro/Forte) remain the only progression she has). Combat formulas for her Basic/Skill/Ultimate/Chime-Strike branches across all 6 surfaces get rewired to compute HER OWN resolved stats (her base + her own equipped echoes via `resolvePlayerBonuses(userId, "solace")` + her own equipped weapon) instead of borrowing the acting player's. Her HP (`allyHp`/`allyHpMax`) already works this way (an independent pool) — this brings ATK/DEF/Crit in line with that same independence.
+
+This is the change that makes per-character loadouts mean something in combat, not just in the equip UI.
+
 ## 3. `/team` command
 
 New command. Shows your current team (self, plus ally if set) and lets you assign your 2nd combat slot to any owned banner character, or clear it back to solo. "Owned" = a `CharacterProgress` row exists for `(userId, characterId)` — reuses the exact mechanism `getOrCreateCharacterProgress` already uses today, no new ownership table.
