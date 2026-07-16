@@ -41,6 +41,60 @@ function isKitTrack(value: string): value is KitTrack {
   return VALID_TRACKS.has(value);
 }
 
+// ── Constellations (Milestone 3.5d) ───────────────────────────────────────
+// Schema-only until Milestone 4's gacha exists — constellation/constellationTokens
+// sit at 0 for every player today (see design spec §7). This is the read-only
+// display: rank, the 6-tier effect table, and an honest note about the missing
+// earn path. Combat-effect wiring is explicitly deferred to Milestone 4, per
+// the same design spec section — nothing here should imply these effects are
+// live in a fight yet.
+const CONSTELLATION_EFFECTS: Record<string, string[]> = {
+  solace: [
+    "Outro's guaranteed-crit buff also grants the incoming ally +15% ATK for their first action after the swap.",
+    "**(Kit change)** Ultimate's heal significantly increased; cleanses 2 debuffs instead of 1.",
+    "Switching Attunement Mode (Skill) also grants a team-wide Concerto Energy burst.",
+    "**(Kit change)** Intro Skill's heal also grants a shield equal to 30% of the amount healed.",
+    "Ultimate's doubled-mode-effect duration extends from 3 turns to 4.",
+    "**(Defining)** While one Attunement Mode is active, allies ALSO gain 50% of the other two modes' effects.",
+  ],
+};
+const MAX_CONSTELLATION = 6;
+
+async function buildConstellationsView(userId: string, characterId: string) {
+  const progress = await getOrCreateCharacterProgress(userId, characterId);
+  const char = CHARACTERS[characterId];
+  const tiers = CONSTELLATION_EFFECTS[characterId] ?? [];
+
+  const lines = tiers.map((effect, i) => {
+    const tier = i + 1;
+    const unlocked = progress.constellation >= tier;
+    return `${unlocked ? "✦" : "◇"}  **C${tier}**${unlocked ? "" : " *(locked)*"} — ${effect}`;
+  });
+
+  const embed = new EmbedBuilder()
+    .setColor(0x6366F1)
+    .setTitle(`${char.emoji}  ${char.label} — Constellations`)
+    .setDescription(
+      `**Resonance Chain:** C${progress.constellation}/${MAX_CONSTELLATION}  ·  ` +
+      `**Tokens:** ${progress.constellationTokens}\n\n` +
+      `${lines.join("\n\n")}\n\n` +
+      `*Tokens are earned from duplicate pulls once ${char.label}'s banner exists — this system isn't live yet, ` +
+      `so every player is at C0 with 0 tokens for now.*`
+    )
+    .setFooter({ text: "CARTETHYIA  ·  Character  ·  Constellations" });
+
+  return { embed };
+}
+
+function navButtons(characterId: string, activePage: "kit" | "con"): ActionRowBuilder<ButtonBuilder> {
+  return new ActionRowBuilder<ButtonBuilder>().addComponents(
+    new ButtonBuilder().setCustomId(`charnav:${characterId}:kit`).setLabel("⚔️  Kit Levels")
+      .setStyle(activePage === "kit" ? ButtonStyle.Primary : ButtonStyle.Secondary).setDisabled(activePage === "kit"),
+    new ButtonBuilder().setCustomId(`charnav:${characterId}:con`).setLabel("📜  Constellations")
+      .setStyle(activePage === "con" ? ButtonStyle.Primary : ButtonStyle.Secondary).setDisabled(activePage === "con"),
+  );
+}
+
 async function buildKitLevelsView(userId: string, characterId: string) {
   const [progress, dbUser] = await Promise.all([
     getOrCreateCharacterProgress(userId, characterId),
@@ -112,7 +166,7 @@ const command: Command = {
 
     const collector = interaction.channel?.createMessageComponentCollector({
       filter: i => i.user.id === interaction.user.id &&
-        (i.customId === "character_cmd_select" || i.customId.startsWith("charlvl:")),
+        (i.customId === "character_cmd_select" || i.customId.startsWith("charlvl:") || i.customId.startsWith("charnav:")),
       time: 5 * 60 * 1000,
     });
 
@@ -122,7 +176,24 @@ const command: Command = {
         const characterId = sel.values[0];
         if (!CHARACTERS[characterId]) { await sel.deferUpdate().catch(() => {}); return; }
         const { embed, trackButtons } = await buildKitLevelsView(interaction.user.id, characterId);
-        await sel.update({ embeds: [embed], components: [selectRow, trackButtons] }).catch(() => {});
+        await sel.update({ embeds: [embed], components: [selectRow, navButtons(characterId, "kit"), trackButtons] }).catch(() => {});
+        return;
+      }
+
+      if (i.customId.startsWith("charnav:") && i.isButton()) {
+        const btn = i as ButtonInteraction;
+        const [, characterId, page] = btn.customId.split(":");
+        if (!CHARACTERS[characterId] || (page !== "kit" && page !== "con")) {
+          await btn.deferUpdate().catch(() => {});
+          return;
+        }
+        if (page === "con") {
+          const { embed } = await buildConstellationsView(interaction.user.id, characterId);
+          await btn.update({ embeds: [embed], components: [selectRow, navButtons(characterId, "con")] }).catch(() => {});
+        } else {
+          const { embed, trackButtons } = await buildKitLevelsView(interaction.user.id, characterId);
+          await btn.update({ embeds: [embed], components: [selectRow, navButtons(characterId, "kit"), trackButtons] }).catch(() => {});
+        }
         return;
       }
 
@@ -189,7 +260,7 @@ const command: Command = {
           auditSpend(interaction.user.id, { forgingOres: cost }, "character-kit-level");
 
           const { embed, trackButtons } = await buildKitLevelsView(interaction.user.id, characterId);
-          await btn.update({ embeds: [embed], components: [selectRow, trackButtons] }).catch(() => {});
+          await btn.update({ embeds: [embed], components: [selectRow, navButtons(characterId, "kit"), trackButtons] }).catch(() => {});
         } catch (err) {
           console.error("[character] kit-level-up transaction failed", err);
           await btn.deferUpdate().catch(() => {});
