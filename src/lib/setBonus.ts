@@ -9,7 +9,7 @@ import {
   applyV2Attack, abilityCritRateV2, abilityVibV2, hasSecondWindV2,
   getV2TurnStartRegen, formatV2Effects,
 } from "./abilityEngineV2";
-import { WEAPON_PASSIVES } from "./weapons";
+import { WEAPON_PASSIVES, REFINEMENT_MULT } from "./weapons";
 import { ALL_WISH_WEAPONS, calcWishSubStat } from "./wishWeapons";
 import { bondMultiplier } from "./weaponAwakening";
 import { calcSubstatValue } from "./echoes";
@@ -237,7 +237,7 @@ export async function resolvePlayerBonuses(userId: string, characterId: string =
       select: {
         name: true, baseAtk: true, level: true, rarity: true, subStatType: true, subStatVal: true,
         hiddenSub1Type: true, hiddenSub1Val: true, hiddenSub2Type: true, hiddenSub2Val: true,
-        awakened: true, awakenedName: true, awakenedPassive: true, weaponBond: true,
+        awakened: true, awakenedName: true, awakenedPassive: true, weaponBond: true, refinement: true,
       },
     }),
   ]);
@@ -371,16 +371,24 @@ export async function resolvePlayerBonuses(userId: string, characterId: string =
       applySub(weapon.hiddenSub2Type, Math.round(calcWishSubStat(weapon.hiddenSub2Val, wishDef?.hiddenSub2Scale ?? 1.8, weapon.level) * bondMult * 10) / 10);
     }
 
-    // Weapon passive — awakened weapons carry their own passive in the DB
+    // Weapon passive — awakened weapons carry their own passive in the DB.
+    // Milestone 3.5c: refinement (1-5) scales whichever passive is active,
+    // independent of and stacking with Awakening's own amplification.
+    const refineMult = REFINEMENT_MULT[weapon.refinement] ?? 1;
     if (weapon.awakened && weapon.awakenedPassive) {
       const ap = weapon.awakenedPassive as any;
-      if (ap.elemDmg) bonuses.elemDmgBonus += Number(ap.elemDmg) || 0;
-      if (Array.isArray(ap.effects)) bonuses.abilityEffects.push(...sanitizeEffects(ap.effects, true, 7));
+      if (ap.elemDmg) bonuses.elemDmgBonus += (Number(ap.elemDmg) || 0) * refineMult;
+      if (Array.isArray(ap.effects)) {
+        const refinedEffects = ap.effects.map((e: any) => ({ ...e, value: e.value * refineMult }));
+        bonuses.abilityEffects.push(...sanitizeEffects(refinedEffects, true, 7));
+      }
     } else {
       const passive = WEAPON_PASSIVES[weapon.name];
       if (passive) {
-        if (passive.elemDmg) bonuses.elemDmgBonus += passive.elemDmg;
-        if (passive.effects) bonuses.abilityEffects.push(...passive.effects);
+        if (passive.elemDmg) bonuses.elemDmgBonus += passive.elemDmg * refineMult;
+        if (passive.effects) {
+          bonuses.abilityEffects.push(...passive.effects.map(e => ({ ...e, value: e.value * refineMult })));
+        }
       }
     }
 

@@ -198,6 +198,19 @@ export const WEAPON_PASSIVES: Record<string, WeaponPassive> = {
   "Abyssal Tome":      { elemDmg: 0.18, effects: [{ type: "EXECUTE",   value: 0.40 }, { type: "ULT_POWER", value: 0.28 }] },
 };
 
+// ── Refinement (Milestone 3.5c) ───────────────────────────────────────────────
+// R1-R5, raised by merging duplicate weapon pulls (see /weapon-refine). Scales
+// the magnitude of a weapon's existing passive (elemDmg + every effect value)
+// — does NOT add a new effect or change which effects a weapon has, unlike Lv60
+// Awakening (which adds a 4th effect on top). Stacks independently with
+// Awakening: refinement multiplies whatever passive is active (base
+// WEAPON_PASSIVES entry, or the already-amplified awakenedPassive JSON if the
+// weapon has been awakened) — applied at read-time in setBonus.ts, never
+// baked into stored data, so changing refinement later doesn't require
+// re-deriving anything else.
+export const REFINEMENT_MULT: Record<number, number> = { 1: 1.00, 2: 1.15, 3: 1.30, 4: 1.45, 5: 1.60 };
+export const MAX_REFINEMENT = 5;
+
 // Generated straight from WEAPON_PASSIVES — can never drift from what actually
 // applies in combat, unlike the hand-written `passive` flavor text on each
 // WeaponDefinition/WishWeapon, which is just prose and isn't checked against
