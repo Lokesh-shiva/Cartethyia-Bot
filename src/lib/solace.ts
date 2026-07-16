@@ -12,10 +12,26 @@
 import { IntroOutroEffect } from "./introOutro";
 import { ForteConfig } from "./forte";
 import { MAX_KIT_LEVEL } from "./characterProgress";
+import { resolvePlayerBonuses, applyBonuses, ResolvedStats } from "./setBonus";
 
 export const SOLACE = {
   name:  "Solace",
   hpMax: 1100,
+  // Milestone 3.5b: a fixed level-25-equivalent starting stat block (matches
+  // hpMax=1100 above: 800 + 12/level * 25 = 1100, same derivation for the
+  // rest — a level-1 player's base stats + the standard per-level growth
+  // curve from CLAUDE.md, frozen at 25). Not a leveling system of her own —
+  // her only progression is her existing kit-level tracks (Basic/Skill/
+  // Ultimate/Intro/Forte). Before this milestone her combat formulas borrowed
+  // the acting player's own resolved stats; now she has an independent stat
+  // line that combines with her OWN equipped echoes/weapon via
+  // resolveSolaceStats() below, so per-character loadouts (Milestone 3.5a)
+  // actually change her damage.
+  baseAtk:   115,
+  baseDef:   100,
+  baseSpeed: 125,
+  critRate:  0.05,
+  critDmg:   1.5,
 
   // Outro Skill: shields the incoming ally. The "guarantees their next attack
   // crits" half of her Outro (per spec) has no AllyAction primitive for it yet
@@ -113,4 +129,18 @@ export function solaceForteEmpoweredAtkCritBonus(forteLevel: number): number {
 }
 export function solaceForteEmpoweredDefBonus(forteLevel: number): number {
   return 0.10 + (0.20 - 0.10) * (forteLevel - 1) / (MAX_KIT_LEVEL - 1);
+}
+
+// ── Independent stat resolution (Milestone 3.5b) ──────────────────────────
+// Resolves Solace's OWN combat stats from her own base line + her own
+// equipped echoes/weapon (characterId "solace"), completely independent of
+// whichever player owns her. Every combat surface's Solace/ally branch
+// should call this once per fight (not per action — bonuses don't change
+// mid-fight) and use the result instead of the acting player's own stats.
+export async function resolveSolaceStats(userId: string): Promise<ResolvedStats> {
+  const bonuses = await resolvePlayerBonuses(userId, "solace");
+  return applyBonuses(
+    { baseHp: SOLACE.hpMax, baseAtk: SOLACE.baseAtk, baseDef: SOLACE.baseDef, critRate: SOLACE.critRate, critDmg: SOLACE.critDmg, baseSpeed: SOLACE.baseSpeed },
+    bonuses,
+  );
 }

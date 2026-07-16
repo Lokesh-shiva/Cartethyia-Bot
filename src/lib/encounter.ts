@@ -29,7 +29,7 @@ import {
   SOLACE_FORTE_CONFIG, SOLACE_FORTE_GAIN_PER_BASIC, SOLACE_FORTE_EMPOWERED_TURNS,
   getSolaceForteAtkBonus, getSolaceForteCritRateBonus, getSolaceForteDefBonus,
   solaceIntroEffect, solaceBasicDamageMult, solaceAttunementAtkCritBonus,
-  solaceAttunementDefBonus, solaceConvergenceHealPct,
+  solaceAttunementDefBonus, solaceConvergenceHealPct, resolveSolaceStats,
 } from "./solace";
 import { getOrCreateCharacterProgress } from "./characterProgress";
 import { resolveIntroOutroEffect } from "./introOutro";
@@ -371,7 +371,7 @@ export async function handleEncounterFight(
     where:  { id: interaction.user.id },
     select: { level: true, baseAtk: true, baseDef: true, baseHp: true,
               worldLevel: true, element: true, critRate: true, critDmg: true,
-              isOnboarded: true },
+              isOnboarded: true, teamAllyCharacterId: true },
   });
 
   // A user row can exist without /start (some commands auto-create) — require
@@ -388,10 +388,14 @@ export async function handleEncounterFight(
   // gated to the dev guild only. Every other server keeps the exact current 1v1
   // /encounter flow, byte-for-byte unchanged. See design spec + Milestone 1 plan.
   const isDevGuild = interaction.guildId === process.env.GUILD_ID;
+  // Milestone 3.5a: also requires the player to have actually picked Solace via /team.
+  const hasSolace = isDevGuild && dbUser.teamAllyCharacterId === "solace";
 
   // Resolve full combat stats (echoes + weapon + set bonuses + unique ability)
   const bonuses = await resolvePlayerBonuses(interaction.user.id);
   const stats   = applyBonuses(dbUser, bonuses);
+  // Milestone 3.5b: Solace's own resolved stats (her base + HER OWN echoes/weapon).
+  const allySolaceStats = hasSolace ? await resolveSolaceStats(interaction.user.id) : null;
   let secondWindUsed = false;
 
   // ── Milestone 1/2a: two-unit team state (dev guild only) ─────────────────────
@@ -409,7 +413,7 @@ export async function handleEncounterFight(
   // /character, a separate command/interaction) — fetch once here rather than
   // re-querying every turn. Only fetched in the dev guild, since nothing below
   // reads it outside isDevGuild-gated branches.
-  const solaceProgress = isDevGuild ? await getOrCreateCharacterProgress(interaction.user.id, "solace") : null;
+  const solaceProgress = hasSolace ? await getOrCreateCharacterProgress(interaction.user.id, "solace") : null;
   const solaceBasicLevel    = solaceProgress?.basicLevel    ?? 1;
   const solaceSkillLevel    = solaceProgress?.skillLevel    ?? 1;
   const solaceUltimateLevel = solaceProgress?.ultimateLevel ?? 1;
@@ -510,7 +514,7 @@ export async function handleEncounterFight(
       rows.push(row);
     }
 
-    if (isDevGuild) {
+    if (hasSolace) {
       rows.push(new ActionRowBuilder<ButtonBuilder>().addComponents(
         new ButtonBuilder().setCustomId("enc_swap")
           .setLabel(activeUnit === "player" ? `🔄  Swap to ${SOLACE.name}` : `🔄  Swap to ${displayName}`)
@@ -561,6 +565,15 @@ export async function handleEncounterFight(
       let playerDmg = 0;
       let forcedCritActive = false; // set inside the damage-dealing branch below; a swap never arms/consumes it
 
+      // Milestone 3.5b: whichever unit is currently acting/defending uses ITS
+      // OWN resolved stats — declared here (not inside the swap if/else) since
+      // both the damage-dealing branches AND the shared enemy-turn retaliation
+      // tail below need to read it.
+      const isAllyActingOrDefending = activeUnit === "ally" && allySolaceStats !== null;
+      const activeAtk     = isAllyActingOrDefending ? allySolaceStats!.atk     : stats.atk;
+      const activeDef     = isAllyActingOrDefending ? allySolaceStats!.def     : stats.def;
+      const activeCritDmg = isAllyActingOrDefending ? allySolaceStats!.critDmg : stats.critDmg;
+
       if (btn.customId === "enc_flee") {
         removeEncounter(interaction.message.id);
         const fleeEmbed = new EmbedBuilder()
@@ -580,7 +593,7 @@ export async function handleEncounterFight(
       // flips, nothing else happens. Falls through to the shared enemy-turn
       // block below either way (skipping the damage-dealing section, since a
       // swap never deals damage) since swapping still costs the turn. ────────
-      if (btn.customId === "enc_swap" && isDevGuild) {
+      if (btn.customId === "enc_swap" && hasSolace) {
         const outgoingIsPlayer = activeUnit === "player";
         const comboReady = concertoEnergy >= 100;
 
@@ -642,7 +655,7 @@ export async function handleEncounterFight(
       const defVal     = state.isShattered ? 0 : scaledEnemy.def * (defShredActive ? (1 - enemyDefShredPct) : 1);
       const enemyHpPct = state.bossHpNow / state.bossHpMax;
       const radCrit    = elemRadianceCrit(bonuses.elementPassive, state.playerHp, state.playerHpMax);
-      const cRate      = abilityCritRate(bonuses, Math.min(1, stats.critRate + radCrit), state.playerHp, state.playerHpMax);
+      const cRate      = abilityCritRate(bonuses, Math.min(1, (isAllyActingOrDefending ? allySolaceStats!.critRate : stats.critRate) + radCrit), state.playerHp, state.playerHpMax);
       const vibMult    = abilityVib(bonuses);
       forcedCritActive = nextAttackCritArmed && btn.customId !== "enc_flee";
       let   vibFrac    = 0.3;
@@ -668,7 +681,7 @@ export async function handleEncounterFight(
         // level shouldn't affect HIS damage.
         const basicMoveMult = isDevGuild && activeUnit === "ally" ? solaceBasicDamageMult(solaceBasicLevel) : 1.0;
         const atkMult = getWeakenedMult(playerDebuffs) * (isDevGuild ? getAttunementAtkMult(attunement, attunementAtkBonus, attunementDoubleTurnsLeft > 0) : 1) * wellspringAtkMult * (1 + wellspringAtkBonus) * (1 + forteAtkBonus);
-        const r  = calcPlayerDamage(stats.atk * atkMult, defVal, forcedCritActive ? 1 : Math.min(1, cRate + (isDevGuild ? getAttunementCritRateBonus(attunement, attunementCritBonus, attunementDoubleTurnsLeft > 0) : 0) + wellspringCritBonus + forteCritBonus), stats.critDmg, basicMoveMult, isWeak, state.isShattered);
+        const r  = calcPlayerDamage(activeAtk * atkMult, defVal, forcedCritActive ? 1 : Math.min(1, cRate + (isDevGuild ? getAttunementCritRateBonus(attunement, attunementCritBonus, attunementDoubleTurnsLeft > 0) : 0) + wellspringCritBonus + forteCritBonus), activeCritDmg, basicMoveMult, isWeak, state.isShattered);
         let base = Math.floor(r.damage * (1 + stats.elemDmgBonus));
         base     = Math.floor(base * elemWindstrideMult(bonuses.elementPassive, state.turn, "BASIC"));
         // Ignite is a separate proc effect, not part of the base attack roll —
@@ -699,12 +712,11 @@ export async function handleEncounterFight(
       if (btn.customId === "enc_skill" && isDevGuild && activeUnit === "ally") {
         // Solace's Skill is Attunement — a mode cycle, not a damage move. No
         // cooldown (always available), no personal Energy interaction. Deals a
-        // small hit so it's not purely administrative, using her own baseline
-        // (reuses the player's ATK/DEF context since Solace has no stat block
-        // of her own yet in this test milestone, same simplification the
-        // placeholder ally used).
+        // small hit so it's not purely administrative, using HER OWN resolved
+        // stats (Milestone 3.5b) — activeAtk/activeCritDmg already resolve to
+        // allySolaceStats here since this branch only runs while she's active.
         attunement.mode = cycleAttunementMode(attunement.mode);
-        const r  = calcPlayerDamage(stats.atk, defVal, cRate, stats.critDmg, 0.6, isWeak, state.isShattered);
+        const r  = calcPlayerDamage(activeAtk, defVal, cRate, activeCritDmg, 0.6, isWeak, state.isShattered);
         playerDmg = Math.floor(r.damage * (1 + stats.elemDmgBonus)); isCrit = r.isCrit;
         moveType = "SKILL"; vibFrac = 0.3;
         moveName = `✦ Attunement — now in **${attunement.mode}** mode! ${playerDmg} DMG${r.isCrit ? " **(CRIT)**" : ""}`;
@@ -952,7 +964,7 @@ export async function handleEncounterFight(
         const forteDefBonus = isDevGuild ? getSolaceForteDefBonus(solaceForteLevel, forteEmpoweredTurnsLeft > 0) : 0;
         const attunementDefBonus = solaceAttunementDefBonus(solaceSkillLevel);
         const attunementDefMult = (isDevGuild ? getAttunementDefMult(attunement, attunementDefBonus, attunementDoubleTurnsLeft > 0) : 1) * (1 + wellspringDefBonus) * (1 + forteDefBonus);
-        let bossDmg    = calcEnemyDamage(scaledEnemy.atk, stats.def * attunementDefMult, move.damage);
+        let bossDmg    = calcEnemyDamage(scaledEnemy.atk, activeDef * attunementDefMult, move.damage);
         const shield   = elemFrostShield(bonuses.elementPassive, bossDmg);
         bossDmg        = shield.dmg;
 

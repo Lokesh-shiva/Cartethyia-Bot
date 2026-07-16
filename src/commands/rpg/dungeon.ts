@@ -6,7 +6,7 @@ import {
 } from "discord.js";
 import prisma from "../../lib/prisma";
 import { DUNGEONS, getDungeon, getScaledWaveEnemy, DungeonDefinition } from "../../lib/dungeons";
-import { resolvePlayerBonuses, applyBonuses, apply4pcSkillBonus, apply4pcUltBonus, roll4pcDoubleHit, roll4pcBlock, apply5pcLowHpCrit, apply5pcFirstHit, apply5pcFullHpDmg, get5pcVibDrainMult, get5pcHpRegen, applyLifesteal, elemIgniteProc, elemFrostShield, elemDischargeEnergy, elemWindstrideMult, elemVoidSurgeHeal, elemRadianceRegen, elemRadianceCrit, applyAbilityAttack, abilityV2TurnRegen, effectiveSkillCooldown, hasQuickStrike } from "../../lib/setBonus";
+import { resolvePlayerBonuses, applyBonuses, apply4pcSkillBonus, apply4pcUltBonus, roll4pcDoubleHit, roll4pcBlock, apply5pcLowHpCrit, apply5pcFirstHit, apply5pcFullHpDmg, get5pcVibDrainMult, get5pcHpRegen, applyLifesteal, elemIgniteProc, elemFrostShield, elemDischargeEnergy, elemWindstrideMult, elemVoidSurgeHeal, elemRadianceRegen, elemRadianceCrit, applyAbilityAttack, abilityV2TurnRegen, effectiveSkillCooldown, hasQuickStrike, ResolvedStats } from "../../lib/setBonus";
 import { compositeVibMult, compositeHasSecondWind } from "../../lib/abilityEffects";
 import {
   initNamedSetState, NamedSetState,
@@ -36,7 +36,7 @@ import {
   SOLACE_FORTE_CONFIG, SOLACE_FORTE_GAIN_PER_BASIC, SOLACE_FORTE_EMPOWERED_TURNS,
   getSolaceForteAtkBonus, getSolaceForteCritRateBonus, getSolaceForteDefBonus,
   solaceIntroEffect, solaceBasicDamageMult, solaceAttunementAtkCritBonus,
-  solaceAttunementDefBonus, solaceConvergenceHealPct,
+  solaceAttunementDefBonus, solaceConvergenceHealPct, resolveSolaceStats,
 } from "../../lib/solace";
 import { resolveIntroOutroEffect, IntroOutroEffect } from "../../lib/introOutro";
 import {
@@ -280,7 +280,13 @@ async function runDungeon(
   dbUser:      DungeonUser,
 ) {
   const isDevGuild = interaction.guildId === process.env.GUILD_ID;
-  const solaceProgress = isDevGuild ? await getOrCreateCharacterProgress(interaction.user.id, "solace") : null;
+  // Milestone 3.5a: also requires the player to have actually picked Solace
+  // via /team, not just being in the dev guild.
+  const teamRow = isDevGuild ? await prisma.user.findUnique({ where: { id: interaction.user.id }, select: { teamAllyCharacterId: true } }) : null;
+  const hasSolace = isDevGuild && teamRow?.teamAllyCharacterId === "solace";
+  const solaceProgress = hasSolace ? await getOrCreateCharacterProgress(interaction.user.id, "solace") : null;
+  // Milestone 3.5b: her own resolved stats (her base + HER OWN echoes/weapon).
+  const allySolaceStats: ResolvedStats | null = hasSolace ? await resolveSolaceStats(interaction.user.id) : null;
   const solaceBasicLevel    = solaceProgress?.basicLevel    ?? 1;
   const solaceSkillLevel    = solaceProgress?.skillLevel    ?? 1;
   const solaceUltimateLevel = solaceProgress?.ultimateLevel ?? 1;
@@ -366,7 +372,7 @@ async function runDungeon(
           namedState, glacioShieldTurnsLeft, glacioShieldElemBonus, stormBuffTurnsLeft, stormBuffCritBonus,
           havocFrenzyAtkMult, havocFrenzyLifesteal, havocFrenzyDefIgnore, quickStrikeUsed,
           echoSkillCooldown, enemyDefShredTurnsLeft, enemyDefShredPct, nextAttackCritArmed,
-          isDevGuild, activeUnit, allyHp, allyHpMax, concertoEnergy, playerDebuffs, attunement,
+          isDevGuild, hasSolace, allySolaceStats, activeUnit, allyHp, allyHpMax, concertoEnergy, playerDebuffs, attunement,
           attunementDoubleTurnsLeft, solaceForte, forteEmpoweredTurnsLeft,
           solaceBasicLevel, solaceSkillLevel, solaceUltimateLevel, solaceIntroLevel, solaceForteLevel,
           displayName,
@@ -527,6 +533,10 @@ interface WaveState {
   nextAttackCritArmed:    boolean;
   // ── Milestone 3a: team state ──────────────────────────────────────────
   isDevGuild: boolean;
+  // Milestone 3.5a/b: owns+selected Solace via /team, and her own resolved
+  // stats (her own echoes/weapon) — narrower than isDevGuild alone.
+  hasSolace: boolean;
+  allySolaceStats: ResolvedStats | null;
   activeUnit: "player" | "ally";
   allyHp: number;
   allyHpMax: number;
@@ -626,7 +636,7 @@ async function runWave(
   function buildButtons(): ActionRowBuilder<ButtonBuilder>[] {
     const rows: ActionRowBuilder<ButtonBuilder>[] = [];
 
-    if (ws.isDevGuild && ws.activeUnit === "ally") {
+    if (ws.hasSolace && ws.activeUnit === "ally") {
       const modeLabel = ws.attunement.mode ? `(${ws.attunement.mode})` : "(inactive)";
       rows.push(new ActionRowBuilder<ButtonBuilder>().addComponents(
         new ButtonBuilder().setCustomId("dg_basic").setLabel("⚔️  Chime Strike").setStyle(ButtonStyle.Primary),
@@ -658,7 +668,7 @@ async function runWave(
       rows.push(row);
     }
 
-    if (ws.isDevGuild) {
+    if (ws.hasSolace) {
       rows.push(new ActionRowBuilder<ButtonBuilder>().addComponents(
         new ButtonBuilder().setCustomId("dg_swap")
           .setLabel(ws.activeUnit === "player" ? `🔄  Swap to ${SOLACE.name}` : `🔄  Swap to ${ws.displayName}`)
@@ -708,7 +718,14 @@ async function runWave(
         const havocLifesteal = havocFrenzyActive ? ws.havocFrenzyLifesteal : 0;
         const radCrit = elemRadianceCrit(bonuses.elementPassive, ws.playerHp, ws.playerHpMax);
         const stormCritBuff = ws.stormBuffTurnsLeft > 0 ? ws.stormBuffCritBonus : 0;
-        const cRate   = apply5pcLowHpCrit(bonuses, Math.min(1, stats.critRate + radCrit + stormCritBuff), ws.playerHp, ws.playerHpMax);
+        // Milestone 3.5b: whichever unit is currently acting/defending uses
+        // ITS OWN resolved stats — safe unconditionally since activeUnit is
+        // guaranteed "player" whenever the player's own branches run.
+        const isAllyActingOrDefending = ws.activeUnit === "ally" && ws.allySolaceStats !== null;
+        const activeAtk     = isAllyActingOrDefending ? ws.allySolaceStats!.atk     : stats.atk;
+        const activeDef     = isAllyActingOrDefending ? ws.allySolaceStats!.def     : stats.def;
+        const activeCritDmg = isAllyActingOrDefending ? ws.allySolaceStats!.critDmg : stats.critDmg;
+        const cRate   = apply5pcLowHpCrit(bonuses, Math.min(1, (isAllyActingOrDefending ? ws.allySolaceStats!.critRate : stats.critRate) + radCrit + stormCritBuff), ws.playerHp, ws.playerHpMax);
         const forcedCritActive = ws.nextAttackCritArmed && btn.customId !== "dg_flee";
         const totalVibMult = vibMult * compositeVibMult(bonuses.abilityEffects);
         const abilCtxBase = {
@@ -728,7 +745,7 @@ async function runWave(
         // (incoming) combo only fires if Concerto Energy is full at the
         // moment of swap. Ported from encounter.ts's Milestone 1/2a swap
         // handler — same logic, same field names via `ws.` instead of `state.`.
-        if (btn.customId === "dg_swap" && ws.isDevGuild) {
+        if (btn.customId === "dg_swap" && ws.hasSolace) {
           const outgoingIsPlayer = ws.activeUnit === "player";
           const comboReady = ws.concertoEnergy >= 100;
 
@@ -792,7 +809,7 @@ async function runWave(
           const smolderMult = bonuses.activeNamedSetId === "SMOLDERING_SOVEREIGN"
             ? smolderingSovereignOnAction(ws.namedState) : 1;
           const extraElemBonus = ws.glacioShieldTurnsLeft > 0 ? ws.glacioShieldElemBonus : 0;
-          let dmg      = Math.max(1, Math.floor(stats.atk * teamMult * basicMoveMult * smolderMult * havocAtkMult * (1 - defReduction) * (crit ? stats.critDmg : 1) * (isWeak ? 1.5 : 1) * (1 + bonuses.elemDmgBonus + extraElemBonus) * radiantDmgMult));
+          let dmg      = Math.max(1, Math.floor(activeAtk * teamMult * basicMoveMult * smolderMult * havocAtkMult * (1 - defReduction) * (crit ? activeCritDmg : 1) * (isWeak ? 1.5 : 1) * (1 + bonuses.elemDmgBonus + extraElemBonus) * radiantDmgMult));
           if (roll4pcDoubleHit(bonuses)) dmg *= 2;
           dmg          = apply5pcFirstHit(bonuses, dmg, !ws.firstActionDone);
           dmg          = apply5pcFullHpDmg(bonuses, dmg, ws.playerHp, ws.playerHpMax);
@@ -846,7 +863,7 @@ async function runWave(
           // uses). Ported from encounter.ts's Milestone 2a Skill branch.
           ws.attunement.mode = cycleAttunementMode(ws.attunement.mode);
           const crit = Math.random() < cRate; abilCrit = crit;
-          const dmg  = Math.max(1, Math.floor(stats.atk * 0.6 * (1 - defReduction) * (crit ? stats.critDmg : 1) * (isWeak ? 1.5 : 1) * (1 + bonuses.elemDmgBonus)));
+          const dmg  = Math.max(1, Math.floor(activeAtk * 0.6 * (1 - defReduction) * (crit ? activeCritDmg : 1) * (isWeak ? 1.5 : 1) * (1 + bonuses.elemDmgBonus)));
           playerDmg  = dmg;
           moveLine   = `✦ Attunement — now in **${ws.attunement.mode}** mode! ${playerDmg} DMG${crit ? " **(CRIT)**" : ""}`;
           vibBar     = Math.max(0, vibBar - Math.floor(playerDmg * 0.3 * totalVibMult));
@@ -1142,7 +1159,7 @@ async function runWave(
           const forteDefBonus = ws.isDevGuild ? getSolaceForteDefBonus(ws.solaceForteLevel, ws.forteEmpoweredTurnsLeft > 0) : 0;
           const attunementDefBonus = solaceAttunementDefBonus(ws.solaceSkillLevel);
           const attunementDefMult = (ws.isDevGuild ? getAttunementDefMult(ws.attunement, attunementDefBonus, ws.attunementDoubleTurnsLeft > 0) : 1) * (1 + wellspringDefBonus) * (1 + forteDefBonus);
-          let bossDmg   = Math.max(1, Math.floor(scaled.atk * 0.9 - stats.def * attunementDefMult * 0.4));
+          let bossDmg   = Math.max(1, Math.floor(scaled.atk * 0.9 - activeDef * attunementDefMult * 0.4));
           bossDmg       = roll4pcBlock(bonuses, bossDmg);
           const shield  = elemFrostShield(bonuses.elementPassive, bossDmg);
           bossDmg       = shield.dmg;

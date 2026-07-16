@@ -16,7 +16,7 @@ import {
   abilityCritRate, abilityVib, applyLifesteal, PlayerBonuses,
   elemIgniteProc, elemFrostShield, elemDischargeEnergy,
   elemWindstrideMult, elemVoidSurgeHeal, elemRadianceRegen, elemRadianceCrit,
-  effectiveSkillCooldown,
+  effectiveSkillCooldown, ResolvedStats,
 } from "../../lib/setBonus";
 import { compositeHasSecondWind } from "../../lib/abilityEffects";
 import {
@@ -41,7 +41,7 @@ import {
   SOLACE_FORTE_CONFIG, SOLACE_FORTE_GAIN_PER_BASIC, SOLACE_FORTE_EMPOWERED_TURNS,
   getSolaceForteAtkBonus, getSolaceForteCritRateBonus, getSolaceForteDefBonus,
   solaceIntroEffect, solaceBasicDamageMult, solaceAttunementAtkCritBonus,
-  solaceAttunementDefBonus, solaceConvergenceHealPct,
+  solaceAttunementDefBonus, solaceConvergenceHealPct, resolveSolaceStats,
 } from "../../lib/solace";
 import { resolveIntroOutroEffect, IntroOutroEffect } from "../../lib/introOutro";
 import {
@@ -246,6 +246,7 @@ interface RaidParticipant {
   nextCritArmed:         boolean;
   // ── Milestone 3d: per-participant team state (dev guild only) ────────────────
   hasSolace:      boolean;
+  allySolaceStats: ResolvedStats | null; // Milestone 3.5b: her own resolved stats
   solaceBasicLevel: number;
   solaceSkillLevel: number;
   solaceUltimateLevel: number;
@@ -639,15 +640,19 @@ function buildRecruitEmbed(raid: ActiveRaid, boss: RaidBossConfig): EmbedBuilder
 async function addParticipant(raid: ActiveRaid, userId: string, displayName: string): Promise<boolean> {
   const db = await prisma.user.findUnique({
     where:  { id: userId },
-    select: { baseHp: true, baseAtk: true, baseDef: true, baseSpeed: true, critRate: true, critDmg: true, element: true, isOnboarded: true, worldLevel: true },
+    select: { baseHp: true, baseAtk: true, baseDef: true, baseSpeed: true, critRate: true, critDmg: true, element: true, isOnboarded: true, worldLevel: true, teamAllyCharacterId: true },
   });
   if (!db?.isOnboarded) return false;
 
   const bonuses = await resolvePlayerBonuses(userId);
   const stats   = applyBonuses(db, bonuses);
 
-  // Milestone 3d: per-participant Solace progress (dev guild only)
-  const solaceProgress = raid.isDevGuild ? await getOrCreateCharacterProgress(userId, "solace") : null;
+  // Milestone 3d: per-participant Solace progress (dev guild only).
+  // Milestone 3.5a: also requires this participant to have picked Solace via /team.
+  const hasSolaceGate = raid.isDevGuild && db.teamAllyCharacterId === "solace";
+  const solaceProgress = hasSolaceGate ? await getOrCreateCharacterProgress(userId, "solace") : null;
+  // Milestone 3.5b: this participant's own Solace's resolved stats.
+  const allySolaceStats = hasSolaceGate ? await resolveSolaceStats(userId) : null;
 
   raid.participants.push({
     userId, name: displayName, element: db.element, worldLevel: db.worldLevel,
@@ -662,7 +667,8 @@ async function addParticipant(raid: ActiveRaid, userId: string, displayName: str
     stormBuffTurnsLeft: 0, stormBuffCritBonus: 0,
     havocFrenzyAtkMult: 1.0, havocFrenzyLifesteal: 0, havocFrenzyDefIgnore: 0,
     echoSkillCd: 0, nextCritArmed: false,
-    hasSolace: solaceProgress !== null,
+    hasSolace: hasSolaceGate,
+    allySolaceStats,
     solaceBasicLevel:    solaceProgress?.basicLevel    ?? 1,
     solaceSkillLevel:    solaceProgress?.skillLevel    ?? 1,
     solaceUltimateLevel: solaceProgress?.ultimateLevel ?? 1,
@@ -978,7 +984,14 @@ async function launchRaid(
       const extraElemBonus = current.glacioShieldTurnsLeft > 0 ? current.glacioShieldElemBonus : 0;
       const radCrit   = elemRadianceCrit(current.bonuses.elementPassive, current.hp, current.hpMax);
       const stormCritBuff = current.stormBuffTurnsLeft > 0 ? current.stormBuffCritBonus : 0;
-      const aCrit     = abilityCritRate(current.bonuses, Math.min(1, current.critRate + radCrit + stormCritBuff), current.hp, current.hpMax);
+      // Milestone 3.5b: while this participant's Solace is active, use HER
+      // OWN resolved stats for offense — safe unconditionally since
+      // activeUnit is guaranteed "player" whenever the player's own branches run.
+      const currentIsAllyActing = current.activeUnit === "ally" && current.allySolaceStats !== null;
+      const activeAtk      = currentIsAllyActing ? current.allySolaceStats!.atk      : current.atk;
+      const activeCritDmg  = currentIsAllyActing ? current.allySolaceStats!.critDmg  : current.critDmg;
+      const activeCritBase = currentIsAllyActing ? current.allySolaceStats!.critRate : current.critRate;
+      const aCrit     = abilityCritRate(current.bonuses, Math.min(1, activeCritBase + radCrit + stormCritBuff), current.hp, current.hpMax);
       const vibMult   = abilityVib(current.bonuses);
       const bossHpPct = raid.bossHp / raid.bossHpMax;
       const forcedCritActive = current.nextCritArmed && btn.customId !== "raid_retreat";
@@ -1081,7 +1094,7 @@ async function launchRaid(
             forteAnnounce = `\n✨ Forte is **HALF CHARGED**.`;
           }
         }
-        const r    = calcPlayerDamage(current.atk * smolderMult * havocAtkMult * teamMult, defVal, forcedCrit ? 1 : Math.min(1, aCrit + party.critBonus), current.critDmg, 1.0, isWeak, raid.isShattered);
+        const r    = calcPlayerDamage(activeAtk * smolderMult * havocAtkMult * teamMult, defVal, forcedCrit ? 1 : Math.min(1, aCrit + party.critBonus), activeCritDmg, 1.0, isWeak, raid.isShattered);
         let base   = Math.floor(r.damage * (1 + current.elemDmg + extraElemBonus) * radiantDmgMult);
         base       = Math.floor(base * elemWindstrideMult(current.bonuses.elementPassive, raid.turn, "BASIC"));
         if (mySetId === "WINDSTRIDERS_LEGACY") {
@@ -1109,7 +1122,7 @@ async function launchRaid(
         // NOTE: WEAKENED deliberately NOT folded in here — it's a debuff on
         // the player, not on Solace, and this is her own Attunement-cycle hit.
         const crit = forcedCritActive || Math.random() < aCrit;
-        const r = calcPlayerDamage(current.atk * havocAtkMult, defVal, crit ? 1 : 0, current.critDmg, 0.6, isWeak, raid.isShattered);
+        const r = calcPlayerDamage(activeAtk * havocAtkMult, defVal, crit ? 1 : 0, activeCritDmg, 0.6, isWeak, raid.isShattered);
         const base = Math.floor(r.damage * (1 + current.elemDmg + extraElemBonus) * radiantDmgMult);
         damage = base; isCrit = r.isCrit; vibFrac = 0.3;
         moveLine = `${current.name} — ✦ Attunement — now in **${current.attunement.mode}** mode!`;
@@ -1365,7 +1378,11 @@ async function launchRaid(
         const party = raid.isDevGuild ? partyWideTeamBonuses(raid) : { atkMult: 1, critBonus: 0, defMult: 1 };
 
         for (const p of alive) {
-          let bossDmg    = calcEnemyDamage(aoeBase, p.def * party.defMult, 1.0);
+          // Milestone 3.5b: while this participant's Solace is defending,
+          // damage reduction uses HER OWN DEF, not the player's own.
+          const pDefendingWithAlly = raid.isDevGuild && p.activeUnit === "ally" && p.allySolaceStats !== null;
+          const pActiveDef = pDefendingWithAlly ? p.allySolaceStats!.def : p.def;
+          let bossDmg    = calcEnemyDamage(aoeBase, pActiveDef * party.defMult, 1.0);
           const shield   = elemFrostShield(p.bonuses.elementPassive, bossDmg);
           bossDmg        = shield.dmg;
           const radRegen = elemRadianceRegen(p.bonuses.elementPassive, p.hpMax);

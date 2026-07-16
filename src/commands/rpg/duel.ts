@@ -14,7 +14,7 @@ import {
   abilityCritRate, applyLifesteal, PlayerBonuses,
   elemIgniteProc, elemFrostShield, elemDischargeEnergy,
   elemWindstrideMult, elemRadianceRegen, elemRadianceCrit,
-  effectiveSkillCooldown, AbilityAttackResult,
+  effectiveSkillCooldown, AbilityAttackResult, ResolvedStats,
 } from "../../lib/setBonus";
 import { compositeHasSecondWind, abilityLabel } from "../../lib/abilityEffects";
 import {
@@ -34,7 +34,7 @@ import {
   SOLACE_FORTE_CONFIG, SOLACE_FORTE_GAIN_PER_BASIC, SOLACE_FORTE_EMPOWERED_TURNS,
   getSolaceForteAtkBonus, getSolaceForteCritRateBonus, getSolaceForteDefBonus,
   solaceIntroEffect, solaceBasicDamageMult, solaceAttunementAtkCritBonus,
-  solaceAttunementDefBonus, solaceConvergenceHealPct,
+  solaceAttunementDefBonus, solaceConvergenceHealPct, resolveSolaceStats,
 } from "../../lib/solace";
 import { resolveIntroOutroEffect, IntroOutroEffect } from "../../lib/introOutro";
 import {
@@ -72,6 +72,7 @@ interface DuelState {
   cEchoSkillCd: number; cDefShredTurnsLeft: number; cDefShredPct: number; cNextCritArmed: boolean;
   // Milestone 3e: challenger team state (dev guild only)
   cHasSolace: boolean;
+  cAllySolaceStats: ResolvedStats | null; // Milestone 3.5b: her own resolved stats
   cSolaceBasicLevel: number; cSolaceSkillLevel: number; cSolaceUltimateLevel: number;
   cSolaceIntroLevel: number; cSolaceForteLevel: number;
   cActiveUnit: "player" | "ally"; cAllyHp: number; cAllyHpMax: number;
@@ -90,6 +91,7 @@ interface DuelState {
   dEchoSkillCd: number; dDefShredTurnsLeft: number; dDefShredPct: number; dNextCritArmed: boolean;
   // Milestone 3e: challenged team state (dev guild only)
   dHasSolace: boolean;
+  dAllySolaceStats: ResolvedStats | null; // Milestone 3.5b: her own resolved stats
   dSolaceBasicLevel: number; dSolaceSkillLevel: number; dSolaceUltimateLevel: number;
   dSolaceIntroLevel: number; dSolaceForteLevel: number;
   dActiveUnit: "player" | "ally"; dAllyHp: number; dAllyHpMax: number;
@@ -268,11 +270,11 @@ export async function execute(interaction: ChatInputCommandInteraction) {
   const [challengerDb, challengedDb] = await Promise.all([
     prisma.user.findUnique({
       where:  { id: interaction.user.id },
-      select: { baseHp: true, baseAtk: true, baseDef: true, baseSpeed: true, critRate: true, critDmg: true, element: true, level: true, dispatchStatus: true, dispatchEndsAt: true },
+      select: { baseHp: true, baseAtk: true, baseDef: true, baseSpeed: true, critRate: true, critDmg: true, element: true, level: true, dispatchStatus: true, dispatchEndsAt: true, teamAllyCharacterId: true },
     }),
     prisma.user.findUnique({
       where:  { id: target.id },
-      select: { baseHp: true, baseAtk: true, baseDef: true, baseSpeed: true, critRate: true, critDmg: true, element: true, level: true },
+      select: { baseHp: true, baseAtk: true, baseDef: true, baseSpeed: true, critRate: true, critDmg: true, element: true, level: true, teamAllyCharacterId: true },
     }),
   ]);
 
@@ -348,12 +350,18 @@ export async function execute(interaction: ChatInputCommandInteraction) {
     // locks already held for both players
 
     const isDevGuild = interaction.guildId === process.env.GUILD_ID;
-    const [cSolaceProgress, dSolaceProgress] = isDevGuild
-      ? await Promise.all([
-          getOrCreateCharacterProgress(interaction.user.id, "solace"),
-          getOrCreateCharacterProgress(target.id, "solace"),
-        ])
-      : [null, null];
+    // Milestone 3.5a: also requires each side to have actually picked Solace via /team.
+    const cHasSolaceGate = isDevGuild && challengerDb.teamAllyCharacterId === "solace";
+    const dHasSolaceGate = isDevGuild && challengedDb.teamAllyCharacterId === "solace";
+    const [cSolaceProgress, dSolaceProgress] = await Promise.all([
+      cHasSolaceGate ? getOrCreateCharacterProgress(interaction.user.id, "solace") : Promise.resolve(null),
+      dHasSolaceGate ? getOrCreateCharacterProgress(target.id, "solace") : Promise.resolve(null),
+    ]);
+    // Milestone 3.5b: each side's own resolved stats (own base + OWN echoes/weapon).
+    const [cAllySolaceStats, dAllySolaceStats] = await Promise.all([
+      cHasSolaceGate ? resolveSolaceStats(interaction.user.id) : Promise.resolve(null),
+      dHasSolaceGate ? resolveSolaceStats(target.id) : Promise.resolve(null),
+    ]);
 
     const state: DuelState = {
       challengerId: interaction.user.id, challengedId: target.id,
@@ -369,7 +377,8 @@ export async function execute(interaction: ChatInputCommandInteraction) {
       cStormBuffTurnsLeft: 0, cStormBuffCritBonus: 0,
       cHavocFrenzyAtkMult: 1.0, cHavocFrenzyLifesteal: 0, cHavocFrenzyDefIgnore: 0,
       cEchoSkillCd: 0, cDefShredTurnsLeft: 0, cDefShredPct: 0, cNextCritArmed: false,
-      cHasSolace: cSolaceProgress !== null,
+      cHasSolace: cHasSolaceGate,
+      cAllySolaceStats,
       cSolaceBasicLevel: cSolaceProgress?.basicLevel ?? 1, cSolaceSkillLevel: cSolaceProgress?.skillLevel ?? 1,
       cSolaceUltimateLevel: cSolaceProgress?.ultimateLevel ?? 1, cSolaceIntroLevel: cSolaceProgress?.introLevel ?? 1,
       cSolaceForteLevel: cSolaceProgress?.forteLevel ?? 1,
@@ -388,7 +397,8 @@ export async function execute(interaction: ChatInputCommandInteraction) {
       dStormBuffTurnsLeft: 0, dStormBuffCritBonus: 0,
       dHavocFrenzyAtkMult: 1.0, dHavocFrenzyLifesteal: 0, dHavocFrenzyDefIgnore: 0,
       dEchoSkillCd: 0, dDefShredTurnsLeft: 0, dDefShredPct: 0, dNextCritArmed: false,
-      dHasSolace: dSolaceProgress !== null,
+      dHasSolace: dHasSolaceGate,
+      dAllySolaceStats,
       dSolaceBasicLevel: dSolaceProgress?.basicLevel ?? 1, dSolaceSkillLevel: dSolaceProgress?.skillLevel ?? 1,
       dSolaceUltimateLevel: dSolaceProgress?.ultimateLevel ?? 1, dSolaceIntroLevel: dSolaceProgress?.introLevel ?? 1,
       dSolaceForteLevel: dSolaceProgress?.forteLevel ?? 1,
@@ -557,7 +567,19 @@ export async function execute(interaction: ChatInputCommandInteraction) {
         const oppAttunementDefMult   = (isDevGuild ? getAttunementDefMult(oppAttunement, oppAttunementDefBonus, oppAttunementDblTurns > 0) : 1)
           * (1 + oppWellspringDefBonus) * (1 + oppForteDefBonus);
 
-        const effectiveOppDef  = oppDef * (1 - myHavocDefIgnore) * (oppDefShredTurns > 0 ? (1 - oppDefShredPct) : 1) * oppAttunementDefMult;
+        // Milestone 3.5b: whichever unit is currently acting/defending on
+        // EACH side uses ITS OWN resolved stats — my own ATK/Crit for my
+        // outgoing hit, the opponent's own DEF for what I'm hitting into.
+        const myAllySolaceStats  = isChallenger ? state.cAllySolaceStats : state.dAllySolaceStats;
+        const oppAllySolaceStats = isChallenger ? state.dAllySolaceStats : state.cAllySolaceStats;
+        const myIsAllyActing     = myActiveUnit === "ally" && myAllySolaceStats !== null;
+        const oppIsAllyDefending = (isChallenger ? state.dActiveUnit : state.cActiveUnit) === "ally" && oppAllySolaceStats !== null;
+        const activeAtk       = myIsAllyActing ? myAllySolaceStats!.atk      : myAtk;
+        const activeCritDmg   = myIsAllyActing ? myAllySolaceStats!.critDmg  : myCritDmg;
+        const activeCritBase  = myIsAllyActing ? myAllySolaceStats!.critRate : myCrit;
+        const oppActiveDef    = oppIsAllyDefending ? oppAllySolaceStats!.def : oppDef;
+
+        const effectiveOppDef  = oppActiveDef * (1 - myHavocDefIgnore) * (oppDefShredTurns > 0 ? (1 - oppDefShredPct) : 1) * oppAttunementDefMult;
         const extraElemBonus   = myGlacioTurns > 0 ? myGlacioBonus : 0;
         const myEchoCd         = isChallenger ? state.cEchoSkillCd : state.dEchoSkillCd;
         const myNextCritArmed  = isChallenger ? state.cNextCritArmed : state.dNextCritArmed;
@@ -647,7 +669,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
         // Crit rate incl. ability (Desperation etc.) + Radiance low-HP bonus + Stormcaller buff
         const radCrit = elemRadianceCrit(myBonus.elementPassive, myHp, myHpMax);
         const stormCritBuff = myStormTurns > 0 ? myStormCrit : 0;
-        const aCrit   = abilityCritRate(myBonus, Math.min(1, myCrit + radCrit + stormCritBuff), myHp, myHpMax);
+        const aCrit   = abilityCritRate(myBonus, Math.min(1, activeCritBase + radCrit + stormCritBuff), myHp, myHpMax);
         let moveType: "BASIC" | "SKILL" | "ULT" = "BASIC";
         let isCrit = false;
 
@@ -665,7 +687,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
             ? windstridersLegacyCheckExplosion(myNamedState) : { proc: false, guaranteedCrit: false, bonusMult: 1.0 };
           const smolderMult = mySetId === "SMOLDERING_SOVEREIGN" ? smolderingSovereignOnAction(myNamedState) : 1;
           const forcedCrit = forcedCritActive || windExplosion.guaranteedCrit;
-          const r      = calcPlayerDamage(myAtk * teamMult * basicMoveMult * smolderMult * myHavocAtkMult, effectiveOppDef, forcedCrit ? 1 : Math.min(1, aCrit + teamCritBonus + wellspringCritBonus + forteCritBonus), myCritDmg, 1.0, isWeak, false);
+          const r      = calcPlayerDamage(activeAtk * teamMult * basicMoveMult * smolderMult * myHavocAtkMult, effectiveOppDef, forcedCrit ? 1 : Math.min(1, aCrit + teamCritBonus + wellspringCritBonus + forteCritBonus), activeCritDmg, 1.0, isWeak, false);
           let base     = Math.floor(r.damage * (1 + myElemDmg + extraElemBonus) * radiantDmgMult);
           base         = Math.floor(base * elemWindstrideMult(myBonus.elementPassive, state.turn, "BASIC"));
           if (mySetId === "WINDSTRIDERS_LEGACY") {
@@ -707,7 +729,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
           const newMode = cycleAttunementMode(myAttunement.mode);
           if (isChallenger) state.cAttunement.mode = newMode; else state.dAttunement.mode = newMode;
           const crit = Math.random() < aCrit;
-          const r    = calcPlayerDamage(myAtk * 0.6, effectiveOppDef, crit ? 1 : 0, myCritDmg, 1.0, isWeak, false);
+          const r    = calcPlayerDamage(activeAtk * 0.6, effectiveOppDef, crit ? 1 : 0, activeCritDmg, 1.0, isWeak, false);
           damage = Math.floor(r.damage * (1 + myElemDmg + extraElemBonus));
           isCrit = r.isCrit; moveType = "SKILL";
           moveLine = `${myName} — ✦ Attunement — now in **${newMode}** mode!`;

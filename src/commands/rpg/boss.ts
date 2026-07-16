@@ -44,7 +44,7 @@ import {
   SOLACE_FORTE_CONFIG, SOLACE_FORTE_GAIN_PER_BASIC, SOLACE_FORTE_EMPOWERED_TURNS,
   getSolaceForteAtkBonus, getSolaceForteCritRateBonus, getSolaceForteDefBonus,
   solaceIntroEffect, solaceBasicDamageMult, solaceAttunementAtkCritBonus,
-  solaceAttunementDefBonus, solaceConvergenceHealPct,
+  solaceAttunementDefBonus, solaceConvergenceHealPct, resolveSolaceStats,
 } from "../../lib/solace";
 import { resolveIntroOutroEffect, IntroOutroEffect } from "../../lib/introOutro";
 import {
@@ -311,8 +311,14 @@ const command: Command = {
       let battleMsg: any   = null;
 
       // ── Milestone 3b: team state (dev guild only) ─────────────────────────────
+      // Milestone 3.5a: also requires the player to have actually picked
+      // Solace via /team, not just being in the dev guild.
       const isDevGuild = interaction.guildId === process.env.GUILD_ID;
-      const solaceProgress = isDevGuild ? await getOrCreateCharacterProgress(interaction.user.id, "solace") : null;
+      const hasSolace = isDevGuild && user.teamAllyCharacterId === "solace";
+      const solaceProgress = hasSolace ? await getOrCreateCharacterProgress(interaction.user.id, "solace") : null;
+      // Milestone 3.5b: her own resolved stats (her base + HER OWN echoes/weapon),
+      // fetched once for the whole fight — bonuses don't change mid-fight.
+      const allySolaceStats = hasSolace ? await resolveSolaceStats(interaction.user.id) : null;
       const solaceBasicLevel    = solaceProgress?.basicLevel    ?? 1;
       const solaceSkillLevel    = solaceProgress?.skillLevel    ?? 1;
       const solaceUltimateLevel = solaceProgress?.ultimateLevel ?? 1;
@@ -341,7 +347,11 @@ const command: Command = {
       }
 
       function teamButtonContext(): TeamButtonContext {
-        return { isDevGuild, activeUnit, displayName, attunement, concertoEnergy };
+        // Milestone 3.5a: gate button visibility on hasSolace (owns + selected
+        // her via /team), not just isDevGuild — the field is still named
+        // isDevGuild in TeamButtonContext (defined once, shared shape), but
+        // the VALUE passed here is the narrower gate.
+        return { isDevGuild: hasSolace, activeUnit, displayName, attunement, concertoEnergy };
       }
 
       const ENERGY_PER_TURN = Math.floor(stats.energyPerTurn);
@@ -467,7 +477,16 @@ const command: Command = {
           const vibMult       = get5pcVibDrainMult(bonuses);
           const radCrit       = elemRadianceCrit(bonuses.elementPassive, state.playerHp, state.playerHpMax);
           const stormCritBuff  = stormBuffTurnsLeft > 0 ? stormBuffCritBonus : 0;
-          const activeCritRate = apply5pcLowHpCrit(bonuses, Math.min(1, stats.critRate + radCrit + stormCritBuff), state.playerHp, state.playerHpMax);
+          // Milestone 3.5b: whichever unit is currently acting/defending uses
+          // ITS OWN resolved stats — Solace's own ATK/DEF/Crit from her own
+          // echoes when active, the player's own otherwise. Safe to use
+          // unconditionally: activeUnit is guaranteed "player" whenever the
+          // player's own branches run, so these equal stats.X there too.
+          const isAllyActingOrDefending = activeUnit === "ally" && allySolaceStats !== null;
+          const activeAtk     = isAllyActingOrDefending ? allySolaceStats!.atk     : stats.atk;
+          const activeDef     = isAllyActingOrDefending ? allySolaceStats!.def     : stats.def;
+          const activeCritDmg = isAllyActingOrDefending ? allySolaceStats!.critDmg : stats.critDmg;
+          const activeCritRate = apply5pcLowHpCrit(bonuses, Math.min(1, (isAllyActingOrDefending ? allySolaceStats!.critRate : stats.critRate) + radCrit + stormCritBuff), state.playerHp, state.playerHpMax);
           const forcedCritActive = nextAttackCritArmed && btn.customId !== "boss_flee";
 
           if (btn.customId === "boss_flee") {
@@ -495,7 +514,7 @@ const command: Command = {
           // shared tail below (Win-check/Boss-turn/decrements/Lose-check/next
           // turn), same as every other action. Ported from encounter.ts's
           // Milestone 1/2a swap handler.
-          if (btn.customId === "boss_swap" && isDevGuild) {
+          if (btn.customId === "boss_swap" && hasSolace) {
             const outgoingIsPlayer = activeUnit === "player";
             const comboReady = concertoEnergy >= 100;
 
@@ -551,9 +570,9 @@ const command: Command = {
             const crit   = forcedCritActive || windExplosion.guaranteedCrit || Math.random() < Math.min(1, activeCritRate + teamCritBonus + wellspringCritBonus + forteCritBonus); abilCrit = crit;
             const smolderMult = bonuses.activeNamedSetId === "SMOLDERING_SOVEREIGN"
               ? smolderingSovereignOnAction(namedState) : 1;
-            const base   = Math.max(1, Math.floor(stats.atk * teamMult * basicMoveMult * smolderMult * havocAtkMult * (1 - defReduction)));
+            const base   = Math.max(1, Math.floor(activeAtk * teamMult * basicMoveMult * smolderMult * havocAtkMult * (1 - defReduction)));
             const extraElemBonus = glacioShieldTurnsLeft > 0 ? glacioShieldElemBonus : 0;
-            let dmg      = Math.floor(base * (crit ? stats.critDmg : 1) * (isWeak ? 1.5 : 1) * (1 + bonuses.elemDmgBonus + extraElemBonus) * radiantDmgMult);
+            let dmg      = Math.floor(base * (crit ? activeCritDmg : 1) * (isWeak ? 1.5 : 1) * (1 + bonuses.elemDmgBonus + extraElemBonus) * radiantDmgMult);
             dmg          = apply5pcFirstHit(bonuses, dmg, !firstActionDone);
             dmg          = apply5pcFullHpDmg(bonuses, dmg, state.playerHp, state.playerHpMax);
             if (roll4pcDoubleHit(bonuses)) dmg *= 2;
@@ -606,7 +625,7 @@ const command: Command = {
             // Solace's Skill is Attunement — a mode cycle, not a damage move.
             attunement.mode = cycleAttunementMode(attunement.mode);
             const crit = Math.random() < activeCritRate; abilCrit = crit;
-            const dmg  = Math.max(1, Math.floor(stats.atk * 0.6 * (1 - defReduction) * (crit ? stats.critDmg : 1) * (isWeak ? 1.5 : 1) * (1 + bonuses.elemDmgBonus)));
+            const dmg  = Math.max(1, Math.floor(activeAtk * 0.6 * (1 - defReduction) * (crit ? activeCritDmg : 1) * (isWeak ? 1.5 : 1) * (1 + bonuses.elemDmgBonus)));
             playerDmg  = dmg;
             moveName   = `✦ Attunement — now in **${attunement.mode}** mode! ${playerDmg} DMG${crit ? " **(CRIT)**" : ""}`;
             state.bossVibNow = Math.max(0, state.bossVibNow - Math.floor(playerDmg * 0.3 * totalVibMult));
@@ -914,7 +933,7 @@ const command: Command = {
             const forteDefBonus = isDevGuild ? getSolaceForteDefBonus(solaceForteLevel, forteEmpoweredTurnsLeft > 0) : 0;
             const attunementDefBonus = solaceAttunementDefBonus(solaceSkillLevel);
             const attunementDefMult = (isDevGuild ? getAttunementDefMult(attunement, attunementDefBonus, attunementDoubleTurnsLeft > 0) : 1) * (1 + wellspringDefBonus) * (1 + forteDefBonus);
-            let bossDmg   = Math.max(1, Math.floor(scaled.atk * move.damage * enrageMult - stats.def * attunementDefMult * 0.4));
+            let bossDmg   = Math.max(1, Math.floor(scaled.atk * move.damage * enrageMult - activeDef * attunementDefMult * 0.4));
             bossDmg       = roll4pcBlock(bonuses, bossDmg);
             const shield  = elemFrostShield(bonuses.elementPassive, bossDmg);
             bossDmg       = shield.dmg;
