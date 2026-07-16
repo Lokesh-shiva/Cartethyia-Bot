@@ -246,7 +246,7 @@ interface RaidParticipant {
   nextCritArmed:         boolean;
   // ── Milestone 3d: per-participant team state (dev guild only) ────────────────
   hasSolace:      boolean;
-  allySolaceStats: ResolvedStats | null; // Milestone 3.5b: her own resolved stats
+  allySolaceStats: (ResolvedStats & { hasWellspring: boolean }) | null; // Milestone 3.5b: her own resolved stats
   solaceBasicLevel: number;
   solaceSkillLevel: number;
   solaceUltimateLevel: number;
@@ -450,14 +450,16 @@ function partyWideTeamBonuses(raid: ActiveRaid): {
     const doubled = ally.attunementDoubleTurnsLeft > 0;
     const forteActive = ally.forteEmpoweredTurnsLeft > 0;
 
+    const allyHasWellspring = ally.allySolaceStats?.hasWellspring ?? false;
+
     atkMult *= getAttunementAtkMult(ally.attunement, attuneAtkBonus, doubled);
     critBonus += getAttunementCritRateBonus(ally.attunement, attuneAtkBonus, doubled);
-    critBonus += getWellspringCritRateBonus(ally.attunement);
+    if (allyHasWellspring) critBonus += getWellspringCritRateBonus(ally.attunement);
     critBonus += getSolaceForteCritRateBonus(ally.solaceForteLevel, forteActive);
-    atkMult *= 1 + getWellspringAtkBonus(ally.attunement);
+    if (allyHasWellspring) atkMult *= 1 + getWellspringAtkBonus(ally.attunement);
     atkMult *= 1 + getSolaceForteAtkBonus(ally.solaceForteLevel, forteActive);
     defMult *= getAttunementDefMult(ally.attunement, attuneDefBonus, doubled);
-    defMult *= 1 + getWellspringDefBonus(ally.attunement);
+    if (allyHasWellspring) defMult *= 1 + getWellspringDefBonus(ally.attunement);
     defMult *= 1 + getSolaceForteDefBonus(ally.solaceForteLevel, forteActive);
   }
   return { atkMult, critBonus, defMult };
@@ -1079,7 +1081,7 @@ async function launchRaid(
         // base +18% ATK on top, same as boss.ts's single-owner case.
         const isSolaceActing = raid.isDevGuild && current.activeUnit === "ally";
         const basicMoveMult = isSolaceActing ? solaceBasicDamageMult(current.solaceBasicLevel) : 1.0;
-        const wellspringSelfAtkMult = isSolaceActing ? WELLSPRING_BASE_ATK_MULT : 1;
+        const wellspringSelfAtkMult = isSolaceActing && current.allySolaceStats?.hasWellspring ? WELLSPRING_BASE_ATK_MULT : 1;
         const teamMult = weakenedMult * party.atkMult * wellspringSelfAtkMult * basicMoveMult;
         // Forte fills only from Solace's own Chime Strike — announce only on
         // the turn a threshold is actually crossed (mirrors boss.ts).
@@ -1333,7 +1335,7 @@ async function launchRaid(
       };
       if (raid.isDevGuild && !convergenceUsedThisTurn) {
         let concertoGain = CONCERTO_GAIN_BY_MOVE[btn.customId] ?? 0;
-        if (concertoGain > 0 && current.activeUnit === "ally") concertoGain += WELLSPRING_BASE_ENERGY_BONUS;
+        if (concertoGain > 0 && current.activeUnit === "ally" && current.allySolaceStats?.hasWellspring) concertoGain += WELLSPRING_BASE_ENERGY_BONUS;
         if (concertoGain > 0) current.concertoEnergy = addConcertoEnergy(current.concertoEnergy, concertoGain);
       }
 

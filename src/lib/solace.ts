@@ -137,10 +137,14 @@ export function solaceForteEmpoweredDefBonus(forteLevel: number): number {
 // whichever player owns her. Every combat surface's Solace/ally branch
 // should call this once per fight (not per action — bonuses don't change
 // mid-fight) and use the result instead of the acting player's own stats.
-export async function resolveSolaceStats(userId: string): Promise<ResolvedStats> {
+export async function resolveSolaceStats(userId: string): Promise<ResolvedStats & { hasWellspring: boolean }> {
   const bonuses = await resolvePlayerBonuses(userId, "solace");
-  return applyBonuses(
+  const stats = applyBonuses(
     { baseHp: SOLACE.hpMax, baseAtk: SOLACE.baseAtk, baseDef: SOLACE.baseDef, critRate: SOLACE.critRate, critDmg: SOLACE.critDmg, baseSpeed: SOLACE.baseSpeed },
     bonuses,
   );
+  // Milestone 4a: Wellspring's mode-linked bonus (getWellspringXBonus in
+  // wellspring.ts) only applies when Solace has ACTUALLY equipped Wellspring
+  // — she's a real, optional item now, not an always-on hardcoded stopgap.
+  return { ...stats, hasWellspring: bonuses.equippedWeaponName === "Wellspring" };
 }

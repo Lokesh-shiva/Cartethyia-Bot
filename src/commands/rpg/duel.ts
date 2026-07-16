@@ -72,7 +72,7 @@ interface DuelState {
   cEchoSkillCd: number; cDefShredTurnsLeft: number; cDefShredPct: number; cNextCritArmed: boolean;
   // Milestone 3e: challenger team state (dev guild only)
   cHasSolace: boolean;
-  cAllySolaceStats: ResolvedStats | null; // Milestone 3.5b: her own resolved stats
+  cAllySolaceStats: (ResolvedStats & { hasWellspring: boolean }) | null; // Milestone 3.5b: her own resolved stats
   cSolaceBasicLevel: number; cSolaceSkillLevel: number; cSolaceUltimateLevel: number;
   cSolaceIntroLevel: number; cSolaceForteLevel: number;
   cActiveUnit: "player" | "ally"; cAllyHp: number; cAllyHpMax: number;
@@ -91,7 +91,7 @@ interface DuelState {
   dEchoSkillCd: number; dDefShredTurnsLeft: number; dDefShredPct: number; dNextCritArmed: boolean;
   // Milestone 3e: challenged team state (dev guild only)
   dHasSolace: boolean;
-  dAllySolaceStats: ResolvedStats | null; // Milestone 3.5b: her own resolved stats
+  dAllySolaceStats: (ResolvedStats & { hasWellspring: boolean }) | null; // Milestone 3.5b: her own resolved stats
   dSolaceBasicLevel: number; dSolaceSkillLevel: number; dSolaceUltimateLevel: number;
   dSolaceIntroLevel: number; dSolaceForteLevel: number;
   dActiveUnit: "player" | "ally"; dAllyHp: number; dAllyHpMax: number;
@@ -561,7 +561,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
         const oppSolaceSkillLevel    = isChallenger ? state.dSolaceSkillLevel : state.cSolaceSkillLevel;
         const oppForteEmpoweredTurns = isChallenger ? state.dForteEmpoweredTurnsLeft : state.cForteEmpoweredTurnsLeft;
         const oppSolaceForteLevel    = isChallenger ? state.dSolaceForteLevel : state.cSolaceForteLevel;
-        const oppWellspringDefBonus  = isDevGuild ? getWellspringDefBonus(oppAttunement) : 0;
+        const oppWellspringDefBonus  = isDevGuild && (isChallenger ? state.dAllySolaceStats : state.cAllySolaceStats)?.hasWellspring ? getWellspringDefBonus(oppAttunement) : 0;
         const oppForteDefBonus       = isDevGuild ? getSolaceForteDefBonus(oppSolaceForteLevel, oppForteEmpoweredTurns > 0) : 0;
         const oppAttunementDefBonus  = solaceAttunementDefBonus(oppSolaceSkillLevel);
         const oppAttunementDefMult   = (isDevGuild ? getAttunementDefMult(oppAttunement, oppAttunementDefBonus, oppAttunementDblTurns > 0) : 1)
@@ -676,9 +676,9 @@ export async function execute(interaction: ChatInputCommandInteraction) {
         if (btn.customId === "duel_basic") {
           const teamAtkMult   = isDevGuild ? getAttunementAtkMult(myAttunement, solaceAttunementAtkCritBonus(mySolaceSkillLevel), myAttunementDblTurns > 0) : 1;
           const teamCritBonus = isDevGuild ? getAttunementCritRateBonus(myAttunement, solaceAttunementAtkCritBonus(mySolaceSkillLevel), myAttunementDblTurns > 0) : 0;
-          const wellspringAtkMult   = isDevGuild && myActiveUnit === "ally" ? WELLSPRING_BASE_ATK_MULT : 1;
-          const wellspringAtkBonus  = isDevGuild ? getWellspringAtkBonus(myAttunement) : 0;
-          const wellspringCritBonus = isDevGuild ? getWellspringCritRateBonus(myAttunement) : 0;
+          const wellspringAtkMult   = isDevGuild && myActiveUnit === "ally" && myAllySolaceStats?.hasWellspring ? WELLSPRING_BASE_ATK_MULT : 1;
+          const wellspringAtkBonus  = isDevGuild && myAllySolaceStats?.hasWellspring ? getWellspringAtkBonus(myAttunement) : 0;
+          const wellspringCritBonus = isDevGuild && myAllySolaceStats?.hasWellspring ? getWellspringCritRateBonus(myAttunement) : 0;
           const forteAtkBonus  = isDevGuild ? getSolaceForteAtkBonus(mySolaceForteLevel, myForteEmpoweredTurns > 0) : 0;
           const forteCritBonus = isDevGuild ? getSolaceForteCritRateBonus(mySolaceForteLevel, myForteEmpoweredTurns > 0) : 0;
           const teamMult = getWeakenedMult(myPlayerDebuffs) * teamAtkMult * wellspringAtkMult * (1 + wellspringAtkBonus) * (1 + forteAtkBonus);
@@ -739,8 +739,8 @@ export async function execute(interaction: ChatInputCommandInteraction) {
         } else if (btn.customId === "duel_skill") {
           const teamAtkMult    = isDevGuild ? getAttunementAtkMult(myAttunement, solaceAttunementAtkCritBonus(mySolaceSkillLevel), myAttunementDblTurns > 0) : 1;
           const teamCritBonus  = isDevGuild ? getAttunementCritRateBonus(myAttunement, solaceAttunementAtkCritBonus(mySolaceSkillLevel), myAttunementDblTurns > 0) : 0;
-          const wellspringAtkBonus  = isDevGuild ? getWellspringAtkBonus(myAttunement) : 0;
-          const wellspringCritBonus = isDevGuild ? getWellspringCritRateBonus(myAttunement) : 0;
+          const wellspringAtkBonus  = isDevGuild && myAllySolaceStats?.hasWellspring ? getWellspringAtkBonus(myAttunement) : 0;
+          const wellspringCritBonus = isDevGuild && myAllySolaceStats?.hasWellspring ? getWellspringCritRateBonus(myAttunement) : 0;
           const forteAtkBonus  = isDevGuild ? getSolaceForteAtkBonus(mySolaceForteLevel, myForteEmpoweredTurns > 0) : 0;
           const forteCritBonus = isDevGuild ? getSolaceForteCritRateBonus(mySolaceForteLevel, myForteEmpoweredTurns > 0) : 0;
           const teamMult = getWeakenedMult(myPlayerDebuffs) * teamAtkMult * (1 + wellspringAtkBonus) * (1 + forteAtkBonus);
@@ -765,7 +765,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
 
         if (btn.customId === "duel_ultimate" && !(isDevGuild && myActiveUnit === "ally")) {
           const teamAtkMult   = isDevGuild ? getAttunementAtkMult(myAttunement, solaceAttunementAtkCritBonus(mySolaceSkillLevel), myAttunementDblTurns > 0) : 1;
-          const wellspringAtkBonus = isDevGuild ? getWellspringAtkBonus(myAttunement) : 0;
+          const wellspringAtkBonus = isDevGuild && myAllySolaceStats?.hasWellspring ? getWellspringAtkBonus(myAttunement) : 0;
           const forteAtkBonus = isDevGuild ? getSolaceForteAtkBonus(mySolaceForteLevel, myForteEmpoweredTurns > 0) : 0;
           const teamMult = getWeakenedMult(myPlayerDebuffs) * teamAtkMult * (1 + wellspringAtkBonus) * (1 + forteAtkBonus);
           const smolderMult = mySetId === "SMOLDERING_SOVEREIGN" ? smolderingSovereignOnAction(myNamedState) : 1;
@@ -917,7 +917,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
         };
         if (isDevGuild && !convergenceUsedThisTurn) {
           let concertoGain = CONCERTO_GAIN_BY_MOVE[btn.customId] ?? 0;
-          if (concertoGain > 0 && myActiveUnit === "ally") concertoGain += WELLSPRING_BASE_ENERGY_BONUS;
+          if (concertoGain > 0 && myActiveUnit === "ally" && myAllySolaceStats?.hasWellspring) concertoGain += WELLSPRING_BASE_ENERGY_BONUS;
           if (concertoGain > 0) {
             const newVal = addConcertoEnergy(myConcertoEnergy, concertoGain);
             if (isChallenger) state.cConcertoEnergy = newVal; else state.dConcertoEnergy = newVal;

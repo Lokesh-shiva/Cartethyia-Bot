@@ -53,6 +53,13 @@ model User {
   lastSeen         DateTime       @default(now())
   teamAllyCharacterId String?     // null = solo with own character. Non-null = an owned banner character filling the 2nd combat slot (ownership = a CharacterProgress row exists for this userId+characterId).
 
+  // Milestone 4a — Banner #1 (The Rising Overture / The Tempered Vow)
+  radiantKeys                Int     @default(0) // spends on the limited character/weapon banners only, never on /wish Standard
+  solaceBannerPity           Int     @default(0)
+  solaceBannerGuaranteed     Boolean @default(false)
+  wellspringBannerPity       Int     @default(0)
+  wellspringBannerGuaranteed Boolean @default(false)
+
   // RPG Stats
   level            Int            @default(1)
   worldLevel       Int            @default(0)

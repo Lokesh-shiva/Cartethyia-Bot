@@ -112,7 +112,24 @@ export const WISH_WEAPONS_5STAR: WishWeapon[] = [
   },
 ];
 
-export const ALL_WISH_WEAPONS = [...WISH_WEAPONS_4STAR, ...WISH_WEAPONS_5STAR];
+// ── Wellspring (Milestone 4a) ─────────────────────────────────────────────────
+// Solace's signature weapon — real stats now (was a hardcoded stopgap, see
+// src/lib/wellspring.ts). Deliberately NOT in WISH_WEAPONS_5STAR: she must
+// never appear in /wish's Standard random-pick pool, only via her own
+// dedicated "The Tempered Vow" banner. Stat shape from the original
+// multi-character-teams design spec §7: Main ATK · Substat Energy Regen ·
+// Hidden Sub 1 (Lv20) HP% · Hidden Sub 2 (Lv50) Elemental DMG.
+export const WELLSPRING_WEAPON: WishWeapon = {
+  id: "wellspring", name: "Wellspring", type: "RECTIFIER", rarity: 5,
+  baseAtk: 158, atkMaxMult: 5.0,
+  subStatType:  "ENERGY_REGEN",  subStatBase: 22, subStatScale: 2.2,
+  hiddenSub1Type: "HP_PERCENT",    hiddenSub1Base: 10, hiddenSub1Scale: 2.2,
+  hiddenSub2Type: "ELEMENTAL_DMG", hiddenSub2Base: 12, hiddenSub2Scale: 2.2,
+  passive: "While Solace wields Wellspring: +18% ATK and +12 flat Concerto Energy on her own actions. While her Attunement Mode is active, that mode's bonus is amplified further (base wielder: none of the amplification applies).",
+  lore: "Drawn from a spring that never runs dry — every note played near it returns clearer than before.",
+};
+
+export const ALL_WISH_WEAPONS = [...WISH_WEAPONS_4STAR, ...WISH_WEAPONS_5STAR, WELLSPRING_WEAPON];
 
 export function getWishWeapon(id: string): WishWeapon | undefined {
   return ALL_WISH_WEAPONS.find(w => w.id === id);

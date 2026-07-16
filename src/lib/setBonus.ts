@@ -198,6 +198,12 @@ export interface PlayerBonuses {
 
   // Echo Skill — granted by whichever echo occupies the Main slot (slot 0)
   echoSkill: EchoSkillDef | null;
+
+  // Milestone 4a — which weapon (if any) this character has equipped, by
+  // name. Lets bespoke weapon-specific mechanics (e.g. Wellspring's
+  // Attunement-mode amplification) check "is MY specific weapon actually
+  // equipped" without a second DB query.
+  equippedWeaponName: string | null;
 }
 
 // ── Bonus cache — 30s TTL, invalidated on any combat/equip write ──────────────
@@ -255,6 +261,7 @@ export async function resolvePlayerBonuses(userId: string, characterId: string =
     v2Effects:       [],
     activeLabels:    [],
     echoSkill:       null,
+    equippedWeaponName: weapon?.name ?? null,
   };
 
   if (!user) return bonuses;
