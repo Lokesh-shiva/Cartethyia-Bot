@@ -246,7 +246,7 @@ interface RaidParticipant {
   nextCritArmed:         boolean;
   // ── Milestone 3d: per-participant team state (dev guild only) ────────────────
   hasSolace:      boolean;
-  allySolaceStats: ResolvedStats | null; // Milestone 3.5b: her own resolved stats
+  allySolaceStats: (ResolvedStats & { hasWellspring: boolean }) | null; // Milestone 3.5b: her own resolved stats
   solaceBasicLevel: number;
   solaceSkillLevel: number;
   solaceUltimateLevel: number;

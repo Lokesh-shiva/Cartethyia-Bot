@@ -72,7 +72,7 @@ interface DuelState {
   cEchoSkillCd: number; cDefShredTurnsLeft: number; cDefShredPct: number; cNextCritArmed: boolean;
   // Milestone 3e: challenger team state (dev guild only)
   cHasSolace: boolean;
-  cAllySolaceStats: ResolvedStats | null; // Milestone 3.5b: her own resolved stats
+  cAllySolaceStats: (ResolvedStats & { hasWellspring: boolean }) | null; // Milestone 3.5b: her own resolved stats
   cSolaceBasicLevel: number; cSolaceSkillLevel: number; cSolaceUltimateLevel: number;
   cSolaceIntroLevel: number; cSolaceForteLevel: number;
   cActiveUnit: "player" | "ally"; cAllyHp: number; cAllyHpMax: number;
@@ -91,7 +91,7 @@ interface DuelState {
   dEchoSkillCd: number; dDefShredTurnsLeft: number; dDefShredPct: number; dNextCritArmed: boolean;
   // Milestone 3e: challenged team state (dev guild only)
   dHasSolace: boolean;
-  dAllySolaceStats: ResolvedStats | null; // Milestone 3.5b: her own resolved stats
+  dAllySolaceStats: (ResolvedStats & { hasWellspring: boolean }) | null; // Milestone 3.5b: her own resolved stats
   dSolaceBasicLevel: number; dSolaceSkillLevel: number; dSolaceUltimateLevel: number;
   dSolaceIntroLevel: number; dSolaceForteLevel: number;
   dActiveUnit: "player" | "ally"; dAllyHp: number; dAllyHpMax: number;
