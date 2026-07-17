@@ -58,6 +58,7 @@ model User {
   solaceBannerPity           Int     @default(0)
   solaceBannerGuaranteed     Boolean @default(false)
   wellspringBannerPity       Int     @default(0)
+  wellspringBanner4Pity      Int     @default(0)
   wellspringBannerGuaranteed Boolean @default(false)
 
   // RPG Stats
