@@ -15,6 +15,9 @@ import {
 import { getWeaponImagePath } from "../../lib/weapons";
 import { CE, getEmojiResolvable } from "../../lib/emojiManager";
 import path from "path";
+import fs from "fs";
+import { getOrCreateCharacterProgress } from "../../lib/characterProgress";
+import { SOLACE } from "../../lib/solace";
 
 // ── 3★ material rewards ───────────────────────────────────────────────────────
 interface MaterialDrop { forgingOres: number; tuningModules: number; credits: number; label: string; }
@@ -218,21 +221,13 @@ function weaponCreateData(userId: string, w: WishWeapon) {
   };
 }
 
-// ── Command ───────────────────────────────────────────────────────────────────
-const command: Command = {
-  data: new SlashCommandBuilder()
-    .setName("wish")
-    .setDescription("Pull from the Fracture Resonance weapon banner.") as SlashCommandBuilder,
+// ── Standard banner (unchanged from before Milestone 4b — pure extraction) ────
+type StandardDbUser = {
+  element: string; fractureKeys: number; wishPity: number; wish4Pity: number;
+  wishGuaranteed: boolean; wishTarget: string | null;
+};
 
-  async execute(interaction: ChatInputCommandInteraction) {
-    await interaction.deferReply();
-
-    const dbUser = await prisma.user.findUnique({
-      where:  { id: interaction.user.id },
-      select: { element: true, fractureKeys: true, wishPity: true, wish4Pity: true, wishGuaranteed: true, wishTarget: true },
-    });
-    if (!dbUser) { await replyNotStarted(interaction); return; }
-
+async function runStandardBanner(interaction: ChatInputCommandInteraction, dbUser: StandardDbUser) {
     const color    = ELEMENT_HEX[dbUser.element] ?? ELEMENT_HEX.NONE;
     const target   = dbUser.wishTarget ? WISH_WEAPONS_5STAR.find(w => w.id === dbUser.wishTarget) ?? null : null;
     const targetImg = target ? getWeaponImagePath(target.type, target.name) : null;
@@ -425,6 +420,226 @@ const command: Command = {
     collector.on("end", (col) => {
       if (!col.has("wish_x1") && !col.has("wish_x10"))
         interaction.editReply({ components: [] }).catch(() => {});
+    });
+}
+
+// ── Character banner — "The Rising Overture", featuring Solace (Milestone 4b) ─
+type CharacterDbUser = {
+  element: string; radiantKeys: number; solaceBannerPity: number; solaceBannerGuaranteed: boolean;
+};
+
+const SOLACE_ART_PATH = path.join(process.cwd(), "assets", "characters", "solace.png");
+
+type SolacePullResult =
+  | { hit: true;  isDuplicate: boolean; newPity: number }
+  | { hit: false; mat: MaterialDrop;    newPity: number };
+
+// Banner #1 has no standard pool to lose a 50/50 into — every 5★ IS Solace.
+// solaceBannerGuaranteed is carried in the schema for forward-compat with a
+// real banner #2, but is functionally inert here (never flips true, never
+// changes the roll) since there's no coin flip to win or lose yet.
+function doSingleSolacePull(pity: number): { newPity: number; hit: boolean } {
+  const newPity = pity + 1;
+  const rate = softPityRate(newPity);
+  const hit = newPity >= HARD_PITY || Math.random() < rate;
+  return { newPity: hit ? 0 : newPity, hit };
+}
+
+function solaceCharacterBannerEmbed(pity: number, keys: number, color: number): EmbedBuilder {
+  return new EmbedBuilder()
+    .setColor(0xFCD34D)
+    .setAuthor({ name: "✦  The Rising Overture  ·  Character Banner" })
+    .setDescription(
+      `**Featuring: ✨ Solace**\n\nEvery 5★ pull on this banner is guaranteed Solace — there's no coin flip to lose yet. ` +
+      `A duplicate pull converts into a Constellation Token instead of a second copy.`
+    )
+    .addFields(
+      { name: "Your Pity",    value: `**${pity}** / ${HARD_PITY}`, inline: true },
+      { name: "Radiant Keys", value: `${CE.fk ?? "🔑"} **${keys}**`, inline: true },
+      { name: "Rates", value: `5★: **0.6%** base · soft pity **${SOFT_PITY}** · hard pity **${HARD_PITY}**`, inline: false },
+    )
+    .setFooter({ text: "CARTETHYIA  ·  The Rising Overture" });
+}
+
+async function runCharacterBanner(interaction: ChatInputCommandInteraction, dbUser: CharacterDbUser) {
+  const color = ELEMENT_HEX[dbUser.element] ?? ELEMENT_HEX.NONE;
+
+  const pullRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
+    new ButtonBuilder().setCustomId("solace_x1").setLabel("◈  Pull  ×1  (1)").setStyle(ButtonStyle.Primary)
+      .setDisabled(dbUser.radiantKeys < 1),
+    new ButtonBuilder().setCustomId("solace_x10").setLabel("✦  Pull  ×10  (10)").setStyle(ButtonStyle.Success)
+      .setDisabled(dbUser.radiantKeys < 10),
+  );
+
+  const msg = await interaction.editReply({
+    embeds: [solaceCharacterBannerEmbed(dbUser.solaceBannerPity, dbUser.radiantKeys, color)],
+    files: [], components: [pullRow],
+  });
+
+  const collector = msg.createMessageComponentCollector({
+    filter: b => b.user.id === interaction.user.id, time: 60_000,
+  });
+
+  collector.on("collect", async (btn: ButtonInteraction) => {
+    if (btn.customId !== "solace_x1" && btn.customId !== "solace_x10") return;
+    await btn.deferUpdate();
+    collector.stop();
+
+    const fresh = await prisma.user.findUnique({
+      where: { id: interaction.user.id },
+      select: { radiantKeys: true, solaceBannerPity: true },
+    });
+    if (!fresh) return;
+
+    const amount = btn.customId === "solace_x10" ? 10 : 1;
+    if (fresh.radiantKeys < amount) {
+      await interaction.editReply({
+        embeds: [new EmbedBuilder().setColor(0xFF4F6D).setTitle("◈ Not enough Radiant Keys")
+          .setDescription(`You only have **${fresh.radiantKeys}** — need **${amount}**.`)],
+        components: [],
+      });
+      return;
+    }
+
+    // Ownership check ONCE up front — can only flip not-owned -> owned mid-batch, never back.
+    const existingProgress = await prisma.characterProgress.findUnique({
+      where: { userId_characterId: { userId: interaction.user.id, characterId: "solace" } },
+    });
+    let owned = existingProgress !== null;
+
+    let pity = fresh.solaceBannerPity;
+    const rolls: { hit: boolean; mat?: MaterialDrop; isDuplicate?: boolean }[] = [];
+    let hits = 0, dupes = 0;
+    const matTotals = { forgingOres: 0, tuningModules: 0, credits: 0 };
+    for (let i = 0; i < amount; i++) {
+      const r = doSingleSolacePull(pity);
+      pity = r.newPity;
+      if (r.hit) {
+        hits++;
+        const isDuplicate = owned;
+        if (isDuplicate) dupes++;
+        owned = true;
+        rolls.push({ hit: true, isDuplicate });
+      } else {
+        const mat = rollMaterials();
+        matTotals.forgingOres += mat.forgingOres; matTotals.tuningModules += mat.tuningModules; matTotals.credits += mat.credits;
+        rolls.push({ hit: false, mat });
+      }
+    }
+
+    await prisma.$transaction(async (tx) => {
+      await tx.user.update({
+        where: { id: interaction.user.id },
+        data: { radiantKeys: { decrement: amount }, solaceBannerPity: pity,
+                forgingOres: { increment: matTotals.forgingOres }, tuningModules: { increment: matTotals.tuningModules }, credits: { increment: matTotals.credits } },
+      });
+      if (hits > 0) {
+        await tx.characterProgress.upsert({
+          where:  { userId_characterId: { userId: interaction.user.id, characterId: "solace" } },
+          create: { userId: interaction.user.id, characterId: "solace" },
+          update: { constellationTokens: { increment: dupes } },
+        });
+      }
+    });
+    auditSpend(interaction.user.id, { radiantKeys: amount }, `wish:solace:${hits}hits:${dupes}dupes`);
+
+    await runSuspense(interaction, hits > 0 ? 5 : 3);
+
+    const hasArt = fs.existsSync(SOLACE_ART_PATH);
+    const files = hits > 0 && hasArt ? [new AttachmentBuilder(SOLACE_ART_PATH, { name: "solace.png" })] : [];
+
+    const lines: string[] = rolls.map(r =>
+      r.hit
+        ? `✦  **Solace**${r.isDuplicate ? "  *(duplicate — converted to a Constellation Token)*" : ""}`
+        : `◇  *${r.mat!.label}*`
+    );
+
+    const embed = new EmbedBuilder()
+      .setColor(hits > 0 ? 0xFCD34D : 0x4A4A5A)
+      .setTitle(hits > 0 ? "✨  The Rising Overture" : "◇  The fracture yields materials")
+      .setDescription(lines.join("\n") + (hits > 0 ? `\n\n*${dupes} of ${hits} were duplicates → ${dupes} Constellation Token(s).*` : ""))
+      .addFields({ name: "Pity", value: `${pity} / ${HARD_PITY}`, inline: true })
+      .setFooter({ text: "CARTETHYIA  ·  The Rising Overture" });
+    if (files.length) embed.setImage("attachment://solace.png");
+
+    await interaction.editReply({ embeds: [embed], files, components: [] });
+  });
+
+  collector.on("end", (col) => {
+    if (!col.has("solace_x1") && !col.has("solace_x10"))
+      interaction.editReply({ components: [] }).catch(() => {});
+  });
+}
+
+// ── Banner picker (Milestone 4b) ───────────────────────────────────────────────
+const command: Command = {
+  data: new SlashCommandBuilder()
+    .setName("wish")
+    .setDescription("Pull from the Fracture Resonance weapon banner.") as SlashCommandBuilder,
+
+  async execute(interaction: ChatInputCommandInteraction) {
+    await interaction.deferReply();
+
+    const dbUser = await prisma.user.findUnique({
+      where:  { id: interaction.user.id },
+      select: {
+        element: true, fractureKeys: true, wishPity: true, wish4Pity: true, wishGuaranteed: true, wishTarget: true,
+        radiantKeys: true, solaceBannerPity: true, solaceBannerGuaranteed: true,
+        wellspringBannerPity: true, wellspringBannerGuaranteed: true,
+      },
+    });
+    if (!dbUser) { await replyNotStarted(interaction); return; }
+
+    const window = await prisma.bannerWindow.findUnique({ where: { id: "banner1" } });
+    const now = Date.now();
+    const windowActive = !!window && now >= window.startsAt.getTime() && now <= window.endsAt.getTime();
+
+    const color = ELEMENT_HEX[dbUser.element] ?? ELEMENT_HEX.NONE;
+    const pickerRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
+      new ButtonBuilder().setCustomId("wish_pick_standard").setLabel("◈ Standard").setStyle(ButtonStyle.Primary),
+      new ButtonBuilder().setCustomId("wish_pick_character")
+        .setLabel(windowActive ? "✦ Limited Character Banner — The Rising Overture" : "✦ Limited Character Banner — Banner ended")
+        .setStyle(ButtonStyle.Success).setDisabled(!windowActive),
+      new ButtonBuilder().setCustomId("wish_pick_weapon")
+        .setLabel(windowActive ? "⚔ Limited Weapon Banner — The Tempered Vow" : "⚔ Limited Weapon Banner — Banner ended")
+        .setStyle(ButtonStyle.Danger).setDisabled(!windowActive),
+    );
+
+    const pickerMsg = await interaction.editReply({
+      embeds: [new EmbedBuilder()
+        .setColor(color)
+        .setTitle("◈  Choose a Banner")
+        .setDescription(
+          "**Standard** — the evergreen weapon pool, spends Fracture Keys.\n\n" +
+          "**Limited Character Banner** *(The Rising Overture)* — featuring Solace, spends Radiant Keys.\n\n" +
+          "**Limited Weapon Banner** *(The Tempered Vow)* — featuring Wellspring, spends Radiant Keys."
+        )
+        .setFooter({ text: "CARTETHYIA  ·  Wish" })],
+      components: [pickerRow],
+    });
+
+    const pickCollector = pickerMsg.createMessageComponentCollector({
+      componentType: ComponentType.Button,
+      filter: b => b.user.id === interaction.user.id,
+      time: 60_000, max: 1,
+    });
+
+    pickCollector.on("collect", async (btn: ButtonInteraction) => {
+      await btn.deferUpdate();
+      if (btn.customId === "wish_pick_standard") {
+        await runStandardBanner(interaction, dbUser);
+      } else if (btn.customId === "wish_pick_character") {
+        await runCharacterBanner(interaction, dbUser);
+      } else if (btn.customId === "wish_pick_weapon") {
+        await interaction.editReply({
+          embeds: [new EmbedBuilder().setColor(0xFF4F6D).setDescription("◈ The Tempered Vow isn't available yet — coming soon.")],
+          components: [],
+        });
+      }
+    });
+
+    pickCollector.on("end", (col) => {
+      if (col.size === 0) interaction.editReply({ components: [] }).catch(() => {});
     });
   },
 };

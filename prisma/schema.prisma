@@ -499,3 +499,14 @@ model CombatSession {
 
   @@map("combat_sessions")
 }
+
+// ─── Banner Window (Milestone 4b) ─────────────────────────────────────────────
+// Owner-controlled start/end for the limited character+weapon banners (both
+// share one window — companion banners). Set via /owner-banner.
+model BannerWindow {
+  id       String   @id // "banner1"
+  startsAt DateTime
+  endsAt   DateTime
+
+  @@map("banner_windows")
+}
