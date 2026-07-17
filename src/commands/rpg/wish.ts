@@ -9,7 +9,7 @@ import prisma from "../../lib/prisma";
 import { replyNotStarted } from "../../lib/economy";
 import { auditSpend } from "../../lib/antiCheat";
 import {
-  WISH_WEAPONS_4STAR, WISH_WEAPONS_5STAR,
+  WISH_WEAPONS_4STAR, WISH_WEAPONS_5STAR, WELLSPRING_WEAPON,
   WishWeapon, calcWishAtk, calcWishSubStat,
 } from "../../lib/wishWeapons";
 import { getWeaponImagePath } from "../../lib/weapons";
@@ -565,6 +565,153 @@ async function runCharacterBanner(interaction: ChatInputCommandInteraction, dbUs
   });
 }
 
+// ── Weapon banner — "The Tempered Vow", featuring Wellspring (Milestone 4c) ───
+type WeaponBannerDbUser = {
+  element: string; radiantKeys: number; wellspringBannerPity: number;
+  wellspringBanner4Pity: number; wellspringBannerGuaranteed: boolean;
+};
+
+// Same tier shape as Standard (3★ materials / 4★ WISH_WEAPONS_4STAR / 5★),
+// but the 5★ resolution differs: win the 50/50 -> Wellspring, lose -> a
+// random pick from WISH_WEAPONS_5STAR (Standard's 4) as the consolation —
+// this is the ONLY place outside her own banner Wellspring can ever drop from,
+// and the ONLY place outside Standard the Standard 4 can drop from here.
+function rollWellspring5Star(guaranteed: boolean): { weapon: WishWeapon; wonWellspring: boolean } {
+  if (guaranteed) return { weapon: WELLSPRING_WEAPON, wonWellspring: true };
+  if (Math.random() < 0.5) return { weapon: WELLSPRING_WEAPON, wonWellspring: true };
+  return { weapon: WISH_WEAPONS_5STAR[Math.floor(Math.random() * WISH_WEAPONS_5STAR.length)], wonWellspring: false };
+}
+
+function doSingleWellspringPull(pity: number, pity4: number, guaranteed: boolean): PullResult {
+  let newPity  = pity + 1;
+  let new4Pity = pity4 + 1;
+  const rate5  = softPityRate(newPity);
+  const r      = Math.random();
+
+  if (newPity >= HARD_PITY || r < rate5) {
+    const { weapon, wonWellspring } = rollWellspring5Star(guaranteed);
+    // Lost the 50/50 if not guaranteed and didn't land Wellspring.
+    const newGuaranteed = !guaranteed && !wonWellspring;
+    return { tier: 5, weapon, newPity: 0, new4Pity: 0, newGuaranteed };
+  }
+  if (new4Pity >= HARD_PITY_4 || r < BASE_5_RATE + BASE_4_RATE) {
+    return { tier: 4, weapon: roll4Star(), newPity, new4Pity: 0, newGuaranteed: guaranteed };
+  }
+  return { tier: 3, mat: rollMaterials(), newPity, new4Pity, newGuaranteed: guaranteed };
+}
+
+function weaponBannerEmbed(pity: number, pity4: number, guaranteed: boolean, keys: number, color: number): EmbedBuilder {
+  return new EmbedBuilder()
+    .setColor(0xEC4899)
+    .setAuthor({ name: "⚔  The Tempered Vow  ·  Weapon Banner" })
+    .setDescription(
+      `**Featuring: Wellspring**\n\n5★ 50/50: win = **Wellspring** · lose = random Standard 5★ · next 5★ guaranteed Wellspring.\n\n` +
+      (guaranteed ? "✦ **Next 5★ is guaranteed Wellspring**" : "")
+    )
+    .addFields(
+      { name: "Your Pity",    value: `**${pity}** / ${HARD_PITY}`,  inline: true },
+      { name: "4★ Pity",     value: `**${pity4}** / ${HARD_PITY_4}`, inline: true },
+      { name: "Radiant Keys", value: `${CE.fk ?? "🔑"} **${keys}**`,   inline: true },
+    )
+    .setFooter({ text: "CARTETHYIA  ·  The Tempered Vow" });
+}
+
+async function runWeaponBanner(interaction: ChatInputCommandInteraction, dbUser: WeaponBannerDbUser) {
+  const color = ELEMENT_HEX[dbUser.element] ?? ELEMENT_HEX.NONE;
+
+  const pullRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
+    new ButtonBuilder().setCustomId("wellspring_x1").setLabel("◈  Pull  ×1  (1)").setStyle(ButtonStyle.Primary)
+      .setDisabled(dbUser.radiantKeys < 1),
+    new ButtonBuilder().setCustomId("wellspring_x10").setLabel("✦  Pull  ×10  (10)").setStyle(ButtonStyle.Danger)
+      .setDisabled(dbUser.radiantKeys < 10),
+  );
+
+  const msg = await interaction.editReply({
+    embeds: [weaponBannerEmbed(dbUser.wellspringBannerPity, dbUser.wellspringBanner4Pity, dbUser.wellspringBannerGuaranteed, dbUser.radiantKeys, color)],
+    files: [], components: [pullRow],
+  });
+
+  const collector = msg.createMessageComponentCollector({
+    filter: b => b.user.id === interaction.user.id, time: 60_000,
+  });
+
+  collector.on("collect", async (btn: ButtonInteraction) => {
+    if (btn.customId !== "wellspring_x1" && btn.customId !== "wellspring_x10") return;
+    await btn.deferUpdate();
+    collector.stop();
+
+    const fresh = await prisma.user.findUnique({
+      where: { id: interaction.user.id },
+      select: { radiantKeys: true, wellspringBannerPity: true, wellspringBanner4Pity: true, wellspringBannerGuaranteed: true },
+    });
+    if (!fresh) return;
+
+    const amount = btn.customId === "wellspring_x10" ? 10 : 1;
+    if (fresh.radiantKeys < amount) {
+      await interaction.editReply({
+        embeds: [new EmbedBuilder().setColor(0xFF4F6D).setTitle("◈ Not enough Radiant Keys")
+          .setDescription(`You only have **${fresh.radiantKeys}** — need **${amount}**.`)],
+        components: [],
+      });
+      return;
+    }
+
+    let pity = fresh.wellspringBannerPity, p4 = fresh.wellspringBanner4Pity, guar = fresh.wellspringBannerGuaranteed;
+    const results: PullResult[] = [];
+    for (let i = 0; i < amount; i++) {
+      const r = doSingleWellspringPull(pity, p4, guar);
+      results.push(r); pity = r.newPity; p4 = r.new4Pity; guar = r.newGuaranteed;
+    }
+
+    const matTotals = { forgingOres: 0, tuningModules: 0, credits: 0 };
+    for (const r of results) if (r.tier === 3) {
+      matTotals.forgingOres += r.mat.forgingOres; matTotals.tuningModules += r.mat.tuningModules; matTotals.credits += r.mat.credits;
+    }
+    const weaponResults = results.filter((r): r is Extract<PullResult, { tier: 4 | 5 }> => r.tier >= 4);
+
+    await prisma.$transaction([
+      prisma.user.update({ where: { id: interaction.user.id },
+        data: { radiantKeys: { decrement: amount }, wellspringBannerPity: pity, wellspringBanner4Pity: p4, wellspringBannerGuaranteed: guar,
+                forgingOres: { increment: matTotals.forgingOres }, tuningModules: { increment: matTotals.tuningModules }, credits: { increment: matTotals.credits } } }),
+      ...weaponResults.map(r => prisma.weapon.create({ data: weaponCreateData(interaction.user.id, r.weapon) })),
+    ]);
+    auditSpend(interaction.user.id, { radiantKeys: amount }, `wish:wellspring:${amount}pull:${weaponResults.length}weapons`);
+
+    const has5 = results.some(r => r.tier === 5), has4 = results.some(r => r.tier === 4);
+    await runSuspense(interaction, has5 ? 5 : has4 ? 4 : 3);
+
+    const lines = results.map(r =>
+      r.tier === 3
+        ? `◇  *${r.mat.label}*`
+        : `${RARITY_LABEL[r.tier]}  **${r.weapon.name}**  ${"★".repeat(r.tier)}  ·  ${r.weapon.type}`
+    );
+
+    const star5s = results.filter(r => r.tier === 5) as Extract<PullResult, { tier: 5 }>[];
+    const star4s = results.filter(r => r.tier === 4) as Extract<PullResult, { tier: 4 }>[];
+    const highlight = star5s[0] ?? star4s[0];
+    const hlImg = highlight ? getWeaponImagePath(highlight.weapon.type, highlight.weapon.name) : null;
+    const files = hlImg ? [new AttachmentBuilder(hlImg, { name: "weapon.png" })] : [];
+
+    const embed = new EmbedBuilder()
+      .setColor(star5s.length ? RARITY_COLOR[5] : star4s.length ? RARITY_COLOR[4] : 0x4A4A5A)
+      .setTitle("⚔  The Tempered Vow").setDescription(lines.join("\n"))
+      .addFields(
+        { name: "✦ 5★", value: `${star5s.length}`, inline: true },
+        { name: "◆ 4★", value: `${star4s.length}`, inline: true },
+        { name: "Pity",  value: `${pity} / ${HARD_PITY}`, inline: true },
+      )
+      .setFooter({ text: "CARTETHYIA  ·  The Tempered Vow  ·  Added to your arsenal  ·  /equip to equip" });
+    if (hlImg) embed.setImage("attachment://weapon.png");
+
+    await interaction.editReply({ embeds: [embed], files, components: [] });
+  });
+
+  collector.on("end", (col) => {
+    if (!col.has("wellspring_x1") && !col.has("wellspring_x10"))
+      interaction.editReply({ components: [] }).catch(() => {});
+  });
+}
+
 // ── Banner picker (Milestone 4b) ───────────────────────────────────────────────
 const command: Command = {
   data: new SlashCommandBuilder()
@@ -579,7 +726,7 @@ const command: Command = {
       select: {
         element: true, fractureKeys: true, wishPity: true, wish4Pity: true, wishGuaranteed: true, wishTarget: true,
         radiantKeys: true, solaceBannerPity: true, solaceBannerGuaranteed: true,
-        wellspringBannerPity: true, wellspringBannerGuaranteed: true,
+        wellspringBannerPity: true, wellspringBanner4Pity: true, wellspringBannerGuaranteed: true,
       },
     });
     if (!dbUser) { await replyNotStarted(interaction); return; }
@@ -625,10 +772,7 @@ const command: Command = {
       } else if (btn.customId === "wish_pick_character") {
         await runCharacterBanner(interaction, dbUser);
       } else if (btn.customId === "wish_pick_weapon") {
-        await interaction.editReply({
-          embeds: [new EmbedBuilder().setColor(0xFF4F6D).setDescription("◈ The Tempered Vow isn't available yet — coming soon.")],
-          components: [],
-        });
+        await runWeaponBanner(interaction, dbUser);
       }
     });
 
