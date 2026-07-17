@@ -180,6 +180,69 @@ async function runSuspense(interaction: ChatInputCommandInteraction, tier: 3 | 4
   }
 }
 
+// ── Character-banner suspense text (Milestone 4b) — the generic SUSPENSE_5STAR
+// text above says "a weapon takes shape," which is wrong for a character pull.
+// Wellspring/Standard weapon pulls keep using SUSPENSE_5STAR as-is (it's
+// already weapon-appropriate).
+const SUSPENSE_CHARACTER_5STAR = [
+  { title: "◈  Reaching into the fracture...",  desc: "*The resonance responds...*",                          color: 0x1E1F2E },
+  { title: "✦  A presence stirs within the light...", desc: "*Someone is taking shape beyond the veil...*",   color: 0x2D1B4E },
+  { title: "⚡  The fracture tears open...",     desc: "*A name is about to answer your call...*",            color: 0x4A0E6B },
+];
+
+// ── Reveal-button suspense (Solace + Wellspring 5★ moments only — Standard's
+// runSuspense() above is untouched, still fixed-delay auto-advance). Plays
+// through the build-up frames on a short delay same as before, but the FINAL
+// frame (the looping GIF) stays up indefinitely with a "▶ Reveal" button
+// instead of auto-advancing after ~1.4s — lets the GIF actually loop a few
+// times before the player chooses to see the result. Falls back to
+// auto-revealing after 5 minutes if the player never clicks (never leaves the
+// pull stuck forever).
+async function runSuspenseWithReveal(
+  interaction: ChatInputCommandInteraction,
+  frames: { title: string; desc: string; color: number }[],
+  gifPath: string,
+): Promise<void> {
+  // Middle buildup frame shows the generic tier animation (same one Standard's
+  // pulls already use) for escalation — text -> generic tension GIF -> the
+  // dedicated character/weapon reveal GIF behind the Reveal button.
+  const midFrameIdx = frames.length - 2;
+  for (let i = 0; i < frames.length - 1; i++) {
+    const isMid = i === midFrameIdx && midFrameIdx >= 0;
+    const embed = new EmbedBuilder()
+      .setColor(frames[i].color).setTitle(frames[i].title).setDescription(frames[i].desc)
+      .setFooter({ text: "CARTETHYIA  ·  Wish" });
+    const files = isMid ? [new AttachmentBuilder(ANIM_5STAR, { name: "anim.gif" })] : [];
+    if (isMid) embed.setImage("attachment://anim.gif");
+    await interaction.editReply({ embeds: [embed], files, components: [] });
+    await new Promise(r => setTimeout(r, 1400));
+  }
+
+  const last = frames[frames.length - 1];
+  const embed = new EmbedBuilder()
+    .setColor(last.color).setTitle(last.title).setDescription(last.desc)
+    .setFooter({ text: "CARTETHYIA  ·  Wish  ·  Click Reveal when ready" })
+    .setImage("attachment://anim.gif");
+  const revealRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
+    new ButtonBuilder().setCustomId("wish_reveal").setLabel("▶  Reveal").setStyle(ButtonStyle.Success),
+  );
+
+  const msg = await interaction.editReply({
+    embeds: [embed], components: [revealRow],
+    files: [new AttachmentBuilder(gifPath, { name: "anim.gif" })],
+  });
+
+  await new Promise<void>(resolve => {
+    const collector = msg.createMessageComponentCollector({
+      componentType: ComponentType.Button,
+      filter: (b: ButtonInteraction) => b.user.id === interaction.user.id && b.customId === "wish_reveal",
+      time: 5 * 60_000, max: 1,
+    });
+    collector.on("collect", async (btn: ButtonInteraction) => { await btn.deferUpdate(); resolve(); });
+    collector.on("end", (col) => { if (col.size === 0) resolve(); });
+  });
+}
+
 // ── Result embed ──────────────────────────────────────────────────────────────
 function resultEmbed(w: WishWeapon, newPity: number, color: number, guaranteed: boolean, lostCoin: boolean): EmbedBuilder {
   const atk  = calcWishAtk(w, 1);
@@ -539,7 +602,11 @@ async function runCharacterBanner(interaction: ChatInputCommandInteraction, dbUs
     });
     auditSpend(interaction.user.id, { radiantKeys: amount }, `wish:solace:${hits}hits:${dupes}dupes`);
 
-    await runSuspense(interaction, hits > 0 ? 5 : 3, hits > 0 ? SOLACE_REVEAL_GIF : undefined);
+    if (hits > 0) {
+      await runSuspenseWithReveal(interaction, SUSPENSE_CHARACTER_5STAR, SOLACE_REVEAL_GIF);
+    } else {
+      await runSuspense(interaction, 3);
+    }
 
     const hasArt = fs.existsSync(SOLACE_ART_PATH);
     const files = hits > 0 && hasArt ? [new AttachmentBuilder(SOLACE_ART_PATH, { name: "solace.png" })] : [];
@@ -666,6 +733,12 @@ async function runWeaponBanner(interaction: ChatInputCommandInteraction, dbUser:
       const r = doSingleWellspringPull(pity, p4, guar);
       results.push(r); pity = r.newPity; p4 = r.new4Pity; guar = r.newGuaranteed;
     }
+    // Same safety net as Standard's ×10 pull: never let a full 10-pull whiff
+    // down to pure materials with nothing at 4★ or better.
+    if (amount === 10 && !results.some(r => r.tier >= 4)) {
+      results[9] = { tier: 4, weapon: roll4Star(), newPity: pity, new4Pity: 0, newGuaranteed: guar };
+      p4 = 0;
+    }
 
     const matTotals = { forgingOres: 0, tuningModules: 0, credits: 0 };
     for (const r of results) if (r.tier === 3) {
@@ -683,7 +756,11 @@ async function runWeaponBanner(interaction: ChatInputCommandInteraction, dbUser:
 
     const has5 = results.some(r => r.tier === 5), has4 = results.some(r => r.tier === 4);
     const wonWellspring = results.some(r => r.tier === 5 && r.weapon === WELLSPRING_WEAPON);
-    await runSuspense(interaction, has5 ? 5 : has4 ? 4 : 3, wonWellspring ? WELLSPRING_REVEAL_GIF : undefined);
+    if (wonWellspring) {
+      await runSuspenseWithReveal(interaction, SUSPENSE_5STAR, WELLSPRING_REVEAL_GIF);
+    } else {
+      await runSuspense(interaction, has5 ? 5 : has4 ? 4 : 3);
+    }
 
     const lines = results.map(r =>
       r.tier === 3
