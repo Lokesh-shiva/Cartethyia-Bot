@@ -16,8 +16,6 @@ import { getWeaponImagePath } from "../../lib/weapons";
 import { CE, getEmojiResolvable } from "../../lib/emojiManager";
 import path from "path";
 import fs from "fs";
-import { getOrCreateCharacterProgress } from "../../lib/characterProgress";
-import { SOLACE } from "../../lib/solace";
 
 // ── 3★ material rewards ───────────────────────────────────────────────────────
 interface MaterialDrop { forgingOres: number; tuningModules: number; credits: number; label: string; }
@@ -429,10 +427,6 @@ type CharacterDbUser = {
 };
 
 const SOLACE_ART_PATH = path.join(process.cwd(), "assets", "characters", "solace.png");
-
-type SolacePullResult =
-  | { hit: true;  isDuplicate: boolean; newPity: number }
-  | { hit: false; mat: MaterialDrop;    newPity: number };
 
 // Banner #1 has no standard pool to lose a 50/50 into — every 5★ IS Solace.
 // solaceBannerGuaranteed is carried in the schema for forward-compat with a
