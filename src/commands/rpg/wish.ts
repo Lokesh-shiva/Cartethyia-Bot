@@ -162,9 +162,10 @@ const SUSPENSE_3STAR = [
   { title: "◈  Reaching into the fracture...", desc: "*The fracture gives something back...*", color: 0x1A1A1A },
 ];
 
-async function runSuspense(interaction: ChatInputCommandInteraction, tier: 3 | 4 | 5): Promise<void> {
+async function runSuspense(interaction: ChatInputCommandInteraction, tier: 3 | 4 | 5, overrideGifPath?: string): Promise<void> {
   const frames  = tier === 5 ? SUSPENSE_5STAR : tier === 4 ? SUSPENSE_4STAR : SUSPENSE_3STAR;
-  const gifPath = tier === 5 ? ANIM_5STAR     : tier === 4 ? ANIM_4STAR     : ANIM_3STAR;
+  const defaultGif = tier === 5 ? ANIM_5STAR  : tier === 4 ? ANIM_4STAR     : ANIM_3STAR;
+  const gifPath = overrideGifPath && fs.existsSync(overrideGifPath) ? overrideGifPath : defaultGif;
   const delay   = tier === 5 ? 1400           : tier === 4 ? 1000           : 800;
 
   for (let i = 0; i < frames.length; i++) {
@@ -426,7 +427,8 @@ type CharacterDbUser = {
   element: string; radiantKeys: number; solaceBannerPity: number; solaceBannerGuaranteed: boolean;
 };
 
-const SOLACE_ART_PATH = path.join(process.cwd(), "assets", "characters", "solace.png");
+const SOLACE_ART_PATH = path.join(process.cwd(), "assets", "Characters", "Solace.png");
+const SOLACE_REVEAL_GIF = path.join(process.cwd(), "assets", "Characters", "Solace_reveal.gif");
 
 // Banner #1 has no standard pool to lose a 50/50 into — every 5★ IS Solace.
 // solaceBannerGuaranteed is carried in the schema for forward-compat with a
@@ -537,7 +539,7 @@ async function runCharacterBanner(interaction: ChatInputCommandInteraction, dbUs
     });
     auditSpend(interaction.user.id, { radiantKeys: amount }, `wish:solace:${hits}hits:${dupes}dupes`);
 
-    await runSuspense(interaction, hits > 0 ? 5 : 3);
+    await runSuspense(interaction, hits > 0 ? 5 : 3, hits > 0 ? SOLACE_REVEAL_GIF : undefined);
 
     const hasArt = fs.existsSync(SOLACE_ART_PATH);
     const files = hits > 0 && hasArt ? [new AttachmentBuilder(SOLACE_ART_PATH, { name: "solace.png" })] : [];
@@ -570,6 +572,8 @@ type WeaponBannerDbUser = {
   element: string; radiantKeys: number; wellspringBannerPity: number;
   wellspringBanner4Pity: number; wellspringBannerGuaranteed: boolean;
 };
+
+const WELLSPRING_REVEAL_GIF = path.join(process.cwd(), "assets", "weapons", "Rectifier", "Wellspring_reveal.gif");
 
 // Same tier shape as Standard (3★ materials / 4★ WISH_WEAPONS_4STAR / 5★),
 // but the 5★ resolution differs: win the 50/50 -> Wellspring, lose -> a
@@ -678,7 +682,8 @@ async function runWeaponBanner(interaction: ChatInputCommandInteraction, dbUser:
     auditSpend(interaction.user.id, { radiantKeys: amount }, `wish:wellspring:${amount}pull:${weaponResults.length}weapons`);
 
     const has5 = results.some(r => r.tier === 5), has4 = results.some(r => r.tier === 4);
-    await runSuspense(interaction, has5 ? 5 : has4 ? 4 : 3);
+    const wonWellspring = results.some(r => r.tier === 5 && r.weapon === WELLSPRING_WEAPON);
+    await runSuspense(interaction, has5 ? 5 : has4 ? 4 : 3, wonWellspring ? WELLSPRING_REVEAL_GIF : undefined);
 
     const lines = results.map(r =>
       r.tier === 3
