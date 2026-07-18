@@ -438,6 +438,16 @@ const command: Command = {
 
           const credits = 300 + user.worldLevel * 120;
           await awardUser(interaction.user.id, { credits, resonanceExp: 100 + user.worldLevel * 40, fractonite: 60 }, "field-boss");
+
+          let starfallShardsDropped = 0;
+          if (fb.id === "luminal_specter" && Math.random() < 0.35) {
+            starfallShardsDropped = 1;
+            await prisma.user.update({
+              where: { id: interaction.user.id },
+              data: { starfallShards: { increment: 1 } },
+            });
+          }
+
           const lvl        = await checkLevelUp(interaction.user.id);
           const bondResult = await incrementWeaponBond(interaction.user.id).catch(() => null);
 
@@ -449,6 +459,7 @@ const command: Command = {
                 `**${fb.name}** has been driven off.\n\n` +
                 (echoLines.length ? `**Echo Dropped:**\n${echoLines.join("\n")}\n\n` : "") +
                 `${CE.cr} ${credits} Credits  ·  ${CE.fk} 1 Fracture Key` +
+                (starfallShardsDropped ? `\n✦ **1 Starfall Shard**` : "") +
                 (lvl.didLevelUp ? `\n◈ Level **${lvl.oldLevel}** → **${lvl.newLevel}**` : "") +
                 (bondResult ? `\n✦ Weapon Bond **${bondResult.bond}/10**${bondResult.milestone ? ` — *${bondResult.milestone}*` : ""}` : "") +
                 voteNudge() + supportNudge() + await mailNudge(interaction.user.id)
