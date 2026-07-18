@@ -7,6 +7,7 @@
 
 import prisma from "./prisma";
 import { CharacterProgress } from "@prisma/client";
+import { ASCENSION_LEVEL_CAP, MAX_ASCENSION_PHASE } from "./solace";
 
 export const MAX_KIT_LEVEL = 10;
 
@@ -55,4 +56,8 @@ export async function getOrCreateCharacterProgress(userId: string, characterId: 
   return prisma.characterProgress.create({
     data: { userId, characterId },
   });
+}
+
+export function currentLevelCap(ascensionPhase: number): number {
+  return ASCENSION_LEVEL_CAP[Math.min(ascensionPhase, MAX_ASCENSION_PHASE)];
 }
