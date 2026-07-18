@@ -11,7 +11,6 @@ import { Command } from "../../types";
 import prisma from "../../lib/prisma";
 import { replyNotStarted } from "../../lib/economy";
 import { auditSpend } from "../../lib/antiCheat";
-import { CE } from "../../lib/emojiManager";
 import {
   MAX_KIT_LEVEL, KitTrack, TRACK_FIELD, getTrackLevel, kitLevelUpCost,
   getOrCreateCharacterProgress, currentLevelCap,
@@ -204,7 +203,7 @@ async function buildKitLevelsView(userId: string, characterId: string): Promise<
 
   const buf = await renderStatBarsCard({
     characterName: char.label, element: char.element,
-    subtitle: `Kit Levels · ${ores}${CE.fo} Forging Ores`,
+    subtitle: `Kit Levels · ${ores} Forging Ores`,
     bars: tracks.map(t => {
       const lvl = getTrackLevel(progress, t);
       return { label: TRACK_LABELS[t].replace(/^\S+\s+/, ""), value: lvl, max: MAX_KIT_LEVEL, displayValue: `Lv ${lvl}/${MAX_KIT_LEVEL}` };
