@@ -13,6 +13,7 @@ import { IntroOutroEffect } from "./introOutro";
 import { ForteConfig } from "./forte";
 import { MAX_KIT_LEVEL } from "./characterProgress";
 import { resolvePlayerBonuses, applyBonuses, ResolvedStats } from "./setBonus";
+import prisma from "./prisma";
 
 export const SOLACE = {
   name:  "Solace",
@@ -47,6 +48,78 @@ export const SOLACE = {
     ],
   } as IntroOutroEffect,
 };
+
+// ── Leveling & Ascension (character card project) ────────────────────────
+// Mirrors the WL boss level-cap table (CLAUDE.md): index = ascensionPhase (0-6).
+export const ASCENSION_LEVEL_CAP: number[] = [20, 40, 50, 60, 70, 80, 90];
+export const MAX_ASCENSION_PHASE = ASCENSION_LEVEL_CAP.length - 1; // 6
+export const SOLACE_MAX_LEVEL = ASCENSION_LEVEL_CAP[MAX_ASCENSION_PHASE]; // 90
+
+export interface AscensionCost {
+  credits:        number;
+  forgingOres:    number;
+  paradoxCores:   number;
+  starfallShards: number; // 0 for phase 1; required from phase 2 (the Lv40 ascension) onward
+}
+
+// Cost to ascend FROM `currentPhase` TO `currentPhase + 1`. currentPhase is
+// 0-5 (ascending past phase 6 is impossible — SOLACE_MAX_LEVEL is the ceiling).
+export function solaceAscensionCost(currentPhase: number): AscensionCost {
+  const targetPhase = currentPhase + 1; // 1-6
+  return {
+    credits:        2000 * targetPhase,
+    forgingOres:     10 * targetPhase,
+    paradoxCores:     2 * targetPhase,
+    starfallShards: targetPhase >= 2 ? 3 * (targetPhase - 1) : 0,
+  };
+}
+
+// Cost to raise `level` by 1, in Resonance Records + Credits — flat per-level
+// spend; the caller clamps to the current phase's cap.
+export function solaceLevelUpCost(currentLevel: number): { resonanceRecords: number; credits: number } {
+  return { resonanceRecords: Math.ceil(currentLevel / 2) + 1, credits: currentLevel * 50 };
+}
+
+// Support-class growth bias (design spec §7): HP/DEF grow across the full
+// range (low floor), ATK grows across a narrow range (high floor — leveling
+// barely raises her damage), Crit barely moves at all. A maxed-level Solace
+// must still read as a support unit, never DPS-shaped.
+const LEVEL_FLOOR_FRACTION = { hp: 0.20, def: 0.20, atk: 0.65, spd: 0.50, critRate: 0.95, critDmg: 0.95 };
+
+function levelScaledStat(ceiling: number, level: number, floorFraction: number): number {
+  const clamped = Math.max(1, Math.min(SOLACE_MAX_LEVEL, level));
+  const t = (clamped - 1) / (SOLACE_MAX_LEVEL - 1); // 0 at Lv1, 1 at Lv90
+  return ceiling * (floorFraction + (1 - floorFraction) * t);
+}
+
+// SOLACE.baseAtk/baseDef/baseSpeed/hpMax above are her Lv90 ceiling values.
+export function solaceStatsAtLevel(level: number) {
+  return {
+    hpMax:     Math.round(levelScaledStat(SOLACE.hpMax,   level, LEVEL_FLOOR_FRACTION.hp)),
+    baseAtk:   Math.round(levelScaledStat(SOLACE.baseAtk, level, LEVEL_FLOOR_FRACTION.atk)),
+    baseDef:   Math.round(levelScaledStat(SOLACE.baseDef, level, LEVEL_FLOOR_FRACTION.def)),
+    baseSpeed: Math.round(levelScaledStat(SOLACE.baseSpeed, level, LEVEL_FLOOR_FRACTION.spd)),
+    critRate:  levelScaledStat(SOLACE.critRate, level, LEVEL_FLOOR_FRACTION.critRate),
+    critDmg:   levelScaledStat(SOLACE.critDmg, level, LEVEL_FLOOR_FRACTION.critDmg),
+  };
+}
+
+// 7 fixed lore fragments — Fragment 1 always visible, Fragments 2-7 unlock at
+// ascensionPhase 1-6 respectively. Design spec §7.1.
+export const SOLACE_LORE_FRAGMENTS: string[] = [
+  "They say every star eventually falls. Most burn out in the descent, forgotten before they touch the ground.",
+  "Solace remembers her fall — the sky tearing open, the long silence of the drop, and then warmth, unfamiliar and entire, as she opened eyes she didn't know she had onto a world that was not her own.",
+  "She could have stayed dim. Fallen stars usually do — spent, purposeless, waiting to go dark for good. But something in her refused the silence.",
+  "She chose to keep shining, because somewhere below her light there was always someone who needed it more than the sky ever had.",
+  "So she stays close to the ground now, deliberately. She kneels beside the wounded instead of watching from above.",
+  "She lends her glow to whoever's fighting beside her — not because the sky asks it of her anymore, but because she decided, once and for all, what a star that falls should do with the light it has left.",
+  "Give it away, freely, to anyone still standing in the dark. She doesn't call herself a light in the heavens anymore. She calls herself one on the ground — smaller, maybe, but close enough to actually reach the people who need her.",
+];
+
+// Fragment index i (0-based) is unlocked once ascensionPhase >= i.
+export function unlockedLoreFragments(ascensionPhase: number): { text: string; unlocked: boolean }[] {
+  return SOLACE_LORE_FRAGMENTS.map((text, i) => ({ text, unlocked: ascensionPhase >= i }));
+}
 
 // Intro Skill: instant heal + cleanse, zero ramp-up (design spec §6). Unlike
 // Outro, Intro's heal % scales with Intro level (Milestone 2e) — so it's a
@@ -138,9 +211,16 @@ export function solaceForteEmpoweredDefBonus(forteLevel: number): number {
 // should call this once per fight (not per action — bonuses don't change
 // mid-fight) and use the result instead of the acting player's own stats.
 export async function resolveSolaceStats(userId: string): Promise<ResolvedStats & { hasWellspring: boolean }> {
-  const bonuses = await resolvePlayerBonuses(userId, "solace");
+  const [bonuses, progress] = await Promise.all([
+    resolvePlayerBonuses(userId, "solace"),
+    prisma.characterProgress.findUnique({
+      where: { userId_characterId: { userId, characterId: "solace" } },
+      select: { level: true },
+    }),
+  ]);
+  const lvl = solaceStatsAtLevel(progress?.level ?? 1);
   const stats = applyBonuses(
-    { baseHp: SOLACE.hpMax, baseAtk: SOLACE.baseAtk, baseDef: SOLACE.baseDef, critRate: SOLACE.critRate, critDmg: SOLACE.critDmg, baseSpeed: SOLACE.baseSpeed },
+    { baseHp: lvl.hpMax, baseAtk: lvl.baseAtk, baseDef: lvl.baseDef, critRate: lvl.critRate, critDmg: lvl.critDmg, baseSpeed: lvl.baseSpeed },
     bonuses,
   );
   // Milestone 4a: Wellspring's mode-linked bonus (getWellspringXBonus in
