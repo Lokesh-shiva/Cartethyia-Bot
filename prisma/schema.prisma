@@ -90,6 +90,7 @@ model User {
   stasisLocks      Int            @default(0)
   resonanceRecords Int            @default(0)
   fractureKeys     Int            @default(0)
+  starfallShards   Int            @default(0) // Solace ascension mat (Lv40+), drops only from the Spectro field boss
 
   // Wish / gacha pity
   wishPity         Int            @default(0)   // pulls since last 5★
@@ -351,6 +352,9 @@ model CharacterProgress {
 
   constellation       Int @default(0) // 0-6, Resonance Chain rank
   constellationTokens Int @default(0) // banked currency from duplicate pulls — Milestone 3.5 ships this at 0 for everyone; Milestone 4's gacha is what will ever increment it
+
+  level          Int @default(1)
+  ascensionPhase Int @default(0) // 0-6, gates level cap: 20/40/50/60/70/80/90
 
   @@unique([userId, characterId])
   @@map("character_progress")
