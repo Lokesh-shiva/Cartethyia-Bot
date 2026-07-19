@@ -511,14 +511,14 @@ async function runStandardBanner(interaction: ChatInputCommandInteraction, dbUse
 
 // ── Character banner — "The Rising Overture", featuring Solace (Milestone 4b) ─
 type CharacterDbUser = {
-  element: string; radiantKeys: number; fractonite: number; solaceBannerPity: number; solaceBannerGuaranteed: boolean;
+  element: string; radiantKeys: number; fractonite: number; limitedCharBannerPity: number; limitedCharBannerGuaranteed: boolean;
 };
 
 const SOLACE_ART_PATH = path.join(process.cwd(), "assets", "Characters", "Solace.png");
 const SOLACE_REVEAL_GIF = path.join(process.cwd(), "assets", "Characters", "Solace_reveal.gif");
 
 // Banner #1 has no standard pool to lose a 50/50 into — every 5★ IS Solace.
-// solaceBannerGuaranteed is carried in the schema for forward-compat with a
+// limitedCharBannerGuaranteed is carried in the schema for forward-compat with a
 // real banner #2, but is functionally inert here (never flips true, never
 // changes the roll) since there's no coin flip to win or lose yet.
 function doSingleSolacePull(pity: number): { newPity: number; hit: boolean } {
@@ -557,7 +557,7 @@ async function runCharacterBanner(interaction: ChatInputCommandInteraction, dbUs
   );
 
   const msg = await interaction.editReply({
-    embeds: [solaceCharacterBannerEmbed(dbUser.solaceBannerPity, dbUser.radiantKeys, dbUser.fractonite, color)],
+    embeds: [solaceCharacterBannerEmbed(dbUser.limitedCharBannerPity, dbUser.radiantKeys, dbUser.fractonite, color)],
     files: [], components: [pullRow],
   });
 
@@ -572,7 +572,7 @@ async function runCharacterBanner(interaction: ChatInputCommandInteraction, dbUs
 
     const fresh = await prisma.user.findUnique({
       where: { id: interaction.user.id },
-      select: { radiantKeys: true, fractonite: true, solaceBannerPity: true },
+      select: { radiantKeys: true, fractonite: true, limitedCharBannerPity: true },
     });
     if (!fresh) return;
 
@@ -593,7 +593,7 @@ async function runCharacterBanner(interaction: ChatInputCommandInteraction, dbUs
     });
     let owned = existingProgress !== null;
 
-    let pity = fresh.solaceBannerPity;
+    let pity = fresh.limitedCharBannerPity;
     const rolls: { hit: boolean; mat?: MaterialDrop; isDuplicate?: boolean }[] = [];
     let hits = 0, dupes = 0;
     const matTotals = { forgingOres: 0, tuningModules: 0, credits: 0 };
@@ -616,7 +616,7 @@ async function runCharacterBanner(interaction: ChatInputCommandInteraction, dbUs
     await prisma.$transaction(async (tx) => {
       await tx.user.update({
         where: { id: interaction.user.id },
-        data: { radiantKeys: { decrement: spend.radiantKeysToSpend }, fractonite: { decrement: spend.fractoniteToSpend }, solaceBannerPity: pity,
+        data: { radiantKeys: { decrement: spend.radiantKeysToSpend }, fractonite: { decrement: spend.fractoniteToSpend }, limitedCharBannerPity: pity,
                 forgingOres: { increment: matTotals.forgingOres }, tuningModules: { increment: matTotals.tuningModules }, credits: { increment: matTotals.credits } },
       });
       if (hits > 0) {
@@ -663,8 +663,8 @@ async function runCharacterBanner(interaction: ChatInputCommandInteraction, dbUs
 
 // ── Weapon banner — "The Tempered Vow", featuring Wellspring (Milestone 4c) ───
 type WeaponBannerDbUser = {
-  element: string; radiantKeys: number; fractonite: number; wellspringBannerPity: number;
-  wellspringBanner4Pity: number; wellspringBannerGuaranteed: boolean;
+  element: string; radiantKeys: number; fractonite: number; limitedWeaponBannerPity: number;
+  limitedWeaponBanner4Pity: number; limitedWeaponBannerGuaranteed: boolean;
 };
 
 const WELLSPRING_REVEAL_GIF = path.join(process.cwd(), "assets", "weapons", "Rectifier", "Wellspring_reveal.gif");
@@ -727,7 +727,7 @@ async function runWeaponBanner(interaction: ChatInputCommandInteraction, dbUser:
   );
 
   const msg = await interaction.editReply({
-    embeds: [weaponBannerEmbed(dbUser.wellspringBannerPity, dbUser.wellspringBanner4Pity, dbUser.wellspringBannerGuaranteed, dbUser.radiantKeys, dbUser.fractonite, color)],
+    embeds: [weaponBannerEmbed(dbUser.limitedWeaponBannerPity, dbUser.limitedWeaponBanner4Pity, dbUser.limitedWeaponBannerGuaranteed, dbUser.radiantKeys, dbUser.fractonite, color)],
     files: [], components: [pullRow],
   });
 
@@ -742,7 +742,7 @@ async function runWeaponBanner(interaction: ChatInputCommandInteraction, dbUser:
 
     const fresh = await prisma.user.findUnique({
       where: { id: interaction.user.id },
-      select: { radiantKeys: true, fractonite: true, wellspringBannerPity: true, wellspringBanner4Pity: true, wellspringBannerGuaranteed: true },
+      select: { radiantKeys: true, fractonite: true, limitedWeaponBannerPity: true, limitedWeaponBanner4Pity: true, limitedWeaponBannerGuaranteed: true },
     });
     if (!fresh) return;
 
@@ -757,7 +757,7 @@ async function runWeaponBanner(interaction: ChatInputCommandInteraction, dbUser:
       return;
     }
 
-    let pity = fresh.wellspringBannerPity, p4 = fresh.wellspringBanner4Pity, guar = fresh.wellspringBannerGuaranteed;
+    let pity = fresh.limitedWeaponBannerPity, p4 = fresh.limitedWeaponBanner4Pity, guar = fresh.limitedWeaponBannerGuaranteed;
     const results: PullResult[] = [];
     for (let i = 0; i < amount; i++) {
       const r = doSingleWellspringPull(pity, p4, guar);
@@ -779,7 +779,7 @@ async function runWeaponBanner(interaction: ChatInputCommandInteraction, dbUser:
     await prisma.$transaction([
       prisma.user.update({ where: { id: interaction.user.id },
         data: { radiantKeys: { decrement: spend.radiantKeysToSpend }, fractonite: { decrement: spend.fractoniteToSpend },
-                wellspringBannerPity: pity, wellspringBanner4Pity: p4, wellspringBannerGuaranteed: guar,
+                limitedWeaponBannerPity: pity, limitedWeaponBanner4Pity: p4, limitedWeaponBannerGuaranteed: guar,
                 forgingOres: { increment: matTotals.forgingOres }, tuningModules: { increment: matTotals.tuningModules }, credits: { increment: matTotals.credits } } }),
       ...weaponResults.map(r => prisma.weapon.create({ data: weaponCreateData(interaction.user.id, r.weapon) })),
     ]);
@@ -838,8 +838,8 @@ const command: Command = {
       where:  { id: interaction.user.id },
       select: {
         element: true, fractureKeys: true, wishPity: true, wish4Pity: true, wishGuaranteed: true, wishTarget: true,
-        radiantKeys: true, fractonite: true, solaceBannerPity: true, solaceBannerGuaranteed: true,
-        wellspringBannerPity: true, wellspringBanner4Pity: true, wellspringBannerGuaranteed: true,
+        radiantKeys: true, fractonite: true, limitedCharBannerPity: true, limitedCharBannerGuaranteed: true,
+        limitedWeaponBannerPity: true, limitedWeaponBanner4Pity: true, limitedWeaponBannerGuaranteed: true,
       },
     });
     if (!dbUser) { await replyNotStarted(interaction); return; }
