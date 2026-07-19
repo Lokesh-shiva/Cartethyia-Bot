@@ -365,8 +365,16 @@ export async function renderSlotGridCard(input: SlotGridCardInput): Promise<Buff
 
     if (slot.filled && slot.iconPath && fs.existsSync(slot.iconPath)) {
       const img = await loadCachedImage(slot.iconPath);
-      const iw = cellW - 24, ih = 90;
-      ctx.drawImage(img as any, x + 12, y + 12, iw, ih);
+      const iw = cellW - 24, ih = 90, ix = x + 12, iy = y + 12;
+      ctx.save();
+      rrect(ctx, ix, iy, iw, ih, 6); ctx.clip();
+      // Cover-fit crop (not a naive stretch) — echo/boss art is scene
+      // illustration at various aspect ratios, stretching it to a fixed box
+      // warps it noticeably.
+      const scale = Math.max(iw / img.width, ih / img.height);
+      const dw = img.width * scale, dh = img.height * scale;
+      ctx.drawImage(img as any, ix + (iw - dw) / 2, iy + (ih - dh) / 2, dw, dh);
+      ctx.restore();
     }
 
     ctx.fillStyle = slot.filled ? "#F1F5F9" : "#64748B";

@@ -29,6 +29,8 @@ import { ELEMENT_EMOJI, MAIN_STAT_LABELS, calcMainStatValue, formatStatValue, RA
 import { NAMED_SETS, NamedSetId } from "../../lib/namedSets";
 import { echoEmojiResolvable } from "../../lib/emojiManager";
 import { Element } from "@prisma/client";
+import fs from "fs";
+import path from "path";
 
 // Only "solace" exists today — future characters add entries here, and the
 // select menu below automatically grows to offer them. No other code in this
@@ -36,6 +38,49 @@ import { Element } from "@prisma/client";
 const CHARACTERS: Record<string, { label: string; emoji: string; element: string; portraitPath: string }> = {
   solace: { label: "Solace", emoji: "✨", element: "SPECTRO", portraitPath: "assets/Characters/Solace.png" },
 };
+
+// Same lookup as gridCard.ts/canvas.ts/echoCard.ts — deliberately duplicated
+// rather than shared, per this project's existing convention for these art
+// resolvers (see CLAUDE.md's BOSS_ART_FILENAMES gotcha: update all copies
+// when adding a boss). Missing here was exactly why the Echoes page rendered
+// slot tiles with no art — renderSlotGridCard never got an iconPath.
+const BOSS_ART_FILENAMES: Record<string, string> = {
+  "Resonant Wraith":      "The Resonant Wraith.png",
+  "Tidecaller Sovereign": "Tidecaller Sovereign.png",
+  "Fractured Arbiter":    "The Fractured Arbiter.png",
+  "Nullfire Construct":   "Nullfire Construct.png",
+  "Sable Harbinger":      "Sable Harbinger.png",
+  "Auric Colossus":       "Auric Colossus.png",
+  "Embercrown Tyrant":    "Embercrown Tyrant.png",
+  "Galeborne Phantom":    "Galeborne Phantom.png",
+  "Resonant Absolute":    "The Resonant Absolute.png",
+  "Ignis Behemoth":       "Ignis Behemoth.png",
+  "Permafrost Sovereign": "Permafrost Sovereign.png",
+  "Voltaic Aberrant":     "Voltaic Aberrant.png",
+  "Tempest Ancient":      "Tempest Ancient.png",
+  "Null Ravager":         "Null Ravager.png",
+  "Luminal Specter":      "Luminal Specter.png",
+  "Cinderbound Colossus": "Cinderbound Colossus.png",
+  "Cryoveil Warden":      "Cryoveil Warden.png",
+  "Thundercrown Herald":  "Thundercrown Herald.png",
+  "Galebound Sovereign":  "Galebound Sovereign.png",
+  "Voidmaw Devourer":     "Voidmaw Devourer.png",
+  "Lumenwrought Seraph":  "Lumenwrought Seraph.png",
+};
+
+function echoArtPath(name: string, cost: number): string | null {
+  if (cost === 1 || cost === 3) {
+    const sub = path.join(process.cwd(), "assets", "echoes", `${cost}-cost`, `${name}.png`);
+    if (fs.existsSync(sub)) return sub;
+  }
+  if (cost === 4) {
+    const bossFile = BOSS_ART_FILENAMES[name] ?? `${name}.png`;
+    const bossPath = path.join(process.cwd(), "Bosses", bossFile);
+    if (fs.existsSync(bossPath)) return bossPath;
+  }
+  const snake = path.join(process.cwd(), "assets", "echoes", name.toLowerCase().replace(/\s+/g, "_") + ".png");
+  return fs.existsSync(snake) ? snake : null;
+}
 
 type Page = "stats" | "weapon" | "echoes" | "kit" | "con" | "lore";
 const PAGE_LABEL: Record<Page, string> = {
@@ -256,7 +301,7 @@ async function buildEchoesView(userId: string, characterId: string): Promise<Pag
   const slots = Array.from({ length: 5 }, (_, slot) => {
     const eq = echoes.find(e => e.equippedSlot === slot);
     return eq
-      ? { label: eq.name, sublabel: `Lv ${eq.level}`, filled: true }
+      ? { label: eq.name, sublabel: `Lv ${eq.level}`, filled: true, iconPath: echoArtPath(eq.name, eq.cost) ?? undefined }
       : { label: slot === 0 ? "Main" : `Sub ${slot}`, sublabel: "Empty", filled: false };
   });
   const buf = await renderSlotGridCard({ characterName: char.label, element: char.element, subtitle: "Echoes", slots });
