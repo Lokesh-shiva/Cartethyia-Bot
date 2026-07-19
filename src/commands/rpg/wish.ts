@@ -523,16 +523,14 @@ const SOLACE_REVEAL_GIF = path.join(process.cwd(), "assets", "Characters", "Sola
 // real banner #2, but is functionally inert here (never flips true, never
 // changes the roll) since there's no coin flip to win or lose yet.
 //
-// Placeholder "4★" tier: no 4★ characters exist yet on this banner, so a 4★
-// hit grants this fixed bundle instead of an item. Once real 4★ characters
-// are added, swap the SolacePullResult's "4star" branch to roll from that
-// pool — the surrounding pity/safety-net plumbing (below and in
-// runCharacterBanner) doesn't need to change.
-const CHAR_BANNER_4STAR_BUNDLE = { forgingOres: 15, tuningModules: 5, credits: 2000 };
+// 4★ tier: same WISH_WEAPONS_4STAR pool Standard/Wellspring already roll
+// from via roll4Star() — a Solace-banner 4★ hit is a real, usable weapon
+// (goes into the arsenal via weaponCreateData, exactly like every other
+// 4★/5★ weapon drop), not a currency stand-in.
 
 type SolacePullResult =
   | { tier: "5star"; newPity: number; new4Pity: number }
-  | { tier: "4star"; newPity: number; new4Pity: number }
+  | { tier: "4star"; weapon: WishWeapon; newPity: number; new4Pity: number }
   | { tier: "3star"; mat: MaterialDrop; newPity: number; new4Pity: number };
 
 function doSingleSolacePull(pity: number, pity4: number): SolacePullResult {
@@ -545,7 +543,7 @@ function doSingleSolacePull(pity: number, pity4: number): SolacePullResult {
     return { tier: "5star", newPity: 0, new4Pity: 0 };
   }
   if (newPity4 >= HARD_PITY_4 || r < BASE_5_RATE + BASE_4_RATE) {
-    return { tier: "4star", newPity, new4Pity: 0 };
+    return { tier: "4star", weapon: roll4Star(), newPity, new4Pity: 0 };
   }
   return { tier: "3star", mat: rollMaterials(), newPity, new4Pity: newPity4 };
 }
@@ -616,7 +614,7 @@ async function runCharacterBanner(interaction: ChatInputCommandInteraction, dbUs
     let owned = existingProgress !== null;
 
     let pity = fresh.limitedCharBannerPity, pity4 = fresh.limitedCharBanner4Pity;
-    const rolls: ({ tier: "5star"; isDuplicate: boolean } | { tier: "4star" } | { tier: "3star"; mat: MaterialDrop })[] = [];
+    const rolls: ({ tier: "5star"; isDuplicate: boolean } | { tier: "4star"; weapon: WishWeapon } | { tier: "3star"; mat: MaterialDrop })[] = [];
     let hits = 0, dupes = 0;
     const matTotals = { forgingOres: 0, tuningModules: 0, credits: 0 };
     for (let i = 0; i < amount; i++) {
@@ -629,10 +627,7 @@ async function runCharacterBanner(interaction: ChatInputCommandInteraction, dbUs
         owned = true;
         rolls.push({ tier: "5star", isDuplicate });
       } else if (r.tier === "4star") {
-        matTotals.forgingOres += CHAR_BANNER_4STAR_BUNDLE.forgingOres;
-        matTotals.tuningModules += CHAR_BANNER_4STAR_BUNDLE.tuningModules;
-        matTotals.credits += CHAR_BANNER_4STAR_BUNDLE.credits;
-        rolls.push({ tier: "4star" });
+        rolls.push({ tier: "4star", weapon: r.weapon });
       } else {
         matTotals.forgingOres += r.mat.forgingOres; matTotals.tuningModules += r.mat.tuningModules; matTotals.credits += r.mat.credits;
         rolls.push({ tier: "3star", mat: r.mat });
@@ -643,29 +638,26 @@ async function runCharacterBanner(interaction: ChatInputCommandInteraction, dbUs
     if (amount === 10 && !rolls.some(r => r.tier === "5star" || r.tier === "4star")) {
       const last = rolls[9] as { tier: "3star"; mat: MaterialDrop };
       matTotals.forgingOres -= last.mat.forgingOres; matTotals.tuningModules -= last.mat.tuningModules; matTotals.credits -= last.mat.credits;
-      matTotals.forgingOres += CHAR_BANNER_4STAR_BUNDLE.forgingOres;
-      matTotals.tuningModules += CHAR_BANNER_4STAR_BUNDLE.tuningModules;
-      matTotals.credits += CHAR_BANNER_4STAR_BUNDLE.credits;
-      rolls[9] = { tier: "4star" };
+      rolls[9] = { tier: "4star", weapon: roll4Star() };
       pity4 = 0;
     }
+    const weaponRolls = rolls.filter((r): r is { tier: "4star"; weapon: WishWeapon } => r.tier === "4star");
 
-    await prisma.$transaction(async (tx) => {
-      await tx.user.update({
+    await prisma.$transaction([
+      prisma.user.update({
         where: { id: interaction.user.id },
         data: { radiantKeys: { decrement: spend.radiantKeysToSpend }, fractonite: { decrement: spend.fractoniteToSpend },
                 limitedCharBannerPity: pity, limitedCharBanner4Pity: pity4,
                 forgingOres: { increment: matTotals.forgingOres }, tuningModules: { increment: matTotals.tuningModules }, credits: { increment: matTotals.credits } },
-      });
-      if (hits > 0) {
-        await tx.characterProgress.upsert({
-          where:  { userId_characterId: { userId: interaction.user.id, characterId: "solace" } },
-          create: { userId: interaction.user.id, characterId: "solace" },
-          update: { constellationTokens: { increment: dupes } },
-        });
-      }
-    });
-    auditSpend(interaction.user.id, { radiantKeys: spend.radiantKeysToSpend, fractonite: spend.fractoniteToSpend }, `wish:solace:${hits}hits:${dupes}dupes`);
+      }),
+      ...(hits > 0 ? [prisma.characterProgress.upsert({
+        where:  { userId_characterId: { userId: interaction.user.id, characterId: "solace" } },
+        create: { userId: interaction.user.id, characterId: "solace" },
+        update: { constellationTokens: { increment: dupes } },
+      })] : []),
+      ...weaponRolls.map(r => prisma.weapon.create({ data: weaponCreateData(interaction.user.id, r.weapon) })),
+    ]);
+    auditSpend(interaction.user.id, { radiantKeys: spend.radiantKeysToSpend, fractonite: spend.fractoniteToSpend }, `wish:solace:${hits}hits:${dupes}dupes:${weaponRolls.length}weapons`);
 
     if (hits > 0) {
       await runSuspenseWithReveal(interaction, SUSPENSE_CHARACTER_5STAR, SOLACE_REVEAL_GIF);
@@ -680,7 +672,7 @@ async function runCharacterBanner(interaction: ChatInputCommandInteraction, dbUs
       r.tier === "5star"
         ? `✦  **Solace**${r.isDuplicate ? "  *(duplicate — converted to a Constellation Token)*" : ""}`
         : r.tier === "4star"
-        ? `◆  *Resonant Cache — ${CHAR_BANNER_4STAR_BUNDLE.forgingOres} Forging Ores + ${CHAR_BANNER_4STAR_BUNDLE.tuningModules} Tuning Modules + ${CHAR_BANNER_4STAR_BUNDLE.credits} Credits*`
+        ? `◆  **${r.weapon.name}**  ★★★★  ·  ${r.weapon.type}`
         : `◇  *${r.mat.label}*`
     );
 
