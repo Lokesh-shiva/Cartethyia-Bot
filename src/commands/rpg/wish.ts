@@ -349,8 +349,17 @@ async function runStandardBanner(interaction: ChatInputCommandInteraction, dbUse
 
     const collector = msg.createMessageComponentCollector({
       filter: b => b.user.id === interaction.user.id,
-      time:   120_000,
+      time:   300_000, // 5 min — continuous pulling stays live on the same message, not a one-shot
     });
+
+    const buildPullRow = (fractureKeys: number) => new ActionRowBuilder<ButtonBuilder>().addComponents(
+      new ButtonBuilder().setCustomId("wish_x1")
+        .setLabel("◈  Pull  ×1  (1)").setEmoji(fkEmoji).setStyle(ButtonStyle.Primary)
+        .setDisabled(fractureKeys < 1),
+      new ButtonBuilder().setCustomId("wish_x10")
+        .setLabel("✦  Pull  ×10  (10)").setEmoji(fkEmoji).setStyle(ButtonStyle.Danger)
+        .setDisabled(fractureKeys < 10),
+    );
 
     collector.on("collect", async (intr: ButtonInteraction | StringSelectMenuInteraction) => {
       // ── Set target ──────────────────────────────────────────────────────────
@@ -385,7 +394,6 @@ async function runStandardBanner(interaction: ChatInputCommandInteraction, dbUse
       const btn = intr as ButtonInteraction;
       if (btn.customId !== "wish_x1" && btn.customId !== "wish_x10") return;
       await btn.deferUpdate();
-      collector.stop();
 
       const fresh = await prisma.user.findUnique({
         where:  { id: interaction.user.id },
@@ -427,13 +435,16 @@ async function runStandardBanner(interaction: ChatInputCommandInteraction, dbUse
 
         await runSuspense(interaction, res.tier);
 
+        const afterKeys = fresh.fractureKeys - 1;
+        const continueRow = [targetRow, buildPullRow(afterKeys)];
+
         if (res.tier === 3) {
           await interaction.editReply({
             embeds: [new EmbedBuilder().setColor(0x4A4A5A).setTitle("◇  The fracture yields materials")
               .setDescription(`**${res.mat.label}**\n\n*The resonance wasn't strong enough this time.*`)
               .addFields({ name: "Pity", value: `${newPity} / ${HARD_PITY}`, inline: true })
               .setFooter({ text: "CARTETHYIA  ·  Wish  ·  Keep pulling — pity carries over" })],
-            files: [], components: [],
+            files: [], components: continueRow,
           });
         } else {
           const tgt      = targetId ? WISH_WEAPONS_5STAR.find(w => w.id === targetId) ?? null : null;
@@ -442,7 +453,7 @@ async function runStandardBanner(interaction: ChatInputCommandInteraction, dbUse
           const files    = imgPath ? [new AttachmentBuilder(imgPath, { name: "weapon.png" })] : [];
           const embed    = resultEmbed(res.weapon, newPity, color, fresh.wishGuaranteed, lostCoin);
           if (imgPath) embed.setImage("attachment://weapon.png");
-          await interaction.editReply({ embeds: [embed], files, components: [] });
+          await interaction.editReply({ embeds: [embed], files, components: continueRow });
         }
         return;
       }
@@ -500,12 +511,11 @@ async function runStandardBanner(interaction: ChatInputCommandInteraction, dbUse
       const hlImg = highlight ? getWeaponImagePath(highlight.weapon.type, highlight.weapon.name) : null;
       const files = hlImg ? [new AttachmentBuilder(hlImg, { name: "weapon.png" })] : [];
       if (hlImg) summaryEmbed.setImage("attachment://weapon.png");
-      await interaction.editReply({ embeds: [summaryEmbed], files, components: [] });
+      await interaction.editReply({ embeds: [summaryEmbed], files, components: [targetRow, buildPullRow(fresh.fractureKeys - 10)] });
     });
 
-    collector.on("end", (col) => {
-      if (!col.has("wish_x1") && !col.has("wish_x10"))
-        interaction.editReply({ components: [] }).catch(() => {});
+    collector.on("end", () => {
+      interaction.editReply({ components: [] }).catch(() => {});
     });
 }
 
@@ -576,19 +586,29 @@ async function runCharacterBanner(interaction: ChatInputCommandInteraction, dbUs
       .setDisabled(!resolveKeySpend(dbUser.radiantKeys, dbUser.fractonite, 10).ok),
   );
 
+  const hasOverviewArt = fs.existsSync(SOLACE_ART_PATH);
+  const overviewEmbed = solaceCharacterBannerEmbed(dbUser.limitedCharBannerPity, dbUser.radiantKeys, dbUser.fractonite, color);
+  if (hasOverviewArt) overviewEmbed.setImage("attachment://solace_banner.png");
   const msg = await interaction.editReply({
-    embeds: [solaceCharacterBannerEmbed(dbUser.limitedCharBannerPity, dbUser.radiantKeys, dbUser.fractonite, color)],
-    files: [], components: [pullRow],
+    embeds: [overviewEmbed],
+    files: hasOverviewArt ? [new AttachmentBuilder(SOLACE_ART_PATH, { name: "solace_banner.png" })] : [],
+    components: [pullRow],
   });
 
   const collector = msg.createMessageComponentCollector({
-    filter: b => b.user.id === interaction.user.id, time: 60_000,
+    filter: b => b.user.id === interaction.user.id, time: 300_000, // 5 min — continuous pulling stays on this message
   });
+
+  const buildSolacePullRow = (radiantKeys: number, fractonite: number) => new ActionRowBuilder<ButtonBuilder>().addComponents(
+    new ButtonBuilder().setCustomId("solace_x1").setLabel("◈  Pull  ×1  (1)").setStyle(ButtonStyle.Primary)
+      .setDisabled(!resolveKeySpend(radiantKeys, fractonite, 1).ok),
+    new ButtonBuilder().setCustomId("solace_x10").setLabel("✦  Pull  ×10  (10)").setStyle(ButtonStyle.Success)
+      .setDisabled(!resolveKeySpend(radiantKeys, fractonite, 10).ok),
+  );
 
   collector.on("collect", async (btn: ButtonInteraction) => {
     if (btn.customId !== "solace_x1" && btn.customId !== "solace_x10") return;
     await btn.deferUpdate();
-    collector.stop();
 
     const fresh = await prisma.user.findUnique({
       where: { id: interaction.user.id },
@@ -684,12 +704,13 @@ async function runCharacterBanner(interaction: ChatInputCommandInteraction, dbUs
       .setFooter({ text: "CARTETHYIA  ·  The Rising Overture" });
     if (files.length) embed.setImage("attachment://solace.png");
 
-    await interaction.editReply({ embeds: [embed], files, components: [] });
+    const remainingKeys = fresh.radiantKeys - spend.radiantKeysToSpend;
+    const remainingFractonite = fresh.fractonite - spend.fractoniteToSpend;
+    await interaction.editReply({ embeds: [embed], files, components: [buildSolacePullRow(remainingKeys, remainingFractonite)] });
   });
 
-  collector.on("end", (col) => {
-    if (!col.has("solace_x1") && !col.has("solace_x10"))
-      interaction.editReply({ components: [] }).catch(() => {});
+  collector.on("end", () => {
+    interaction.editReply({ components: [] }).catch(() => {});
   });
 }
 
@@ -758,19 +779,29 @@ async function runWeaponBanner(interaction: ChatInputCommandInteraction, dbUser:
       .setDisabled(!resolveKeySpend(dbUser.radiantKeys, dbUser.fractonite, 10).ok),
   );
 
+  const wellspringOverviewArt = getWeaponImagePath(WELLSPRING_WEAPON.type, WELLSPRING_WEAPON.name);
+  const overviewEmbed = weaponBannerEmbed(dbUser.limitedWeaponBannerPity, dbUser.limitedWeaponBanner4Pity, dbUser.limitedWeaponBannerGuaranteed, dbUser.radiantKeys, dbUser.fractonite, color);
+  if (wellspringOverviewArt) overviewEmbed.setImage("attachment://wellspring_banner.png");
   const msg = await interaction.editReply({
-    embeds: [weaponBannerEmbed(dbUser.limitedWeaponBannerPity, dbUser.limitedWeaponBanner4Pity, dbUser.limitedWeaponBannerGuaranteed, dbUser.radiantKeys, dbUser.fractonite, color)],
-    files: [], components: [pullRow],
+    embeds: [overviewEmbed],
+    files: wellspringOverviewArt ? [new AttachmentBuilder(wellspringOverviewArt, { name: "wellspring_banner.png" })] : [],
+    components: [pullRow],
   });
 
   const collector = msg.createMessageComponentCollector({
-    filter: b => b.user.id === interaction.user.id, time: 60_000,
+    filter: b => b.user.id === interaction.user.id, time: 300_000, // 5 min — continuous pulling stays on this message
   });
+
+  const buildWellspringPullRow = (radiantKeys: number, fractonite: number) => new ActionRowBuilder<ButtonBuilder>().addComponents(
+    new ButtonBuilder().setCustomId("wellspring_x1").setLabel("◈  Pull  ×1  (1)").setStyle(ButtonStyle.Primary)
+      .setDisabled(!resolveKeySpend(radiantKeys, fractonite, 1).ok),
+    new ButtonBuilder().setCustomId("wellspring_x10").setLabel("✦  Pull  ×10  (10)").setStyle(ButtonStyle.Danger)
+      .setDisabled(!resolveKeySpend(radiantKeys, fractonite, 10).ok),
+  );
 
   collector.on("collect", async (btn: ButtonInteraction) => {
     if (btn.customId !== "wellspring_x1" && btn.customId !== "wellspring_x10") return;
     await btn.deferUpdate();
-    collector.stop();
 
     const fresh = await prisma.user.findUnique({
       where: { id: interaction.user.id },
@@ -848,12 +879,13 @@ async function runWeaponBanner(interaction: ChatInputCommandInteraction, dbUser:
       .setFooter({ text: "CARTETHYIA  ·  The Tempered Vow  ·  Added to your arsenal  ·  /equip to equip" });
     if (hlImg) embed.setImage("attachment://weapon.png");
 
-    await interaction.editReply({ embeds: [embed], files, components: [] });
+    const remainingKeys = fresh.radiantKeys - spend.radiantKeysToSpend;
+    const remainingFractonite = fresh.fractonite - spend.fractoniteToSpend;
+    await interaction.editReply({ embeds: [embed], files, components: [buildWellspringPullRow(remainingKeys, remainingFractonite)] });
   });
 
-  collector.on("end", (col) => {
-    if (!col.has("wellspring_x1") && !col.has("wellspring_x10"))
-      interaction.editReply({ components: [] }).catch(() => {});
+  collector.on("end", () => {
+    interaction.editReply({ components: [] }).catch(() => {});
   });
 }
 
@@ -891,16 +923,21 @@ const command: Command = {
         .setStyle(ButtonStyle.Danger).setDisabled(!windowActive),
     );
 
+    const pickerHasArt = windowActive && fs.existsSync(SOLACE_ART_PATH);
+    const pickerEmbed = new EmbedBuilder()
+      .setColor(windowActive ? 0xFCD34D : color)
+      .setTitle("◈  Choose a Banner")
+      .setDescription(
+        "**Standard** — the evergreen weapon pool, spends Fracture Keys.\n\n" +
+        "**Limited Character Banner** *(The Rising Overture)* — featuring Solace, spends Radiant Keys.\n\n" +
+        "**Limited Weapon Banner** *(The Tempered Vow)* — featuring Wellspring, spends Radiant Keys."
+      )
+      .setFooter({ text: "CARTETHYIA  ·  Wish" });
+    if (pickerHasArt) pickerEmbed.setImage("attachment://solace_picker.png");
+
     const pickerMsg = await interaction.editReply({
-      embeds: [new EmbedBuilder()
-        .setColor(color)
-        .setTitle("◈  Choose a Banner")
-        .setDescription(
-          "**Standard** — the evergreen weapon pool, spends Fracture Keys.\n\n" +
-          "**Limited Character Banner** *(The Rising Overture)* — featuring Solace, spends Radiant Keys.\n\n" +
-          "**Limited Weapon Banner** *(The Tempered Vow)* — featuring Wellspring, spends Radiant Keys."
-        )
-        .setFooter({ text: "CARTETHYIA  ·  Wish" })],
+      embeds: [pickerEmbed],
+      files: pickerHasArt ? [new AttachmentBuilder(SOLACE_ART_PATH, { name: "solace_picker.png" })] : [],
       components: [pickerRow],
     });
 
