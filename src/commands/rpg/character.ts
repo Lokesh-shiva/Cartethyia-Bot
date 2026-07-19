@@ -64,6 +64,22 @@ const CONSTELLATION_EFFECTS: Record<string, string[]> = {
 };
 const MAX_CONSTELLATION = 6;
 
+// Simulates spending resonanceRecords/credits one level at a time (per
+// solaceLevelUpCost's per-level curve) and returns the highest level reached
+// before either resource runs out or the phase cap is hit. Used both to
+// render the "Jump to Lv N" button label and, mirrored exactly, inside the
+// transaction that actually spends the resources — keep these in sync.
+function maxAffordableLevel(currentLevel: number, cap: number, records: number, credits: number): number {
+  let level = currentLevel, r = records, c = credits;
+  while (level < cap) {
+    const cost = solaceLevelUpCost(level);
+    if (cost.resonanceRecords > r || cost.credits > c) break;
+    r -= cost.resonanceRecords; c -= cost.credits;
+    level++;
+  }
+  return level;
+}
+
 function navRows(characterId: string, active: Page): ActionRowBuilder<ButtonBuilder>[] {
   const row1: Page[] = ["stats", "weapon", "echoes"];
   const row2: Page[] = ["kit", "con", "lore"];
@@ -85,9 +101,10 @@ interface PageView {
 
 async function buildStatsView(userId: string, characterId: string): Promise<PageView> {
   const char = CHARACTERS[characterId];
-  const [progress, stats] = await Promise.all([
+  const [progress, stats, dbUser] = await Promise.all([
     getOrCreateCharacterProgress(userId, characterId),
     resolveSolaceStats(userId),
+    prisma.user.findUnique({ where: { id: userId }, select: { resonanceRecords: true, credits: true } }),
   ]);
   const cap = currentLevelCap(progress.ascensionPhase);
   const buf = await renderStatBarsCard({
@@ -108,20 +125,33 @@ async function buildStatsView(userId: string, characterId: string): Promise<Page
   const isMaxPhase = progress.ascensionPhase >= MAX_ASCENSION_PHASE;
   let actionLabel: string;
   let actionDisabled: boolean;
+  const buttons: ButtonBuilder[] = [];
   if (isMaxPhase && atCap) {
     actionLabel = "MAX LEVEL"; actionDisabled = true;
+    buttons.push(new ButtonBuilder().setCustomId(`charlvl2:${characterId}`).setLabel(actionLabel)
+      .setStyle(ButtonStyle.Primary).setDisabled(true));
   } else if (atCap) {
     actionLabel = `Ascend (Phase ${progress.ascensionPhase + 1})`; actionDisabled = false;
+    buttons.push(new ButtonBuilder().setCustomId(`charlvl2:${characterId}`).setLabel(actionLabel)
+      .setStyle(ButtonStyle.Success).setDisabled(actionDisabled));
   } else {
     const cost = solaceLevelUpCost(progress.level);
     actionLabel = `Level Up (${cost.resonanceRecords} Records · ${cost.credits} Credits)`;
     actionDisabled = false;
+    buttons.push(new ButtonBuilder().setCustomId(`charlvl2:${characterId}`).setLabel(actionLabel)
+      .setStyle(ButtonStyle.Primary).setDisabled(actionDisabled));
+
+    // "Jump to max affordable level" — simulates the level-up cost curve
+    // against the player's current balance, capped at the phase's level cap,
+    // so a big pile of Records/Credits doesn't require clicking Level Up
+    // dozens of times one at a time.
+    const affordable = maxAffordableLevel(progress.level, cap, dbUser?.resonanceRecords ?? 0, dbUser?.credits ?? 0);
+    const gain = affordable - progress.level;
+    buttons.push(new ButtonBuilder().setCustomId(`charlvlmax:${characterId}`)
+      .setLabel(gain > 0 ? `Jump to Lv ${affordable} (+${gain})` : "Jump to Max (need more)")
+      .setStyle(ButtonStyle.Secondary).setDisabled(gain <= 0));
   }
-  const extraRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
-    new ButtonBuilder().setCustomId(`charlvl2:${characterId}`).setLabel(actionLabel)
-      .setStyle(atCap && !isMaxPhase ? ButtonStyle.Success : ButtonStyle.Primary)
-      .setDisabled(actionDisabled),
-  );
+  const extraRow = new ActionRowBuilder<ButtonBuilder>().addComponents(buttons);
 
   const embed = new EmbedBuilder().setColor(0x6366F1).setImage("attachment://stats.png")
     .setFooter({ text: "CARTETHYIA  ·  Character  ·  Stats" });
@@ -304,7 +334,8 @@ const command: Command = {
     const collector = interaction.channel?.createMessageComponentCollector({
       filter: i => i.user.id === interaction.user.id &&
         (i.customId === "character_cmd_select" || i.customId.startsWith("charlvl:") ||
-         i.customId.startsWith("charlvl2:") || i.customId.startsWith("charnav:")),
+         i.customId.startsWith("charlvl2:") || i.customId.startsWith("charlvlmax:") ||
+         i.customId.startsWith("charnav:")),
       time: 5 * 60 * 1000,
     });
 
@@ -401,6 +432,53 @@ const command: Command = {
           await renderAndReply(btn, characterId, "stats");
         } catch (err) {
           console.error("[character] level/ascend transaction failed", err);
+          await btn.deferUpdate().catch(() => {});
+        }
+        return;
+      }
+
+      if (i.customId.startsWith("charlvlmax:") && i.isButton()) {
+        const btn = i as ButtonInteraction;
+        const [, characterId] = btn.customId.split(":");
+        if (!CHARACTERS[characterId]) { await btn.deferUpdate().catch(() => {}); return; }
+
+        const [progress, dbUser2] = await Promise.all([
+          getOrCreateCharacterProgress(interaction.user.id, characterId),
+          prisma.user.findUnique({ where: { id: interaction.user.id }, select: { resonanceRecords: true, credits: true } }),
+        ]);
+        const cap = currentLevelCap(progress.ascensionPhase);
+        const records = dbUser2?.resonanceRecords ?? 0;
+        const credits = dbUser2?.credits ?? 0;
+        const targetLevel = maxAffordableLevel(progress.level, cap, records, credits);
+        if (targetLevel <= progress.level) { await btn.deferUpdate().catch(() => {}); return; }
+
+        // Recompute the exact total spend for the same simulated jump, then
+        // spend it all in one guarded transaction — same race-safety pattern
+        // as the single-level path (updateMany with a gte/eq guard, roll
+        // back on zero matched rows).
+        let totalRecords = 0, totalCredits = 0;
+        for (let lvl = progress.level; lvl < targetLevel; lvl++) {
+          const cost = solaceLevelUpCost(lvl);
+          totalRecords += cost.resonanceRecords; totalCredits += cost.credits;
+        }
+
+        try {
+          await prisma.$transaction(async (tx) => {
+            const spend = await tx.user.updateMany({
+              where: { id: interaction.user.id, resonanceRecords: { gte: totalRecords }, credits: { gte: totalCredits } },
+              data: { resonanceRecords: { decrement: totalRecords }, credits: { decrement: totalCredits } },
+            });
+            if (spend.count === 0) throw new Error("insufficient-funds-race");
+            const levelUp = await tx.characterProgress.updateMany({
+              where: { userId: interaction.user.id, characterId, level: progress.level },
+              data: { level: targetLevel },
+            });
+            if (levelUp.count === 0) throw new Error("already-leveled-race");
+          });
+          auditSpend(interaction.user.id, { resonanceRecords: totalRecords, credits: totalCredits }, "character-level-up-max");
+          await renderAndReply(btn, characterId, "stats");
+        } catch (err) {
+          console.error("[character] max-level-up transaction failed", err);
           await btn.deferUpdate().catch(() => {});
         }
         return;
