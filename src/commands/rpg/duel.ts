@@ -178,6 +178,7 @@ function buildDuelButtons(state: DuelState, forUserId: string, isDevGuild: boole
   const myConcertoEnergy    = isChallenger ? state.cConcertoEnergy : state.dConcertoEnergy;
   const myAttunement          = isChallenger ? state.cAttunement : state.dAttunement;
   const myName                 = isChallenger ? state.challengerName : state.challengedName;
+  const myAllyHp                = isChallenger ? state.cAllyHp : state.dAllyHp;
 
   const rows: ActionRowBuilder<ButtonBuilder>[] = [];
 
@@ -214,10 +215,11 @@ function buildDuelButtons(state: DuelState, forUserId: string, isDevGuild: boole
   }
 
   if (isDevGuild && myHasSolace) {
+    const swapDisabled = myActiveUnit === "player" && myAllyHp <= 0;
     rows.push(new ActionRowBuilder<ButtonBuilder>().addComponents(
       new ButtonBuilder().setCustomId("duel_swap")
         .setLabel(myActiveUnit === "player" ? `🔄  Swap to ${SOLACE.name}` : `🔄  Swap to ${myName}`)
-        .setStyle(ButtonStyle.Secondary),
+        .setStyle(ButtonStyle.Secondary).setDisabled(swapDisabled),
     ));
   }
 
@@ -621,7 +623,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
         // Milestone 3e: swap — always consumes the turn, falls through to the
         // shared tail below, same as every other action. Ported from
         // boss.ts's Milestone 3b swap handler.
-        if (btn.customId === "duel_swap" && isDevGuild && myHasSolace) {
+        if (btn.customId === "duel_swap" && isDevGuild && myHasSolace && !(myActiveUnit === "player" && myAllyHpVal <= 0)) {
           const outgoingIsPlayer = myActiveUnit === "player";
           const comboReady = myConcertoEnergy >= 100;
 

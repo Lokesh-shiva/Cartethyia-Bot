@@ -407,10 +407,11 @@ function buildRaidButtons(p: RaidParticipant, isDevGuild: boolean): ActionRowBui
   }
 
   if (isDevGuild && p.hasSolace) {
+    const swapDisabled = p.activeUnit === "player" && p.allyHp <= 0;
     rows.push(new ActionRowBuilder<ButtonBuilder>().addComponents(
       new ButtonBuilder().setCustomId("raid_swap")
         .setLabel(p.activeUnit === "player" ? `🔄  Swap to ${SOLACE.name}` : `🔄  Swap to ${p.name}`)
-        .setStyle(ButtonStyle.Secondary),
+        .setStyle(ButtonStyle.Secondary).setDisabled(swapDisabled),
     ));
   }
 
@@ -1033,7 +1034,7 @@ async function launchRaid(
       // shared tail below (AoE counter-attack / decrements / next-turn send),
       // same as every other action. Ported from boss.ts's Milestone 3b Task 2
       // swap handler, adapted to per-participant team state.
-      if (btn.customId === "raid_swap" && raid.isDevGuild && current.hasSolace) {
+      if (btn.customId === "raid_swap" && raid.isDevGuild && current.hasSolace && !(current.activeUnit === "player" && current.allyHp <= 0)) {
         const outgoingIsPlayer = current.activeUnit === "player";
         const comboReady = current.concertoEnergy >= 100;
 
