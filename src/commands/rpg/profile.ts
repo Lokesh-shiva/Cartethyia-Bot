@@ -144,6 +144,12 @@ const command: Command = {
     const PATRON_TIER_NAMES: Record<number, string> = { 1: "Attuned", 2: "Ascendant", 3: "Calamity" };
     const patronTitle = (user as any).patronTier ? `  ·  ✦ ${PATRON_TIER_NAMES[(user as any).patronTier]} Patron` : "";
 
+    const solaceProgress = await prisma.characterProgress.findUnique({
+      where: { userId_characterId: { userId: target.id, characterId: "solace" } },
+      select: { level: true },
+    });
+    const solaceBadge = solaceProgress ? `  ·  ✨ Solace (Lv${solaceProgress.level})` : "";
+
     // Only nudge for own profile (not when viewing others)
     const nudge = target.id === interaction.user.id
       ? await mailNudge(interaction.user.id, (user as any).createdAt as Date)
@@ -156,7 +162,7 @@ const command: Command = {
         nudge
       )
       .setImage("attachment://profile.webp")
-      .setFooter({ text: `CARTETHYIA  ·  ${displayName}'s Profile${patronTitle}${extraBonds}`, iconURL: avatarUrl });
+      .setFooter({ text: `CARTETHYIA  ·  ${displayName}'s Profile${patronTitle}${solaceBadge}${extraBonds}`, iconURL: avatarUrl });
 
     await interaction.editReply({ embeds: [embed], files: [attachment] });
 

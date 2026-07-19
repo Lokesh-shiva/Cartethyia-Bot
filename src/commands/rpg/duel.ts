@@ -358,13 +358,21 @@ export async function execute(interaction: ChatInputCommandInteraction) {
     // apply; this blanket flag was hard-gated to the dev guild only during
     // development, which is exactly the bug that blocked Solace everywhere
     // after launch.
-    const cHasSolaceGate = challengerDb.teamAllyCharacterId === "solace";
-    const dHasSolaceGate = challengedDb.teamAllyCharacterId === "solace";
-    const isDevGuild = cHasSolaceGate || dHasSolaceGate;
+    // CRITICAL: real read-only ownership lookup, NOT getOrCreateCharacterProgress
+    // — that helper CREATES a row if missing, which would silently re-grant
+    // Solace ownership to anyone whose teamAllyCharacterId flag is "solace"
+    // but doesn't actually own her, bypassing the gacha entirely.
     const [cSolaceProgress, dSolaceProgress] = await Promise.all([
-      cHasSolaceGate ? getOrCreateCharacterProgress(interaction.user.id, "solace") : Promise.resolve(null),
-      dHasSolaceGate ? getOrCreateCharacterProgress(target.id, "solace") : Promise.resolve(null),
+      challengerDb.teamAllyCharacterId === "solace"
+        ? prisma.characterProgress.findUnique({ where: { userId_characterId: { userId: interaction.user.id, characterId: "solace" } } })
+        : Promise.resolve(null),
+      challengedDb.teamAllyCharacterId === "solace"
+        ? prisma.characterProgress.findUnique({ where: { userId_characterId: { userId: target.id, characterId: "solace" } } })
+        : Promise.resolve(null),
     ]);
+    const cHasSolaceGate = cSolaceProgress !== null;
+    const dHasSolaceGate = dSolaceProgress !== null;
+    const isDevGuild = cHasSolaceGate || dHasSolaceGate;
     // Milestone 3.5b: each side's own resolved stats (own base + OWN echoes/weapon).
     const [cAllySolaceStats, dAllySolaceStats] = await Promise.all([
       cHasSolaceGate ? resolveSolaceStats(interaction.user.id) : Promise.resolve(null),

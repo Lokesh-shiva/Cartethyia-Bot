@@ -87,6 +87,7 @@ interface TeamButtonContext {
   displayName: string;
   attunement: AttunementState;
   concertoEnergy: number;
+  allyHp: number; // 0 = KO'd — swap button disables rather than letting the player swap back into a dead ally
 }
 
 function buildButtons(
@@ -143,10 +144,11 @@ function buildButtons(
   }
 
   if (team?.isDevGuild) {
+    const swapDisabled = team.activeUnit === "player" && team.allyHp <= 0;
     rows.push(new ActionRowBuilder<ButtonBuilder>().addComponents(
       new ButtonBuilder().setCustomId("battle_swap")
         .setLabel(team.activeUnit === "player" ? `🔄  Swap to ${SOLACE.name}` : `🔄  Swap to ${team.displayName}`)
-        .setStyle(ButtonStyle.Secondary),
+        .setStyle(ButtonStyle.Secondary).setDisabled(swapDisabled),
     ));
   }
 
@@ -318,9 +320,18 @@ const command: Command = {
     // it no longer means "in the dev guild", it means "has an active Solace
     // ally". Was hard-gated to the dev guild only during development; that
     // gate is exactly the bug that blocked Solace everywhere after launch.
-    const hasSolace = user.teamAllyCharacterId === "solace";
+    //
+    // CRITICAL: this does a real read-only ownership lookup, NOT
+    // getOrCreateCharacterProgress — that helper CREATES a row if missing,
+    // which would silently re-grant Solace ownership to anyone whose
+    // teamAllyCharacterId flag is "solace" but who doesn't actually own her
+    // (e.g. after an admin correction), bypassing the gacha entirely. Only
+    // call getOrCreateCharacterProgress once hasSolace is already confirmed.
+    const solaceProgress = user.teamAllyCharacterId === "solace"
+      ? await prisma.characterProgress.findUnique({ where: { userId_characterId: { userId: interaction.user.id, characterId: "solace" } } })
+      : null;
+    const hasSolace = solaceProgress !== null;
     const isDevGuild = hasSolace;
-    const solaceProgress = hasSolace ? await getOrCreateCharacterProgress(interaction.user.id, "solace") : null;
     // Milestone 3.5b: her own resolved stats (her base + HER OWN echoes/weapon).
     const allySolaceStats = hasSolace ? await resolveSolaceStats(interaction.user.id) : null;
     const solaceBasicLevel    = solaceProgress?.basicLevel    ?? 1;
@@ -351,7 +362,7 @@ const command: Command = {
     }
 
     function teamButtonContext(): TeamButtonContext {
-      return { isDevGuild: hasSolace, activeUnit, displayName, attunement, concertoEnergy };
+      return { isDevGuild: hasSolace, activeUnit, displayName, attunement, concertoEnergy, allyHp };
     }
 
     const runTurn = async () => {
@@ -428,7 +439,7 @@ const command: Command = {
         // shared tail below (Win-check/Boss-turn/decrements/Lose-check/next
         // turn), same as every other action. Ported from boss.ts's Milestone
         // 3b swap handler (itself ported from encounter.ts's Milestone 1/2a).
-        if (btn.customId === "battle_swap" && hasSolace) {
+        if (btn.customId === "battle_swap" && hasSolace && !(activeUnit === "player" && allyHp <= 0)) {
           const outgoingIsPlayer = activeUnit === "player";
           const comboReady = concertoEnergy >= 100;
 

@@ -31,7 +31,6 @@ import {
   solaceIntroEffect, solaceBasicDamageMult, solaceAttunementAtkCritBonus,
   solaceAttunementDefBonus, solaceConvergenceHealPct, resolveSolaceStats,
 } from "./solace";
-import { getOrCreateCharacterProgress } from "./characterProgress";
 import { resolveIntroOutroEffect } from "./introOutro";
 import {
   AttunementState, cycleAttunementMode,
@@ -391,7 +390,14 @@ export async function handleEncounterFight(
   // means "has an active Solace ally". Was hard-gated to the dev guild only
   // during development; that gate is exactly the bug that blocked Solace
   // everywhere after launch.
-  const hasSolace = dbUser.teamAllyCharacterId === "solace";
+  // CRITICAL: real read-only ownership lookup, NOT getOrCreateCharacterProgress
+  // — that helper CREATES a row if missing, which would silently re-grant
+  // Solace ownership to anyone whose teamAllyCharacterId flag is "solace"
+  // but doesn't actually own her, bypassing the gacha entirely.
+  const solaceOwnedProgress = dbUser.teamAllyCharacterId === "solace"
+    ? await prisma.characterProgress.findUnique({ where: { userId_characterId: { userId: interaction.user.id, characterId: "solace" } } })
+    : null;
+  const hasSolace = solaceOwnedProgress !== null;
   const isDevGuild = hasSolace;
 
   // Resolve full combat stats (echoes + weapon + set bonuses + unique ability)
@@ -416,7 +422,7 @@ export async function handleEncounterFight(
   // /character, a separate command/interaction) — fetch once here rather than
   // re-querying every turn. Only fetched in the dev guild, since nothing below
   // reads it outside isDevGuild-gated branches.
-  const solaceProgress = hasSolace ? await getOrCreateCharacterProgress(interaction.user.id, "solace") : null;
+  const solaceProgress = solaceOwnedProgress;
   const solaceBasicLevel    = solaceProgress?.basicLevel    ?? 1;
   const solaceSkillLevel    = solaceProgress?.skillLevel    ?? 1;
   const solaceUltimateLevel = solaceProgress?.ultimateLevel ?? 1;
@@ -518,10 +524,11 @@ export async function handleEncounterFight(
     }
 
     if (hasSolace) {
+      const swapDisabled = activeUnit === "player" && allyHp <= 0;
       rows.push(new ActionRowBuilder<ButtonBuilder>().addComponents(
         new ButtonBuilder().setCustomId("enc_swap")
           .setLabel(activeUnit === "player" ? `🔄  Swap to ${SOLACE.name}` : `🔄  Swap to ${displayName}`)
-          .setStyle(ButtonStyle.Secondary),
+          .setStyle(ButtonStyle.Secondary).setDisabled(swapDisabled),
       ));
     }
 
@@ -596,7 +603,7 @@ export async function handleEncounterFight(
       // flips, nothing else happens. Falls through to the shared enemy-turn
       // block below either way (skipping the damage-dealing section, since a
       // swap never deals damage) since swapping still costs the turn. ────────
-      if (btn.customId === "enc_swap" && hasSolace) {
+      if (btn.customId === "enc_swap" && hasSolace && !(activeUnit === "player" && allyHp <= 0)) {
         const outgoingIsPlayer = activeUnit === "player";
         const comboReady = concertoEnergy >= 100;
 

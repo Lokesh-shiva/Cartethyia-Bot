@@ -286,9 +286,15 @@ async function runDungeon(
   // during development; that gate is exactly the bug that blocked Solace
   // everywhere after launch.
   const teamRow = await prisma.user.findUnique({ where: { id: interaction.user.id }, select: { teamAllyCharacterId: true } });
-  const hasSolace = teamRow?.teamAllyCharacterId === "solace";
+  // CRITICAL: real read-only ownership lookup, NOT getOrCreateCharacterProgress
+  // — that helper CREATES a row if missing, which would silently re-grant
+  // Solace ownership to anyone whose teamAllyCharacterId flag is "solace"
+  // but doesn't actually own her, bypassing the gacha entirely.
+  const solaceProgress = teamRow?.teamAllyCharacterId === "solace"
+    ? await prisma.characterProgress.findUnique({ where: { userId_characterId: { userId: interaction.user.id, characterId: "solace" } } })
+    : null;
+  const hasSolace = solaceProgress !== null;
   const isDevGuild = hasSolace;
-  const solaceProgress = hasSolace ? await getOrCreateCharacterProgress(interaction.user.id, "solace") : null;
   // Milestone 3.5b: her own resolved stats (her base + HER OWN echoes/weapon).
   const allySolaceStats: (ResolvedStats & { hasWellspring: boolean }) | null = hasSolace ? await resolveSolaceStats(interaction.user.id) : null;
   const solaceBasicLevel    = solaceProgress?.basicLevel    ?? 1;
@@ -673,10 +679,11 @@ async function runWave(
     }
 
     if (ws.hasSolace) {
+      const swapDisabled = ws.activeUnit === "player" && ws.allyHp <= 0;
       rows.push(new ActionRowBuilder<ButtonBuilder>().addComponents(
         new ButtonBuilder().setCustomId("dg_swap")
           .setLabel(ws.activeUnit === "player" ? `🔄  Swap to ${SOLACE.name}` : `🔄  Swap to ${ws.displayName}`)
-          .setStyle(ButtonStyle.Secondary),
+          .setStyle(ButtonStyle.Secondary).setDisabled(swapDisabled),
       ));
     }
 
@@ -749,7 +756,7 @@ async function runWave(
         // (incoming) combo only fires if Concerto Energy is full at the
         // moment of swap. Ported from encounter.ts's Milestone 1/2a swap
         // handler — same logic, same field names via `ws.` instead of `state.`.
-        if (btn.customId === "dg_swap" && ws.hasSolace) {
+        if (btn.customId === "dg_swap" && ws.hasSolace && !(ws.activeUnit === "player" && ws.allyHp <= 0)) {
           const outgoingIsPlayer = ws.activeUnit === "player";
           const comboReady = ws.concertoEnergy >= 100;
 

@@ -125,6 +125,7 @@ interface TeamButtonContext {
   displayName: string;
   attunement: AttunementState;
   concertoEnergy: number;
+  allyHp: number; // 0 = KO'd — swap button disables rather than letting the player swap back into a dead ally
 }
 
 function buildButtons(
@@ -170,10 +171,11 @@ function buildButtons(
   }
 
   if (team?.isDevGuild) {
+    const swapDisabled = team.activeUnit === "player" && team.allyHp <= 0;
     rows.push(new ActionRowBuilder<ButtonBuilder>().addComponents(
       new ButtonBuilder().setCustomId("fb_swap")
         .setLabel(team.activeUnit === "player" ? `🔄  Swap to ${SOLACE.name}` : `🔄  Swap to ${team.displayName}`)
-        .setStyle(ButtonStyle.Secondary),
+        .setStyle(ButtonStyle.Secondary).setDisabled(swapDisabled),
     ));
   }
 
@@ -347,9 +349,15 @@ const command: Command = {
       // Solace ally". Was hard-gated to the dev guild only during
       // development; that gate is exactly the bug that blocked Solace
       // everywhere after launch.
-      const hasSolace = user.teamAllyCharacterId === "solace";
+      // CRITICAL: real read-only ownership lookup, NOT getOrCreateCharacterProgress
+      // — that helper CREATES a row if missing, which would silently re-grant
+      // Solace ownership to anyone whose teamAllyCharacterId flag is "solace"
+      // but doesn't actually own her, bypassing the gacha entirely.
+      const solaceProgress = user.teamAllyCharacterId === "solace"
+        ? await prisma.characterProgress.findUnique({ where: { userId_characterId: { userId: interaction.user.id, characterId: "solace" } } })
+        : null;
+      const hasSolace = solaceProgress !== null;
       const isDevGuild = hasSolace;
-      const solaceProgress = hasSolace ? await getOrCreateCharacterProgress(interaction.user.id, "solace") : null;
       // Milestone 3.5b: her own resolved stats (her base + HER OWN echoes/weapon).
       const allySolaceStats = hasSolace ? await resolveSolaceStats(interaction.user.id) : null;
       const solaceBasicLevel    = solaceProgress?.basicLevel    ?? 1;
@@ -380,7 +388,7 @@ const command: Command = {
       }
 
       function teamButtonContext(): TeamButtonContext {
-        return { isDevGuild: hasSolace, activeUnit, displayName, attunement, concertoEnergy };
+        return { isDevGuild: hasSolace, activeUnit, displayName, attunement, concertoEnergy, allyHp };
       }
 
       const state: BattleCardState = {
@@ -532,7 +540,7 @@ const command: Command = {
           // Milestone 3c-ii: swap — always consumes the turn, falls through to the
           // shared tail below (win-check/boss-turn/decrements/lose-check/next
           // turn), same as every other action. Ported from boss.ts@f75a797.
-          if (btn.customId === "fb_swap" && hasSolace) {
+          if (btn.customId === "fb_swap" && hasSolace && !(activeUnit === "player" && allyHp <= 0)) {
             const outgoingIsPlayer = activeUnit === "player";
             const comboReady = concertoEnergy >= 100;
 

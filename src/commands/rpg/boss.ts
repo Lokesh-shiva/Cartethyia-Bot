@@ -7,6 +7,7 @@ import {
   StringSelectMenuInteraction,
 } from "discord.js";
 import { Command } from "../../types";
+import prisma from "../../lib/prisma";
 import { getOrCreateUser, awardUser, isDispatchBlocked } from "../../lib/economy";
 import { acquireLock, releaseLock, alreadyInCombatMsg } from "../../lib/combatLock";
 import { registerFight, clearFight } from "../../lib/fightTracker";
@@ -92,6 +93,7 @@ interface TeamButtonContext {
   displayName: string;
   attunement: AttunementState;
   concertoEnergy: number;
+  allyHp: number; // 0 = KO'd — swap button disables rather than letting the player swap back into a dead ally
 }
 
 function buildButtons(
@@ -139,10 +141,14 @@ function buildButtons(
   }
 
   if (team?.isDevGuild) {
+    // Can't swap TO a KO'd ally — there's no third character to swap into
+    // instead, so once she's down the only way back is winning/fleeing the
+    // fight, not clicking Swap again.
+    const swapDisabled = team.activeUnit === "player" && team.allyHp <= 0;
     rows.push(new ActionRowBuilder<ButtonBuilder>().addComponents(
       new ButtonBuilder().setCustomId("boss_swap")
         .setLabel(team.activeUnit === "player" ? `🔄  Swap to ${SOLACE.name}` : `🔄  Swap to ${team.displayName}`)
-        .setStyle(ButtonStyle.Secondary),
+        .setStyle(ButtonStyle.Secondary).setDisabled(swapDisabled),
     ));
   }
 
@@ -318,9 +324,15 @@ const command: Command = {
       // Solace ally". Was hard-gated to the dev guild only during
       // development; that gate is exactly the bug that blocked Solace
       // everywhere after launch.
-      const hasSolace = user.teamAllyCharacterId === "solace";
+      // CRITICAL: real read-only ownership lookup, NOT getOrCreateCharacterProgress
+      // — that helper CREATES a row if missing, which would silently re-grant
+      // Solace ownership to anyone whose teamAllyCharacterId flag is "solace"
+      // but doesn't actually own her, bypassing the gacha entirely.
+      const solaceProgress = user.teamAllyCharacterId === "solace"
+        ? await prisma.characterProgress.findUnique({ where: { userId_characterId: { userId: interaction.user.id, characterId: "solace" } } })
+        : null;
+      const hasSolace = solaceProgress !== null;
       const isDevGuild = hasSolace;
-      const solaceProgress = hasSolace ? await getOrCreateCharacterProgress(interaction.user.id, "solace") : null;
       // Milestone 3.5b: her own resolved stats (her base + HER OWN echoes/weapon),
       // fetched once for the whole fight — bonuses don't change mid-fight.
       const allySolaceStats = hasSolace ? await resolveSolaceStats(interaction.user.id) : null;
@@ -356,7 +368,7 @@ const command: Command = {
         // her via /team), not just isDevGuild — the field is still named
         // isDevGuild in TeamButtonContext (defined once, shared shape), but
         // the VALUE passed here is the narrower gate.
-        return { isDevGuild: hasSolace, activeUnit, displayName, attunement, concertoEnergy };
+        return { isDevGuild: hasSolace, activeUnit, displayName, attunement, concertoEnergy, allyHp };
       }
 
       const ENERGY_PER_TURN = Math.floor(stats.energyPerTurn);
@@ -519,7 +531,7 @@ const command: Command = {
           // shared tail below (Win-check/Boss-turn/decrements/Lose-check/next
           // turn), same as every other action. Ported from encounter.ts's
           // Milestone 1/2a swap handler.
-          if (btn.customId === "boss_swap" && hasSolace) {
+          if (btn.customId === "boss_swap" && hasSolace && !(activeUnit === "player" && allyHp <= 0)) {
             const outgoingIsPlayer = activeUnit === "player";
             const comboReady = concertoEnergy >= 100;
 

@@ -655,10 +655,16 @@ async function addParticipant(raid: ActiveRaid, userId: string, displayName: str
   const bonuses = await resolvePlayerBonuses(userId);
   const stats   = applyBonuses(db, bonuses);
 
-  // Milestone 3d: per-participant Solace progress (dev guild only).
-  // Milestone 3.5a: also requires this participant to have picked Solace via /team.
-  const hasSolaceGate = raid.isDevGuild && db.teamAllyCharacterId === "solace";
-  const solaceProgress = hasSolaceGate ? await getOrCreateCharacterProgress(userId, "solace") : null;
+  // Milestone 3d: per-participant Solace progress — requires this participant
+  // to have picked Solace via /team.
+  // CRITICAL: real read-only ownership lookup, NOT getOrCreateCharacterProgress
+  // — that helper CREATES a row if missing, which would silently re-grant
+  // Solace ownership to anyone whose teamAllyCharacterId flag is "solace"
+  // but doesn't actually own her, bypassing the gacha entirely.
+  const solaceProgress = db.teamAllyCharacterId === "solace"
+    ? await prisma.characterProgress.findUnique({ where: { userId_characterId: { userId, characterId: "solace" } } })
+    : null;
+  const hasSolaceGate = solaceProgress !== null;
   // Milestone 3.5b: this participant's own Solace's resolved stats.
   const allySolaceStats = hasSolaceGate ? await resolveSolaceStats(userId) : null;
 
