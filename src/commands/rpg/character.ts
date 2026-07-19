@@ -104,7 +104,10 @@ async function buildStatsView(userId: string, characterId: string): Promise<Page
   const [progress, stats, dbUser] = await Promise.all([
     getOrCreateCharacterProgress(userId, characterId),
     resolveSolaceStats(userId),
-    prisma.user.findUnique({ where: { id: userId }, select: { resonanceRecords: true, credits: true } }),
+    prisma.user.findUnique({
+      where: { id: userId },
+      select: { resonanceRecords: true, credits: true, forgingOres: true, paradoxCores: true, starfallShards: true },
+    }),
   ]);
   const cap = currentLevelCap(progress.ascensionPhase);
   const buf = await renderStatBarsCard({
@@ -123,29 +126,45 @@ async function buildStatsView(userId: string, characterId: string): Promise<Page
 
   const atCap = progress.level >= cap;
   const isMaxPhase = progress.ascensionPhase >= MAX_ASCENSION_PHASE;
+  const records = dbUser?.resonanceRecords ?? 0, credits = dbUser?.credits ?? 0;
+  const ores = dbUser?.forgingOres ?? 0, cores = dbUser?.paradoxCores ?? 0, shards = dbUser?.starfallShards ?? 0;
   let actionLabel: string;
-  let actionDisabled: boolean;
+  let balanceLine: string;
   const buttons: ButtonBuilder[] = [];
   if (isMaxPhase && atCap) {
-    actionLabel = "MAX LEVEL"; actionDisabled = true;
+    actionLabel = "MAX LEVEL";
+    balanceLine = "**Solace is at max level and max ascension.**";
     buttons.push(new ButtonBuilder().setCustomId(`charlvl2:${characterId}`).setLabel(actionLabel)
       .setStyle(ButtonStyle.Primary).setDisabled(true));
   } else if (atCap) {
-    actionLabel = `Ascend (Phase ${progress.ascensionPhase + 1})`; actionDisabled = false;
+    const cost = solaceAscensionCost(progress.ascensionPhase);
+    const canAfford = credits >= cost.credits && ores >= cost.forgingOres &&
+      cores >= cost.paradoxCores && shards >= cost.starfallShards;
+    actionLabel = `Ascend (Phase ${progress.ascensionPhase + 1})`;
+    balanceLine =
+      `**Ascend to Phase ${progress.ascensionPhase + 1}** needs ` +
+      `${cost.credits} Credits (have ${credits}) · ${cost.forgingOres} Forging Ores (have ${ores}) · ` +
+      `${cost.paradoxCores} Paradox Cores (have ${cores})` +
+      (cost.starfallShards > 0 ? ` · ${cost.starfallShards} Starfall Shards (have ${shards})` : "") +
+      (canAfford ? "\n✅ You can afford this." : "\n❌ Not enough — the button is disabled until you have all of the above.");
     buttons.push(new ButtonBuilder().setCustomId(`charlvl2:${characterId}`).setLabel(actionLabel)
-      .setStyle(ButtonStyle.Success).setDisabled(actionDisabled));
+      .setStyle(ButtonStyle.Success).setDisabled(!canAfford));
   } else {
     const cost = solaceLevelUpCost(progress.level);
+    const canAfford = records >= cost.resonanceRecords && credits >= cost.credits;
     actionLabel = `Level Up (${cost.resonanceRecords} Records · ${cost.credits} Credits)`;
-    actionDisabled = false;
+    balanceLine =
+      `**Level Up** needs ${cost.resonanceRecords} Resonance Records (have ${records}) · ` +
+      `${cost.credits} Credits (have ${credits})` +
+      (canAfford ? "\n✅ You can afford this." : "\n❌ Not enough — the button is disabled until you have both.");
     buttons.push(new ButtonBuilder().setCustomId(`charlvl2:${characterId}`).setLabel(actionLabel)
-      .setStyle(ButtonStyle.Primary).setDisabled(actionDisabled));
+      .setStyle(ButtonStyle.Primary).setDisabled(!canAfford));
 
     // "Jump to max affordable level" — simulates the level-up cost curve
     // against the player's current balance, capped at the phase's level cap,
     // so a big pile of Records/Credits doesn't require clicking Level Up
     // dozens of times one at a time.
-    const affordable = maxAffordableLevel(progress.level, cap, dbUser?.resonanceRecords ?? 0, dbUser?.credits ?? 0);
+    const affordable = maxAffordableLevel(progress.level, cap, records, credits);
     const gain = affordable - progress.level;
     buttons.push(new ButtonBuilder().setCustomId(`charlvlmax:${characterId}`)
       .setLabel(gain > 0 ? `Jump to Lv ${affordable} (+${gain})` : "Jump to Max (need more)")
@@ -154,6 +173,7 @@ async function buildStatsView(userId: string, characterId: string): Promise<Page
   const extraRow = new ActionRowBuilder<ButtonBuilder>().addComponents(buttons);
 
   const embed = new EmbedBuilder().setColor(0x6366F1).setImage("attachment://stats.png")
+    .setDescription(balanceLine)
     .setFooter({ text: "CARTETHYIA  ·  Character  ·  Stats" });
   return { embed, files: [new AttachmentBuilder(buf, { name: "stats.png" })], extraRow };
 }
