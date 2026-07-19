@@ -384,12 +384,15 @@ export async function handleEncounterFight(
 
   const displayName = (interaction.member as any)?.displayName ?? interaction.user.displayName;
 
-  // Milestone 1: team mechanics (swap, Intro/Outro, Concerto Energy, debuffs) are
-  // gated to the dev guild only. Every other server keeps the exact current 1v1
-  // /encounter flow, byte-for-byte unchanged. See design spec + Milestone 1 plan.
-  const isDevGuild = interaction.guildId === process.env.GUILD_ID;
-  // Milestone 3.5a: also requires the player to have actually picked Solace via /team.
-  const hasSolace = isDevGuild && dbUser.teamAllyCharacterId === "solace";
+  // Milestone 1: team mechanics (swap, Intro/Outro, Concerto Energy, debuffs)
+  // require the player to actually own + have picked Solace via /team.
+  // NOTE: `isDevGuild` is a legacy name kept to avoid touching the many
+  // downstream usages below — it no longer means "in the dev guild", it
+  // means "has an active Solace ally". Was hard-gated to the dev guild only
+  // during development; that gate is exactly the bug that blocked Solace
+  // everywhere after launch.
+  const hasSolace = dbUser.teamAllyCharacterId === "solace";
+  const isDevGuild = hasSolace;
 
   // Resolve full combat stats (echoes + weapon + set bonuses + unique ability)
   const bonuses = await resolvePlayerBonuses(interaction.user.id);

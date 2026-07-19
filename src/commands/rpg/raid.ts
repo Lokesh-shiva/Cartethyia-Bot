@@ -557,7 +557,13 @@ async function startRaid(interaction: ChatInputCommandInteraction) {
     channelId:    interaction.channelId,
     guildId:      interaction.guildId!,
     organizerId:  interaction.user.id,
-    isDevGuild:   interaction.guildId === process.env.GUILD_ID,
+    // NOTE: `isDevGuild` is a legacy name — team-mechanic code paths are
+    // always enabled now; real per-player gating happens via each
+    // participant's own `hasSolace` (set at join time from their actual
+    // /team pick, see joinRaid below). Was hard-gated to the dev guild only
+    // during development; that gate is exactly the bug that blocked Solace
+    // everywhere after launch.
+    isDevGuild:   true,
   };
   activeRaids.set(interaction.channelId, raid);
 

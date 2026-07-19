@@ -215,9 +215,10 @@ const command: Command = {
     const options = ALL_FIELD_BOSSES.map(fb => {
       const elemEmoji = (ELEMENT_EMOJI as any)[fb.element] ?? "◇";
       const locked = (fb.unlockWorldLevel ?? 0) > user.worldLevel;
+      const dropNote = fb.id === "luminal_specter" ? "  ✦ drops Starfall Shards" : "";
       return {
         label:       locked ? `🔒 ${fb.name}  (WL${fb.unlockWorldLevel} required)` : `${elemEmoji}  ${fb.name}`,
-        description: locked ? `Reach World Level ${fb.unlockWorldLevel} to unlock` : `${fb.element}  ·  Weakness: ${fb.weakness}`,
+        description: locked ? `Reach World Level ${fb.unlockWorldLevel} to unlock` : `${fb.element}  ·  Weakness: ${fb.weakness}${dropNote}`,
         value:       fb.id,
       };
     });
@@ -338,10 +339,16 @@ const command: Command = {
       let havocFrenzyLifesteal   = 0;
       let havocFrenzyDefIgnore   = 0;
 
-      // ── Milestone 3c-ii: team state (dev guild only) ──────────────────────────
-      const isDevGuild = interaction.guildId === process.env.GUILD_ID;
-      // Milestone 3.5a: also requires the player to have actually picked Solace via /team.
-      const hasSolace = isDevGuild && user.teamAllyCharacterId === "solace";
+      // ── Milestone 3c-ii: team state ───────────────────────────────────────────
+      // Requires the player to actually own + have picked Solace via /team.
+      // NOTE: `isDevGuild` is a legacy name kept to avoid touching the many
+      // downstream usages below and in shared helpers (TeamButtonContext) —
+      // it no longer means "in the dev guild", it means "has an active
+      // Solace ally". Was hard-gated to the dev guild only during
+      // development; that gate is exactly the bug that blocked Solace
+      // everywhere after launch.
+      const hasSolace = user.teamAllyCharacterId === "solace";
+      const isDevGuild = hasSolace;
       const solaceProgress = hasSolace ? await getOrCreateCharacterProgress(interaction.user.id, "solace") : null;
       // Milestone 3.5b: her own resolved stats (her base + HER OWN echoes/weapon).
       const allySolaceStats = hasSolace ? await resolveSolaceStats(interaction.user.id) : null;

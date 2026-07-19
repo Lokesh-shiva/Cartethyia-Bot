@@ -349,10 +349,18 @@ export async function execute(interaction: ChatInputCommandInteraction) {
 
     // locks already held for both players
 
-    const isDevGuild = interaction.guildId === process.env.GUILD_ID;
-    // Milestone 3.5a: also requires each side to have actually picked Solace via /team.
-    const cHasSolaceGate = isDevGuild && challengerDb.teamAllyCharacterId === "solace";
-    const dHasSolaceGate = isDevGuild && challengedDb.teamAllyCharacterId === "solace";
+    // Requires each side to have actually picked Solace via /team.
+    // NOTE: `isDevGuild` is a legacy name kept to avoid touching the many
+    // downstream usages below (myAttunement/oppAttunement math etc.) — it no
+    // longer means "in the dev guild", it means "either side has an active
+    // Solace ally this match". Per-side gating (cHasSolace/dHasSolace,
+    // myHasSolace/oppHasSolace) already governs whose bonuses actually
+    // apply; this blanket flag was hard-gated to the dev guild only during
+    // development, which is exactly the bug that blocked Solace everywhere
+    // after launch.
+    const cHasSolaceGate = challengerDb.teamAllyCharacterId === "solace";
+    const dHasSolaceGate = challengedDb.teamAllyCharacterId === "solace";
+    const isDevGuild = cHasSolaceGate || dHasSolaceGate;
     const [cSolaceProgress, dSolaceProgress] = await Promise.all([
       cHasSolaceGate ? getOrCreateCharacterProgress(interaction.user.id, "solace") : Promise.resolve(null),
       dHasSolaceGate ? getOrCreateCharacterProgress(target.id, "solace") : Promise.resolve(null),
