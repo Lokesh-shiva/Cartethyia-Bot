@@ -39,10 +39,19 @@ const command: Command = {
     )
     .addSubcommand((s) =>
       s.setName("fractonite")
-        .setDescription("Convert 100 Fractonite into 1 Fracture Key.")
+        .setDescription("Convert 100 Fractonite into Fracture Keys or Radiant Keys.")
+        .addStringOption((o) =>
+          o.setName("type")
+            .setDescription("Which key to buy (default: Fracture Key)")
+            .setRequired(false)
+            .addChoices(
+              { name: "Fracture Key (Standard /wish)", value: "fracture" },
+              { name: "Radiant Key (Limited /wish banners)", value: "radiant" },
+            )
+        )
         .addIntegerOption((o) =>
           o.setName("amount")
-            .setDescription("How many Fracture Keys to buy (default: 1).")
+            .setDescription("How many keys to buy (default: 1).")
             .setMinValue(1)
             .setMaxValue(50)
             .setRequired(false)
@@ -207,7 +216,8 @@ async function handleRecord(interaction: ChatInputCommandInteraction) {
 async function handleFractonite(interaction: ChatInputCommandInteraction) {
   await interaction.deferReply({ flags: 64 });
   const amount = interaction.options.getInteger("amount") ?? 1;
-  const cost   = amount * 100;
+  const type   = interaction.options.getString("type") ?? "fracture";
+  const cost   = amount * 100; // same rate for both key types — matches how standard/limited banner currencies stay at parity in comparable games, per explicit design decision
 
   const user = await getOrCreateUser(
     interaction.user.id,
@@ -225,17 +235,22 @@ async function handleFractonite(interaction: ChatInputCommandInteraction) {
     return;
   }
 
+  const isRadiant = type === "radiant";
   await prisma.user.update({
     where: { id: interaction.user.id },
-    data:  { fractonite: { decrement: cost }, fractureKeys: { increment: amount } },
+    data:  isRadiant
+      ? { fractonite: { decrement: cost }, radiantKeys: { increment: amount } }
+      : { fractonite: { decrement: cost }, fractureKeys: { increment: amount } },
   });
-  auditSpend(interaction.user.id, { fractonite: cost }, "use:fractonite");
-  auditAward(interaction.user.id, { fractureKeys: amount }, "use:fractonite").catch(() => {});
+  auditSpend(interaction.user.id, { fractonite: cost }, `use:fractonite:${type}`);
+  auditAward(interaction.user.id, isRadiant ? { radiantKeys: amount } : { fractureKeys: amount }, `use:fractonite:${type}`).catch(() => {});
 
+  const keyEmoji = isRadiant ? CE.rk : CE.fk;
+  const keyLabel = isRadiant ? "Radiant Key" : "Fracture Key";
   await interaction.editReply({
     embeds: [new EmbedBuilder().setColor(color)
       .setDescription(
-        `✦ Converted **${cost}** ${CE.ft} Fractonite → **${amount}** ${CE.fk} Fracture Key${amount !== 1 ? "s" : ""}.\n\n` +
+        `✦ Converted **${cost}** ${CE.ft} Fractonite → **${amount}** ${keyEmoji} ${keyLabel}${amount !== 1 ? "s" : ""}.\n\n` +
         `Fractonite remaining: **${user.fractonite - cost}**`
       )
       .setFooter({ text: "CARTETHYIA  ·  Items" })],

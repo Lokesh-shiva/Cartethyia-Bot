@@ -85,7 +85,7 @@ const SHOP_ITEMS: ShopItem[] = [
   },
   {
     id: "fractonite_bundle", name: "Fractonite", emoji: "🔷",
-    description: "Pre-key currency — 100 = 1 Fracture Key via /use fractonite.",
+    description: "Pre-key currency — 100 = 1 Fracture Key OR 1 Radiant Key via /use fractonite.",
     currency: "credits", price: 8,
     gives: { fractonite: 1 },
     quantities: [50, 100, 200],
@@ -114,7 +114,7 @@ const SHOP_ITEMS: ShopItem[] = [
   },
   {
     id: "lk_fractonite", name: "Fractonite Cache", emoji: "🔷",
-    description: "100 Fractonite for 1 Lunakite. Convert to Fracture Keys with /use fractonite.",
+    description: "100 Fractonite for 1 Lunakite. Convert to Fracture Keys or Radiant Keys with /use fractonite.",
     currency: "lunakite", price: 1,
     gives: { fractonite: 100 },
     quantities: [1, 3, 5],

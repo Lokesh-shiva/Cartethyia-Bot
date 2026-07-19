@@ -140,7 +140,8 @@ async function buildStatsView(userId: string, characterId: string): Promise<Page
     const cost = solaceAscensionCost(progress.ascensionPhase);
     const canAfford = credits >= cost.credits && ores >= cost.forgingOres &&
       cores >= cost.paradoxCores && shards >= cost.starfallShards;
-    actionLabel = `Ascend (Phase ${progress.ascensionPhase + 1})`;
+    actionLabel = `Ascend: ${cost.credits}cr · ${cost.forgingOres}fo · ${cost.paradoxCores}pc` +
+      (cost.starfallShards > 0 ? ` · ${cost.starfallShards}sf` : "");
     balanceLine =
       `**Ascend to Phase ${progress.ascensionPhase + 1}** needs ` +
       `${cost.credits} Credits (have ${credits}) · ${cost.forgingOres} Forging Ores (have ${ores}) · ` +
