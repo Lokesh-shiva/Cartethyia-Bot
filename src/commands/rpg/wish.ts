@@ -273,6 +273,30 @@ function resultEmbed(w: WishWeapon, newPity: number, color: number, guaranteed: 
     .setFooter({ text: footer });
 }
 
+// Same rate as /use fractonite's Radiant Key option (100:1) — a single pull
+// button on the limited banners auto-tops-up any Radiant Key shortfall from
+// Fractonite instead of requiring a separate trip to /use first. Only spends
+// exactly as much Fractonite as needed to cover the shortfall; existing
+// Radiant Keys are always used first.
+const FRACTONITE_PER_RADIANT_KEY = 100;
+
+function resolveKeySpend(radiantKeys: number, fractonite: number, amount: number):
+  | { ok: true; radiantKeysToSpend: number; fractoniteToSpend: number }
+  | { ok: false; shortMessage: string } {
+  if (radiantKeys >= amount) return { ok: true, radiantKeysToSpend: amount, fractoniteToSpend: 0 };
+  const shortfall = amount - radiantKeys;
+  const fractoniteNeeded = shortfall * FRACTONITE_PER_RADIANT_KEY;
+  if (fractonite >= fractoniteNeeded) {
+    return { ok: true, radiantKeysToSpend: radiantKeys, fractoniteToSpend: fractoniteNeeded };
+  }
+  return {
+    ok: false,
+    shortMessage: `You have **${radiantKeys}** Radiant Key${radiantKeys !== 1 ? "s" : ""} and **${fractonite}** Fractonite — ` +
+      `need **${amount}** total (${shortfall} more, costing ${fractoniteNeeded} Fractonite at ${FRACTONITE_PER_RADIANT_KEY}:1). ` +
+      `Buy more Fractonite in **/shop** or use **/use fractonite** directly.`,
+  };
+}
+
 function weaponCreateData(userId: string, w: WishWeapon) {
   return {
     userId, weaponType: w.type, name: w.name, rarity: w.rarity as number,
@@ -487,7 +511,7 @@ async function runStandardBanner(interaction: ChatInputCommandInteraction, dbUse
 
 // ── Character banner — "The Rising Overture", featuring Solace (Milestone 4b) ─
 type CharacterDbUser = {
-  element: string; radiantKeys: number; solaceBannerPity: number; solaceBannerGuaranteed: boolean;
+  element: string; radiantKeys: number; fractonite: number; solaceBannerPity: number; solaceBannerGuaranteed: boolean;
 };
 
 const SOLACE_ART_PATH = path.join(process.cwd(), "assets", "Characters", "Solace.png");
@@ -504,17 +528,19 @@ function doSingleSolacePull(pity: number): { newPity: number; hit: boolean } {
   return { newPity: hit ? 0 : newPity, hit };
 }
 
-function solaceCharacterBannerEmbed(pity: number, keys: number, color: number): EmbedBuilder {
+function solaceCharacterBannerEmbed(pity: number, keys: number, fractonite: number, color: number): EmbedBuilder {
   return new EmbedBuilder()
     .setColor(0xFCD34D)
     .setAuthor({ name: "✦  The Rising Overture  ·  Character Banner" })
     .setDescription(
       `**Featuring: ✨ Solace**\n\nEvery 5★ pull on this banner is guaranteed Solace — there's no coin flip to lose yet. ` +
-      `A duplicate pull converts into a Constellation Token instead of a second copy.`
+      `A duplicate pull converts into a Constellation Token instead of a second copy.\n\n` +
+      `-# Short on Radiant Keys? Pulling automatically converts Fractonite to cover the gap (${FRACTONITE_PER_RADIANT_KEY} Fractonite = 1 Key).`
     )
     .addFields(
       { name: "Your Pity",    value: `**${pity}** / ${HARD_PITY}`, inline: true },
       { name: "Radiant Keys", value: `${CE.rk ?? "🔑"} **${keys}**`, inline: true },
+      { name: "Fractonite",   value: `${CE.ft ?? "🔷"} **${fractonite}**`, inline: true },
       { name: "Rates", value: `5★: **0.6%** base · soft pity **${SOFT_PITY}** · hard pity **${HARD_PITY}**`, inline: false },
     )
     .setFooter({ text: "CARTETHYIA  ·  The Rising Overture" });
@@ -525,13 +551,13 @@ async function runCharacterBanner(interaction: ChatInputCommandInteraction, dbUs
 
   const pullRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
     new ButtonBuilder().setCustomId("solace_x1").setLabel("◈  Pull  ×1  (1)").setStyle(ButtonStyle.Primary)
-      .setDisabled(dbUser.radiantKeys < 1),
+      .setDisabled(!resolveKeySpend(dbUser.radiantKeys, dbUser.fractonite, 1).ok),
     new ButtonBuilder().setCustomId("solace_x10").setLabel("✦  Pull  ×10  (10)").setStyle(ButtonStyle.Success)
-      .setDisabled(dbUser.radiantKeys < 10),
+      .setDisabled(!resolveKeySpend(dbUser.radiantKeys, dbUser.fractonite, 10).ok),
   );
 
   const msg = await interaction.editReply({
-    embeds: [solaceCharacterBannerEmbed(dbUser.solaceBannerPity, dbUser.radiantKeys, color)],
+    embeds: [solaceCharacterBannerEmbed(dbUser.solaceBannerPity, dbUser.radiantKeys, dbUser.fractonite, color)],
     files: [], components: [pullRow],
   });
 
@@ -546,15 +572,16 @@ async function runCharacterBanner(interaction: ChatInputCommandInteraction, dbUs
 
     const fresh = await prisma.user.findUnique({
       where: { id: interaction.user.id },
-      select: { radiantKeys: true, solaceBannerPity: true },
+      select: { radiantKeys: true, fractonite: true, solaceBannerPity: true },
     });
     if (!fresh) return;
 
     const amount = btn.customId === "solace_x10" ? 10 : 1;
-    if (fresh.radiantKeys < amount) {
+    const spend = resolveKeySpend(fresh.radiantKeys, fresh.fractonite, amount);
+    if (!spend.ok) {
       await interaction.editReply({
         embeds: [new EmbedBuilder().setColor(0xFF4F6D).setTitle("◈ Not enough Radiant Keys")
-          .setDescription(`You only have **${fresh.radiantKeys}** — need **${amount}**.`)],
+          .setDescription(spend.shortMessage)],
         components: [],
       });
       return;
@@ -589,7 +616,7 @@ async function runCharacterBanner(interaction: ChatInputCommandInteraction, dbUs
     await prisma.$transaction(async (tx) => {
       await tx.user.update({
         where: { id: interaction.user.id },
-        data: { radiantKeys: { decrement: amount }, solaceBannerPity: pity,
+        data: { radiantKeys: { decrement: spend.radiantKeysToSpend }, fractonite: { decrement: spend.fractoniteToSpend }, solaceBannerPity: pity,
                 forgingOres: { increment: matTotals.forgingOres }, tuningModules: { increment: matTotals.tuningModules }, credits: { increment: matTotals.credits } },
       });
       if (hits > 0) {
@@ -600,7 +627,7 @@ async function runCharacterBanner(interaction: ChatInputCommandInteraction, dbUs
         });
       }
     });
-    auditSpend(interaction.user.id, { radiantKeys: amount }, `wish:solace:${hits}hits:${dupes}dupes`);
+    auditSpend(interaction.user.id, { radiantKeys: spend.radiantKeysToSpend, fractonite: spend.fractoniteToSpend }, `wish:solace:${hits}hits:${dupes}dupes`);
 
     if (hits > 0) {
       await runSuspenseWithReveal(interaction, SUSPENSE_CHARACTER_5STAR, SOLACE_REVEAL_GIF);
@@ -636,7 +663,7 @@ async function runCharacterBanner(interaction: ChatInputCommandInteraction, dbUs
 
 // ── Weapon banner — "The Tempered Vow", featuring Wellspring (Milestone 4c) ───
 type WeaponBannerDbUser = {
-  element: string; radiantKeys: number; wellspringBannerPity: number;
+  element: string; radiantKeys: number; fractonite: number; wellspringBannerPity: number;
   wellspringBanner4Pity: number; wellspringBannerGuaranteed: boolean;
 };
 
@@ -671,18 +698,20 @@ function doSingleWellspringPull(pity: number, pity4: number, guaranteed: boolean
   return { tier: 3, mat: rollMaterials(), newPity, new4Pity, newGuaranteed: guaranteed };
 }
 
-function weaponBannerEmbed(pity: number, pity4: number, guaranteed: boolean, keys: number, color: number): EmbedBuilder {
+function weaponBannerEmbed(pity: number, pity4: number, guaranteed: boolean, keys: number, fractonite: number, color: number): EmbedBuilder {
   return new EmbedBuilder()
     .setColor(0xEC4899)
     .setAuthor({ name: "⚔  The Tempered Vow  ·  Weapon Banner" })
     .setDescription(
       `**Featuring: Wellspring**\n\n5★ 50/50: win = **Wellspring** · lose = random Standard 5★ · next 5★ guaranteed Wellspring.\n\n` +
-      (guaranteed ? "✦ **Next 5★ is guaranteed Wellspring**" : "")
+      (guaranteed ? "✦ **Next 5★ is guaranteed Wellspring**\n\n" : "") +
+      `-# Short on Radiant Keys? Pulling automatically converts Fractonite to cover the gap (${FRACTONITE_PER_RADIANT_KEY} Fractonite = 1 Key).`
     )
     .addFields(
       { name: "Your Pity",    value: `**${pity}** / ${HARD_PITY}`,  inline: true },
       { name: "4★ Pity",     value: `**${pity4}** / ${HARD_PITY_4}`, inline: true },
       { name: "Radiant Keys", value: `${CE.rk ?? "🔑"} **${keys}**`,   inline: true },
+      { name: "Fractonite",   value: `${CE.ft ?? "🔷"} **${fractonite}**`, inline: true },
     )
     .setFooter({ text: "CARTETHYIA  ·  The Tempered Vow" });
 }
@@ -692,13 +721,13 @@ async function runWeaponBanner(interaction: ChatInputCommandInteraction, dbUser:
 
   const pullRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
     new ButtonBuilder().setCustomId("wellspring_x1").setLabel("◈  Pull  ×1  (1)").setStyle(ButtonStyle.Primary)
-      .setDisabled(dbUser.radiantKeys < 1),
+      .setDisabled(!resolveKeySpend(dbUser.radiantKeys, dbUser.fractonite, 1).ok),
     new ButtonBuilder().setCustomId("wellspring_x10").setLabel("✦  Pull  ×10  (10)").setStyle(ButtonStyle.Danger)
-      .setDisabled(dbUser.radiantKeys < 10),
+      .setDisabled(!resolveKeySpend(dbUser.radiantKeys, dbUser.fractonite, 10).ok),
   );
 
   const msg = await interaction.editReply({
-    embeds: [weaponBannerEmbed(dbUser.wellspringBannerPity, dbUser.wellspringBanner4Pity, dbUser.wellspringBannerGuaranteed, dbUser.radiantKeys, color)],
+    embeds: [weaponBannerEmbed(dbUser.wellspringBannerPity, dbUser.wellspringBanner4Pity, dbUser.wellspringBannerGuaranteed, dbUser.radiantKeys, dbUser.fractonite, color)],
     files: [], components: [pullRow],
   });
 
@@ -713,15 +742,16 @@ async function runWeaponBanner(interaction: ChatInputCommandInteraction, dbUser:
 
     const fresh = await prisma.user.findUnique({
       where: { id: interaction.user.id },
-      select: { radiantKeys: true, wellspringBannerPity: true, wellspringBanner4Pity: true, wellspringBannerGuaranteed: true },
+      select: { radiantKeys: true, fractonite: true, wellspringBannerPity: true, wellspringBanner4Pity: true, wellspringBannerGuaranteed: true },
     });
     if (!fresh) return;
 
     const amount = btn.customId === "wellspring_x10" ? 10 : 1;
-    if (fresh.radiantKeys < amount) {
+    const spend = resolveKeySpend(fresh.radiantKeys, fresh.fractonite, amount);
+    if (!spend.ok) {
       await interaction.editReply({
         embeds: [new EmbedBuilder().setColor(0xFF4F6D).setTitle("◈ Not enough Radiant Keys")
-          .setDescription(`You only have **${fresh.radiantKeys}** — need **${amount}**.`)],
+          .setDescription(spend.shortMessage)],
         components: [],
       });
       return;
@@ -748,11 +778,12 @@ async function runWeaponBanner(interaction: ChatInputCommandInteraction, dbUser:
 
     await prisma.$transaction([
       prisma.user.update({ where: { id: interaction.user.id },
-        data: { radiantKeys: { decrement: amount }, wellspringBannerPity: pity, wellspringBanner4Pity: p4, wellspringBannerGuaranteed: guar,
+        data: { radiantKeys: { decrement: spend.radiantKeysToSpend }, fractonite: { decrement: spend.fractoniteToSpend },
+                wellspringBannerPity: pity, wellspringBanner4Pity: p4, wellspringBannerGuaranteed: guar,
                 forgingOres: { increment: matTotals.forgingOres }, tuningModules: { increment: matTotals.tuningModules }, credits: { increment: matTotals.credits } } }),
       ...weaponResults.map(r => prisma.weapon.create({ data: weaponCreateData(interaction.user.id, r.weapon) })),
     ]);
-    auditSpend(interaction.user.id, { radiantKeys: amount }, `wish:wellspring:${amount}pull:${weaponResults.length}weapons`);
+    auditSpend(interaction.user.id, { radiantKeys: spend.radiantKeysToSpend, fractonite: spend.fractoniteToSpend }, `wish:wellspring:${amount}pull:${weaponResults.length}weapons`);
 
     const has5 = results.some(r => r.tier === 5), has4 = results.some(r => r.tier === 4);
     const wonWellspring = results.some(r => r.tier === 5 && r.weapon === WELLSPRING_WEAPON);
@@ -807,7 +838,7 @@ const command: Command = {
       where:  { id: interaction.user.id },
       select: {
         element: true, fractureKeys: true, wishPity: true, wish4Pity: true, wishGuaranteed: true, wishTarget: true,
-        radiantKeys: true, solaceBannerPity: true, solaceBannerGuaranteed: true,
+        radiantKeys: true, fractonite: true, solaceBannerPity: true, solaceBannerGuaranteed: true,
         wellspringBannerPity: true, wellspringBanner4Pity: true, wellspringBannerGuaranteed: true,
       },
     });
