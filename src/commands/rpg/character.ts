@@ -21,8 +21,10 @@ import {
 } from "../../lib/solace";
 import { renderStatBarsCard, renderSlotGridCard, renderLoreCard } from "../../lib/characterCard";
 import { generateWeaponCard } from "../../lib/weaponCard";
-import { WEAPON_TYPE_LABEL, FORGED_WEAPONS } from "../../lib/weapons";
+import { WEAPON_TYPE_LABEL, FORGED_WEAPONS, RARITY_STARS } from "../../lib/weapons";
 import { ALL_WISH_WEAPONS, calcWishSubStat } from "../../lib/wishWeapons";
+import { invalidateBonusCache } from "../../lib/setBonus";
+import { StringSelectMenuOptionBuilder } from "discord.js";
 
 // Only "solace" exists today — future characters add entries here, and the
 // select menu below automatically grows to offer them. No other code in this
@@ -63,6 +65,15 @@ const CONSTELLATION_EFFECTS: Record<string, string[]> = {
   ],
 };
 const MAX_CONSTELLATION = 6;
+
+// Recommended named echo set per character — shown on the Echoes page so
+// players don't have to guess. Solace is Spectro and a healer/support unit;
+// Radiant Convergence (also Spectro) stacks +Spectro DMG on every heal-tick
+// and its 5pc rewards staying topped-up, which lines up with her kit
+// directly instead of fighting it like an offense-oriented set would.
+const RECOMMENDED_SET: Record<string, string> = {
+  solace: "**Radiant Convergence** (Spectro) — her own element, and its heal-on-turn 4pc/5pc mechanics play directly into her support kit instead of fighting it.",
+};
 
 // Simulates spending resonanceRecords/credits one level at a time (per
 // solaceLevelUpCost's per-level curve) and returns the highest level reached
@@ -147,7 +158,10 @@ async function buildStatsView(userId: string, characterId: string): Promise<Page
       `${cost.credits} Credits (have ${credits}) · ${cost.forgingOres} Forging Ores (have ${ores}) · ` +
       `${cost.paradoxCores} Paradox Cores (have ${cores})` +
       (cost.starfallShards > 0 ? ` · ${cost.starfallShards} Starfall Shards (have ${shards})` : "") +
-      (canAfford ? "\n✅ You can afford this." : "\n❌ Not enough — the button is disabled until you have all of the above.");
+      (canAfford ? "\n✅ You can afford this." : "\n❌ Not enough — the button is disabled until you have all of the above.") +
+      (cost.starfallShards > 0 && shards < cost.starfallShards
+        ? `\n-# Starfall Shards drop from the **Spectro field boss** (Luminal Specter) — use **/field-boss** and pick the Spectro one.`
+        : "");
     buttons.push(new ButtonBuilder().setCustomId(`charlvl2:${characterId}`).setLabel(actionLabel)
       .setStyle(ButtonStyle.Success).setDisabled(!canAfford));
   } else {
@@ -191,11 +205,15 @@ async function buildWeaponView(userId: string, characterId: string): Promise<Pag
     },
   });
 
+  const equipRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
+    new ButtonBuilder().setCustomId(`charequipweapon:${characterId}`).setLabel("⚔️  Equip Weapon").setStyle(ButtonStyle.Secondary),
+  );
+
   if (!weapon) {
     const embed = new EmbedBuilder().setColor(0x334155)
-      .setDescription(`◈ **${char.label}** has no weapon equipped.\nUse **/equip** with a weapon targeting her loadout.`)
+      .setDescription(`◈ **${char.label}** has no weapon equipped.\nClick below to equip one from your arsenal.`)
       .setFooter({ text: "CARTETHYIA  ·  Character  ·  Weapon" });
-    return { embed, files: [] };
+    return { embed, files: [], extraRow: equipRow };
   }
 
   const weaponDef = FORGED_WEAPONS.find(w => w.name === weapon.name);
@@ -222,7 +240,7 @@ async function buildWeaponView(userId: string, characterId: string): Promise<Pag
   });
   const embed = new EmbedBuilder().setColor(0x6366F1).setImage("attachment://weapon.png")
     .setFooter({ text: "CARTETHYIA  ·  Character  ·  Weapon" });
-  return { embed, files: [new AttachmentBuilder(buf, { name: "weapon.png" })] };
+  return { embed, files: [new AttachmentBuilder(buf, { name: "weapon.png" })], extraRow: equipRow };
 }
 
 async function buildEchoesView(userId: string, characterId: string): Promise<PageView> {
@@ -238,7 +256,12 @@ async function buildEchoesView(userId: string, characterId: string): Promise<Pag
       : { label: slot === 0 ? "Main" : `Sub ${slot}`, sublabel: "Empty", filled: false };
   });
   const buf = await renderSlotGridCard({ characterName: char.label, element: char.element, subtitle: "Echoes", slots });
+  const recommended = RECOMMENDED_SET[characterId];
   const embed = new EmbedBuilder().setColor(0x6366F1).setImage("attachment://echoes.png")
+    .setDescription(
+      (recommended ? `**Recommended set:** ${recommended}\n\n` : "") +
+      `-# Equip with **/echo-equip character:${char.label} slot:<0-4>**.`
+    )
     .setFooter({ text: "CARTETHYIA  ·  Character  ·  Echoes" });
   return { embed, files: [new AttachmentBuilder(buf, { name: "echoes.png" })] };
 }
@@ -333,14 +356,40 @@ const command: Command = {
     const dbUser = await prisma.user.findUnique({ where: { id: interaction.user.id }, select: { id: true } });
     if (!dbUser) { await replyNotStarted(interaction); return; }
 
+    // Only characters this player actually owns (a real CharacterProgress row
+    // exists) are ever selectable/viewable here — CHARACTERS is a static
+    // catalog of every character that COULD exist, not what this player has.
+    // Every code path below that checks `CHARACTERS[characterId]` must ALSO
+    // check `ownedCharacterIds.has(characterId)`, or a non-owner can browse/
+    // page through (and, via the level/kit/ascend buttons, spend currency on)
+    // a character they've never pulled.
+    const owned = await prisma.characterProgress.findMany({
+      where: { userId: interaction.user.id },
+      select: { characterId: true },
+    });
+    const ownedCharacterIds = new Set(owned.map(o => o.characterId));
+
+    if (ownedCharacterIds.size === 0) {
+      await interaction.editReply({
+        embeds: [new EmbedBuilder()
+          .setColor(0x334155)
+          .setTitle("◈  Characters")
+          .setDescription("You don't own any banner characters yet.\nPull for one on **/wish**'s Limited Character Banner.")
+          .setFooter({ text: "CARTETHYIA  ·  Character" })],
+      });
+      return;
+    }
+
     const select = new StringSelectMenuBuilder()
       .setCustomId("character_cmd_select")
       .setPlaceholder("Choose a character…")
       .addOptions(
-        Object.entries(CHARACTERS).map(([value, c]) => ({
-          label: `${c.emoji}  ${c.label}`,
-          value,
-        }))
+        Object.entries(CHARACTERS)
+          .filter(([id]) => ownedCharacterIds.has(id))
+          .map(([value, c]) => ({
+            label: `${c.emoji}  ${c.label}`,
+            value,
+          }))
       );
     const selectRow = new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(select);
 
@@ -356,7 +405,8 @@ const command: Command = {
       filter: i => i.user.id === interaction.user.id &&
         (i.customId === "character_cmd_select" || i.customId.startsWith("charlvl:") ||
          i.customId.startsWith("charlvl2:") || i.customId.startsWith("charlvlmax:") ||
-         i.customId.startsWith("charnav:")),
+         i.customId.startsWith("charnav:") || i.customId.startsWith("charequipweapon:") ||
+         i.customId.startsWith("charequipweaponpick:")),
       time: 5 * 60 * 1000,
     });
 
@@ -370,7 +420,7 @@ const command: Command = {
       if (i.customId === "character_cmd_select" && i.isStringSelectMenu()) {
         const sel = i as StringSelectMenuInteraction;
         const characterId = sel.values[0];
-        if (!CHARACTERS[characterId]) { await sel.deferUpdate().catch(() => {}); return; }
+        if (!CHARACTERS[characterId] || !ownedCharacterIds.has(characterId)) { await sel.deferUpdate().catch(() => {}); return; }
         await renderAndReply(sel, characterId, "stats");
         return;
       }
@@ -378,7 +428,7 @@ const command: Command = {
       if (i.customId.startsWith("charnav:") && i.isButton()) {
         const btn = i as ButtonInteraction;
         const [, characterId, page] = btn.customId.split(":");
-        if (!CHARACTERS[characterId] || !isPage(page)) {
+        if (!CHARACTERS[characterId] || !ownedCharacterIds.has(characterId) || !isPage(page)) {
           await btn.deferUpdate().catch(() => {});
           return;
         }
@@ -389,7 +439,7 @@ const command: Command = {
       if (i.customId.startsWith("charlvl2:") && i.isButton()) {
         const btn = i as ButtonInteraction;
         const [, characterId] = btn.customId.split(":");
-        if (!CHARACTERS[characterId]) { await btn.deferUpdate().catch(() => {}); return; }
+        if (!CHARACTERS[characterId] || !ownedCharacterIds.has(characterId)) { await btn.deferUpdate().catch(() => {}); return; }
 
         const progress = await getOrCreateCharacterProgress(interaction.user.id, characterId);
         const cap = currentLevelCap(progress.ascensionPhase);
@@ -461,7 +511,7 @@ const command: Command = {
       if (i.customId.startsWith("charlvlmax:") && i.isButton()) {
         const btn = i as ButtonInteraction;
         const [, characterId] = btn.customId.split(":");
-        if (!CHARACTERS[characterId]) { await btn.deferUpdate().catch(() => {}); return; }
+        if (!CHARACTERS[characterId] || !ownedCharacterIds.has(characterId)) { await btn.deferUpdate().catch(() => {}); return; }
 
         const [progress, dbUser2] = await Promise.all([
           getOrCreateCharacterProgress(interaction.user.id, characterId),
@@ -505,11 +555,64 @@ const command: Command = {
         return;
       }
 
+      if (i.customId.startsWith("charequipweapon:") && i.isButton()) {
+        const btn = i as ButtonInteraction;
+        const [, characterId] = btn.customId.split(":");
+        if (!CHARACTERS[characterId] || !ownedCharacterIds.has(characterId)) { await btn.deferUpdate().catch(() => {}); return; }
+
+        const weapons = await prisma.weapon.findMany({ where: { userId: interaction.user.id } });
+        if (weapons.length === 0) {
+          await btn.update({
+            embeds: [new EmbedBuilder().setColor(0x334155).setDescription("◈ You don't own any weapons yet.\nUse **/forge** to craft one.")],
+            components: [selectRow, ...navRows(characterId, "weapon")],
+          }).catch(() => {});
+          return;
+        }
+
+        const owner = (w: typeof weapons[number]) => w.characterId === "self" ? "Yourself" : (CHARACTERS[w.characterId]?.label ?? w.characterId);
+        const pickSelect = new StringSelectMenuBuilder()
+          .setCustomId(`charequipweaponpick:${characterId}`)
+          .setPlaceholder("Choose a weapon to equip…")
+          .addOptions(weapons.slice(0, 25).map(w => {
+            const label = w.awakened && w.awakenedName ? w.awakenedName : w.name;
+            return new StringSelectMenuOptionBuilder()
+              .setLabel(`${label}  ${RARITY_STARS[w.rarity]}${w.isEquipped ? `  ← ${owner(w)}` : ""}`)
+              .setDescription(`Lv${w.level}${w.characterId !== characterId && w.isEquipped ? "  ⚠ will be unequipped from " + owner(w) : ""}`)
+              .setValue(w.id);
+          }));
+
+        await btn.update({
+          embeds: [new EmbedBuilder().setColor(0x6366F1).setDescription(`◈ Choose a weapon to equip to **${CHARACTERS[characterId].label}**.\n⚠ Picking one already equipped elsewhere will move it here.`)],
+          components: [selectRow, ...navRows(characterId, "weapon"), new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(pickSelect)],
+        }).catch(() => {});
+        return;
+      }
+
+      if (i.customId.startsWith("charequipweaponpick:") && i.isStringSelectMenu()) {
+        const sel = i as StringSelectMenuInteraction;
+        const [, characterId] = sel.customId.split(":");
+        if (!CHARACTERS[characterId] || !ownedCharacterIds.has(characterId)) { await sel.deferUpdate().catch(() => {}); return; }
+        const chosenId = sel.values[0];
+
+        const chosen = await prisma.weapon.findUnique({ where: { id: chosenId } });
+        if (!chosen || chosen.userId !== interaction.user.id) { await sel.deferUpdate().catch(() => {}); return; }
+
+        await prisma.weapon.updateMany({ where: { userId: interaction.user.id, characterId, isEquipped: true }, data: { isEquipped: false } });
+        await prisma.weapon.update({ where: { id: chosenId }, data: { isEquipped: true, characterId } });
+        if (characterId === "self") {
+          await prisma.user.update({ where: { id: interaction.user.id }, data: { weaponType: chosen.weaponType } });
+        }
+        invalidateBonusCache(interaction.user.id, characterId);
+
+        await renderAndReply(sel, characterId, "weapon");
+        return;
+      }
+
       if (i.customId.startsWith("charlvl:") && i.isButton()) {
         const btn = i as ButtonInteraction;
         const [, characterId, trackRaw] = btn.customId.split(":");
 
-        if (!CHARACTERS[characterId] || !isKitTrack(trackRaw)) {
+        if (!CHARACTERS[characterId] || !ownedCharacterIds.has(characterId) || !isKitTrack(trackRaw)) {
           await btn.deferUpdate().catch(() => {});
           return;
         }
