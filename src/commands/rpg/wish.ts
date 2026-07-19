@@ -511,7 +511,8 @@ async function runStandardBanner(interaction: ChatInputCommandInteraction, dbUse
 
 // ── Character banner — "The Rising Overture", featuring Solace (Milestone 4b) ─
 type CharacterDbUser = {
-  element: string; radiantKeys: number; fractonite: number; limitedCharBannerPity: number; limitedCharBannerGuaranteed: boolean;
+  element: string; radiantKeys: number; fractonite: number;
+  limitedCharBannerPity: number; limitedCharBanner4Pity: number; limitedCharBannerGuaranteed: boolean;
 };
 
 const SOLACE_ART_PATH = path.join(process.cwd(), "assets", "Characters", "Solace.png");
@@ -521,11 +522,32 @@ const SOLACE_REVEAL_GIF = path.join(process.cwd(), "assets", "Characters", "Sola
 // limitedCharBannerGuaranteed is carried in the schema for forward-compat with a
 // real banner #2, but is functionally inert here (never flips true, never
 // changes the roll) since there's no coin flip to win or lose yet.
-function doSingleSolacePull(pity: number): { newPity: number; hit: boolean } {
-  const newPity = pity + 1;
-  const rate = softPityRate(newPity);
-  const hit = newPity >= HARD_PITY || Math.random() < rate;
-  return { newPity: hit ? 0 : newPity, hit };
+//
+// Placeholder "4★" tier: no 4★ characters exist yet on this banner, so a 4★
+// hit grants this fixed bundle instead of an item. Once real 4★ characters
+// are added, swap the SolacePullResult's "4star" branch to roll from that
+// pool — the surrounding pity/safety-net plumbing (below and in
+// runCharacterBanner) doesn't need to change.
+const CHAR_BANNER_4STAR_BUNDLE = { forgingOres: 15, tuningModules: 5, credits: 2000 };
+
+type SolacePullResult =
+  | { tier: "5star"; newPity: number; new4Pity: number }
+  | { tier: "4star"; newPity: number; new4Pity: number }
+  | { tier: "3star"; mat: MaterialDrop; newPity: number; new4Pity: number };
+
+function doSingleSolacePull(pity: number, pity4: number): SolacePullResult {
+  const newPity  = pity + 1;
+  const newPity4 = pity4 + 1;
+  const rate5 = softPityRate(newPity);
+  const r     = Math.random();
+
+  if (newPity >= HARD_PITY || r < rate5) {
+    return { tier: "5star", newPity: 0, new4Pity: 0 };
+  }
+  if (newPity4 >= HARD_PITY_4 || r < BASE_5_RATE + BASE_4_RATE) {
+    return { tier: "4star", newPity, new4Pity: 0 };
+  }
+  return { tier: "3star", mat: rollMaterials(), newPity, new4Pity: newPity4 };
 }
 
 function solaceCharacterBannerEmbed(pity: number, keys: number, fractonite: number, color: number): EmbedBuilder {
@@ -541,7 +563,7 @@ function solaceCharacterBannerEmbed(pity: number, keys: number, fractonite: numb
       { name: "Your Pity",    value: `**${pity}** / ${HARD_PITY}`, inline: true },
       { name: "Radiant Keys", value: `${CE.rk ?? "🔑"} **${keys}**`, inline: true },
       { name: "Fractonite",   value: `${CE.ft ?? "🔷"} **${fractonite}**`, inline: true },
-      { name: "Rates", value: `5★: **0.6%** base · soft pity **${SOFT_PITY}** · hard pity **${HARD_PITY}**`, inline: false },
+      { name: "Rates", value: `5★: **0.6%** base · soft pity **${SOFT_PITY}** · hard pity **${HARD_PITY}**\n4★-tier: **5.1%** base · guaranteed every **${HARD_PITY_4}** pulls · a full ×10 miss always yields at least one`, inline: false },
     )
     .setFooter({ text: "CARTETHYIA  ·  The Rising Overture" });
 }
@@ -572,7 +594,7 @@ async function runCharacterBanner(interaction: ChatInputCommandInteraction, dbUs
 
     const fresh = await prisma.user.findUnique({
       where: { id: interaction.user.id },
-      select: { radiantKeys: true, fractonite: true, limitedCharBannerPity: true },
+      select: { radiantKeys: true, fractonite: true, limitedCharBannerPity: true, limitedCharBanner4Pity: true },
     });
     if (!fresh) return;
 
@@ -593,30 +615,46 @@ async function runCharacterBanner(interaction: ChatInputCommandInteraction, dbUs
     });
     let owned = existingProgress !== null;
 
-    let pity = fresh.limitedCharBannerPity;
-    const rolls: { hit: boolean; mat?: MaterialDrop; isDuplicate?: boolean }[] = [];
+    let pity = fresh.limitedCharBannerPity, pity4 = fresh.limitedCharBanner4Pity;
+    const rolls: ({ tier: "5star"; isDuplicate: boolean } | { tier: "4star" } | { tier: "3star"; mat: MaterialDrop })[] = [];
     let hits = 0, dupes = 0;
     const matTotals = { forgingOres: 0, tuningModules: 0, credits: 0 };
     for (let i = 0; i < amount; i++) {
-      const r = doSingleSolacePull(pity);
-      pity = r.newPity;
-      if (r.hit) {
+      const r = doSingleSolacePull(pity, pity4);
+      pity = r.newPity; pity4 = r.new4Pity;
+      if (r.tier === "5star") {
         hits++;
         const isDuplicate = owned;
         if (isDuplicate) dupes++;
         owned = true;
-        rolls.push({ hit: true, isDuplicate });
+        rolls.push({ tier: "5star", isDuplicate });
+      } else if (r.tier === "4star") {
+        matTotals.forgingOres += CHAR_BANNER_4STAR_BUNDLE.forgingOres;
+        matTotals.tuningModules += CHAR_BANNER_4STAR_BUNDLE.tuningModules;
+        matTotals.credits += CHAR_BANNER_4STAR_BUNDLE.credits;
+        rolls.push({ tier: "4star" });
       } else {
-        const mat = rollMaterials();
-        matTotals.forgingOres += mat.forgingOres; matTotals.tuningModules += mat.tuningModules; matTotals.credits += mat.credits;
-        rolls.push({ hit: false, mat });
+        matTotals.forgingOres += r.mat.forgingOres; matTotals.tuningModules += r.mat.tuningModules; matTotals.credits += r.mat.credits;
+        rolls.push({ tier: "3star", mat: r.mat });
       }
+    }
+    // Same safety net as Wellspring's ×10: never let a full 10-pull whiff all
+    // the way down to only small materials with nothing 4★-tier or better.
+    if (amount === 10 && !rolls.some(r => r.tier === "5star" || r.tier === "4star")) {
+      const last = rolls[9] as { tier: "3star"; mat: MaterialDrop };
+      matTotals.forgingOres -= last.mat.forgingOres; matTotals.tuningModules -= last.mat.tuningModules; matTotals.credits -= last.mat.credits;
+      matTotals.forgingOres += CHAR_BANNER_4STAR_BUNDLE.forgingOres;
+      matTotals.tuningModules += CHAR_BANNER_4STAR_BUNDLE.tuningModules;
+      matTotals.credits += CHAR_BANNER_4STAR_BUNDLE.credits;
+      rolls[9] = { tier: "4star" };
+      pity4 = 0;
     }
 
     await prisma.$transaction(async (tx) => {
       await tx.user.update({
         where: { id: interaction.user.id },
-        data: { radiantKeys: { decrement: spend.radiantKeysToSpend }, fractonite: { decrement: spend.fractoniteToSpend }, limitedCharBannerPity: pity,
+        data: { radiantKeys: { decrement: spend.radiantKeysToSpend }, fractonite: { decrement: spend.fractoniteToSpend },
+                limitedCharBannerPity: pity, limitedCharBanner4Pity: pity4,
                 forgingOres: { increment: matTotals.forgingOres }, tuningModules: { increment: matTotals.tuningModules }, credits: { increment: matTotals.credits } },
       });
       if (hits > 0) {
@@ -639,14 +677,16 @@ async function runCharacterBanner(interaction: ChatInputCommandInteraction, dbUs
     const files = hits > 0 && hasArt ? [new AttachmentBuilder(SOLACE_ART_PATH, { name: "solace.png" })] : [];
 
     const lines: string[] = rolls.map(r =>
-      r.hit
+      r.tier === "5star"
         ? `✦  **Solace**${r.isDuplicate ? "  *(duplicate — converted to a Constellation Token)*" : ""}`
-        : `◇  *${r.mat!.label}*`
+        : r.tier === "4star"
+        ? `◆  *Resonant Cache — ${CHAR_BANNER_4STAR_BUNDLE.forgingOres} Forging Ores + ${CHAR_BANNER_4STAR_BUNDLE.tuningModules} Tuning Modules + ${CHAR_BANNER_4STAR_BUNDLE.credits} Credits*`
+        : `◇  *${r.mat.label}*`
     );
 
     const embed = new EmbedBuilder()
       .setColor(hits > 0 ? 0xFCD34D : 0x4A4A5A)
-      .setTitle(hits > 0 ? "✨  The Rising Overture" : "◇  The fracture yields materials")
+      .setTitle(hits > 0 ? "✨  The Rising Overture" : "◇  The fracture stirs")
       .setDescription(lines.join("\n") + (hits > 0 ? `\n\n*${dupes} of ${hits} were duplicates → ${dupes} Constellation Token(s).*` : ""))
       .addFields({ name: "Pity", value: `${pity} / ${HARD_PITY}`, inline: true })
       .setFooter({ text: "CARTETHYIA  ·  The Rising Overture" });
@@ -838,7 +878,7 @@ const command: Command = {
       where:  { id: interaction.user.id },
       select: {
         element: true, fractureKeys: true, wishPity: true, wish4Pity: true, wishGuaranteed: true, wishTarget: true,
-        radiantKeys: true, fractonite: true, limitedCharBannerPity: true, limitedCharBannerGuaranteed: true,
+        radiantKeys: true, fractonite: true, limitedCharBannerPity: true, limitedCharBanner4Pity: true, limitedCharBannerGuaranteed: true,
         limitedWeaponBannerPity: true, limitedWeaponBanner4Pity: true, limitedWeaponBannerGuaranteed: true,
       },
     });

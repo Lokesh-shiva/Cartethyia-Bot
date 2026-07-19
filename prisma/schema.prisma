@@ -62,6 +62,7 @@ model User {
   // named after Solace/Wellspring (this session's rename, zero data migration —
   // same physical columns, just generically-named Prisma fields going forward).
   limitedCharBannerPity         Int     @default(0) @map("solaceBannerPity")
+  limitedCharBanner4Pity        Int     @default(0) // 4★-tier pity — placeholder bundle reward until real 4★ characters exist (see CHAR_BANNER_4STAR_BUNDLE in wish.ts)
   limitedCharBannerGuaranteed   Boolean @default(false) @map("solaceBannerGuaranteed")
   limitedWeaponBannerPity       Int     @default(0) @map("wellspringBannerPity")
   limitedWeaponBanner4Pity      Int     @default(0) @map("wellspringBanner4Pity")
