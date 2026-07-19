@@ -20,6 +20,8 @@ const CURRENCIES = [
   { key: "fractureKeys",    file: "Fracture Key.png",   label: "Fracture Keys",  color: "#A855F7", desc: "Wish pulls"           },
   { key: "fractonite",     file: "Fractonite.png",     label: "Fractonite",     color: "#6366F1", desc: "100 = 1 FK"           },
   { key: "auraPrisms",     file: "Aura Prism.png",     label: "Aura Prisms",    color: "#38BDF8", desc: "Restores 3 ◈ Aura"    },
+  { key: "radiantKeys",    file: "Radiant Key.png",    label: "Radiant Keys",   color: "#FCD34D", desc: "Limited wish pulls"   },
+  { key: "starfallShards", file: "Starfall Shard.png", label: "Starfall Shards",color: "#EAB308", desc: "Solace ascension"     },
 ];
 
 const ELEMENT_COLORS: Record<string, string> = {

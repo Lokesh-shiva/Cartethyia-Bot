@@ -756,7 +756,10 @@ function weaponBannerEmbed(pity: number, pity4: number, guaranteed: boolean, key
     .setColor(0xEC4899)
     .setAuthor({ name: "⚔  The Tempered Vow  ·  Weapon Banner" })
     .setDescription(
-      `**Featuring: Wellspring**\n\n5★ 50/50: win = **Wellspring** · lose = random Standard 5★ · next 5★ guaranteed Wellspring.\n\n` +
+      `**Featuring: Wellspring**  ·  Rectifier  ·  ★★★★★\n` +
+      `\`BASE ATK\` **${calcWishAtk(WELLSPRING_WEAPON, 1)}**  ·  \`${WELLSPRING_WEAPON.subStatType.replace(/_/g, " ")}\` **+${calcWishSubStat(WELLSPRING_WEAPON.subStatBase, WELLSPRING_WEAPON.subStatScale, 1)}%**\n` +
+      `*${WELLSPRING_WEAPON.passive}*\n\n` +
+      `5★ 50/50: win = **Wellspring** · lose = random Standard 5★ · next 5★ guaranteed Wellspring.\n\n` +
       (guaranteed ? "✦ **Next 5★ is guaranteed Wellspring**\n\n" : "") +
       `-# Short on Radiant Keys? Pulling automatically converts Fractonite to cover the gap (${FRACTONITE_PER_RADIANT_KEY} Fractonite = 1 Key).`
     )
