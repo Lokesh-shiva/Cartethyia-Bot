@@ -4,9 +4,10 @@
 // Element-driven theming (not a bespoke per-character palette) so a future
 // 2nd character needs zero new design work.
 
-import { createCanvas, loadImage, GlobalFonts, SKRSContext2D } from "@napi-rs/canvas";
+import { createCanvas, GlobalFonts, SKRSContext2D } from "@napi-rs/canvas";
 import path from "path";
 import fs   from "fs";
+import { loadCachedImage } from "./canvas";
 
 try {
   try { (GlobalFonts as any).loadSystemFonts(); } catch {}
@@ -46,7 +47,7 @@ async function paintBackground(ctx: SKRSContext2D, element: string, theme: Eleme
   ];
   for (const bgPath of bgPaths) {
     if (fs.existsSync(bgPath)) {
-      const img = await loadImage(bgPath);
+      const img = await loadCachedImage(bgPath);
       const scale = Math.max(W / img.width, H / img.height);
       const dw = img.width * scale, dh = img.height * scale;
       ctx.drawImage(img as any, (W - dw) / 2, (H - dh) / 2, dw, dh);
@@ -173,7 +174,7 @@ function liquidGoldFill(ctx: SKRSContext2D, x: number, y: number, w: number, h: 
 // destination-out alpha mask so the illustrated card background shows
 // through the fade instead of the portrait ending in a hard block.
 async function drawPortraitFaded(ctx: SKRSContext2D, portraitPath: string, pw: number) {
-  const img = await loadImage(portraitPath);
+  const img = await loadCachedImage(portraitPath);
   const off = createCanvas(pw, H);
   const octx = off.getContext("2d");
   const scale = Math.max(pw / img.width, H / img.height);
@@ -360,7 +361,7 @@ export async function renderSlotGridCard(input: SlotGridCardInput): Promise<Buff
     ctx.lineWidth = 2; rrect(ctx, x, y, cellW, cellH, 12); ctx.stroke();
 
     if (slot.filled && slot.iconPath && fs.existsSync(slot.iconPath)) {
-      const img = await loadImage(slot.iconPath);
+      const img = await loadCachedImage(slot.iconPath);
       const iw = cellW - 24, ih = 90;
       ctx.drawImage(img as any, x + 12, y + 12, iw, ih);
     }
