@@ -514,7 +514,7 @@ function solaceCharacterBannerEmbed(pity: number, keys: number, color: number): 
     )
     .addFields(
       { name: "Your Pity",    value: `**${pity}** / ${HARD_PITY}`, inline: true },
-      { name: "Radiant Keys", value: `${CE.fk ?? "🔑"} **${keys}**`, inline: true },
+      { name: "Radiant Keys", value: `${CE.rk ?? "🔑"} **${keys}**`, inline: true },
       { name: "Rates", value: `5★: **0.6%** base · soft pity **${SOFT_PITY}** · hard pity **${HARD_PITY}**`, inline: false },
     )
     .setFooter({ text: "CARTETHYIA  ·  The Rising Overture" });
@@ -682,7 +682,7 @@ function weaponBannerEmbed(pity: number, pity4: number, guaranteed: boolean, key
     .addFields(
       { name: "Your Pity",    value: `**${pity}** / ${HARD_PITY}`,  inline: true },
       { name: "4★ Pity",     value: `**${pity4}** / ${HARD_PITY_4}`, inline: true },
-      { name: "Radiant Keys", value: `${CE.fk ?? "🔑"} **${keys}**`,   inline: true },
+      { name: "Radiant Keys", value: `${CE.rk ?? "🔑"} **${keys}**`,   inline: true },
     )
     .setFooter({ text: "CARTETHYIA  ·  The Tempered Vow" });
 }

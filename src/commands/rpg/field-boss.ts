@@ -459,7 +459,7 @@ const command: Command = {
                 `**${fb.name}** has been driven off.\n\n` +
                 (echoLines.length ? `**Echo Dropped:**\n${echoLines.join("\n")}\n\n` : "") +
                 `${CE.cr} ${credits} Credits  ·  ${CE.fk} 1 Fracture Key` +
-                (starfallShardsDropped ? `\n✦ **1 Starfall Shard**` : "") +
+                (starfallShardsDropped ? `\n${CE.sf} **1 Starfall Shard**` : "") +
                 (lvl.didLevelUp ? `\n◈ Level **${lvl.oldLevel}** → **${lvl.newLevel}**` : "") +
                 (bondResult ? `\n✦ Weapon Bond **${bondResult.bond}/10**${bondResult.milestone ? ` — *${bondResult.milestone}*` : ""}` : "") +
                 voteNudge() + supportNudge() + await mailNudge(interaction.user.id)
