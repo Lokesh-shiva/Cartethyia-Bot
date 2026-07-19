@@ -140,17 +140,20 @@ function liquidGoldFill(ctx: SKRSContext2D, x: number, y: number, w: number, h: 
   ctx.fillStyle = edge;
   ctx.fillRect(x + w - 10, y, 10, h);
 
-  // Glitter: deterministic star-specks suspended in the liquid
+  // Glitter: deterministic star-specks suspended in the liquid. shadowBlur is
+  // expensive per-draw-call in @napi-rs/canvas — set it ONCE for the whole
+  // batch instead of save/restore-ing it per speck (this loop previously did
+  // up to ~30 shadowed draws per bar × 6 bars per page, which was slow enough
+  // on the production VM's 2 CPUs to blow past Discord's interaction timeout).
   let seed = (Math.floor(w) * 2654435761 ^ Math.floor(y) * 40503) >>> 0;
   const rand = () => { seed = (seed * 1664525 + 1013904223) >>> 0; return seed / 4294967296; };
-  const count = Math.max(4, Math.floor(w / 26));
+  const count = Math.max(3, Math.floor(w / 40));
+  ctx.shadowColor = "rgba(255,255,255,0.9)"; ctx.shadowBlur = 4;
   for (let i = 0; i < count; i++) {
     const gx = x + 4 + rand() * (w - 8);
     const gy = y + 3 + rand() * (h - 6);
     const gr = 1.4 + rand() * 2.2;
     const ga = 0.75 + rand() * 0.25;
-    ctx.save();
-    ctx.shadowColor = "rgba(255,255,255,0.9)"; ctx.shadowBlur = 5;
     ctx.fillStyle = `rgba(255,255,255,${ga.toFixed(2)})`;
     // 4-point sparkle: two thin crossed lozenges read as a glint at this size
     ctx.beginPath();
@@ -163,8 +166,8 @@ function liquidGoldFill(ctx: SKRSContext2D, x: number, y: number, w: number, h: 
     ctx.closePath(); ctx.fill();
     // bright pinpoint core so the glint reads at a glance, not just on close zoom
     ctx.beginPath(); ctx.arc(gx, gy, gr * 0.5, 0, Math.PI * 2); ctx.fill();
-    ctx.restore();
   }
+  ctx.shadowBlur = 0;
 
   ctx.restore();
 }
