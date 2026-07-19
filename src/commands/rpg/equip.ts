@@ -21,6 +21,18 @@ const ELEMENT_HEX: Record<string, number> = {
 
 const MAX_MULT: Record<number, number> = { 1: 2.5, 2: 3.0, 3: 3.5, 4: 4.2, 5: 5.0 };
 
+// Weapons belong to exactly one character at a time (characterId) — /equip
+// with a different character option MOVES a weapon over (unequips it from
+// wherever it currently is), it doesn't duplicate it. The select list spans
+// every owned weapon regardless of current owner (so you CAN move one in),
+// but every option/confirmation must say whose it currently is — silently
+// reassigning a weapon the player didn't realize was equipped elsewhere is
+// exactly the bug this labeling fixes.
+const CHARACTER_OWNER_LABEL: Record<string, string> = { self: "Yourself", solace: "Solace" };
+function ownerLabel(characterId: string): string {
+  return CHARACTER_OWNER_LABEL[characterId] ?? characterId;
+}
+
 function effectiveAtk(baseAtk: number, rarity: number, level: number): number {
   return Math.round(baseAtk * (1 + (level - 1) * ((MAX_MULT[rarity] ?? 2.5) - 1) / 89));
 }
@@ -159,10 +171,10 @@ const command: Command = {
       return;
     }
 
-    if (weapons.length === 1) {
+    if (weapons.length === 1 && weapons[0].isEquipped && weapons[0].characterId === characterId) {
       await interaction.editReply({
         embeds: [new EmbedBuilder().setColor(0x334155)
-          .setDescription(`◈ You only own one weapon: **${weapons[0].awakened && weapons[0].awakenedName ? weapons[0].awakenedName : weapons[0].name}** — it's already equipped.\nForge more with **/forge**.`)
+          .setDescription(`◈ You only own one weapon: **${weapons[0].awakened && weapons[0].awakenedName ? weapons[0].awakenedName : weapons[0].name}** — it's already equipped to **${ownerLabel(characterId)}**.\nForge more with **/forge**.`)
           .setFooter({ text: "CARTETHYIA  ·  Arsenal" })],
       });
       return;
@@ -182,12 +194,16 @@ const command: Command = {
         const sub   = w.subStatType && w.subStatVal != null
           ? `  ·  ${w.subStatType.replace(/_/g, " ")} ${effectiveSub(w.subStatVal, w.level)}%`
           : "";
+        const ownedByOther = w.characterId !== characterId;
+        const ownerTag = w.isEquipped
+          ? (ownedByOther ? `  ← equipped by ${ownerLabel(w.characterId)}` : "  ← equipped")
+          : "";
         return new StringSelectMenuOptionBuilder()
-          .setLabel(`${label}  ${RARITY_STARS[w.rarity]}${w.isEquipped ? "  ← equipped" : ""}`)
+          .setLabel(`${label}  ${RARITY_STARS[w.rarity]}${ownerTag}`)
           .setDescription(`Lv${w.level}  ·  ATK ${eff}${sub}${w.awakened ? "  ·  ✦" : ""}`)
           .setValue(w.id)
           .setEmoji(WEAPON_TYPE_EMOJI[w.weaponType as WeaponType])
-          .setDefault(w.isEquipped ?? false);
+          .setDefault(w.isEquipped === true && w.characterId === characterId);
       }));
 
     const selectRow = new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(makeSelect());
@@ -196,7 +212,8 @@ const command: Command = {
     const weaponList = selectableWeapons.map((w) => {
       const label = (w.awakened && w.awakenedName) ? w.awakenedName : w.name;
       const eff   = effectiveAtk(w.baseAtk, w.rarity, w.level);
-      return `${w.isEquipped ? "▶" : "◇"}  **${label}**  ${RARITY_STARS[w.rarity]}  ·  Lv${w.level}  ·  ATK **${eff}**${w.awakened ? "  ✦" : ""}`;
+      const owner = w.isEquipped ? `  *(${ownerLabel(w.characterId)})*` : "";
+      return `${w.isEquipped ? "▶" : "◇"}  **${label}**  ${RARITY_STARS[w.rarity]}  ·  Lv${w.level}  ·  ATK **${eff}**${w.awakened ? "  ✦" : ""}${owner}`;
     }).join("\n");
 
     const overflow = weapons.length > 25 ? `\n\n-# Showing top 25 of ${weapons.length} weapons (sorted by equipped, rarity, level).` : "";
@@ -246,13 +263,22 @@ const command: Command = {
         new ButtonBuilder().setCustomId("equip_cancel").setLabel("Cancel").setStyle(ButtonStyle.Secondary),
       );
 
+      // A weapon currently equipped to a DIFFERENT character is about to be
+      // moved, not copied — say so explicitly instead of silently unequipping
+      // it from whoever had it.
+      const movingFromOther = chosen.isEquipped && chosen.characterId !== characterId;
+      const transferWarning = movingFromOther
+        ? `⚠️ **${(chosen.awakened && chosen.awakenedName) ? chosen.awakenedName : chosen.name}** is currently equipped by **${ownerLabel(chosen.characterId)}**. Equipping it here will unequip it from ${ownerLabel(chosen.characterId)} and move it to **${ownerLabel(characterId)}**.\n\n`
+        : "";
+
       await sel.editReply({
         embeds: [new EmbedBuilder()
-          .setColor(chosen.awakened ? 0xFCD34D : color)
+          .setColor(movingFromOther ? 0xF59E0B : (chosen.awakened ? 0xFCD34D : color))
           .setTitle(`${chosen.awakened ? "✦  Ego Weapon" : "◈  Weapon"}  Swap — Compare`)
+          .setDescription(transferWarning || null)
           .addFields(
             {
-              name:   "◈  Current",
+              name:   `◈  Current (${ownerLabel(characterId)})`,
               value:  equipped ? weaponBlock(equipped) : "*Empty — nothing equipped*",
               inline: true,
             },
