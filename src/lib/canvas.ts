@@ -374,14 +374,6 @@ export async function generateProfileCard(input: ProfileCardInput): Promise<Buff
     badgeX += ctx.measureText(patronBadge.label).width + 10;
   }
 
-  // Solace ownership badge — gold, matches her Spectro theme colors elsewhere in the app.
-  if (input.solaceLevel != null) {
-    const solaceLabel = `* SOLACE Lv${input.solaceLevel}`;
-    ctx.fillStyle = "#FFD54F";
-    ctx.shadowColor = "#FFD54F"; ctx.shadowBlur = 8;
-    ctx.fillText(solaceLabel, badgeX, 52);
-    ctx.shadowBlur = 0;
-  }
 
   // Element pill
   const pillW = 82, pillH = 20, pillX = NX, pillY = 64;
@@ -739,6 +731,40 @@ export async function generateProfileCard(input: ProfileCardInput): Promise<Buff
         ctx.textAlign = "left";
       }
     }
+  }
+
+  // Solace ownership icon — reuses the exact echo-slot visual (rounded tile,
+  // cover-fit portrait, colored border/glow, Lv badge) in the one grid cell
+  // row 2 leaves empty (3-column layout, only 2 slots in that row), instead
+  // of a separate text badge up near the name.
+  if (input.solaceLevel != null) {
+    const ex = RPX + 2 * (SS + GAP);
+    const ey = 34 + 1 * (SS + GAP);
+    const solaceColor = "#FFD54F";
+
+    ctx.shadowColor = solaceColor; ctx.shadowBlur = 14;
+    ctx.fillStyle = rgba(solaceColor, 0.22);
+    rrect(ctx, ex, ey, SS, SS, 9); ctx.fill();
+    ctx.shadowBlur = 0;
+
+    try {
+      const img = await loadImage(path.join(process.cwd(), "assets", "Characters", "Solace.png"));
+      ctx.save();
+      rrect(ctx, ex, ey, SS, SS, 9); ctx.clip();
+      const scale = Math.max(SS / img.width, SS / img.height);
+      const dw = img.width * scale, dh = img.height * scale;
+      ctx.drawImage(img, ex + (SS - dw) / 2, ey + (SS - dh) / 2, dw, dh);
+      ctx.fillStyle = "rgba(0,0,0,0.15)";
+      ctx.fillRect(ex, ey, SS, SS);
+      ctx.restore();
+    } catch { /* art missing — border/tint alone still reads as "Solace" */ }
+
+    ctx.strokeStyle = rgba(solaceColor, 0.9); ctx.lineWidth = 1.5;
+    rrect(ctx, ex, ey, SS, SS, 9); ctx.stroke();
+
+    ctx.fillStyle = "rgba(0,0,0,0.60)";
+    ctx.font = `bold 7px Rajdhani, 'Noto Sans', 'Noto Sans CJK SC', 'Noto Sans JP', Arial, sans-serif`;
+    ctx.fillText(`Lv${input.solaceLevel}`, ex + 3, ey + SS - 3);
   }
 
   // ── Bonds ─────────────────────────────────────────────────────────────────
