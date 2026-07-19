@@ -25,6 +25,10 @@ import { WEAPON_TYPE_LABEL, FORGED_WEAPONS, RARITY_STARS } from "../../lib/weapo
 import { ALL_WISH_WEAPONS, calcWishSubStat } from "../../lib/wishWeapons";
 import { invalidateBonusCache } from "../../lib/setBonus";
 import { StringSelectMenuOptionBuilder } from "discord.js";
+import { ELEMENT_EMOJI, MAIN_STAT_LABELS, calcMainStatValue, formatStatValue, RARITY_STARS as ECHO_RARITY_STARS } from "../../lib/echoes";
+import { NAMED_SETS, NamedSetId } from "../../lib/namedSets";
+import { echoEmojiResolvable } from "../../lib/emojiManager";
+import { Element } from "@prisma/client";
 
 // Only "solace" exists today — future characters add entries here, and the
 // select menu below automatically grows to offer them. No other code in this
@@ -260,10 +264,16 @@ async function buildEchoesView(userId: string, characterId: string): Promise<Pag
   const embed = new EmbedBuilder().setColor(0x6366F1).setImage("attachment://echoes.png")
     .setDescription(
       (recommended ? `**Recommended set:** ${recommended}\n\n` : "") +
-      `-# Equip with **/echo-equip character:${char.label} slot:<0-4>**.`
+      `-# Pick a slot below to equip an echo.`
     )
     .setFooter({ text: "CARTETHYIA  ·  Character  ·  Echoes" });
-  return { embed, files: [new AttachmentBuilder(buf, { name: "echoes.png" })] };
+
+  const slotRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
+    Array.from({ length: 5 }, (_, slot) =>
+      new ButtonBuilder().setCustomId(`charequipecho:${characterId}:${slot}`)
+        .setLabel(slot === 0 ? "Main" : `Sub ${slot}`).setStyle(ButtonStyle.Secondary)),
+  );
+  return { embed, files: [new AttachmentBuilder(buf, { name: "echoes.png" })], extraRow: slotRow };
 }
 
 async function buildKitLevelsView(userId: string, characterId: string): Promise<PageView> {
@@ -406,7 +416,8 @@ const command: Command = {
         (i.customId === "character_cmd_select" || i.customId.startsWith("charlvl:") ||
          i.customId.startsWith("charlvl2:") || i.customId.startsWith("charlvlmax:") ||
          i.customId.startsWith("charnav:") || i.customId.startsWith("charequipweapon:") ||
-         i.customId.startsWith("charequipweaponpick:")),
+         i.customId.startsWith("charequipweaponpick:") || i.customId.startsWith("charequipecho:") ||
+         i.customId.startsWith("charequipechopick:") || i.customId.startsWith("charequipechoclear:")),
       time: 5 * 60 * 1000,
     });
 
@@ -605,6 +616,107 @@ const command: Command = {
         invalidateBonusCache(interaction.user.id, characterId);
 
         await renderAndReply(sel, characterId, "weapon");
+        return;
+      }
+
+      const MAX_GRID_POINTS = 12;
+      const CLEAR_ECHO = "__clear__";
+
+      if (i.customId.startsWith("charequipecho:") && i.isButton()) {
+        const btn = i as ButtonInteraction;
+        const [, characterId, slotRaw] = btn.customId.split(":");
+        const slot = Number(slotRaw);
+        if (!CHARACTERS[characterId] || !ownedCharacterIds.has(characterId) || !(slot >= 0 && slot <= 4)) {
+          await btn.deferUpdate().catch(() => {}); return;
+        }
+
+        const [currentEcho, allEquipped, unequipped] = await Promise.all([
+          prisma.echo.findFirst({ where: { userId: interaction.user.id, characterId, isEquipped: true, equippedSlot: slot } }),
+          prisma.echo.findMany({ where: { userId: interaction.user.id, characterId, isEquipped: true }, select: { cost: true, equippedSlot: true } }),
+          prisma.echo.findMany({ where: { userId: interaction.user.id, isEquipped: false }, orderBy: [{ rarity: "desc" }, { cost: "desc" }, { level: "desc" }] }),
+        ]);
+        const pointsExcludingSlot = allEquipped.filter(e => e.equippedSlot !== slot).reduce((sum, e) => sum + e.cost, 0);
+        const slotName = slot === 0 ? "Main Slot" : `Sub Slot ${slot}`;
+
+        if (unequipped.length === 0 && !currentEcho) {
+          await btn.update({
+            embeds: [new EmbedBuilder().setColor(0x334155).setDescription(`◈ You have no unequipped echoes for **${slotName}**.\nDefeat enemies to collect more.`)],
+            components: [selectRow, ...navRows(characterId, "echoes")],
+          }).catch(() => {});
+          return;
+        }
+
+        const opts: { label: string; description: string; value: string; emoji?: any }[] = [];
+        if (currentEcho) {
+          opts.push({ label: `✕  Clear slot — unequip ${currentEcho.name.slice(0, 40)}`, description: `Remove the current echo from ${slotName}`, value: CLEAR_ECHO, emoji: "🗑️" });
+        }
+        for (const e of unequipped.slice(0, currentEcho ? 24 : 25)) {
+          const pts = pointsExcludingSlot + e.cost;
+          const overBudget = pts > MAX_GRID_POINTS;
+          const mainVal = calcMainStatValue(e.mainStatType, e.level, e.rarity);
+          const setInfo = e.setId ? NAMED_SETS[e.setId as NamedSetId] : null;
+          opts.push({
+            label: `${e.name}  ${ECHO_RARITY_STARS[e.rarity]}  Lv${e.level}  (${e.cost}-cost)${overBudget ? "  ⚠" : ""}`,
+            description: `${setInfo ? `✦ ${setInfo.name}  ·  ` : ""}${MAIN_STAT_LABELS[e.mainStatType] ?? e.mainStatType}: ${formatStatValue(e.mainStatType, mainVal)}${overBudget ? "  — would exceed 12pt" : ""}`.slice(0, 100),
+            value: e.id,
+            emoji: echoEmojiResolvable(e.name, ELEMENT_EMOJI[e.element as Element]),
+          });
+        }
+        const pickSelect = new StringSelectMenuBuilder()
+          .setCustomId(`charequipechopick:${characterId}:${slot}`)
+          .setPlaceholder(`Select an echo for ${slotName}…`)
+          .addOptions(opts);
+
+        await btn.update({
+          embeds: [new EmbedBuilder().setColor(0x6366F1)
+            .setTitle(`◈  ${CHARACTERS[characterId].label} — ${slotName}`)
+            .setDescription(
+              (currentEcho ? `**Currently equipped:** ${currentEcho.name} (Lv${currentEcho.level})\n` : `**${slotName} is empty.**\n`) +
+              `Grid: **${pointsExcludingSlot}** pts used (excl. this slot) / **${MAX_GRID_POINTS}** max.`
+            )],
+          components: [selectRow, ...navRows(characterId, "echoes"), new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(pickSelect)],
+        }).catch(() => {});
+        return;
+      }
+
+      if (i.customId.startsWith("charequipechopick:") && i.isStringSelectMenu()) {
+        const sel = i as StringSelectMenuInteraction;
+        const [, characterId, slotRaw] = sel.customId.split(":");
+        const slot = Number(slotRaw);
+        if (!CHARACTERS[characterId] || !ownedCharacterIds.has(characterId) || !(slot >= 0 && slot <= 4)) {
+          await sel.deferUpdate().catch(() => {}); return;
+        }
+        const chosen = sel.values[0];
+
+        if (chosen === CLEAR_ECHO) {
+          await prisma.echo.updateMany({ where: { userId: interaction.user.id, characterId, equippedSlot: slot, isEquipped: true }, data: { isEquipped: false, equippedSlot: null } });
+          invalidateBonusCache(interaction.user.id, characterId);
+          await renderAndReply(sel, characterId, "echoes");
+          return;
+        }
+
+        const incoming = await prisma.echo.findUnique({ where: { id: chosen } });
+        if (!incoming || incoming.userId !== interaction.user.id) { await sel.deferUpdate().catch(() => {}); return; }
+
+        // Re-verify the point budget server-side — never trust the label's
+        // ⚠ marker alone, the grid could have changed since this menu rendered.
+        const allEquipped = await prisma.echo.findMany({ where: { userId: interaction.user.id, characterId, isEquipped: true }, select: { cost: true, equippedSlot: true } });
+        const pointsExcludingSlot = allEquipped.filter(e => e.equippedSlot !== slot).reduce((sum, e) => sum + e.cost, 0);
+        if (pointsExcludingSlot + incoming.cost > MAX_GRID_POINTS) {
+          await sel.update({
+            embeds: [new EmbedBuilder().setColor(0xFF4F6D).setDescription(`⚠ **Over budget.** Equipping **${incoming.name}** (${incoming.cost}-cost) would use **${pointsExcludingSlot + incoming.cost}/12** points.\n\nUnequip something first.`)],
+            components: [selectRow, ...navRows(characterId, "echoes")],
+          }).catch(() => {});
+          return;
+        }
+
+        await prisma.$transaction([
+          prisma.echo.updateMany({ where: { userId: interaction.user.id, characterId, equippedSlot: slot, isEquipped: true }, data: { isEquipped: false, equippedSlot: null } }),
+          prisma.echo.update({ where: { id: incoming.id }, data: { isEquipped: true, equippedSlot: slot, characterId } }),
+        ]);
+        invalidateBonusCache(interaction.user.id, characterId);
+
+        await renderAndReply(sel, characterId, "echoes");
         return;
       }
 

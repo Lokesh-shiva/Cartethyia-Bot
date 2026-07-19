@@ -125,6 +125,7 @@ export interface ProfileCardInput {
   auraNextRegenMs: number;   // ms until next charge (Infinity = full)
   uniqueAbilityName: string | null;
   patronTier?:     number;  // 0/undefined = none, 1 = Attuned, 2 = Ascendant, 3 = Calamity
+  solaceLevel?:    number;  // set only when this player owns Solace — draws a small badge
   // Extra
   displayName:     string;
   bonds:           BondData[];
@@ -369,6 +370,16 @@ export async function generateProfileCard(input: ProfileCardInput): Promise<Buff
     ctx.fillStyle = patronBadge.color;
     ctx.shadowColor = patronBadge.color; ctx.shadowBlur = 8;
     ctx.fillText(patronBadge.label, badgeX, 52);
+    ctx.shadowBlur = 0;
+    badgeX += ctx.measureText(patronBadge.label).width + 10;
+  }
+
+  // Solace ownership badge — gold, matches her Spectro theme colors elsewhere in the app.
+  if (input.solaceLevel != null) {
+    const solaceLabel = `* SOLACE Lv${input.solaceLevel}`;
+    ctx.fillStyle = "#FFD54F";
+    ctx.shadowColor = "#FFD54F"; ctx.shadowBlur = 8;
+    ctx.fillText(solaceLabel, badgeX, 52);
     ctx.shadowBlur = 0;
   }
 

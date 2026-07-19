@@ -110,6 +110,11 @@ const command: Command = {
     const bonuses = await resolvePlayerBonuses(target.id);
     const stats   = applyBonuses(user, bonuses);
 
+    const solaceProgress = await prisma.characterProgress.findUnique({
+      where: { userId_characterId: { userId: target.id, characterId: "solace" } },
+      select: { level: true },
+    });
+
     // ── Generate card ───────────────────────────────────────────────────────
     const buffer = await generateProfileCard({
       id:              user.id,
@@ -133,6 +138,7 @@ const command: Command = {
       auraNextRegenMs:   auraState.nextRegenMs,
       uniqueAbilityName: user.uniqueAbilityName,
       patronTier:        (user as any).patronTier ?? 0,
+      solaceLevel:       solaceProgress?.level,
       displayName,
       bonds,
       echoes,
@@ -143,11 +149,6 @@ const command: Command = {
     const extraBonds = totalBonds > 3 ? `  ·  +${totalBonds - 3} more bond${totalBonds - 3 !== 1 ? "s" : ""} — use /bonds` : "";
     const PATRON_TIER_NAMES: Record<number, string> = { 1: "Attuned", 2: "Ascendant", 3: "Calamity" };
     const patronTitle = (user as any).patronTier ? `  ·  ✦ ${PATRON_TIER_NAMES[(user as any).patronTier]} Patron` : "";
-
-    const solaceProgress = await prisma.characterProgress.findUnique({
-      where: { userId_characterId: { userId: target.id, characterId: "solace" } },
-      select: { level: true },
-    });
     const solaceBadge = solaceProgress ? `  ·  ✨ Solace (Lv${solaceProgress.level})` : "";
 
     // Only nudge for own profile (not when viewing others)
