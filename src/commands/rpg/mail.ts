@@ -26,13 +26,15 @@ function fmtRewards(m: Record<string, any>): string {
   if (m.paradoxCores)     parts.push(`💜 ${m.paradoxCores}`);
   if (m.stasisLocks)      parts.push(`🔒 ${m.stasisLocks}`);
   if (m.resonanceRecords) parts.push(`📀 ${m.resonanceRecords}`);
+  if (m.radiantKeys)      parts.push(`🔑 ${m.radiantKeys}`);
+  if (m.starfallShards)   parts.push(`🌠 ${m.starfallShards}`);
   return parts.length ? parts.join(" · ") : "No rewards";
 }
 
 function hasRewards(m: Record<string, any>): boolean {
   return ["credits","lunakite","fractonite","fractureKeys","auraPrisms",
           "tuningModules","sealingTubes","forgingOres","paradoxCores",
-          "stasisLocks","resonanceRecords"].some(k => m[k] > 0);
+          "stasisLocks","resonanceRecords","radiantKeys","starfallShards"].some(k => m[k] > 0);
 }
 
 function timeAgo(date: Date): string {
@@ -78,6 +80,8 @@ async function claimMail(mailId: string, userId: string): Promise<void> {
         paradoxCores:     mail.paradoxCores     ? { increment: mail.paradoxCores     } : undefined,
         stasisLocks:      mail.stasisLocks      ? { increment: mail.stasisLocks      } : undefined,
         resonanceRecords: mail.resonanceRecords ? { increment: mail.resonanceRecords } : undefined,
+        radiantKeys:      mail.radiantKeys      ? { increment: mail.radiantKeys      } : undefined,
+        starfallShards:   mail.starfallShards   ? { increment: mail.starfallShards   } : undefined,
       },
     }),
   ]);
@@ -88,7 +92,7 @@ function sumRewards(mails: any[]): Record<string, number> {
   for (const m of mails) {
     for (const f of ["credits","lunakite","fractonite","fractureKeys","auraPrisms",
                      "tuningModules","sealingTubes","forgingOres","paradoxCores",
-                     "stasisLocks","resonanceRecords"]) {
+                     "stasisLocks","resonanceRecords","radiantKeys","starfallShards"]) {
       if (m[f]) totals[f] = (totals[f] ?? 0) + m[f];
     }
   }

@@ -453,6 +453,8 @@ model Mail {
   fractureKeys     Int @default(0)
   auraPrisms       Int @default(0)
   resonanceRecords Int @default(0)
+  radiantKeys      Int @default(0)
+  starfallShards   Int @default(0)
 
   claims  MailClaim[]
 

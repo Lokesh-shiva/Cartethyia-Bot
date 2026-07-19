@@ -20,6 +20,8 @@ const REWARD_OPTIONS = [
   { name: "paradox-cores",    desc: "Paradox Cores"     },
   { name: "stasis-locks",     desc: "Stasis Locks"      },
   { name: "resonance-records",desc: "Resonance Records" },
+  { name: "radiant-keys",     desc: "Radiant Keys"      },
+  { name: "starfall-shards",  desc: "Starfall Shards"   },
 ] as const;
 
 // kebab-case option name → prisma field name
@@ -35,6 +37,8 @@ const OPTION_TO_FIELD: Record<string, string> = {
   "paradox-cores":     "paradoxCores",
   "stasis-locks":      "stasisLocks",
   "resonance-records": "resonanceRecords",
+  "radiant-keys":      "radiantKeys",
+  "starfall-shards":   "starfallShards",
 };
 
 function fmtRewards(mail: Record<string, any>): string {
@@ -50,6 +54,8 @@ function fmtRewards(mail: Record<string, any>): string {
   if (mail.paradoxCores)     parts.push(`💜 ${mail.paradoxCores} Paradox Cores`);
   if (mail.stasisLocks)      parts.push(`🔒 ${mail.stasisLocks} Stasis Locks`);
   if (mail.resonanceRecords) parts.push(`📀 ${mail.resonanceRecords} Res. Records`);
+  if (mail.radiantKeys)      parts.push(`🔑 ${mail.radiantKeys} Radiant Keys`);
+  if (mail.starfallShards)   parts.push(`🌠 ${mail.starfallShards} Starfall Shards`);
   return parts.length ? parts.join("  ·  ") : "*No rewards attached*";
 }
 
