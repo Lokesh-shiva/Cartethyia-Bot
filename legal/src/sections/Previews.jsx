@@ -40,6 +40,14 @@ const PREVIEWS = [
     img: '/stats.png',
     caption: '/stats — Combat Numbers',
   },
+  {
+    cmd: '/character',
+    title: 'Meet Solace',
+    desc: 'Your first playable ally — pull her on a limited banner, then level, ascend, and gear her up right from /character. She fights alongside you with her own kit, echoes, and weapon slot.',
+    img: '/solace.png',
+    caption: '/character — Solace',
+    reverse: true,
+  },
 ];
 
 function PreviewRow({ item }) {
