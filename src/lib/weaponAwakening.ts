@@ -11,6 +11,7 @@ import { ABILITY_REGISTRY, AbilityEffect, sanitizeEffects, formatEffects } from 
 import { sanitizeV2Effects, formatV2Effects } from "./abilityEngineV2";
 import { WEAPON_PASSIVES, WeaponPassive } from "./weapons";
 import { derivePersonality, deriveBonds, deriveCombat, deriveDedication } from "./uniqueAbility";
+import { SOLACE_LORE_FRAGMENTS } from "./solace";
 
 export const EGO_LEVEL_REQUIRED = 60;
 export const EGO_COST = { forgingOres: 20, paradoxCores: 8, credits: 20000 };
@@ -220,7 +221,7 @@ export interface AwakeningResult {
   newHiddenSub2Type: string | null;
 }
 
-export async function generateAwakening(userId: string): Promise<AwakeningResult | null> {
+export async function generateAwakening(userId: string, characterId: string = "self"): Promise<AwakeningResult | null> {
   const [user, bonds, weapon] = await Promise.all([
     prisma.user.findUnique({
       where:  { id: userId },
@@ -237,8 +238,12 @@ export async function generateAwakening(userId: string): Promise<AwakeningResult
       where:  { OR: [{ initiatorId: userId }, { receiverId: userId }] },
       select: { bondType: true },
     }),
+    // Weapons are equipped per-character (characterId) — a player can have
+    // one equipped on themselves AND one on Solace simultaneously, so this
+    // MUST be scoped or it grabs whichever isEquipped row the DB returns
+    // first, silently awakening the wrong unit's weapon.
     prisma.weapon.findFirst({
-      where:  { userId, isEquipped: true },
+      where:  { userId, isEquipped: true, characterId },
       select: {
         name: true, weaponType: true, rarity: true, level: true,
         subStatType: true, subStatVal: true,
@@ -314,16 +319,31 @@ export async function generateAwakening(userId: string): Promise<AwakeningResult
     jsonExample,
   ].filter(s => s !== "").join("\n");
 
+  // Wielder context: for the player's own weapon this is their profile
+  // (personality, bonds, combat history). For a character-bound weapon
+  // (e.g. Solace's Wellspring) that context belongs to the CHARACTER, not the
+  // human account that unlocked her — using the player's own personality/
+  // bonds there would drift the weapon's identity away from Solace's kit.
+  const wielderBlock = characterId === "self"
+    ? [
+        `WIELDER — Element: ${element}.`,
+        `Evolved unique ability: "${user.uniqueAbilityName}" — ${user.uniqueAbilityEffect} (mechanics: ${abilityMechanics})`,
+        `Personality: ${derivePersonality(user.resonanceProfile)}.`,
+        `Bonds: ${deriveBonds(bonds)}.`,
+        `Combat history: ${deriveCombat(user.duelWins, user.duelLosses, user.encountersWon, user.raidWins)}; ${user.dungeonClears} dungeons, ${user.ascensionWins} ascensions.`,
+        `Dedication: ${deriveDedication(user.dailyStreak, user.worldLevel, user.level)}.`,
+      ]
+    : [
+        `WIELDER: Solace — a resonator defined by steady, composed calm; her strength builds gradually rather than exploding.`,
+        `Lore fragment: "${SOLACE_LORE_FRAGMENTS[0]}"`,
+        `This is HER signature weapon awakening, not the player's own — the new name, lore, and passive must stay true to Solace's identity, not the account owner's.`,
+      ];
+
   const userPrompt = [
     `WEAPON: "${weapon.name}" — ${weapon.weaponType}, ${weapon.rarity}★, Lv${weapon.level}, substat ${weapon.subStatType ?? "none"}${weapon.hiddenSub1Type ? `, hidden: ${weapon.hiddenSub1Type}${weapon.hiddenSub2Type ? " + " + weapon.hiddenSub2Type : ""}` : ""}.`,
     `Current weapon passive: ${basePassive?.effects ? formatEffects(basePassive.effects as AbilityEffect[]).replace(/\n/g, " | ") : basePassive?.elemDmg ? `+${Math.round(basePassive.elemDmg * 100)}% Elemental DMG` : "none (this awakening grants its first)"}.`,
     ``,
-    `WIELDER — Element: ${element}.`,
-    `Evolved unique ability: "${user.uniqueAbilityName}" — ${user.uniqueAbilityEffect} (mechanics: ${abilityMechanics})`,
-    `Personality: ${derivePersonality(user.resonanceProfile)}.`,
-    `Bonds: ${deriveBonds(bonds)}.`,
-    `Combat history: ${deriveCombat(user.duelWins, user.duelLosses, user.encountersWon, user.raidWins)}; ${user.dungeonClears} dungeons, ${user.ascensionWins} ascensions.`,
-    `Dedication: ${deriveDedication(user.dailyStreak, user.worldLevel, user.level)}.`,
+    ...wielderBlock,
     ``,
     `Awaken the weapon. Its new name and soul must feel forged from this exact wielder.`,
   ].join("\n");

@@ -24,13 +24,37 @@ const ELEMENT_HEX: Record<string, number> = {
   AERO:   0x10B981, HAVOC:  0xEC4899, SPECTRO: 0xEAB308, NONE: 0x6366F1,
 };
 
+const CHARACTER_OWNER_LABEL: Record<string, string> = { self: "Yourself", solace: "Solace" };
+
 const command: Command = {
   data: new SlashCommandBuilder()
     .setName("awaken")
-    .setDescription("Awaken your equipped weapon's ego — it transforms, forever (Lv60)."),
+    .setDescription("Awaken your equipped weapon's ego — it transforms, forever (Lv60).")
+    .addStringOption(o =>
+      o.setName("character")
+        .setDescription("Which unit's equipped weapon to awaken (default: yourself)")
+        .setRequired(false)
+        .addChoices(
+          { name: "Yourself", value: "self"   },
+          { name: "Solace",   value: "solace" },
+        )
+    ) as SlashCommandBuilder,
 
   async execute(interaction: ChatInputCommandInteraction) {
     await interaction.deferReply();
+
+    const characterId = interaction.options.getString("character") ?? "self";
+    const ownerLabel   = CHARACTER_OWNER_LABEL[characterId] ?? characterId;
+
+    if (characterId !== "self") {
+      const owned = await prisma.characterProgress.findUnique({
+        where: { userId_characterId: { userId: interaction.user.id, characterId } },
+      });
+      if (!owned) {
+        await interaction.editReply({ content: `◈ You don't own **${characterId}** yet.` });
+        return;
+      }
+    }
 
     const [user, weapon] = await Promise.all([
       prisma.user.findUnique({
@@ -40,8 +64,12 @@ const command: Command = {
           forgingOres: true, paradoxCores: true, credits: true,
         },
       }),
+      // Weapons are equipped per-character — without this filter, a player
+      // with weapons equipped on both themselves and Solace would have
+      // findFirst grab an arbitrary one, silently awakening the wrong unit's
+      // weapon for real, spent resources.
       prisma.weapon.findFirst({
-        where:  { userId: interaction.user.id, isEquipped: true },
+        where:  { userId: interaction.user.id, isEquipped: true, characterId },
         select: {
           id: true, name: true, weaponType: true, rarity: true, level: true,
           baseAtk: true,
@@ -65,7 +93,7 @@ const command: Command = {
     };
 
     if (!weapon) {
-      await fail("You have no weapon equipped. Forge one with `/forge` or pull one with `/wish` first.");
+      await fail(`**${ownerLabel}** has no weapon equipped. Use \`/equip\` (with the **character** option, if not yourself) first.`);
       return;
     }
     if (weapon.awakened) {
@@ -148,7 +176,7 @@ const command: Command = {
       });
 
       // AI-personalized awakening (deterministic fallback if LM Studio offline)
-      const awakening = await generateAwakening(interaction.user.id).catch(() => null);
+      const awakening = await generateAwakening(interaction.user.id, characterId).catch(() => null);
       if (!awakening) {
         // Refund — generation needs user+weapon rows which just existed; this is a hard failure
         await prisma.user.update({
