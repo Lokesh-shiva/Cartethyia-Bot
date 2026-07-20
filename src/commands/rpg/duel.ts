@@ -9,6 +9,7 @@ import { calcPlayerDamage, calcEnemyDamage, hpBar, energyBar, COUNTER_ELEMENT } 
 import { awardUser, isDispatchBlocked, replyNotStarted } from "../../lib/economy";
 import { CE } from "../../lib/emojiManager";
 import { acquireLock, releaseLock, alreadyInCombatMsg } from "../../lib/combatLock";
+import { registerFight, clearFight } from "../../lib/fightTracker";
 import {
   resolvePlayerBonuses, applyBonuses, applyAbilityAttack,
   abilityCritRate, applyLifesteal, PlayerBonuses,
@@ -439,6 +440,8 @@ export async function execute(interaction: ChatInputCommandInteraction) {
       });
       await thread.members.add(interaction.user.id);
       await thread.members.add(target.id);
+      await registerFight(interaction.user.id, thread.id, interaction.guildId!, "Duel");
+      await registerFight(target.id, thread.id, interaction.guildId!, "Duel");
     } catch {
       releaseLock(interaction.user.id);
       releaseLock(target.id);
@@ -474,6 +477,8 @@ export async function execute(interaction: ChatInputCommandInteraction) {
     ) => {
       releaseLock(interaction.user.id);
       releaseLock(target.id);
+      await clearFight(interaction.user.id);
+      await clearFight(target.id);
       if (won && winnerId) {
         const loserId = winnerId === interaction.user.id ? target.id : interaction.user.id;
         await awardUser(winnerId, { credits: WIN_CREDITS, resonanceExp: WIN_EXP }, "duel");

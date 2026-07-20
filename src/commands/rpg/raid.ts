@@ -11,6 +11,7 @@ import { getBoss, scaledBoss }      from "../../lib/bosses";
 import { ALL_FIELD_BOSSES, FieldBoss }  from "../../lib/fieldBosses";
 import { calcPlayerDamage, calcEnemyDamage, hpBar, buildRewardText } from "../../lib/combat";
 import { awardUser } from "../../lib/economy";
+import { registerFight, clearFight } from "../../lib/fightTracker";
 import {
   resolvePlayerBonuses, applyBonuses, applyAbilityAttack,
   abilityCritRate, abilityVib, applyLifesteal, PlayerBonuses,
@@ -755,6 +756,7 @@ async function endRaid(interaction: ChatInputCommandInteraction) {
     await interaction.reply({ content: "No active raid in this channel.", flags: 64 }); return;
   }
   activeRaids.delete(interaction.channelId);
+  for (const p of raid.participants) await clearFight(p.userId).catch(() => {});
   await interaction.reply({
     embeds: [new EmbedBuilder().setColor(0x4A4A5A)
       .setDescription("☄️  The raid has been cancelled by the server admin.")
@@ -824,6 +826,7 @@ async function launchRaid(
   }
 
   for (const p of raid.participants) await thread.members.add(p.userId).catch(() => {});
+  for (const p of raid.participants) await registerFight(p.userId, thread.id, channel.guildId, "Calamity Raid").catch(() => {});
   if (recruitMsg) await recruitMsg.edit({ components: [] }).catch(() => {});
 
   await channel.send({
@@ -859,6 +862,7 @@ async function launchRaid(
   const finishRaid = async (won: boolean) => {
     raid.joinCollector?.stop();
     activeRaids.delete(channelId);
+    for (const p of raid.participants) await clearFight(p.userId).catch(() => {});
 
     if (won) {
       const loot     = boss.defeatLoot;
