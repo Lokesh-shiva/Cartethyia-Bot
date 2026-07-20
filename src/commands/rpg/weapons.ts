@@ -106,15 +106,22 @@ const command: Command = {
       return new EmbedBuilder()
         .setColor(w.awakened ? 0xFCD34D : color)
         .setAuthor({ name: `${displayName}  ·  Arsenal (${weapons.length} weapons)`, iconURL: avatarUrl })
-        .setDescription(w.isEquipped ? `**Currently equipped**${w.characterId !== "self" ? ` (by ${w.characterId})` : ""}` : `◇ Not equipped  ·  use \`/equip\` to switch`)
+        .setDescription(
+          (w.isEquipped ? `**Currently equipped**${w.characterId !== "self" ? ` (by ${w.characterId})` : ""}` : `◇ Not equipped  ·  use \`/equip\` to switch`) +
+          (weapons.length > 25 ? `\n\n-# Showing top 25 of ${weapons.length} weapons (sorted by equipped, rarity, level).` : "")
+        )
         .setImage("attachment://weapon.png")
         .setFooter({ text: w.awakened ? `CARTETHYIA  ·  Arsenal  ·  ✦ Ego Awakened  ·  ${displayName2}` : `CARTETHYIA  ·  Arsenal` });
     };
 
+    // Discord limit: 25 options per select menu. Already sorted by equipped,
+    // rarity, level — slice to top 25 so an arsenal bigger than that (an
+    // owned-weapons cap doesn't exist) can't crash addOptions().
+    const selectableWeapons = weapons.slice(0, 25);
     const makeSelect = (selectedId: string) => new StringSelectMenuBuilder()
       .setCustomId("weapons_select")
       .setPlaceholder("Browse your arsenal…")
-      .addOptions(weapons.map(w =>
+      .addOptions(selectableWeapons.map(w =>
         new StringSelectMenuOptionBuilder()
           .setLabel(`${(w.awakened && w.awakenedName) ? w.awakenedName : w.name}  ${RARITY_STARS[w.rarity]}${w.isEquipped ? `  ← equipped${w.characterId !== "self" ? ` (${w.characterId})` : ""}` : ""}`)
           .setDescription(`Lv${w.level}  ·  ATK ${w.baseAtk}  ·  ${w.weaponType}${w.awakened ? "  ·  ✦ AWAKENED" : ""}`)
