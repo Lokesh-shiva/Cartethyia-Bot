@@ -224,3 +224,20 @@ export function describeWeaponPassive(weaponName: string): string {
   if (effectsText) lines.push(effectsText);
   return lines.join("\n");
 }
+
+// Weapon-row-aware variant — if the weapon has been Awakened, its actual
+// combat passive is the amplified `awakenedPassive` JSON, not the base
+// WEAPON_PASSIVES entry. Used anywhere (e.g. /weapon-refine) that shows a
+// passive description alongside a specific owned weapon, so the text matches
+// what setBonus.ts actually applies.
+export function describeWeaponPassiveForRow(weapon: { name: string; awakened: boolean; awakenedPassive: unknown }): string {
+  if (weapon.awakened && weapon.awakenedPassive) {
+    const ap = weapon.awakenedPassive as { elemDmg?: number; effects?: any[]; desc?: string };
+    const lines: string[] = [];
+    if (ap.elemDmg) lines.push(`Elemental DMG: +${Math.round(ap.elemDmg * 100)}%`);
+    const effectsText = formatEffects(ap.effects ?? []);
+    if (effectsText) lines.push(effectsText);
+    return lines.join("\n") || ap.desc || "";
+  }
+  return describeWeaponPassive(weapon.name);
+}

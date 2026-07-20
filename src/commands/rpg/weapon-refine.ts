@@ -13,7 +13,7 @@ import {
 import prisma from "../../lib/prisma";
 import { replyNotStarted } from "../../lib/economy";
 import { invalidateBonusCache } from "../../lib/setBonus";
-import { WEAPON_PASSIVES, REFINEMENT_MULT, MAX_REFINEMENT, RARITY_STARS, WEAPON_TYPE_EMOJI, describeWeaponPassive } from "../../lib/weapons";
+import { WEAPON_PASSIVES, REFINEMENT_MULT, MAX_REFINEMENT, RARITY_STARS, WEAPON_TYPE_EMOJI, describeWeaponPassiveForRow } from "../../lib/weapons";
 import { ELEMENT_COLORS } from "../../lib/echoes";
 import { Element, WeaponType } from "@prisma/client";
 
@@ -127,7 +127,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
         .setTitle(`◈  Refine — ${displayName}`)
         .setDescription(
           `Currently **R${keeper.refinement}** (\`${Math.round((REFINEMENT_MULT[keeper.refinement] ?? 1) * 100)}%\` passive magnitude).\n` +
-          `${describeWeaponPassive(keeper.name) || "*No base passive to describe.*"}\n\n` +
+          `${describeWeaponPassiveForRow(keeper) || "*No base passive to describe.*"}\n\n` +
           `Choose a duplicate copy to consume — this **permanently deletes** the consumed copy.`
         )
         .setFooter({ text: "CARTETHYIA  ·  Weapon Refinement" })],

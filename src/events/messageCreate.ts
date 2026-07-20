@@ -5,6 +5,7 @@ import { generateLevelUpCard } from "../lib/levelUpCard";
 import { sendElementSelection } from "../lib/elementSelect";
 import { shouldSpawnEncounter, spawnEncounter, resolveEncounterTargetChannel, getLevelUpChannelId, getNotifChannelId, isLevelUpEnabled, isExpEnabled, getBotChannelIds } from "../lib/encounter";
 import { getPrefix } from "../lib/prefixManager";
+import { PREFIX_ALIASES } from "../lib/commandAliases";
 import { grantReferralMilestone } from "../lib/referral";
 import { ExtendedClient } from "../types";
 import prisma from "../lib/prisma";
@@ -34,7 +35,7 @@ export async function execute(message: Message) {
       const cmd = cmdName.toLowerCase();
 
       const client  = message.client as ExtendedClient;
-      const command = client.commands.get(cmd);
+      const command = client.commands.get(cmd) ?? client.commands.get(PREFIX_ALIASES[cmd] ?? "");
 
       if (command) {
         // Bot channel restriction — setup command always allowed for admins
