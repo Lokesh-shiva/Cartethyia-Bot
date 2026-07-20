@@ -4,6 +4,8 @@ import './Commands.css';
 const COMMANDS = [
   { cmd: '/start',        desc: 'Create your resonator and begin your journey' },
   { cmd: '/profile',      desc: 'View your character card — stats, element, weapon, aura' },
+  { cmd: '/character',    desc: 'Manage a playable ally (e.g. Solace) — level, ascend, gear, and fight with her' },
+  { cmd: '/team',         desc: 'Set which ally fights alongside you in combat' },
   { cmd: '/level',        desc: 'Check your current level and EXP progress' },
   { cmd: '/stats',        desc: 'See final combat numbers and every bonus source' },
   { cmd: '/inventory',    desc: 'View all your currencies and materials' },
@@ -37,11 +39,13 @@ const COMMANDS = [
   { cmd: '/weapon',       desc: 'View a single weapon card with full stats and passive' },
   { cmd: '/forge',        desc: 'Craft a new weapon with Forging Ores' },
   { cmd: '/weapon-discard', desc: 'Dismantle unwanted weapons for Forging Ores — single or bulk with filters' },
-  { cmd: '/wish',         desc: 'Pull from the Resonance Banner using Fracture Keys' },
+  { cmd: '/weapon-refine', desc: 'Merge a duplicate weapon into +1 Refinement on a kept copy (up to R5)' },
+  { cmd: '/wish',         desc: 'Standard banner with Fracture Keys, or limited-time character/weapon banners with Radiant Keys' },
   { cmd: '/shop',         desc: 'Buy materials with Credits; Lunakite unlocks bundle rates on modules, tubes, cores, and records' },
-  { cmd: '/use',          desc: 'Use an item from your inventory (e.g. Resonance Records)' },
-  { cmd: '/vote',         desc: 'Get vote links for DBL and top.gg — earn 1 000 cr + 1 Fracture Key' },
+  { cmd: '/use',          desc: 'Use an item from your inventory — e.g. convert Fractonite into Fracture or Radiant Keys' },
+  { cmd: '/vote',         desc: 'Get vote links for DBL, top.gg, and rank.top — earn Credits + Fractonite every 12h' },
   { cmd: '/leaderboard',  desc: 'View server rankings by level, World Level, credits, and more' },
+  { cmd: '/mail',         desc: 'Read rewards and messages sent to your inbox' },
   { cmd: '/guide',        desc: 'Full interactive guide — every system explained in one place' },
 ];
 

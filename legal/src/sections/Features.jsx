@@ -24,8 +24,13 @@ const FEATURES = [
   },
   {
     id: 'wish', label: 'Wish System', emoji: '✨',
-    desc: 'Spend Fracture Keys to pull weapons from the Resonance Banner. Soft pity at 65, guaranteed 5★ by pull 80.',
+    desc: 'Spend Fracture Keys on the evergreen Standard banner, or Radiant Keys on limited-time character and weapon banners. Soft pity at 65, guaranteed 5★ by pull 80.',
     accent: 'rgba(99,102,241,0.18)', reveal: 'up',
+  },
+  {
+    id: 'ally', label: 'Playable Allies', emoji: '🌙',
+    desc: 'Pull a full second character to fight alongside you — own kit, own leveling, own gear. Solace is the first: recruit her on a limited banner, then gear and grow her right from /character.',
+    accent: 'rgba(129,140,248,0.18)', reveal: 'left',
   },
   {
     id: 'element', label: '6 Elements', emoji: '🌀',
