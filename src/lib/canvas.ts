@@ -748,7 +748,7 @@ export async function generateProfileCard(input: ProfileCardInput): Promise<Buff
     ctx.shadowBlur = 0;
 
     try {
-      const img = await loadImage(path.join(process.cwd(), "assets", "Characters", "Solace.png"));
+      const img = await loadImage(path.join(process.cwd(), "assets", "Characters", "Solace_icon.png"));
       ctx.save();
       rrect(ctx, ex, ey, SS, SS, 9); ctx.clip();
       const scale = Math.max(SS / img.width, SS / img.height);

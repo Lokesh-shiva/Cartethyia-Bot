@@ -462,7 +462,8 @@ const command: Command = {
          i.customId.startsWith("charlvl2:") || i.customId.startsWith("charlvlmax:") ||
          i.customId.startsWith("charnav:") || i.customId.startsWith("charequipweapon:") ||
          i.customId.startsWith("charequipweaponpick:") || i.customId.startsWith("charequipecho:") ||
-         i.customId.startsWith("charequipechopick:") || i.customId.startsWith("charequipechoclear:")),
+         i.customId.startsWith("charequipechopick:") || i.customId.startsWith("charequipechoclear:") ||
+         i.customId.startsWith("charequipechofilter:")),
       time: 5 * 60 * 1000,
     });
 
@@ -678,27 +679,45 @@ const command: Command = {
 
       const MAX_GRID_POINTS = 12;
       const CLEAR_ECHO = "__clear__";
+      const ELEMENT_FILTER_CHOICES = ["ALL", "FUSION", "GLACIO", "ELECTRO", "AERO", "HAVOC", "SPECTRO"];
 
-      if (i.customId.startsWith("charequipecho:") && i.isButton()) {
-        const btn = i as ButtonInteraction;
-        const [, characterId, slotRaw] = btn.customId.split(":");
-        const slot = Number(slotRaw);
-        if (!CHARACTERS[characterId] || !ownedCharacterIds.has(characterId) || !(slot >= 0 && slot <= 4)) {
-          await btn.deferUpdate().catch(() => {}); return;
-        }
-
+      // Shared by the initial "Equip" button and the element-filter dropdown
+      // below — Discord select menus hard-cap at 25 options, and with no way
+      // to narrow the list a player owning more than 25 unequipped echoes
+      // silently lost access to everything past the first 25. The filter
+      // dropdown replaces the nav row (not enough row budget for both —
+      // Discord caps messages at 5 action rows) while inside this picker.
+      const renderEchoPicker = async (
+        target: ButtonInteraction | StringSelectMenuInteraction,
+        characterId: string, slot: number, elementFilter: string,
+      ) => {
         const [currentEcho, allEquipped, unequipped] = await Promise.all([
           prisma.echo.findFirst({ where: { userId: interaction.user.id, characterId, isEquipped: true, equippedSlot: slot } }),
           prisma.echo.findMany({ where: { userId: interaction.user.id, characterId, isEquipped: true }, select: { cost: true, equippedSlot: true } }),
-          prisma.echo.findMany({ where: { userId: interaction.user.id, isEquipped: false }, orderBy: [{ rarity: "desc" }, { cost: "desc" }, { level: "desc" }] }),
+          prisma.echo.findMany({
+            where: { userId: interaction.user.id, isEquipped: false, ...(elementFilter !== "ALL" ? { element: elementFilter as Element } : {}) },
+            orderBy: [{ rarity: "desc" }, { cost: "desc" }, { level: "desc" }],
+          }),
         ]);
         const pointsExcludingSlot = allEquipped.filter(e => e.equippedSlot !== slot).reduce((sum, e) => sum + e.cost, 0);
         const slotName = slot === 0 ? "Main Slot" : `Sub Slot ${slot}`;
 
+        const filterSelect = new StringSelectMenuBuilder()
+          .setCustomId(`charequipechofilter:${characterId}:${slot}`)
+          .setPlaceholder(`Filter: ${elementFilter === "ALL" ? "All Elements" : elementFilter}`)
+          .addOptions(ELEMENT_FILTER_CHOICES.map(el => ({
+            label: el === "ALL" ? "All Elements" : `${ELEMENT_EMOJI[el as Element] ?? ""} ${el}`,
+            value: el, default: el === elementFilter,
+          })));
+        const filterRow = new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(filterSelect);
+
         if (unequipped.length === 0 && !currentEcho) {
-          await btn.update({
-            embeds: [new EmbedBuilder().setColor(0x334155).setDescription(`◈ You have no unequipped echoes for **${slotName}**.\nDefeat enemies to collect more.`)],
-            components: [selectRow, ...navRows(characterId, "echoes")],
+          await target.update({
+            embeds: [new EmbedBuilder().setColor(0x334155).setDescription(
+              `◈ You have no unequipped echoes for **${slotName}**${elementFilter !== "ALL" ? ` matching **${elementFilter}**` : ""}.\n` +
+              (elementFilter !== "ALL" ? "Try a different filter, or " : "") + "Defeat enemies to collect more."
+            )],
+            components: [selectRow, filterRow],
           }).catch(() => {});
           return;
         }
@@ -707,7 +726,8 @@ const command: Command = {
         if (currentEcho) {
           opts.push({ label: `✕  Clear slot — unequip ${currentEcho.name.slice(0, 40)}`, description: `Remove the current echo from ${slotName}`, value: CLEAR_ECHO, emoji: "🗑️" });
         }
-        for (const e of unequipped.slice(0, currentEcho ? 24 : 25)) {
+        const shown = unequipped.slice(0, currentEcho ? 24 : 25);
+        for (const e of shown) {
           const pts = pointsExcludingSlot + e.cost;
           const overBudget = pts > MAX_GRID_POINTS;
           const mainVal = calcMainStatValue(e.mainStatType, e.level, e.rarity);
@@ -724,15 +744,38 @@ const command: Command = {
           .setPlaceholder(`Select an echo for ${slotName}…`)
           .addOptions(opts);
 
-        await btn.update({
+        const hasMore = unequipped.length > shown.length;
+        await target.update({
           embeds: [new EmbedBuilder().setColor(0x6366F1)
             .setTitle(`◈  ${CHARACTERS[characterId].label} — ${slotName}`)
             .setDescription(
               (currentEcho ? `**Currently equipped:** ${currentEcho.name} (Lv${currentEcho.level})\n` : `**${slotName} is empty.**\n`) +
-              `Grid: **${pointsExcludingSlot}** pts used (excl. this slot) / **${MAX_GRID_POINTS}** max.`
+              `Grid: **${pointsExcludingSlot}** pts used (excl. this slot) / **${MAX_GRID_POINTS}** max.` +
+              (hasMore ? `\n\n-# Showing ${shown.length} of ${unequipped.length} — use the filter below to narrow down.` : "")
             )],
-          components: [selectRow, ...navRows(characterId, "echoes"), new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(pickSelect)],
+          components: [selectRow, filterRow, new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(pickSelect)],
         }).catch(() => {});
+      };
+
+      if (i.customId.startsWith("charequipecho:") && i.isButton()) {
+        const btn = i as ButtonInteraction;
+        const [, characterId, slotRaw] = btn.customId.split(":");
+        const slot = Number(slotRaw);
+        if (!CHARACTERS[characterId] || !ownedCharacterIds.has(characterId) || !(slot >= 0 && slot <= 4)) {
+          await btn.deferUpdate().catch(() => {}); return;
+        }
+        await renderEchoPicker(btn, characterId, slot, "ALL");
+        return;
+      }
+
+      if (i.customId.startsWith("charequipechofilter:") && i.isStringSelectMenu()) {
+        const sel = i as StringSelectMenuInteraction;
+        const [, characterId, slotRaw] = sel.customId.split(":");
+        const slot = Number(slotRaw);
+        if (!CHARACTERS[characterId] || !ownedCharacterIds.has(characterId) || !(slot >= 0 && slot <= 4)) {
+          await sel.deferUpdate().catch(() => {}); return;
+        }
+        await renderEchoPicker(sel, characterId, slot, sel.values[0]);
         return;
       }
 
