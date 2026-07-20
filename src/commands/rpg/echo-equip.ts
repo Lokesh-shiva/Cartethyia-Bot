@@ -295,7 +295,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
         try { await btn.deferUpdate(); } catch { return; }
         if (btn.customId === "clear_confirm") {
           await prisma.echo.update({ where: { id: currentEcho.id }, data: { isEquipped: false, equippedSlot: null } });
-          invalidateBonusCache(interaction.user.id);
+          invalidateBonusCache(interaction.user.id, characterId);
           await btn.editReply({
             embeds: [new EmbedBuilder().setColor(color)
               .setTitle(`◈  Slot Cleared — ${slotName}`)

@@ -221,10 +221,12 @@ export const GUIDE_SECTIONS: Record<string, GuideSection> = {
         { name: "⚙️  Forging Ores",      value: "Craft weapons at `/forge`. Earned from `/vibe` physical (15%), 7-day `/daily`, Dispatch, Forging Grounds dungeon.", inline: false },
         { name: "🔮  Paradox Cores",     value: "**Endgame.** Reroll all Echo substats. Earned from Ascension wins, WL1+ Dispatch, Paradox Crucible dungeon.", inline: false },
         { name: "🔒  Stasis Locks",      value: "Lock a substat before rerolling so it's protected. Cost per lock: 1 / 3 / 6. Earned from **Ascension wins** (WL0–2 → 1, WL3–5 → 2, WL6–8 → 3). Also buyable at `/shop` for 500 Credits each.", inline: false },
-        { name: "📀  Resonance Records", value: "Instant EXP — one level's worth. Use with `/use record`. Earned from `/vibe`, `/daily`, milestones, Bonds, Memory Vault dungeon.", inline: false },
-        { name: "🔷  Fractonite",        value: "Pre-key currency — **100 Fractonite = 1 Fracture Key** via `/use fractonite`. Drops from dungeons (40), bosses/field-bosses/ascension (60), voting (20/40 weekends), and first expedition (300). Also buyable in `/shop`.", inline: false },
+        { name: "📀  Resonance Records", value: "Instant EXP — one level's worth. Use with `/use record`. Earned from `/vibe`, `/daily`, milestones, Bonds, Memory Vault dungeon. Also spent to level up **Solace** via `/character`.", inline: false },
+        { name: "🔷  Fractonite",        value: "Pre-key currency — **100 Fractonite = 1 Fracture Key OR 1 Radiant Key** via `/use fractonite` (pick which). Drops from dungeons (40), bosses/field-bosses/ascension (60), voting (100/200 weekends), and first expedition (300). Also buyable in `/shop`.", inline: false },
         { name: "🔆  Aura Prism",        value: "Instantly restores **3 Resonance Aura** charges. Use with `/use aura-prism`. Obtainable from Patreon (Ascendant+) and the Lunakite shop.", inline: false },
-        { name: "🗝️  Fracture Keys",     value: "Used for **Resonance Wishes** (`/wish`) — the gacha banner. Convert Fractonite (100:1) via `/use fractonite`.", inline: false },
+        { name: "🗝️  Fracture Keys",     value: "Used for the **Standard Banner** on `/wish` — the evergreen weapon pool. Convert Fractonite (100:1) via `/use fractonite`.", inline: false },
+        { name: "🔑  Radiant Keys",      value: "Used for the **Limited Character/Weapon Banners** on `/wish` (Solace, Wellspring) — never the Standard banner. Convert Fractonite (100:1) via `/use fractonite`, or just pull — a shortfall auto-converts Fractonite for you.", inline: false },
+        { name: "🌠  Starfall Shards",   value: "Solace-only ascension material, required from her Phase 2 ascension (→Lv50) onward. Guaranteed drop from defeating the **Spectro field boss (Luminal Specter)** via `/field-boss`.", inline: false },
       )
       .setFooter({ text: "CARTETHYIA  ·  /inventory · /shop" }),
   },
@@ -615,15 +617,16 @@ export const GUIDE_SECTIONS: Record<string, GuideSection> = {
   },
 
   wish: {
-    label: "Resonance Wish — Gacha",
+    label: "Resonance Wish — Standard Banner",
     description: "Pull 4★ and 5★ weapons with Fracture Keys — /wish",
     emoji: "🗝️",
     embed: () => new EmbedBuilder()
       .setColor(0xA855F7)
-      .setTitle("🗝️  Resonance Wish — Gacha Banner")
+      .setTitle("🗝️  Resonance Wish — Standard Banner")
       .setDescription(
-        `Spend 🗝️ **Fracture Keys** to pull weapons from the Resonance Banner.\n` +
-        `Each pull costs **1 Fracture Key**. Use \`/wish\` to open the banner.`
+        `Spend 🗝️ **Fracture Keys** to pull weapons from the evergreen Standard Banner.\n` +
+        `Each pull costs **1 Fracture Key**. Use \`/wish\` → **Standard** to open it.\n\n` +
+        `-# Looking for Solace or Wellspring? Those are the separate Limited banners — see the **Solace** guide page.`
       )
       .addFields(
         {
@@ -656,12 +659,17 @@ export const GUIDE_SECTIONS: Record<string, GuideSection> = {
         {
           name: "Earning Fracture Keys",
           value: [
-            `Keys come from **Fractonite** — the intermediate currency (100 FT = 1 FK via \`/use fractonite\`).`,
+            `Keys come from **Fractonite** — the intermediate currency (100 FT = 1 FK **or** 1 RK, your pick, via \`/use fractonite\`).`,
             `› Dungeon clear: **40 FT**  ·  Boss / Field-Boss / Ascension win: **60 FT**`,
-            `› Daily vote: **1 FK** (2 weekends, direct — no conversion needed)`,
+            `› Daily vote: **100 FT** (200 weekends) — convert to whichever key you need`,
             `› First expedition: **300 FT** (Fractonite)`,
             `› Buy in \`/shop\`: 8 Credits each or 1 Lunakite per 100`,
           ].join("\n"),
+          inline: false,
+        },
+        {
+          name: "Continuous Pulling",
+          value: `The Pull ×1/×10 buttons stay live on the result message after every pull — keep pulling without re-running \`/wish\` each time. Session stays open for 5 minutes of inactivity.`,
           inline: false,
         },
         {
@@ -674,6 +682,69 @@ export const GUIDE_SECTIONS: Record<string, GuideSection> = {
         },
       )
       .setFooter({ text: "CARTETHYIA  ·  /wish" }),
+  },
+
+  solace: {
+    label: "Solace — Banner Character",
+    description: "Recruit Solace, level her up, and fight alongside her — /wish, /character, /team",
+    emoji: "✨",
+    embed: () => new EmbedBuilder()
+      .setColor(0xFCD34D)
+      .setTitle("✨  Solace — CARTETHYIA's First Banner Character")
+      .setDescription(
+        `A fallen star, recruitable through her own Limited Banner. Once you own her, she's a real ` +
+        `support unit with her own leveling, gear, and combat kit — not a cosmetic.`
+      )
+      .addFields(
+        {
+          name: "Recruiting Her",
+          value: [
+            `\`/wish\` → **Limited Character Banner** *(The Rising Overture)* — spends **Radiant Keys**, not Fracture Keys.`,
+            `Every 5★ pull on this banner IS Solace — no losing a coin flip to a different character.`,
+            `A duplicate pull converts into a **Constellation Token** instead of a second copy.`,
+            `4★ tier drops a real weapon from the Standard weapon pool; a full ×10 miss always guarantees at least one 4★-or-better.`,
+            `⚔ Her signature weapon **Wellspring** has its own Limited Weapon Banner *(The Tempered Vow)*.`,
+          ].join("\n"),
+          inline: false,
+        },
+        {
+          name: "Leveling & Ascension — `/character`",
+          value: [
+            `Once owned, \`/character\` → Solace shows her full profile: Stats, Weapon, Echoes, Kit Levels, Constellations, Lore.`,
+            `**Level Up** spends Resonance Records + Credits, up to your current phase's cap.`,
+            `**Ascend** (once at cap) raises the cap — costs Credits + Forging Ores + Paradox Cores, and from Phase 2 onward, **Starfall Shards** too.`,
+            `"Jump to Lv N" instantly spends up to what you can afford instead of clicking Level Up repeatedly.`,
+            `She's built as a **support unit** — HP/DEF scale fully with level, ATK/Crit barely move. Don't expect her to out-damage a dedicated DPS build.`,
+          ].join("\n"),
+          inline: false,
+        },
+        {
+          name: "Gear — Weapon & Echoes",
+          value: [
+            `\`/character\` → Weapon page has an inline **Equip Weapon** button — pick from your arsenal right there.`,
+            `\`/character\` → Echoes page has 5 slot buttons that open an inline echo picker (with Element/Cost filters if you own a lot of echoes).`,
+            `Recommended echo set: **Radiant Convergence** (Spectro) — its heal-on-turn mechanics play directly into her support kit.`,
+            `A weapon/echo equipped to Solace is equipped to *her*, not you — it won't show up on your own \`/profile\` or \`/weapon\` while equipped to her.`,
+          ].join("\n"),
+          inline: false,
+        },
+        {
+          name: "Fighting With Her — `/team`",
+          value: [
+            `\`/team ally:Solace\` sets her as your fight partner (requires owning her).`,
+            `In combat, a **Swap** button lets you switch who's acting — you always go first, she's available to swap into afterward.`,
+            `The swap button disables if she's been knocked out — no reviving mid-fight.`,
+            `Works across ascend/boss/dungeon/field-boss/encounter/duel/raid.`,
+          ].join("\n"),
+          inline: false,
+        },
+        {
+          name: "Starfall Shards",
+          value: `Required for her ascension from Phase 2 onward. **Guaranteed drop** from defeating the Spectro field boss — specifically **Luminal Specter**, not Lumenwrought Seraph (the other Spectro field boss). Use \`/field-boss\` and pick Luminal Specter.`,
+          inline: false,
+        },
+      )
+      .setFooter({ text: "CARTETHYIA  ·  /wish · /character · /team" }),
   },
 
   ability_evolution: {
@@ -784,8 +855,9 @@ export const GUIDE_SECTIONS: Record<string, GuideSection> = {
           name: "🗳️ Free — Vote Daily  ·  \`/vote\`",
           value: [
             `Vote on any of the three platforms to earn instant in-game rewards:`,
-            `💠 **1,000 Credits** + 🗝️ **1 Fracture Key**`,
-            `Weekend bonus (Sat/Sun): **2,000 Credits + 2 Fracture Keys**`,
+            `💠 **1,000 Credits** + 🔷 **100 Fractonite**`,
+            `Weekend bonus (Sat/Sun): **2,000 Credits + 200 Fractonite**`,
+            `-# Convert Fractonite with \`/use fractonite\` into Fracture Keys or Radiant Keys — your choice.`,
             `Each platform resets every **12 hours** — you can vote on all three.`,
             `› discordbotlist.com/bots/cartethyia/upvote`,
             `› top.gg/bot/1510163339177623642/vote`,
