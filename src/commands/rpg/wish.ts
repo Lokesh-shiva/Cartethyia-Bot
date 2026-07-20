@@ -558,7 +558,16 @@ function doSingleSolacePull(pity: number, pity4: number): SolacePullResult {
   return { tier: "3star", mat: rollMaterials(), newPity, new4Pity: newPity4 };
 }
 
-function solaceCharacterBannerEmbed(pity: number, keys: number, fractonite: number, color: number): EmbedBuilder {
+function solaceCharacterBannerEmbed(pity: number, keys: number, fractonite: number, color: number, bannerEndsAt?: Date | null): EmbedBuilder {
+  const fields = [
+    { name: "Your Pity",    value: `**${pity}** / ${HARD_PITY}`, inline: true },
+    { name: "Radiant Keys", value: `${CE.rk ?? "🔑"} **${keys}**`, inline: true },
+    { name: "Fractonite",   value: `${CE.ft ?? "🔷"} **${fractonite}**`, inline: true },
+    { name: "Rates", value: `5★: **0.6%** base · soft pity **${SOFT_PITY}** · hard pity **${HARD_PITY}**\n4★-tier: **5.1%** base · guaranteed every **${HARD_PITY_4}** pulls · a full ×10 miss always yields at least one`, inline: false },
+  ];
+  if (bannerEndsAt) {
+    fields.push({ name: "Banner Ends", value: `<t:${Math.floor(bannerEndsAt.getTime() / 1000)}:R> (<t:${Math.floor(bannerEndsAt.getTime() / 1000)}:f>)`, inline: false });
+  }
   return new EmbedBuilder()
     .setColor(0xFCD34D)
     .setAuthor({ name: "✦  The Rising Overture  ·  Character Banner" })
@@ -567,12 +576,7 @@ function solaceCharacterBannerEmbed(pity: number, keys: number, fractonite: numb
       `A duplicate pull converts into a Constellation Token instead of a second copy.\n\n` +
       `-# Short on Radiant Keys? Pulling automatically converts Fractonite to cover the gap (${FRACTONITE_PER_RADIANT_KEY} Fractonite = 1 Key).`
     )
-    .addFields(
-      { name: "Your Pity",    value: `**${pity}** / ${HARD_PITY}`, inline: true },
-      { name: "Radiant Keys", value: `${CE.rk ?? "🔑"} **${keys}**`, inline: true },
-      { name: "Fractonite",   value: `${CE.ft ?? "🔷"} **${fractonite}**`, inline: true },
-      { name: "Rates", value: `5★: **0.6%** base · soft pity **${SOFT_PITY}** · hard pity **${HARD_PITY}**\n4★-tier: **5.1%** base · guaranteed every **${HARD_PITY_4}** pulls · a full ×10 miss always yields at least one`, inline: false },
-    )
+    .addFields(fields)
     .setFooter({ text: "CARTETHYIA  ·  The Rising Overture" });
 }
 
@@ -586,8 +590,9 @@ async function runCharacterBanner(interaction: ChatInputCommandInteraction, dbUs
       .setDisabled(!resolveKeySpend(dbUser.radiantKeys, dbUser.fractonite, 10).ok),
   );
 
+  const bannerWindow = await prisma.bannerWindow.findUnique({ where: { id: "banner1" } });
   const hasOverviewArt = fs.existsSync(SOLACE_ART_PATH);
-  const overviewEmbed = solaceCharacterBannerEmbed(dbUser.limitedCharBannerPity, dbUser.radiantKeys, dbUser.fractonite, color);
+  const overviewEmbed = solaceCharacterBannerEmbed(dbUser.limitedCharBannerPity, dbUser.radiantKeys, dbUser.fractonite, color, bannerWindow?.endsAt);
   if (hasOverviewArt) overviewEmbed.setImage("attachment://solace_banner.png");
   const msg = await interaction.editReply({
     embeds: [overviewEmbed],
@@ -751,7 +756,16 @@ function doSingleWellspringPull(pity: number, pity4: number, guaranteed: boolean
   return { tier: 3, mat: rollMaterials(), newPity, new4Pity, newGuaranteed: guaranteed };
 }
 
-function weaponBannerEmbed(pity: number, pity4: number, guaranteed: boolean, keys: number, fractonite: number, color: number): EmbedBuilder {
+function weaponBannerEmbed(pity: number, pity4: number, guaranteed: boolean, keys: number, fractonite: number, color: number, bannerEndsAt?: Date | null): EmbedBuilder {
+  const fields = [
+    { name: "Your Pity",    value: `**${pity}** / ${HARD_PITY}`,  inline: true },
+    { name: "4★ Pity",     value: `**${pity4}** / ${HARD_PITY_4}`, inline: true },
+    { name: "Radiant Keys", value: `${CE.rk ?? "🔑"} **${keys}**`,   inline: true },
+    { name: "Fractonite",   value: `${CE.ft ?? "🔷"} **${fractonite}**`, inline: true },
+  ];
+  if (bannerEndsAt) {
+    fields.push({ name: "Banner Ends", value: `<t:${Math.floor(bannerEndsAt.getTime() / 1000)}:R> (<t:${Math.floor(bannerEndsAt.getTime() / 1000)}:f>)`, inline: false });
+  }
   return new EmbedBuilder()
     .setColor(0xEC4899)
     .setAuthor({ name: "⚔  The Tempered Vow  ·  Weapon Banner" })
@@ -763,12 +777,7 @@ function weaponBannerEmbed(pity: number, pity4: number, guaranteed: boolean, key
       (guaranteed ? "✦ **Next 5★ is guaranteed Wellspring**\n\n" : "") +
       `-# Short on Radiant Keys? Pulling automatically converts Fractonite to cover the gap (${FRACTONITE_PER_RADIANT_KEY} Fractonite = 1 Key).`
     )
-    .addFields(
-      { name: "Your Pity",    value: `**${pity}** / ${HARD_PITY}`,  inline: true },
-      { name: "4★ Pity",     value: `**${pity4}** / ${HARD_PITY_4}`, inline: true },
-      { name: "Radiant Keys", value: `${CE.rk ?? "🔑"} **${keys}**`,   inline: true },
-      { name: "Fractonite",   value: `${CE.ft ?? "🔷"} **${fractonite}**`, inline: true },
-    )
+    .addFields(fields)
     .setFooter({ text: "CARTETHYIA  ·  The Tempered Vow" });
 }
 
@@ -782,8 +791,9 @@ async function runWeaponBanner(interaction: ChatInputCommandInteraction, dbUser:
       .setDisabled(!resolveKeySpend(dbUser.radiantKeys, dbUser.fractonite, 10).ok),
   );
 
+  const bannerWindow = await prisma.bannerWindow.findUnique({ where: { id: "banner1" } });
   const wellspringOverviewArt = getWeaponImagePath(WELLSPRING_WEAPON.type, WELLSPRING_WEAPON.name);
-  const overviewEmbed = weaponBannerEmbed(dbUser.limitedWeaponBannerPity, dbUser.limitedWeaponBanner4Pity, dbUser.limitedWeaponBannerGuaranteed, dbUser.radiantKeys, dbUser.fractonite, color);
+  const overviewEmbed = weaponBannerEmbed(dbUser.limitedWeaponBannerPity, dbUser.limitedWeaponBanner4Pity, dbUser.limitedWeaponBannerGuaranteed, dbUser.radiantKeys, dbUser.fractonite, color, bannerWindow?.endsAt);
   if (wellspringOverviewArt) overviewEmbed.setImage("attachment://wellspring_banner.png");
   const msg = await interaction.editReply({
     embeds: [overviewEmbed],
@@ -933,7 +943,8 @@ const command: Command = {
       .setDescription(
         "**Standard** — the evergreen weapon pool, spends Fracture Keys.\n\n" +
         "**Limited Character Banner** *(The Rising Overture)* — featuring Solace, spends Radiant Keys.\n\n" +
-        "**Limited Weapon Banner** *(The Tempered Vow)* — featuring Wellspring, spends Radiant Keys."
+        "**Limited Weapon Banner** *(The Tempered Vow)* — featuring Wellspring, spends Radiant Keys." +
+        (windowActive && window ? `\n\n✦ **Banner ends** <t:${Math.floor(window.endsAt.getTime() / 1000)}:R> (<t:${Math.floor(window.endsAt.getTime() / 1000)}:f>)` : "")
       )
       .setFooter({ text: "CARTETHYIA  ·  Wish" });
     if (pickerHasArt) pickerEmbed.setImage("attachment://solace_picker.png");
