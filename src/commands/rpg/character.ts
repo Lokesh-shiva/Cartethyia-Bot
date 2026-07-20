@@ -558,8 +558,14 @@ const command: Command = {
           }
           await renderAndReply(btn, characterId, "stats");
         } catch (err) {
-          console.error("[character] level/ascend transaction failed", err);
-          await btn.deferUpdate().catch(() => {});
+          // The three race-guard messages below mean the guard did its job
+          // (balance/level/phase changed between the pre-check and the
+          // spend, e.g. a double-click) — not a real error, don't log as
+          // one. Re-render instead of a silent no-op.
+          const raced = err instanceof Error &&
+            ["insufficient-funds-race", "already-ascended-race", "already-leveled-race"].includes(err.message);
+          if (!raced) console.error("[character] level/ascend transaction failed", err);
+          await renderAndReply(btn, characterId, "stats").catch(() => btn.deferUpdate().catch(() => {}));
         }
         return;
       }
@@ -605,8 +611,14 @@ const command: Command = {
           auditSpend(interaction.user.id, { resonanceRecords: totalRecords, credits: totalCredits }, "character-level-up-max");
           await renderAndReply(btn, characterId, "stats");
         } catch (err) {
-          console.error("[character] max-level-up transaction failed", err);
-          await btn.deferUpdate().catch(() => {});
+          // insufficient-funds-race / already-leveled-race are the guard
+          // doing its job (balance/level changed between the affordability
+          // check and the spend, e.g. a double-click) — not a real error, so
+          // don't log them as one. Re-render instead of a silent no-op so
+          // the player sees why nothing happened rather than a dead button.
+          const raced = err instanceof Error && (err.message === "insufficient-funds-race" || err.message === "already-leveled-race");
+          if (!raced) console.error("[character] max-level-up transaction failed", err);
+          await renderAndReply(btn, characterId, "stats").catch(() => btn.deferUpdate().catch(() => {}));
         }
         return;
       }
@@ -811,8 +823,10 @@ const command: Command = {
           auditSpend(interaction.user.id, { forgingOres: cost }, "character-kit-level");
           await renderAndReply(btn, characterId, "kit");
         } catch (err) {
-          console.error("[character] kit-level-up transaction failed", err);
-          await btn.deferUpdate().catch(() => {});
+          const raced = err instanceof Error &&
+            ["insufficient-funds-race", "already-maxed-race"].includes(err.message);
+          if (!raced) console.error("[character] kit-level-up transaction failed", err);
+          await renderAndReply(btn, characterId, "kit").catch(() => btn.deferUpdate().catch(() => {}));
         }
       }
     });
