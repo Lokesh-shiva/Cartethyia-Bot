@@ -10,6 +10,7 @@
 // the Forte gauge to exist first.
 
 import { IntroOutroEffect } from "./introOutro";
+import { AllyAction } from "./allyActions";
 import { ForteConfig } from "./forte";
 import { MAX_KIT_LEVEL } from "./characterProgress";
 import { resolvePlayerBonuses, applyBonuses, ResolvedStats } from "./setBonus";
@@ -124,18 +125,42 @@ export function unlockedLoreFragments(ascensionPhase: number): { text: string; u
 // Intro Skill: instant heal + cleanse, zero ramp-up (design spec §6). Unlike
 // Outro, Intro's heal % scales with Intro level (Milestone 2e) — so it's a
 // function, not a static object, to avoid a second, silently-stale source of
-// truth for the heal value.
-export function solaceIntroEffect(introLevel: number): IntroOutroEffect {
-  return {
-    actions: [
-      { type: "HEAL_ALLY",    value: solaceIntroHealPct(introLevel) },
-      { type: "CLEANSE_ALLY", value: 1 },
-    ],
-  };
+// truth for the heal value. Milestone 4d: constellation gates two additions —
+// C4 adds a shield equal to 30% of the heal (computed at construction time
+// since HEAL_ALLY/SHIELD_ALLY are both flat fractions of hpMax, so no need to
+// wait for a resolved heal amount).
+export function solaceIntroEffect(introLevel: number, constellation: number = 0): IntroOutroEffect {
+  const healPct = solaceIntroHealPct(introLevel);
+  const actions: AllyAction[] = [
+    { type: "HEAL_ALLY",    value: healPct },
+    { type: "CLEANSE_ALLY", value: 1 },
+  ];
+  if (constellation >= 4) actions.push({ type: "SHIELD_ALLY", value: healPct * 0.30 });
+  return { actions };
+}
+
+// Outro: shields the incoming ally 15% of hpMax (design spec §6/§8 — see the
+// "guaranteed crit" note below for why that half of the spec was never built).
+// C1 adds a standalone +15% ATK buff to the incoming ally's first action.
+//
+// The "guarantees their next attack crits" half of her Outro (per spec) has no
+// AllyAction primitive for it yet (HEAL/SHIELD/BUFF_ATK/CLEANSE don't cover
+// "arm a guaranteed crit") — a later task wires that part directly via the
+// existing nextAttackCritArmed variable already used by the Echo Skill system.
+// C1 does NOT depend on that gap — it ships as its own +15% ATK buff.
+export function solaceOutroEffect(constellation: number = 0): IntroOutroEffect {
+  const actions: AllyAction[] = [{ type: "SHIELD_ALLY", value: 0.15 }];
+  if (constellation >= 1) actions.push({ type: "BUFF_ALLY_ATK", value: 0.15 });
+  return { actions };
 }
 
 // Ultimate's doubled-Attunement-effect duration (design spec §6: "3 turns").
-export const SOLACE_ULTIMATE_DOUBLE_TURNS = 3;
+// C5 extends this to 4. SOLACE_FORTE_EMPOWERED_TURNS below is aliased to the
+// same window (Empowered Ultimate is a variant of the same doubled-mode
+// mechanic) so it extends together with C5, not independently.
+export function solaceUltimateDoubleTurns(constellation: number = 0): number {
+  return constellation >= 5 ? 4 : 3;
+}
 
 // The player's own personalized character still gets the universal, generic
 // Intro/Outro pair from design spec §2 — unrelated to which banner character
@@ -153,9 +178,9 @@ export const SOLACE_FORTE_GAIN_PER_BASIC = 20; // Chime Strike fills the gauge �
 
 // These are separate concepts that happen to share a duration today: Ultimate's
 // own "double the active Attunement mode" window vs. Forte's "Empowered
-// Ultimate" window. They're aliased for consistency, not because they're the
-// same knob — if tuning one, check whether you meant to affect both.
-export const SOLACE_FORTE_EMPOWERED_TURNS = SOLACE_ULTIMATE_DOUBLE_TURNS;
+// Ultimate" window. They shared a constant before Milestone 4d; now both read
+// solaceUltimateDoubleTurns(constellation) directly — if tuning one, check
+// whether you meant to affect both.
 
 // Empowered Ultimate's payoff: reduced bonuses, applied REGARDLESS of which
 // single Attunement mode is currently active — deliberately additive
@@ -191,8 +216,17 @@ export function solaceAttunementAtkCritBonus(skillLevel: number): number {
 export function solaceAttunementDefBonus(skillLevel: number): number {
   return 0.20 + (0.40 - 0.20) * (skillLevel - 1) / (MAX_KIT_LEVEL - 1);
 }
-export function solaceConvergenceHealPct(ultimateLevel: number): number {
-  return 0.30 + (0.60 - 0.30) * (ultimateLevel - 1) / (MAX_KIT_LEVEL - 1);
+// C2 adds a flat +0.15 on top of the kit-level-scaled range (0.30-0.60 becomes
+// 0.45-0.75 at constellation >= 2).
+export function solaceConvergenceHealPct(ultimateLevel: number, constellation: number = 0): number {
+  const base = 0.30 + (0.60 - 0.30) * (ultimateLevel - 1) / (MAX_KIT_LEVEL - 1);
+  return constellation >= 2 ? base + 0.15 : base;
+}
+
+// C2 also raises Convergence's CLEANSE_ALLY value from 1 to 2 — combat loops
+// call this instead of hardcoding the literal.
+export function solaceConvergenceCleanseCount(constellation: number = 0): number {
+  return constellation >= 2 ? 2 : 1;
 }
 export function solaceIntroHealPct(introLevel: number): number {
   return 0.20 + (0.40 - 0.20) * (introLevel - 1) / (MAX_KIT_LEVEL - 1);
