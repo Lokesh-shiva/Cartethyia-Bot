@@ -142,7 +142,7 @@ async function handleCreateBundle(interaction: ChatInputCommandInteraction) {
       .setTitle(`${bundle.emoji} ${bundle.name} Code${amount > 1 ? "s" : ""} Generated`)
       .setDescription(
         codes.map(c => `\`${c}\``).join("\n") + "\n\n" +
-        `Send this to whoever pledged **${bundle.price}** for this bundle.\n` +
+        `Send this to whoever bought this bundle (**${bundle.price}**) on Ko-fi.\n` +
         `They redeem with \`/patron redeem <code>\` — works in DMs or any server.`
       )
       .setFooter({ text: "CARTETHYIA  ·  Patron Codes  ·  Owner only" })],

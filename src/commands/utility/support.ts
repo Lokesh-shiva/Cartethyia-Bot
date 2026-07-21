@@ -1,6 +1,6 @@
 import { SlashCommandBuilder, ChatInputCommandInteraction, EmbedBuilder } from "discord.js";
 import { Command } from "../../types";
-import { PATREON_URL } from "../../lib/voteNudge";
+import { PATREON_URL, KOFI_URL } from "../../lib/voteNudge";
 
 const TOPGG_URL   = "https://top.gg/bot/1510163339177623642/vote";
 const DBL_URL     = "https://discordbotlist.com/bots/cartethyia/upvote";
@@ -32,7 +32,11 @@ const command: Command = {
           `> 5 Lunakite · 200 Fractonite · 1 Aura Prism · Aura cap +1 (→6)\n\n` +
           `> **Calamity** — $10/mo\n` +
           `> 12 Lunakite · 500 Fractonite · 3 Aura Prisms · Aura cap +3 (→8)\n\n` +
-          `*Already a patron? Use \`/patron redeem <code>\` with the code sent to you.*`
+
+          `**✦ Ko-fi — One-Time Bundles**\n` +
+          `[ko-fi.com/cartethyiabot](${KOFI_URL})\n` +
+          `One-time Lunakite/Fractonite packs — see \`/patron bundles\` for the full list.\n\n` +
+          `*Already pledged or bought a bundle? Use \`/patron redeem <code>\` with the code sent to you.*`
         )
         .setFooter({ text: "CARTETHYIA  ·  Every vote and pledge genuinely helps. Thank you." })],
       flags: 64,

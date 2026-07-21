@@ -2,6 +2,7 @@ const TOPGG_URL   = "https://top.gg/bot/1510163339177623642/vote";
 const DBL_URL     = "https://discordbotlist.com/bots/cartethyia/upvote";
 const RANKTOP_URL = "https://rank.top/bot/cartethyia";
 export const PATREON_URL = "https://www.patreon.com/c/Cartethyia_bot/membership";
+export const KOFI_URL = "https://ko-fi.com/cartethyiabot";
 
 // ~20% chance nudge — shown occasionally at end of reward messages
 export function voteNudge(chance = 0.20): string {

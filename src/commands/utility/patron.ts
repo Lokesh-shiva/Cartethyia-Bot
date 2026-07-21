@@ -8,6 +8,7 @@ import { CE } from "../../lib/emojiManager";
 import prisma from "../../lib/prisma";
 import { schedulePatronDailyReminder, clearPatronDailyReminder } from "../../lib/dailyReminder";
 import { LUNAKITE_BUNDLES } from "../../lib/lunakiteBundles";
+import { KOFI_URL } from "../../lib/voteNudge";
 
 const ELEMENT_HEX: Record<string, number> = {
   FUSION: 0xFF6B35, GLACIO: 0x38BDF8, ELECTRO: 0xA855F7,
@@ -103,7 +104,7 @@ const command: Command = {
         )
     )
     .addSubcommand(s =>
-      s.setName("bundles").setDescription("View one-time Lunakite bundles available via Patreon.")
+      s.setName("bundles").setDescription("View one-time Lunakite bundles available via Ko-fi.")
     ) as SlashCommandBuilder,
 
   async execute(interaction: ChatInputCommandInteraction) {
@@ -132,10 +133,10 @@ async function handleBundles(interaction: ChatInputCommandInteraction) {
       .setDescription(
         `One-time currency packs — separate from monthly Patreon tiers.\n\n` +
         `${lines}\n\n` +
-        `**How to get one:** pledge the listed amount as an extra one-time payment on Patreon ` +
-        `and message the owner. You'll receive a code to redeem with \`/patron redeem\`.`
+        `**How to get one:** buy the matching pack on our [Ko-fi shop](${KOFI_URL}) ` +
+        `and message the owner your order. You'll receive a code to redeem with \`/patron redeem\`.`
       )
-      .setFooter({ text: "CARTETHYIA  ·  Patreon Bundles" })],
+      .setFooter({ text: "CARTETHYIA  ·  Ko-fi Bundles" })],
   });
 }
 
@@ -392,7 +393,7 @@ async function handleRedeem(interaction: ChatInputCommandInteraction) {
   if (!record) {
     await interaction.editReply({
       embeds: [new EmbedBuilder().setColor(0xEF4444)
-        .setDescription("◈ Invalid code. Double-check the code sent to you via Patreon messages.")
+        .setDescription("◈ Invalid code. Double-check the code the owner sent you after your Patreon pledge or Ko-fi purchase.")
         .setFooter({ text: "CARTETHYIA  ·  Patreon" })],
     });
     return;
@@ -446,7 +447,7 @@ async function handleRedeem(interaction: ChatInputCommandInteraction) {
           `◈  ${bundle.rewards.fractonite} Fractonite\n\n` +
           `Thank you for supporting CARTETHYIA!`
         )
-        .setFooter({ text: "CARTETHYIA  ·  Patreon  ·  Your support keeps this game alive." })],
+        .setFooter({ text: "CARTETHYIA  ·  Ko-fi  ·  Your support keeps this game alive." })],
     });
     return;
   }
