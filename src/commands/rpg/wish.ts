@@ -293,7 +293,7 @@ function resolveKeySpend(radiantKeys: number, fractonite: number, amount: number
     ok: false,
     shortMessage: `You have **${radiantKeys}** Radiant Key${radiantKeys !== 1 ? "s" : ""} and **${fractonite}** Fractonite — ` +
       `need **${amount}** total (${shortfall} more, costing ${fractoniteNeeded} Fractonite at ${FRACTONITE_PER_RADIANT_KEY}:1). ` +
-      `Buy more Fractonite in **/shop** or use **/use fractonite** directly.`,
+      `Earn more Fractonite from **/vote**, boss/dungeon/raid wins, or Patreon.`,
   };
 }
 
