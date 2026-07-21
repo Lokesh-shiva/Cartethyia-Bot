@@ -8,7 +8,7 @@ import {
   SlashCommandBuilder, ChatInputCommandInteraction,
   EmbedBuilder, ActionRowBuilder, StringSelectMenuBuilder,
   StringSelectMenuOptionBuilder, ButtonBuilder, ButtonStyle,
-  ComponentType, ButtonInteraction,
+  ComponentType, ButtonInteraction, StringSelectMenuInteraction,
 } from "discord.js";
 import prisma from "../../lib/prisma";
 import { replyNotStarted } from "../../lib/economy";
@@ -16,6 +16,7 @@ import { invalidateBonusCache } from "../../lib/setBonus";
 import { WEAPON_PASSIVES, REFINEMENT_MULT, MAX_REFINEMENT, RARITY_STARS, WEAPON_TYPE_EMOJI, describeWeaponPassiveForRow } from "../../lib/weapons";
 import { ELEMENT_COLORS } from "../../lib/echoes";
 import { Element, WeaponType } from "@prisma/client";
+import { pageSlice, pageCount, buildPageNavRow } from "../../lib/pagination";
 
 export const data = new SlashCommandBuilder()
   .setName("weapon-refine")
@@ -64,23 +65,29 @@ export async function execute(interaction: ChatInputCommandInteraction) {
     return;
   }
 
-  const keeperOptions = refinable.slice(0, 25).map(w => {
-    const dupeCount = byName.get(w.name)!.filter(x => x.id !== w.id && !x.isEquipped).length;
-    return new StringSelectMenuOptionBuilder()
-      .setLabel(`${(w.awakened && w.awakenedName) ? w.awakenedName : w.name}  R${w.refinement}${w.isEquipped ? "  ← equipped" : ""}`)
-      .setDescription(`Lv${w.level}  ·  ${RARITY_STARS[w.rarity]}  ·  ${dupeCount} duplicate${dupeCount !== 1 ? "s" : ""} available`)
-      .setValue(w.id)
-      .setEmoji(WEAPON_TYPE_EMOJI[w.weaponType as WeaponType]);
-  });
+  let keeperPage = 0;
+  let keeperChosen = false;
+  const keeperPageCount = pageCount(refinable.length);
 
-  const keeperRow = new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(
-    new StringSelectMenuBuilder()
-      .setCustomId("wr_keeper_select")
-      .setPlaceholder("Choose a weapon to refine…")
-      .addOptions(keeperOptions),
-  );
+  const makeKeeperRow = (p: number) => {
+    const pageWeapons = pageSlice(refinable, p);
+    const keeperOptions = pageWeapons.map(w => {
+      const dupeCount = byName.get(w.name)!.filter(x => x.id !== w.id && !x.isEquipped).length;
+      return new StringSelectMenuOptionBuilder()
+        .setLabel(`${(w.awakened && w.awakenedName) ? w.awakenedName : w.name}  R${w.refinement}${w.isEquipped ? "  ← equipped" : ""}`)
+        .setDescription(`Lv${w.level}  ·  ${RARITY_STARS[w.rarity]}  ·  ${dupeCount} duplicate${dupeCount !== 1 ? "s" : ""} available`)
+        .setValue(w.id)
+        .setEmoji(WEAPON_TYPE_EMOJI[w.weaponType as WeaponType]);
+    });
+    return new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(
+      new StringSelectMenuBuilder()
+        .setCustomId("wr_keeper_select")
+        .setPlaceholder("Choose a weapon to refine…")
+        .addOptions(keeperOptions),
+    );
+  };
 
-  await interaction.editReply({
+  const renderKeeperPage = (p: number) => ({
     embeds: [new EmbedBuilder()
       .setColor(color)
       .setTitle("◈  Weapon Refinement")
@@ -89,39 +96,55 @@ export async function execute(interaction: ChatInputCommandInteraction) {
         "stacking independently with Ego Weapon Awakening.\n\n*This consumes one unequipped duplicate per rank.*"
       )
       .setFooter({ text: "CARTETHYIA  ·  Weapon Refinement  ·  Expires in 90s" })],
-    components: [keeperRow],
+    components: keeperPageCount > 1 ? [makeKeeperRow(p), buildPageNavRow("wr_keeper_page", p, keeperPageCount)] : [makeKeeperRow(p)],
   });
+
+  await interaction.editReply(renderKeeperPage(keeperPage));
 
   const keeperCollector = interaction.channel?.createMessageComponentCollector({
-    componentType: ComponentType.StringSelect,
-    filter: i => i.user.id === interaction.user.id && i.customId === "wr_keeper_select",
-    time: 90_000, max: 1,
+    filter: i => i.user.id === interaction.user.id &&
+      (i.customId === "wr_keeper_select" || i.customId === "wr_keeper_page:prev" || i.customId === "wr_keeper_page:next"),
+    time: 90_000,
   });
 
-  keeperCollector?.on("collect", async (sel) => {
+  keeperCollector?.on("collect", async (i) => {
+    if (i.customId === "wr_keeper_page:prev" || i.customId === "wr_keeper_page:next") {
+      keeperPage += i.customId === "wr_keeper_page:next" ? 1 : -1;
+      await (i as ButtonInteraction).update(renderKeeperPage(keeperPage)).catch(() => {});
+      return;
+    }
+
+    const sel = i as StringSelectMenuInteraction;
     await sel.deferUpdate();
+    keeperChosen = true;
+    keeperCollector.stop();
     const keeperId = sel.values[0];
     const keeper   = weapons.find(w => w.id === keeperId);
     if (!keeper) { await sel.editReply({ content: "Weapon not found.", embeds: [], components: [] }); return; }
 
     const dupes = byName.get(keeper.name)!.filter(x => x.id !== keeper.id && !x.isEquipped);
-    const dupeOptions = dupes.slice(0, 25).map(w =>
-      new StringSelectMenuOptionBuilder()
-        .setLabel(`${w.name}  Lv${w.level}  ${RARITY_STARS[w.rarity]}`)
-        .setDescription(`Consumed to raise ${keeper.name} to R${keeper.refinement + 1}`)
-        .setValue(w.id)
-        .setEmoji(WEAPON_TYPE_EMOJI[w.weaponType as WeaponType]),
-    );
-
-    const dupeRow = new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(
-      new StringSelectMenuBuilder()
-        .setCustomId("wr_dupe_select")
-        .setPlaceholder("Choose a duplicate to consume…")
-        .addOptions(dupeOptions),
-    );
-
+    let dupePage = 0;
+    let dupeChosen = false;
+    const dupePageCount = pageCount(dupes.length);
     const displayName = (keeper.awakened && keeper.awakenedName) ? keeper.awakenedName : keeper.name;
-    await sel.editReply({
+
+    const makeDupeRow = (p: number) => {
+      const dupeOptions = pageSlice(dupes, p).map(w =>
+        new StringSelectMenuOptionBuilder()
+          .setLabel(`${w.name}  Lv${w.level}  ${RARITY_STARS[w.rarity]}`)
+          .setDescription(`Consumed to raise ${keeper.name} to R${keeper.refinement + 1}`)
+          .setValue(w.id)
+          .setEmoji(WEAPON_TYPE_EMOJI[w.weaponType as WeaponType]),
+      );
+      return new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(
+        new StringSelectMenuBuilder()
+          .setCustomId("wr_dupe_select")
+          .setPlaceholder("Choose a duplicate to consume…")
+          .addOptions(dupeOptions),
+      );
+    };
+
+    const renderDupePage = (p: number) => ({
       embeds: [new EmbedBuilder()
         .setColor(color)
         .setTitle(`◈  Refine — ${displayName}`)
@@ -131,17 +154,28 @@ export async function execute(interaction: ChatInputCommandInteraction) {
           `Choose a duplicate copy to consume — this **permanently deletes** the consumed copy.`
         )
         .setFooter({ text: "CARTETHYIA  ·  Weapon Refinement" })],
-      components: [dupeRow],
+      components: dupePageCount > 1 ? [makeDupeRow(p), buildPageNavRow("wr_dupe_page", p, dupePageCount)] : [makeDupeRow(p)],
     });
+
+    await sel.editReply(renderDupePage(dupePage));
 
     const dupeCollector = interaction.channel?.createMessageComponentCollector({
-      componentType: ComponentType.StringSelect,
-      filter: i => i.user.id === interaction.user.id && i.customId === "wr_dupe_select",
-      time: 60_000, max: 1,
+      filter: i => i.user.id === interaction.user.id &&
+        (i.customId === "wr_dupe_select" || i.customId === "wr_dupe_page:prev" || i.customId === "wr_dupe_page:next"),
+      time: 60_000,
     });
 
-    dupeCollector?.on("collect", async (dsel) => {
+    dupeCollector?.on("collect", async (i) => {
+      if (i.customId === "wr_dupe_page:prev" || i.customId === "wr_dupe_page:next") {
+        dupePage += i.customId === "wr_dupe_page:next" ? 1 : -1;
+        await (i as ButtonInteraction).update(renderDupePage(dupePage)).catch(() => {});
+        return;
+      }
+
+      const dsel = i as StringSelectMenuInteraction;
       await dsel.deferUpdate();
+      dupeChosen = true;
+      dupeCollector.stop();
       const dupeId = dsel.values[0];
       const dupe   = dupes.find(w => w.id === dupeId);
       if (!dupe) { await dsel.editReply({ content: "Duplicate not found.", embeds: [], components: [] }); return; }
@@ -214,12 +248,12 @@ export async function execute(interaction: ChatInputCommandInteraction) {
       });
     });
 
-    dupeCollector?.on("end", async (col) => {
-      if (col.size === 0) await interaction.editReply({ components: [] }).catch(() => {});
+    dupeCollector?.on("end", async () => {
+      if (!dupeChosen) await interaction.editReply({ components: [] }).catch(() => {});
     });
   });
 
-  keeperCollector?.on("end", async (col) => {
-    if (col.size === 0) await interaction.editReply({ components: [] }).catch(() => {});
+  keeperCollector?.on("end", async () => {
+    if (!keeperChosen) await interaction.editReply({ components: [] }).catch(() => {});
   });
 }
