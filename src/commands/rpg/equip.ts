@@ -2,7 +2,7 @@ import {
   SlashCommandBuilder, ChatInputCommandInteraction,
   EmbedBuilder, AttachmentBuilder, StringSelectMenuBuilder,
   StringSelectMenuOptionBuilder, ActionRowBuilder, ButtonBuilder,
-  ButtonStyle, ComponentType,
+  ButtonStyle, ComponentType, ButtonInteraction, StringSelectMenuInteraction,
 } from "discord.js";
 import { Command } from "../../types";
 import { getOrCreateUser } from "../../lib/economy";
@@ -13,6 +13,7 @@ import { ALL_WISH_WEAPONS, calcWishSubStat } from "../../lib/wishWeapons";
 import { WeaponType } from "@prisma/client";
 import prisma from "../../lib/prisma";
 import { invalidateBonusCache } from "../../lib/setBonus";
+import { pageSlice, pageCount, buildPageNavRow } from "../../lib/pagination";
 
 const ELEMENT_HEX: Record<string, number> = {
   FUSION: 0xFF6B35, GLACIO: 0x38BDF8, ELECTRO: 0xA855F7,
@@ -183,12 +184,16 @@ const command: Command = {
     const equipped = weapons.find((w) => w.isEquipped && w.characterId === characterId);
 
     // ── Build select menu ────────────────────────────────────────────────────
-    // Discord limit: 25 options per select menu. Slice to top 25 (already ordered by equipped, rarity, level).
-    const selectableWeapons = weapons.slice(0, 25);
-    const makeSelect = () => new StringSelectMenuBuilder()
+    // Discord limit: 25 options per select menu. Paginate 10 at a time instead
+    // of silently truncating past 25 — see pagination.ts.
+    let page = 0;
+    let weaponChosen = false;
+    const numPages = pageCount(weapons.length);
+
+    const makeSelect = (pageWeapons: typeof weapons) => new StringSelectMenuBuilder()
       .setCustomId("equip_select")
       .setPlaceholder("Choose a weapon to equip…")
-      .addOptions(selectableWeapons.map((w) => {
+      .addOptions(pageWeapons.map((w) => {
         const label = (w.awakened && w.awakenedName) ? w.awakenedName : w.name;
         const eff   = effectiveAtk(w.baseAtk, w.rarity, w.level);
         const sub   = w.subStatType && w.subStatVal != null
@@ -206,20 +211,19 @@ const command: Command = {
           .setDefault(w.isEquipped === true && w.characterId === characterId);
       }));
 
-    const selectRow = new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(makeSelect());
+    const render = (p: number) => {
+      const pageWeapons = pageSlice(weapons, p);
+      const selectRow = new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(makeSelect(pageWeapons));
+      const navRow    = buildPageNavRow("equip_page", p, numPages);
 
-    // Show current weapon + list in the initial embed
-    const weaponList = selectableWeapons.map((w) => {
-      const label = (w.awakened && w.awakenedName) ? w.awakenedName : w.name;
-      const eff   = effectiveAtk(w.baseAtk, w.rarity, w.level);
-      const owner = w.isEquipped ? `  *(${ownerLabel(w.characterId)})*` : "";
-      return `${w.isEquipped ? "▶" : "◇"}  **${label}**  ${RARITY_STARS[w.rarity]}  ·  Lv${w.level}  ·  ATK **${eff}**${w.awakened ? "  ✦" : ""}${owner}`;
-    }).join("\n");
+      const weaponList = pageWeapons.map((w) => {
+        const label = (w.awakened && w.awakenedName) ? w.awakenedName : w.name;
+        const eff   = effectiveAtk(w.baseAtk, w.rarity, w.level);
+        const owner = w.isEquipped ? `  *(${ownerLabel(w.characterId)})*` : "";
+        return `${w.isEquipped ? "▶" : "◇"}  **${label}**  ${RARITY_STARS[w.rarity]}  ·  Lv${w.level}  ·  ATK **${eff}**${w.awakened ? "  ✦" : ""}${owner}`;
+      }).join("\n");
 
-    const overflow = weapons.length > 25 ? `\n\n-# Showing top 25 of ${weapons.length} weapons (sorted by equipped, rarity, level).` : "";
-
-    await interaction.editReply({
-      embeds: [new EmbedBuilder()
+      const embed = new EmbedBuilder()
         .setColor(color)
         .setAuthor({ name: `${displayName}  ·  Arsenal`, iconURL: avatarUrl })
         .setDescription([
@@ -229,22 +233,33 @@ const command: Command = {
           `**All weapons (${weapons.length}):**`,
           weaponList,
           ``,
-          `Select one below to swap.${overflow}`,
+          `Select one below to swap.`,
         ].join("\n"))
-        .setFooter({ text: "CARTETHYIA  ·  Arsenal  ·  Expires in 2 min" })],
-      components: [selectRow],
-    });
+        .setFooter({ text: "CARTETHYIA  ·  Arsenal  ·  Expires in 2 min" });
 
-    // ── Select collector ─────────────────────────────────────────────────────
+      return { embeds: [embed], components: numPages > 1 ? [selectRow, navRow] : [selectRow] };
+    };
+
+    await interaction.editReply(render(page));
+
+    // ── Select + page-nav collector ──────────────────────────────────────────
     const collector = interaction.channel?.createMessageComponentCollector({
-      componentType: ComponentType.StringSelect,
-      filter: (i) => i.user.id === interaction.user.id && i.customId === "equip_select",
+      filter: (i) => i.user.id === interaction.user.id &&
+        (i.customId === "equip_select" || i.customId === "equip_page:prev" || i.customId === "equip_page:next"),
       time: 2 * 60 * 1000,
-      max:  1,
     });
 
-    collector?.on("collect", async (sel) => {
+    collector?.on("collect", async (i) => {
+      if (i.customId === "equip_page:prev" || i.customId === "equip_page:next") {
+        page += i.customId === "equip_page:next" ? 1 : -1;
+        await (i as ButtonInteraction).update(render(page)).catch(() => {});
+        return;
+      }
+
+      const sel = i as StringSelectMenuInteraction;
       await sel.deferUpdate();
+      weaponChosen = true;
+      collector.stop();
       const chosenId = sel.values[0];
       const chosen   = weapons.find((w) => w.id === chosenId)!;
 
@@ -345,8 +360,8 @@ const command: Command = {
       });
     });
 
-    collector?.on("end", async (col) => {
-      if (col.size === 0) await interaction.editReply({ components: [] }).catch(() => {});
+    collector?.on("end", async () => {
+      if (!weaponChosen) await interaction.editReply({ components: [] }).catch(() => {});
     });
   },
 };
