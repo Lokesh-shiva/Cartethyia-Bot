@@ -42,11 +42,12 @@ import {
 } from "../../lib/namedSets";
 import { echoSkillBaseMult, applyEchoSkill } from "../../lib/echoSkills";
 import {
-  SOLACE, SOLACE_ULTIMATE_DOUBLE_TURNS, PLAYER_SELF_INTRO, PLAYER_SELF_OUTRO,
-  SOLACE_FORTE_CONFIG, SOLACE_FORTE_GAIN_PER_BASIC, SOLACE_FORTE_EMPOWERED_TURNS,
+  SOLACE, PLAYER_SELF_INTRO, PLAYER_SELF_OUTRO,
+  SOLACE_FORTE_CONFIG, SOLACE_FORTE_GAIN_PER_BASIC,
   getSolaceForteAtkBonus, getSolaceForteCritRateBonus, getSolaceForteDefBonus,
-  solaceIntroEffect, solaceBasicDamageMult, solaceAttunementAtkCritBonus,
-  solaceAttunementDefBonus, solaceConvergenceHealPct, resolveSolaceStats,
+  solaceIntroEffect, solaceOutroEffect, solaceBasicDamageMult, solaceAttunementAtkCritBonus,
+  solaceAttunementDefBonus, solaceConvergenceHealPct, solaceConvergenceCleanseCount,
+  solaceUltimateDoubleTurns, resolveSolaceStats,
 } from "../../lib/solace";
 import { resolveIntroOutroEffect, IntroOutroEffect } from "../../lib/introOutro";
 import {
@@ -365,6 +366,7 @@ const command: Command = {
       const solaceUltimateLevel = solaceProgress?.ultimateLevel ?? 1;
       const solaceIntroLevel    = solaceProgress?.introLevel    ?? 1;
       const solaceForteLevel    = solaceProgress?.forteLevel    ?? 1;
+      const solaceConstellation = solaceProgress?.constellation ?? 0;
       let activeUnit: "player" | "ally" = "player";
       let allyHp    = SOLACE.hpMax;
       const allyHpMax = SOLACE.hpMax;
@@ -553,8 +555,8 @@ const command: Command = {
                 ? { hp: allyHp, hpMax: allyHpMax }
                 : { hp: state.playerHp, hpMax: state.playerHpMax };
 
-              const outroEffect = outgoingIsPlayer ? PLAYER_SELF_OUTRO : SOLACE.outro;
-              const introEffect: IntroOutroEffect = outgoingIsPlayer ? solaceIntroEffect(solaceIntroLevel) : PLAYER_SELF_INTRO;
+              const outroEffect = outgoingIsPlayer ? PLAYER_SELF_OUTRO : solaceOutroEffect(solaceConstellation);
+              const introEffect: IntroOutroEffect = outgoingIsPlayer ? solaceIntroEffect(solaceIntroLevel, solaceConstellation) : PLAYER_SELF_INTRO;
               const outroResult = resolveIntroOutroEffect(outroEffect, incomingTarget);
               const introResult = resolveIntroOutroEffect(introEffect, incomingTarget);
 
@@ -599,8 +601,8 @@ const command: Command = {
           if (btn.customId === "fb_basic") {
             const windExplosion = bonuses.activeNamedSetId === "WINDSTRIDERS_LEGACY"
               ? windstridersLegacyCheckExplosion(namedState) : { proc: false, guaranteedCrit: false, bonusMult: 1.0 };
-            const teamAtkMult  = isDevGuild ? getAttunementAtkMult(attunement, solaceAttunementAtkCritBonus(solaceSkillLevel), attunementDoubleTurnsLeft > 0) : 1;
-            const teamCritBonus = isDevGuild ? getAttunementCritRateBonus(attunement, solaceAttunementAtkCritBonus(solaceSkillLevel), attunementDoubleTurnsLeft > 0) : 0;
+            const teamAtkMult  = isDevGuild ? getAttunementAtkMult(attunement, solaceAttunementAtkCritBonus(solaceSkillLevel), attunementDoubleTurnsLeft > 0, solaceConstellation >= 6) : 1;
+            const teamCritBonus = isDevGuild ? getAttunementCritRateBonus(attunement, solaceAttunementAtkCritBonus(solaceSkillLevel), attunementDoubleTurnsLeft > 0, solaceConstellation >= 6) : 0;
             const wellspringAtkMult   = isDevGuild && activeUnit === "ally" && allySolaceStats?.hasWellspring ? WELLSPRING_BASE_ATK_MULT : 1;
             const wellspringAtkBonus  = isDevGuild && allySolaceStats?.hasWellspring ? getWellspringAtkBonus(attunement) : 0;
             const wellspringCritBonus = isDevGuild && allySolaceStats?.hasWellspring ? getWellspringCritRateBonus(attunement) : 0;
@@ -663,14 +665,15 @@ const command: Command = {
           if (btn.customId === "fb_skill" && isDevGuild && activeUnit === "ally") {
             // Solace's Skill is Attunement — a mode cycle, not a damage move.
             attunement.mode = cycleAttunementMode(attunement.mode);
+            if (solaceConstellation >= 3) concertoEnergy = addConcertoEnergy(concertoEnergy, 25);
             const crit = Math.random() < activeCritRate; abilCrit = crit;
             const dmg  = Math.max(1, Math.floor(activeAtk * 0.6 * (1 - defReduction) * (crit ? activeCritDmg : 1) * (isWeak ? 1.5 : 1) * (1 + bonuses.elemDmgBonus)));
             playerDmg  = dmg;
             moveName   = `✦ Attunement — now in **${attunement.mode}** mode! ${playerDmg} DMG${crit ? " **(CRIT)**" : ""}`;
             state.bossVibNow = Math.max(0, state.bossVibNow - Math.floor(playerDmg * 0.3 * totalVibMult));
           } else if (btn.customId === "fb_skill") {
-            const teamAtkMult  = isDevGuild ? getAttunementAtkMult(attunement, solaceAttunementAtkCritBonus(solaceSkillLevel), attunementDoubleTurnsLeft > 0) : 1;
-            const teamCritBonus = isDevGuild ? getAttunementCritRateBonus(attunement, solaceAttunementAtkCritBonus(solaceSkillLevel), attunementDoubleTurnsLeft > 0) : 0;
+            const teamAtkMult  = isDevGuild ? getAttunementAtkMult(attunement, solaceAttunementAtkCritBonus(solaceSkillLevel), attunementDoubleTurnsLeft > 0, solaceConstellation >= 6) : 1;
+            const teamCritBonus = isDevGuild ? getAttunementCritRateBonus(attunement, solaceAttunementAtkCritBonus(solaceSkillLevel), attunementDoubleTurnsLeft > 0, solaceConstellation >= 6) : 0;
             const wellspringAtkBonus  = isDevGuild && allySolaceStats?.hasWellspring ? getWellspringAtkBonus(attunement) : 0;
             const wellspringCritBonus = isDevGuild && allySolaceStats?.hasWellspring ? getWellspringCritRateBonus(attunement) : 0;
             const forteAtkBonus  = isDevGuild ? getSolaceForteAtkBonus(solaceForteLevel, forteEmpoweredTurnsLeft > 0) : 0;
@@ -715,7 +718,7 @@ const command: Command = {
 
           if (btn.customId === "fb_ultimate" && !(isDevGuild && activeUnit === "ally")) {
             abilCrit   = true;
-            const teamAtkMult = isDevGuild ? getAttunementAtkMult(attunement, solaceAttunementAtkCritBonus(solaceSkillLevel), attunementDoubleTurnsLeft > 0) : 1;
+            const teamAtkMult = isDevGuild ? getAttunementAtkMult(attunement, solaceAttunementAtkCritBonus(solaceSkillLevel), attunementDoubleTurnsLeft > 0, solaceConstellation >= 6) : 1;
             const wellspringAtkBonus = isDevGuild && allySolaceStats?.hasWellspring ? getWellspringAtkBonus(attunement) : 0;
             const forteAtkBonus = isDevGuild ? getSolaceForteAtkBonus(solaceForteLevel, forteEmpoweredTurnsLeft > 0) : 0;
             const teamMult = getWeakenedMult(playerDebuffs) * teamAtkMult * (1 + wellspringAtkBonus) * (1 + forteAtkBonus);
@@ -745,10 +748,10 @@ const command: Command = {
             }
           } else if (btn.customId === "fb_ultimate" && isDevGuild && activeUnit === "ally") {
             // Solace's Ultimate spends Concerto Energy, not personal Energy.
-            const healPct = solaceConvergenceHealPct(solaceUltimateLevel);
+            const healPct = solaceConvergenceHealPct(solaceUltimateLevel, solaceConstellation);
             const healResult = resolveIntroOutroEffect({ actions: [
               { type: "HEAL_ALLY", value: healPct },
-              { type: "CLEANSE_ALLY", value: 1 },
+              { type: "CLEANSE_ALLY", value: solaceConvergenceCleanseCount(solaceConstellation) },
             ] }, { hp: state.playerHp, hpMax: state.playerHpMax });
             const allyHealResult = resolveIntroOutroEffect({ actions: [
               { type: "HEAL_ALLY", value: healPct },
@@ -771,16 +774,16 @@ const command: Command = {
             const healSummary = `${displayName} +${actualHealPlayer} HP, ${SOLACE.name} +${actualHealAlly} HP`;
 
             if (isForteMaxed(solaceForte, SOLACE_FORTE_CONFIG)) {
-              forteEmpoweredTurnsLeft = SOLACE_FORTE_EMPOWERED_TURNS + 1; // +1 compensates for the same-round decrement
+              forteEmpoweredTurnsLeft = solaceUltimateDoubleTurns(solaceConstellation) + 1; // +1 compensates for the same-round decrement
               attunementDoubleTurnsLeft = 0;
               solaceForte = resetForte();
               moveName = `⚡ **Empowered Convergence!** Team healed (${healSummary}), debuffs cleansed, ` +
-                `**all 3 Attunement Modes empowered for ${SOLACE_FORTE_EMPOWERED_TURNS} turns!**`;
+                `**all 3 Attunement Modes empowered for ${solaceUltimateDoubleTurns(solaceConstellation)} turns!**`;
             } else {
-              attunementDoubleTurnsLeft = SOLACE_ULTIMATE_DOUBLE_TURNS + 1; // +1 compensates for the same-round decrement
+              attunementDoubleTurnsLeft = solaceUltimateDoubleTurns(solaceConstellation) + 1; // +1 compensates for the same-round decrement
               forteEmpoweredTurnsLeft = 0;
               moveName = `⚡ **Convergence!** Team healed (${healSummary}), debuffs cleansed, ` +
-                `**${attunement.mode ?? "no"} mode doubled for ${SOLACE_ULTIMATE_DOUBLE_TURNS} turns!**`;
+                `**${attunement.mode ?? "no"} mode doubled for ${solaceUltimateDoubleTurns(solaceConstellation)} turns!**`;
             }
           }
 
@@ -946,7 +949,7 @@ const command: Command = {
             const wellspringDefBonus = isDevGuild && allySolaceStats?.hasWellspring ? getWellspringDefBonus(attunement) : 0;
             const forteDefBonus = isDevGuild ? getSolaceForteDefBonus(solaceForteLevel, forteEmpoweredTurnsLeft > 0) : 0;
             const attunementDefBonus = solaceAttunementDefBonus(solaceSkillLevel);
-            const attunementDefMult = (isDevGuild ? getAttunementDefMult(attunement, attunementDefBonus, attunementDoubleTurnsLeft > 0) : 1) * (1 + wellspringDefBonus) * (1 + forteDefBonus);
+            const attunementDefMult = (isDevGuild ? getAttunementDefMult(attunement, attunementDefBonus, attunementDoubleTurnsLeft > 0, solaceConstellation >= 6) : 1) * (1 + wellspringDefBonus) * (1 + forteDefBonus);
             let bossDmg   = Math.max(1, Math.floor(scaled.atk * move.damage - activeDef * attunementDefMult * 0.4));
             if (fb.mechanicId === "MOLTEN_BUILDUP") {
               const interrupted = btn.customId === "fb_skill" || btn.customId === "fb_ultimate";
