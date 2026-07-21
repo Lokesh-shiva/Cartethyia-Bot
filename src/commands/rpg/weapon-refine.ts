@@ -87,17 +87,27 @@ export async function execute(interaction: ChatInputCommandInteraction) {
     );
   };
 
-  const renderKeeperPage = (p: number) => ({
-    embeds: [new EmbedBuilder()
-      .setColor(color)
-      .setTitle("◈  Weapon Refinement")
-      .setDescription(
-        "Choose which weapon to refine. R1 → R5 scales that weapon's passive magnitude by up to **+60%**, " +
-        "stacking independently with Ego Weapon Awakening.\n\n*This consumes one unequipped duplicate per rank.*"
-      )
-      .setFooter({ text: "CARTETHYIA  ·  Weapon Refinement  ·  Expires in 90s" })],
-    components: keeperPageCount > 1 ? [makeKeeperRow(p), buildPageNavRow("wr_keeper_page", p, keeperPageCount)] : [makeKeeperRow(p)],
-  });
+  const renderKeeperPage = (p: number) => {
+    const pageWeapons = pageSlice(refinable, p);
+    const listText = pageWeapons.map(w => {
+      const label = (w.awakened && w.awakenedName) ? w.awakenedName : w.name;
+      const dupeCount = byName.get(w.name)!.filter(x => x.id !== w.id && !x.isEquipped).length;
+      return `${w.isEquipped ? "▶" : "◇"}  **${label}**  R${w.refinement}  ${RARITY_STARS[w.rarity]}  ·  Lv${w.level}  ·  ${dupeCount} dupe${dupeCount !== 1 ? "s" : ""}${w.isEquipped ? "  *(equipped)*" : ""}`;
+    }).join("\n");
+
+    return {
+      embeds: [new EmbedBuilder()
+        .setColor(color)
+        .setTitle("◈  Weapon Refinement")
+        .setDescription(
+          "Choose which weapon to refine. R1 → R5 scales that weapon's passive magnitude by up to **+60%**, " +
+          "stacking independently with Ego Weapon Awakening.\n\n*This consumes one unequipped duplicate per rank.*\n\n" +
+          `**Refinable weapons (${refinable.length}):**\n${listText}`
+        )
+        .setFooter({ text: "CARTETHYIA  ·  Weapon Refinement  ·  Expires in 90s" })],
+      components: keeperPageCount > 1 ? [makeKeeperRow(p), buildPageNavRow("wr_keeper_page", p, keeperPageCount)] : [makeKeeperRow(p)],
+    };
+  };
 
   await interaction.editReply(renderKeeperPage(keeperPage));
 
@@ -144,18 +154,26 @@ export async function execute(interaction: ChatInputCommandInteraction) {
       );
     };
 
-    const renderDupePage = (p: number) => ({
+    const renderDupePage = (p: number) => {
+      const pageDupes = pageSlice(dupes, p);
+      const listText = pageDupes.map(w =>
+        `◇  **${w.name}**  ${RARITY_STARS[w.rarity]}  ·  Lv${w.level}`
+      ).join("\n");
+
+      return {
       embeds: [new EmbedBuilder()
         .setColor(color)
         .setTitle(`◈  Refine — ${displayName}`)
         .setDescription(
           `Currently **R${keeper.refinement}** (\`${Math.round((REFINEMENT_MULT[keeper.refinement] ?? 1) * 100)}%\` passive magnitude).\n` +
           `${describeWeaponPassiveForRow(keeper) || "*No base passive to describe.*"}\n\n` +
-          `Choose a duplicate copy to consume — this **permanently deletes** the consumed copy.`
+          `Choose a duplicate copy to consume — this **permanently deletes** the consumed copy.\n\n` +
+          `**Available duplicates (${dupes.length}):**\n${listText}`
         )
         .setFooter({ text: "CARTETHYIA  ·  Weapon Refinement" })],
       components: dupePageCount > 1 ? [makeDupeRow(p), buildPageNavRow("wr_dupe_page", p, dupePageCount)] : [makeDupeRow(p)],
-    });
+      };
+    };
 
     await sel.editReply(renderDupePage(dupePage));
 
