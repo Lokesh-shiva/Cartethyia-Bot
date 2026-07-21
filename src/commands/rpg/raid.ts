@@ -38,11 +38,12 @@ import {
   rollSubstats, rollSubstatValue, calcMainStatValue, scaledFieldBossRarityWeights,
 } from "../../lib/echoes";
 import {
-  SOLACE, SOLACE_ULTIMATE_DOUBLE_TURNS, PLAYER_SELF_INTRO, PLAYER_SELF_OUTRO,
-  SOLACE_FORTE_CONFIG, SOLACE_FORTE_GAIN_PER_BASIC, SOLACE_FORTE_EMPOWERED_TURNS,
+  SOLACE, PLAYER_SELF_INTRO, PLAYER_SELF_OUTRO,
+  SOLACE_FORTE_CONFIG, SOLACE_FORTE_GAIN_PER_BASIC,
   getSolaceForteAtkBonus, getSolaceForteCritRateBonus, getSolaceForteDefBonus,
-  solaceIntroEffect, solaceBasicDamageMult, solaceAttunementAtkCritBonus,
-  solaceAttunementDefBonus, solaceConvergenceHealPct, resolveSolaceStats,
+  solaceIntroEffect, solaceOutroEffect, solaceBasicDamageMult, solaceAttunementAtkCritBonus,
+  solaceAttunementDefBonus, solaceConvergenceHealPct, solaceConvergenceCleanseCount,
+  solaceUltimateDoubleTurns, resolveSolaceStats,
 } from "../../lib/solace";
 import { resolveIntroOutroEffect, IntroOutroEffect } from "../../lib/introOutro";
 import {
@@ -253,6 +254,7 @@ interface RaidParticipant {
   solaceUltimateLevel: number;
   solaceIntroLevel: number;
   solaceForteLevel: number;
+  solaceConstellation: number;
   activeUnit:     "player" | "ally";
   allyHp:         number;
   allyHpMax:      number;
@@ -454,13 +456,13 @@ function partyWideTeamBonuses(raid: ActiveRaid): {
 
     const allyHasWellspring = ally.allySolaceStats?.hasWellspring ?? false;
 
-    atkMult *= getAttunementAtkMult(ally.attunement, attuneAtkBonus, doubled);
-    critBonus += getAttunementCritRateBonus(ally.attunement, attuneAtkBonus, doubled);
+    atkMult *= getAttunementAtkMult(ally.attunement, attuneAtkBonus, doubled, ally.solaceConstellation >= 6);
+    critBonus += getAttunementCritRateBonus(ally.attunement, attuneAtkBonus, doubled, ally.solaceConstellation >= 6);
     if (allyHasWellspring) critBonus += getWellspringCritRateBonus(ally.attunement);
     critBonus += getSolaceForteCritRateBonus(ally.solaceForteLevel, forteActive);
     if (allyHasWellspring) atkMult *= 1 + getWellspringAtkBonus(ally.attunement);
     atkMult *= 1 + getSolaceForteAtkBonus(ally.solaceForteLevel, forteActive);
-    defMult *= getAttunementDefMult(ally.attunement, attuneDefBonus, doubled);
+    defMult *= getAttunementDefMult(ally.attunement, attuneDefBonus, doubled, ally.solaceConstellation >= 6);
     if (allyHasWellspring) defMult *= 1 + getWellspringDefBonus(ally.attunement);
     defMult *= 1 + getSolaceForteDefBonus(ally.solaceForteLevel, forteActive);
   }
@@ -690,6 +692,7 @@ async function addParticipant(raid: ActiveRaid, userId: string, displayName: str
     solaceUltimateLevel: solaceProgress?.ultimateLevel ?? 1,
     solaceIntroLevel:    solaceProgress?.introLevel    ?? 1,
     solaceForteLevel:    solaceProgress?.forteLevel    ?? 1,
+    solaceConstellation: solaceProgress?.constellation ?? 0,
     activeUnit: "player",
     allyHp: SOLACE.hpMax, allyHpMax: SOLACE.hpMax,
     concertoEnergy: 0,
@@ -1047,8 +1050,8 @@ async function launchRaid(
             ? { hp: current.allyHp, hpMax: current.allyHpMax }
             : { hp: current.hp, hpMax: current.hpMax };
 
-          const outroEffect = outgoingIsPlayer ? PLAYER_SELF_OUTRO : SOLACE.outro;
-          const introEffect: IntroOutroEffect = outgoingIsPlayer ? solaceIntroEffect(current.solaceIntroLevel) : PLAYER_SELF_INTRO;
+          const outroEffect = outgoingIsPlayer ? PLAYER_SELF_OUTRO : solaceOutroEffect(current.solaceConstellation);
+          const introEffect: IntroOutroEffect = outgoingIsPlayer ? solaceIntroEffect(current.solaceIntroLevel, current.solaceConstellation) : PLAYER_SELF_INTRO;
           const outroResult = resolveIntroOutroEffect(outroEffect, incomingTarget);
           const introResult = resolveIntroOutroEffect(introEffect, incomingTarget);
 
@@ -1138,6 +1141,7 @@ async function launchRaid(
         // The ORIGINAL player Skill logic below is untouched and only runs
         // when this branch's condition is false.
         current.attunement.mode = cycleAttunementMode(current.attunement.mode);
+        if (current.solaceConstellation >= 3) current.concertoEnergy = addConcertoEnergy(current.concertoEnergy, 25);
         // NOTE: WEAKENED deliberately NOT folded in here — it's a debuff on
         // the player, not on Solace, and this is her own Attunement-cycle hit.
         const crit = forcedCritActive || Math.random() < aCrit;
@@ -1188,12 +1192,12 @@ async function launchRaid(
         // Energy, and heals the WHOLE living party (not just the caster) —
         // this is the one place /raid genuinely diverges from boss.ts's
         // single-owner shape.
-        const healPct = solaceConvergenceHealPct(current.solaceUltimateLevel);
+        const healPct = solaceConvergenceHealPct(current.solaceUltimateLevel, current.solaceConstellation);
         const healLines: string[] = [];
         for (const p of raid.participants.filter(pp => !pp.isDefeated)) {
           const bodyResult = resolveIntroOutroEffect({ actions: [
             { type: "HEAL_ALLY", value: healPct },
-            { type: "CLEANSE_ALLY", value: 1 },
+            { type: "CLEANSE_ALLY", value: solaceConvergenceCleanseCount(current.solaceConstellation) },
           ] }, { hp: p.hp, hpMax: p.hpMax });
           const allyResult = resolveIntroOutroEffect({ actions: [
             { type: "HEAL_ALLY", value: healPct },
@@ -1221,16 +1225,16 @@ async function launchRaid(
         const healSummary = healLines.length > 0 ? healLines.join("  ·  ") : "party already at full HP";
 
         if (isForteMaxed(current.solaceForte, SOLACE_FORTE_CONFIG)) {
-          current.forteEmpoweredTurnsLeft = SOLACE_FORTE_EMPOWERED_TURNS + 1; // +1 compensates for the same-round decrement
+          current.forteEmpoweredTurnsLeft = solaceUltimateDoubleTurns(current.solaceConstellation) + 1; // +1 compensates for the same-round decrement
           current.attunementDoubleTurnsLeft = 0;
           current.solaceForte = resetForte();
           moveLine = `${current.name} — ⚡ **Empowered Convergence!** Team healed (${healSummary}), debuffs cleansed, ` +
-            `**all 3 Attunement Modes empowered for ${SOLACE_FORTE_EMPOWERED_TURNS} turns!**`;
+            `**all 3 Attunement Modes empowered for ${solaceUltimateDoubleTurns(current.solaceConstellation)} turns!**`;
         } else {
-          current.attunementDoubleTurnsLeft = SOLACE_ULTIMATE_DOUBLE_TURNS + 1; // +1 compensates for the same-round decrement
+          current.attunementDoubleTurnsLeft = solaceUltimateDoubleTurns(current.solaceConstellation) + 1; // +1 compensates for the same-round decrement
           current.forteEmpoweredTurnsLeft = 0;
           moveLine = `${current.name} — ⚡ **Convergence!** Team healed (${healSummary}), debuffs cleansed, ` +
-            `**${current.attunement.mode ?? "no"} mode doubled for ${SOLACE_ULTIMATE_DOUBLE_TURNS} turns!**`;
+            `**${current.attunement.mode ?? "no"} mode doubled for ${solaceUltimateDoubleTurns(current.solaceConstellation)} turns!**`;
         }
       } else if (btn.customId === "raid_echoskill" && current.bonuses.echoSkill) {
         const def = current.bonuses.echoSkill;
