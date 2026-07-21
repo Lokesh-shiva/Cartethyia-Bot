@@ -31,11 +31,12 @@ import { echoSkillBaseMult, applyEchoSkill } from "../../lib/echoSkills";
 import { incrementWeaponBond } from "../../lib/weaponAwakening";
 import { generateVersusCard, Fighter } from "../../lib/versusCard";
 import {
-  SOLACE, SOLACE_ULTIMATE_DOUBLE_TURNS, PLAYER_SELF_INTRO, PLAYER_SELF_OUTRO,
-  SOLACE_FORTE_CONFIG, SOLACE_FORTE_GAIN_PER_BASIC, SOLACE_FORTE_EMPOWERED_TURNS,
+  SOLACE, PLAYER_SELF_INTRO, PLAYER_SELF_OUTRO,
+  SOLACE_FORTE_CONFIG, SOLACE_FORTE_GAIN_PER_BASIC,
   getSolaceForteAtkBonus, getSolaceForteCritRateBonus, getSolaceForteDefBonus,
-  solaceIntroEffect, solaceBasicDamageMult, solaceAttunementAtkCritBonus,
-  solaceAttunementDefBonus, solaceConvergenceHealPct, resolveSolaceStats,
+  solaceIntroEffect, solaceOutroEffect, solaceBasicDamageMult, solaceAttunementAtkCritBonus,
+  solaceAttunementDefBonus, solaceConvergenceHealPct, solaceConvergenceCleanseCount,
+  solaceUltimateDoubleTurns, resolveSolaceStats,
 } from "../../lib/solace";
 import { resolveIntroOutroEffect, IntroOutroEffect } from "../../lib/introOutro";
 import {
@@ -75,7 +76,7 @@ interface DuelState {
   cHasSolace: boolean;
   cAllySolaceStats: (ResolvedStats & { hasWellspring: boolean }) | null; // Milestone 3.5b: her own resolved stats
   cSolaceBasicLevel: number; cSolaceSkillLevel: number; cSolaceUltimateLevel: number;
-  cSolaceIntroLevel: number; cSolaceForteLevel: number;
+  cSolaceIntroLevel: number; cSolaceForteLevel: number; cSolaceConstellation: number;
   cActiveUnit: "player" | "ally"; cAllyHp: number; cAllyHpMax: number;
   cConcertoEnergy: number; cPlayerDebuffs: DebuffState;
   cAttunement: AttunementState; cAttunementDoubleTurnsLeft: number;
@@ -94,7 +95,7 @@ interface DuelState {
   dHasSolace: boolean;
   dAllySolaceStats: (ResolvedStats & { hasWellspring: boolean }) | null; // Milestone 3.5b: her own resolved stats
   dSolaceBasicLevel: number; dSolaceSkillLevel: number; dSolaceUltimateLevel: number;
-  dSolaceIntroLevel: number; dSolaceForteLevel: number;
+  dSolaceIntroLevel: number; dSolaceForteLevel: number; dSolaceConstellation: number;
   dActiveUnit: "player" | "ally"; dAllyHp: number; dAllyHpMax: number;
   dConcertoEnergy: number; dPlayerDebuffs: DebuffState;
   dAttunement: AttunementState; dAttunementDoubleTurnsLeft: number;
@@ -401,6 +402,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
       cSolaceBasicLevel: cSolaceProgress?.basicLevel ?? 1, cSolaceSkillLevel: cSolaceProgress?.skillLevel ?? 1,
       cSolaceUltimateLevel: cSolaceProgress?.ultimateLevel ?? 1, cSolaceIntroLevel: cSolaceProgress?.introLevel ?? 1,
       cSolaceForteLevel: cSolaceProgress?.forteLevel ?? 1,
+      cSolaceConstellation: cSolaceProgress?.constellation ?? 0,
       cActiveUnit: "player", cAllyHp: SOLACE.hpMax, cAllyHpMax: SOLACE.hpMax,
       cConcertoEnergy: 0, cPlayerDebuffs: [],
       cAttunement: { mode: null }, cAttunementDoubleTurnsLeft: 0,
@@ -421,6 +423,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
       dSolaceBasicLevel: dSolaceProgress?.basicLevel ?? 1, dSolaceSkillLevel: dSolaceProgress?.skillLevel ?? 1,
       dSolaceUltimateLevel: dSolaceProgress?.ultimateLevel ?? 1, dSolaceIntroLevel: dSolaceProgress?.introLevel ?? 1,
       dSolaceForteLevel: dSolaceProgress?.forteLevel ?? 1,
+      dSolaceConstellation: dSolaceProgress?.constellation ?? 0,
       dActiveUnit: "player", dAllyHp: SOLACE.hpMax, dAllyHpMax: SOLACE.hpMax,
       dConcertoEnergy: 0, dPlayerDebuffs: [],
       dAttunement: { mode: null }, dAttunementDoubleTurnsLeft: 0,
@@ -560,6 +563,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
         const mySolaceUltimateLvl  = isChallenger ? state.cSolaceUltimateLevel : state.dSolaceUltimateLevel;
         const mySolaceIntroLevel   = isChallenger ? state.cSolaceIntroLevel : state.dSolaceIntroLevel;
         const mySolaceForteLevel   = isChallenger ? state.cSolaceForteLevel : state.dSolaceForteLevel;
+        const mySolaceConstellation = isChallenger ? state.cSolaceConstellation : state.dSolaceConstellation;
         let convergenceUsedThisTurn = false;
 
         const myNamedState  = isChallenger ? state.cNamedState : state.dNamedState;
@@ -584,10 +588,11 @@ export async function execute(interaction: ChatInputCommandInteraction) {
         const oppSolaceSkillLevel    = isChallenger ? state.dSolaceSkillLevel : state.cSolaceSkillLevel;
         const oppForteEmpoweredTurns = isChallenger ? state.dForteEmpoweredTurnsLeft : state.cForteEmpoweredTurnsLeft;
         const oppSolaceForteLevel    = isChallenger ? state.dSolaceForteLevel : state.cSolaceForteLevel;
+        const oppSolaceConstellation = isChallenger ? state.dSolaceConstellation : state.cSolaceConstellation;
         const oppWellspringDefBonus  = isDevGuild && (isChallenger ? state.dAllySolaceStats : state.cAllySolaceStats)?.hasWellspring ? getWellspringDefBonus(oppAttunement) : 0;
         const oppForteDefBonus       = isDevGuild ? getSolaceForteDefBonus(oppSolaceForteLevel, oppForteEmpoweredTurns > 0) : 0;
         const oppAttunementDefBonus  = solaceAttunementDefBonus(oppSolaceSkillLevel);
-        const oppAttunementDefMult   = (isDevGuild ? getAttunementDefMult(oppAttunement, oppAttunementDefBonus, oppAttunementDblTurns > 0) : 1)
+        const oppAttunementDefMult   = (isDevGuild ? getAttunementDefMult(oppAttunement, oppAttunementDefBonus, oppAttunementDblTurns > 0, oppSolaceConstellation >= 6) : 1)
           * (1 + oppWellspringDefBonus) * (1 + oppForteDefBonus);
 
         // Milestone 3.5b: whichever unit is currently acting/defending on
@@ -637,8 +642,8 @@ export async function execute(interaction: ChatInputCommandInteraction) {
               ? { hp: myAllyHpVal, hpMax: myAllyHpMaxVal }
               : { hp: myHp, hpMax: myHpMax };
 
-            const outroEffect = outgoingIsPlayer ? PLAYER_SELF_OUTRO : SOLACE.outro;
-            const introEffect: IntroOutroEffect = outgoingIsPlayer ? solaceIntroEffect(mySolaceIntroLevel) : PLAYER_SELF_INTRO;
+            const outroEffect = outgoingIsPlayer ? PLAYER_SELF_OUTRO : solaceOutroEffect(mySolaceConstellation);
+            const introEffect: IntroOutroEffect = outgoingIsPlayer ? solaceIntroEffect(mySolaceIntroLevel, mySolaceConstellation) : PLAYER_SELF_INTRO;
             const outroResult = resolveIntroOutroEffect(outroEffect, incomingTarget);
             const introResult = resolveIntroOutroEffect(introEffect, incomingTarget);
 
@@ -697,8 +702,8 @@ export async function execute(interaction: ChatInputCommandInteraction) {
         let isCrit = false;
 
         if (btn.customId === "duel_basic") {
-          const teamAtkMult   = isDevGuild ? getAttunementAtkMult(myAttunement, solaceAttunementAtkCritBonus(mySolaceSkillLevel), myAttunementDblTurns > 0) : 1;
-          const teamCritBonus = isDevGuild ? getAttunementCritRateBonus(myAttunement, solaceAttunementAtkCritBonus(mySolaceSkillLevel), myAttunementDblTurns > 0) : 0;
+          const teamAtkMult   = isDevGuild ? getAttunementAtkMult(myAttunement, solaceAttunementAtkCritBonus(mySolaceSkillLevel), myAttunementDblTurns > 0, mySolaceConstellation >= 6) : 1;
+          const teamCritBonus = isDevGuild ? getAttunementCritRateBonus(myAttunement, solaceAttunementAtkCritBonus(mySolaceSkillLevel), myAttunementDblTurns > 0, mySolaceConstellation >= 6) : 0;
           const wellspringAtkMult   = isDevGuild && myActiveUnit === "ally" && myAllySolaceStats?.hasWellspring ? WELLSPRING_BASE_ATK_MULT : 1;
           const wellspringAtkBonus  = isDevGuild && myAllySolaceStats?.hasWellspring ? getWellspringAtkBonus(myAttunement) : 0;
           const wellspringCritBonus = isDevGuild && myAllySolaceStats?.hasWellspring ? getWellspringCritRateBonus(myAttunement) : 0;
@@ -751,6 +756,10 @@ export async function execute(interaction: ChatInputCommandInteraction) {
           // Solace's Skill is Attunement — a mode cycle, not a damage move.
           const newMode = cycleAttunementMode(myAttunement.mode);
           if (isChallenger) state.cAttunement.mode = newMode; else state.dAttunement.mode = newMode;
+          if (mySolaceConstellation >= 3) {
+            if (isChallenger) state.cConcertoEnergy = addConcertoEnergy(state.cConcertoEnergy, 25);
+            else state.dConcertoEnergy = addConcertoEnergy(state.dConcertoEnergy, 25);
+          }
           const crit = Math.random() < aCrit;
           const r    = calcPlayerDamage(activeAtk * 0.6, effectiveOppDef, crit ? 1 : 0, activeCritDmg, 1.0, isWeak, false);
           damage = Math.floor(r.damage * (1 + myElemDmg + extraElemBonus));
@@ -760,8 +769,8 @@ export async function execute(interaction: ChatInputCommandInteraction) {
           if (isChallenger) state.cEnergy = Math.min(100, state.cEnergy + enGain);
           else              state.dEnergy = Math.min(100, state.dEnergy + enGain);
         } else if (btn.customId === "duel_skill") {
-          const teamAtkMult    = isDevGuild ? getAttunementAtkMult(myAttunement, solaceAttunementAtkCritBonus(mySolaceSkillLevel), myAttunementDblTurns > 0) : 1;
-          const teamCritBonus  = isDevGuild ? getAttunementCritRateBonus(myAttunement, solaceAttunementAtkCritBonus(mySolaceSkillLevel), myAttunementDblTurns > 0) : 0;
+          const teamAtkMult    = isDevGuild ? getAttunementAtkMult(myAttunement, solaceAttunementAtkCritBonus(mySolaceSkillLevel), myAttunementDblTurns > 0, mySolaceConstellation >= 6) : 1;
+          const teamCritBonus  = isDevGuild ? getAttunementCritRateBonus(myAttunement, solaceAttunementAtkCritBonus(mySolaceSkillLevel), myAttunementDblTurns > 0, mySolaceConstellation >= 6) : 0;
           const wellspringAtkBonus  = isDevGuild && myAllySolaceStats?.hasWellspring ? getWellspringAtkBonus(myAttunement) : 0;
           const wellspringCritBonus = isDevGuild && myAllySolaceStats?.hasWellspring ? getWellspringCritRateBonus(myAttunement) : 0;
           const forteAtkBonus  = isDevGuild ? getSolaceForteAtkBonus(mySolaceForteLevel, myForteEmpoweredTurns > 0) : 0;
@@ -787,7 +796,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
         }
 
         if (btn.customId === "duel_ultimate" && !(isDevGuild && myActiveUnit === "ally")) {
-          const teamAtkMult   = isDevGuild ? getAttunementAtkMult(myAttunement, solaceAttunementAtkCritBonus(mySolaceSkillLevel), myAttunementDblTurns > 0) : 1;
+          const teamAtkMult   = isDevGuild ? getAttunementAtkMult(myAttunement, solaceAttunementAtkCritBonus(mySolaceSkillLevel), myAttunementDblTurns > 0, mySolaceConstellation >= 6) : 1;
           const wellspringAtkBonus = isDevGuild && myAllySolaceStats?.hasWellspring ? getWellspringAtkBonus(myAttunement) : 0;
           const forteAtkBonus = isDevGuild ? getSolaceForteAtkBonus(mySolaceForteLevel, myForteEmpoweredTurns > 0) : 0;
           const teamMult = getWeakenedMult(myPlayerDebuffs) * teamAtkMult * (1 + wellspringAtkBonus) * (1 + forteAtkBonus);
@@ -810,10 +819,10 @@ export async function execute(interaction: ChatInputCommandInteraction) {
           // heals the 2-unit side (player + Solace) — no party to heal in a
           // duel, matching /dungeon's/`boss.ts`'s 2-unit Convergence, not
           // /raid's party-wide version.
-          const healPct = solaceConvergenceHealPct(mySolaceUltimateLvl);
+          const healPct = solaceConvergenceHealPct(mySolaceUltimateLvl, mySolaceConstellation);
           const playerHealResult = resolveIntroOutroEffect({ actions: [
             { type: "HEAL_ALLY", value: healPct },
-            { type: "CLEANSE_ALLY", value: 1 },
+            { type: "CLEANSE_ALLY", value: solaceConvergenceCleanseCount(mySolaceConstellation) },
           ] }, { hp: myHp, hpMax: myHpMax });
           const allyHealResult = resolveIntroOutroEffect({ actions: [
             { type: "HEAL_ALLY", value: healPct },
@@ -839,18 +848,18 @@ export async function execute(interaction: ChatInputCommandInteraction) {
 
           const healSummary = `${myName} +${actualHealPlayer} HP, ${SOLACE.name} +${actualHealAlly} HP`;
           if (isForteMaxed(mySolaceForte, SOLACE_FORTE_CONFIG)) {
-            const emp = SOLACE_FORTE_EMPOWERED_TURNS + 1;
+            const emp = solaceUltimateDoubleTurns(mySolaceConstellation) + 1;
             const reset = resetForte();
             if (isChallenger) { state.cForteEmpoweredTurnsLeft = emp; state.cAttunementDoubleTurnsLeft = 0; state.cSolaceForte = reset; }
             else              { state.dForteEmpoweredTurnsLeft = emp; state.dAttunementDoubleTurnsLeft = 0; state.dSolaceForte = reset; }
             moveLine = `${myName} — ⚡ **Empowered Convergence!** Team healed (${healSummary}), debuffs cleansed, ` +
-              `**all 3 Attunement Modes empowered for ${SOLACE_FORTE_EMPOWERED_TURNS} turns!**`;
+              `**all 3 Attunement Modes empowered for ${solaceUltimateDoubleTurns(mySolaceConstellation)} turns!**`;
           } else {
-            const dbl = SOLACE_ULTIMATE_DOUBLE_TURNS + 1;
+            const dbl = solaceUltimateDoubleTurns(mySolaceConstellation) + 1;
             if (isChallenger) { state.cAttunementDoubleTurnsLeft = dbl; state.cForteEmpoweredTurnsLeft = 0; }
             else              { state.dAttunementDoubleTurnsLeft = dbl; state.dForteEmpoweredTurnsLeft = 0; }
             moveLine = `${myName} — ⚡ **Convergence!** Team healed (${healSummary}), debuffs cleansed, ` +
-              `**${myAttunement.mode ?? "no"} mode doubled for ${SOLACE_ULTIMATE_DOUBLE_TURNS} turns!**`;
+              `**${myAttunement.mode ?? "no"} mode doubled for ${solaceUltimateDoubleTurns(mySolaceConstellation)} turns!**`;
           }
         }
 
