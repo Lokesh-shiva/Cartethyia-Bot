@@ -29,17 +29,22 @@ export function cycleAttunementMode(current: AttunementMode | null): AttunementM
 // `doubled` is Solace's Ultimate ("Convergence") temporarily doubling whichever
 // mode is currently active — it doubles the BONUS portion (the amount above the
 // neutral 1.0/0 baseline), not the whole multiplier.
-export function getAttunementAtkMult(state: AttunementState, bonus: number, doubled = false): number {
-  if (state.mode !== "ATK") return 1;
-  return 1 + bonus * (doubled ? 2 : 1);
+//
+// `constellation6`: C6 — while one mode is active, allies ALSO gain 50% of the
+// other two modes' effects. Only applies to modes that are NOT the active one
+// (the active mode's own bonus/doubling is unaffected — this is purely
+// additive spillover onto the two inactive modes).
+export function getAttunementAtkMult(state: AttunementState, bonus: number, doubled = false, constellation6 = false): number {
+  if (state.mode === "ATK") return 1 + bonus * (doubled ? 2 : 1);
+  return constellation6 ? 1 + bonus * 0.5 : 1;
 }
 
-export function getAttunementCritRateBonus(state: AttunementState, bonus: number, doubled = false): number {
-  if (state.mode !== "CRIT") return 0;
-  return bonus * (doubled ? 2 : 1);
+export function getAttunementCritRateBonus(state: AttunementState, bonus: number, doubled = false, constellation6 = false): number {
+  if (state.mode === "CRIT") return bonus * (doubled ? 2 : 1);
+  return constellation6 ? bonus * 0.5 : 0;
 }
 
-export function getAttunementDefMult(state: AttunementState, bonus: number, doubled = false): number {
-  if (state.mode !== "DEF") return 1;
-  return 1 + bonus * (doubled ? 2 : 1);
+export function getAttunementDefMult(state: AttunementState, bonus: number, doubled = false, constellation6 = false): number {
+  if (state.mode === "DEF") return 1 + bonus * (doubled ? 2 : 1);
+  return constellation6 ? 1 + bonus * 0.5 : 1;
 }
