@@ -374,7 +374,14 @@ async function buildConstellationsView(userId: string, characterId: string): Pro
   const embed = new EmbedBuilder().setColor(0x6366F1).setImage("attachment://con.png")
     .setDescription(tiers.map((e, i) => `${progress.constellation >= i + 1 ? "✦" : "◇"} **C${i + 1}** — ${e}`).join("\n\n"))
     .setFooter({ text: "CARTETHYIA  ·  Character  ·  Constellations" });
-  return { embed, files: [new AttachmentBuilder(buf, { name: "con.png" })] };
+  const canUnlock = progress.constellationTokens >= 1 && progress.constellation < MAX_CONSTELLATION;
+  const extraRow = canUnlock ? new ActionRowBuilder<ButtonBuilder>().addComponents(
+    new ButtonBuilder()
+      .setCustomId(`charconunlock:${characterId}`)
+      .setLabel(`✦  Unlock C${progress.constellation + 1}  (1 Token)`)
+      .setStyle(ButtonStyle.Success),
+  ) : undefined;
+  return { embed, files: [new AttachmentBuilder(buf, { name: "con.png" })], extraRow };
 }
 
 async function buildLoreView(userId: string, characterId: string): Promise<PageView> {
@@ -463,7 +470,8 @@ const command: Command = {
          i.customId.startsWith("charnav:") || i.customId.startsWith("charequipweapon:") ||
          i.customId.startsWith("charequipweaponpick:") || i.customId.startsWith("charequipecho:") ||
          i.customId.startsWith("charequipechopick:") || i.customId.startsWith("charequipechoclear:") ||
-         i.customId.startsWith("charequipechofilter:") || i.customId.startsWith("charequipechocostfilter:")),
+         i.customId.startsWith("charequipechofilter:") || i.customId.startsWith("charequipechocostfilter:") ||
+         i.customId.startsWith("charconunlock:")),
       time: 5 * 60 * 1000,
     });
 
@@ -567,6 +575,37 @@ const command: Command = {
             ["insufficient-funds-race", "already-ascended-race", "already-leveled-race"].includes(err.message);
           if (!raced) console.error("[character] level/ascend transaction failed", err);
           await renderAndReply(btn, characterId, "stats").catch(() => btn.deferUpdate().catch(() => {}));
+        }
+        return;
+      }
+
+      if (i.customId.startsWith("charconunlock:") && i.isButton()) {
+        const btn = i as ButtonInteraction;
+        const [, characterId] = btn.customId.split(":");
+        if (!CHARACTERS[characterId] || !ownedCharacterIds.has(characterId)) { await btn.deferUpdate().catch(() => {}); return; }
+
+        const progress = await getOrCreateCharacterProgress(interaction.user.id, characterId);
+        try {
+          const unlock = await prisma.characterProgress.updateMany({
+            where: {
+              userId: interaction.user.id, characterId,
+              constellationTokens: { gte: 1 },
+              constellation: progress.constellation,
+            },
+            data: {
+              constellationTokens: { decrement: 1 },
+              constellation: { increment: 1 },
+            },
+          });
+          if (unlock.count === 0) throw new Error("already-unlocked-race");
+          await renderAndReply(btn, characterId, "con");
+        } catch (err) {
+          // already-unlocked-race means tokens or constellation changed since
+          // this page was rendered (double-click, or a wish pull banked a
+          // token in between) — not a real error, don't log as one.
+          const raced = err instanceof Error && err.message === "already-unlocked-race";
+          if (!raced) console.error("[character] constellation-unlock transaction failed", err);
+          await renderAndReply(btn, characterId, "con").catch(() => btn.deferUpdate().catch(() => {}));
         }
         return;
       }
