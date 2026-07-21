@@ -32,11 +32,12 @@ import { CE, echoEmoji } from "../../lib/emojiManager";
 import { trackEvolutionProgress } from "../../lib/abilityEvolution";
 import { incrementWeaponBond } from "../../lib/weaponAwakening";
 import {
-  SOLACE, SOLACE_ULTIMATE_DOUBLE_TURNS, PLAYER_SELF_INTRO, PLAYER_SELF_OUTRO,
-  SOLACE_FORTE_CONFIG, SOLACE_FORTE_GAIN_PER_BASIC, SOLACE_FORTE_EMPOWERED_TURNS,
+  SOLACE, PLAYER_SELF_INTRO, PLAYER_SELF_OUTRO,
+  SOLACE_FORTE_CONFIG, SOLACE_FORTE_GAIN_PER_BASIC,
   getSolaceForteAtkBonus, getSolaceForteCritRateBonus, getSolaceForteDefBonus,
-  solaceIntroEffect, solaceBasicDamageMult, solaceAttunementAtkCritBonus,
-  solaceAttunementDefBonus, solaceConvergenceHealPct, resolveSolaceStats,
+  solaceIntroEffect, solaceOutroEffect, solaceBasicDamageMult, solaceAttunementAtkCritBonus,
+  solaceAttunementDefBonus, solaceConvergenceHealPct, solaceConvergenceCleanseCount,
+  solaceUltimateDoubleTurns, resolveSolaceStats,
 } from "../../lib/solace";
 import { resolveIntroOutroEffect, IntroOutroEffect } from "../../lib/introOutro";
 import {
@@ -302,6 +303,7 @@ async function runDungeon(
   const solaceUltimateLevel = solaceProgress?.ultimateLevel ?? 1;
   const solaceIntroLevel    = solaceProgress?.introLevel    ?? 1;
   const solaceForteLevel    = solaceProgress?.forteLevel    ?? 1;
+  const solaceConstellation = solaceProgress?.constellation ?? 0;
 
   const displayName = interaction.guild?.members.cache.get(interaction.user.id)?.displayName
     ?? interaction.user.displayName;
@@ -385,6 +387,7 @@ async function runDungeon(
           isDevGuild, hasSolace, allySolaceStats, activeUnit, allyHp, allyHpMax, concertoEnergy, playerDebuffs, attunement,
           attunementDoubleTurnsLeft, solaceForte, forteEmpoweredTurnsLeft,
           solaceBasicLevel, solaceSkillLevel, solaceUltimateLevel, solaceIntroLevel, solaceForteLevel,
+          solaceConstellation,
           displayName,
         },
         displayName,
@@ -561,6 +564,7 @@ interface WaveState {
   solaceUltimateLevel: number;
   solaceIntroLevel: number;
   solaceForteLevel: number;
+  solaceConstellation: number;
   // Staged ahead of Tasks 3/5 (swap handler, Solace's Convergence) — those will
   // read ws.displayName inside runWave's turn-handling logic for swap/heal
   // messages, mirroring how encounter.ts reads displayName from function
@@ -765,8 +769,8 @@ async function runWave(
               ? { hp: ws.allyHp, hpMax: ws.allyHpMax }
               : { hp: ws.playerHp, hpMax: ws.playerHpMax };
 
-            const outroEffect = outgoingIsPlayer ? PLAYER_SELF_OUTRO : SOLACE.outro;
-            const introEffect: IntroOutroEffect = outgoingIsPlayer ? solaceIntroEffect(ws.solaceIntroLevel) : PLAYER_SELF_INTRO;
+            const outroEffect = outgoingIsPlayer ? PLAYER_SELF_OUTRO : solaceOutroEffect(ws.solaceConstellation);
+            const introEffect: IntroOutroEffect = outgoingIsPlayer ? solaceIntroEffect(ws.solaceIntroLevel, ws.solaceConstellation) : PLAYER_SELF_INTRO;
             const outroResult = resolveIntroOutroEffect(outroEffect, incomingTarget);
             const introResult = resolveIntroOutroEffect(introEffect, incomingTarget);
 
@@ -804,8 +808,8 @@ async function runWave(
           // /encounter's Basic Attack, folded into this move's crit-rate
           // computation and damage formula below instead of a shared
           // calcPlayerDamage() call (this file doesn't use that helper).
-          const teamAtkMult  = ws.isDevGuild ? getAttunementAtkMult(ws.attunement, solaceAttunementAtkCritBonus(ws.solaceSkillLevel), ws.attunementDoubleTurnsLeft > 0) : 1;
-          const teamCritBonus = ws.isDevGuild ? getAttunementCritRateBonus(ws.attunement, solaceAttunementAtkCritBonus(ws.solaceSkillLevel), ws.attunementDoubleTurnsLeft > 0) : 0;
+          const teamAtkMult  = ws.isDevGuild ? getAttunementAtkMult(ws.attunement, solaceAttunementAtkCritBonus(ws.solaceSkillLevel), ws.attunementDoubleTurnsLeft > 0, ws.solaceConstellation >= 6) : 1;
+          const teamCritBonus = ws.isDevGuild ? getAttunementCritRateBonus(ws.attunement, solaceAttunementAtkCritBonus(ws.solaceSkillLevel), ws.attunementDoubleTurnsLeft > 0, ws.solaceConstellation >= 6) : 0;
           const wellspringAtkMult   = ws.isDevGuild && ws.activeUnit === "ally" && ws.allySolaceStats?.hasWellspring ? WELLSPRING_BASE_ATK_MULT : 1;
           const wellspringAtkBonus  = ws.isDevGuild && ws.allySolaceStats?.hasWellspring ? getWellspringAtkBonus(ws.attunement) : 0;
           const wellspringCritBonus = ws.isDevGuild && ws.allySolaceStats?.hasWellspring ? getWellspringCritRateBonus(ws.attunement) : 0;
@@ -873,14 +877,15 @@ async function runWave(
           // no independent stat block yet — same simplification /encounter
           // uses). Ported from encounter.ts's Milestone 2a Skill branch.
           ws.attunement.mode = cycleAttunementMode(ws.attunement.mode);
+          if (ws.solaceConstellation >= 3) ws.concertoEnergy = addConcertoEnergy(ws.concertoEnergy, 25);
           const crit = Math.random() < cRate; abilCrit = crit;
           const dmg  = Math.max(1, Math.floor(activeAtk * 0.6 * (1 - defReduction) * (crit ? activeCritDmg : 1) * (isWeak ? 1.5 : 1) * (1 + bonuses.elemDmgBonus)));
           playerDmg  = dmg;
           moveLine   = `✦ Attunement — now in **${ws.attunement.mode}** mode! ${playerDmg} DMG${crit ? " **(CRIT)**" : ""}`;
           vibBar     = Math.max(0, vibBar - Math.floor(playerDmg * 0.3 * totalVibMult));
         } else if (btn.customId === "dg_skill") {
-          const teamAtkMult  = ws.isDevGuild ? getAttunementAtkMult(ws.attunement, solaceAttunementAtkCritBonus(ws.solaceSkillLevel), ws.attunementDoubleTurnsLeft > 0) : 1;
-          const teamCritBonus = ws.isDevGuild ? getAttunementCritRateBonus(ws.attunement, solaceAttunementAtkCritBonus(ws.solaceSkillLevel), ws.attunementDoubleTurnsLeft > 0) : 0;
+          const teamAtkMult  = ws.isDevGuild ? getAttunementAtkMult(ws.attunement, solaceAttunementAtkCritBonus(ws.solaceSkillLevel), ws.attunementDoubleTurnsLeft > 0, ws.solaceConstellation >= 6) : 1;
+          const teamCritBonus = ws.isDevGuild ? getAttunementCritRateBonus(ws.attunement, solaceAttunementAtkCritBonus(ws.solaceSkillLevel), ws.attunementDoubleTurnsLeft > 0, ws.solaceConstellation >= 6) : 0;
           const wellspringAtkBonus  = ws.isDevGuild && ws.allySolaceStats?.hasWellspring ? getWellspringAtkBonus(ws.attunement) : 0;
           const wellspringCritBonus = ws.isDevGuild && ws.allySolaceStats?.hasWellspring ? getWellspringCritRateBonus(ws.attunement) : 0;
           const forteAtkBonus  = ws.isDevGuild ? getSolaceForteAtkBonus(ws.solaceForteLevel, ws.forteEmpoweredTurnsLeft > 0) : 0;
@@ -928,7 +933,7 @@ async function runWave(
           // and this branch only ever runs for the player's own Ultimate
           // (Solace's own Ultimate/Convergence is a separate branch, Task 5).
           abilCrit  = true;
-          const teamAtkMult = ws.isDevGuild ? getAttunementAtkMult(ws.attunement, solaceAttunementAtkCritBonus(ws.solaceSkillLevel), ws.attunementDoubleTurnsLeft > 0) : 1;
+          const teamAtkMult = ws.isDevGuild ? getAttunementAtkMult(ws.attunement, solaceAttunementAtkCritBonus(ws.solaceSkillLevel), ws.attunementDoubleTurnsLeft > 0, ws.solaceConstellation >= 6) : 1;
           const wellspringAtkBonus = ws.isDevGuild && ws.allySolaceStats?.hasWellspring ? getWellspringAtkBonus(ws.attunement) : 0;
           const forteAtkBonus = ws.isDevGuild ? getSolaceForteAtkBonus(ws.solaceForteLevel, ws.forteEmpoweredTurnsLeft > 0) : 0;
           const teamMult = getWeakenedMult(ws.playerDebuffs) * teamAtkMult * (1 + wellspringAtkBonus) * (1 + forteAtkBonus);
@@ -962,10 +967,10 @@ async function runWave(
           // active Attunement mode for 3 turns (or, if Forte is maxed,
           // Empowered Convergence — all 3 modes at once). Ported from
           // encounter.ts's Milestone 2a/2c/2e Convergence branch.
-          const healPct = solaceConvergenceHealPct(ws.solaceUltimateLevel);
+          const healPct = solaceConvergenceHealPct(ws.solaceUltimateLevel, ws.solaceConstellation);
           const healResult = resolveIntroOutroEffect({ actions: [
             { type: "HEAL_ALLY", value: healPct },
-            { type: "CLEANSE_ALLY", value: 1 },
+            { type: "CLEANSE_ALLY", value: solaceConvergenceCleanseCount(ws.solaceConstellation) },
           ] }, { hp: ws.playerHp, hpMax: ws.playerHpMax });
           const allyHealResult = resolveIntroOutroEffect({ actions: [
             { type: "HEAL_ALLY", value: healPct },
@@ -988,16 +993,16 @@ async function runWave(
           const healSummary = `${ws.displayName} +${actualHealPlayer} HP, ${SOLACE.name} +${actualHealAlly} HP`;
 
           if (isForteMaxed(ws.solaceForte, SOLACE_FORTE_CONFIG)) {
-            ws.forteEmpoweredTurnsLeft = SOLACE_FORTE_EMPOWERED_TURNS + 1; // +1 compensates for the same-round decrement
+            ws.forteEmpoweredTurnsLeft = solaceUltimateDoubleTurns(ws.solaceConstellation) + 1; // +1 compensates for the same-round decrement
             ws.attunementDoubleTurnsLeft = 0;
             ws.solaceForte = resetForte();
             moveLine = `⚡ **Empowered Convergence!** Team healed (${healSummary}), debuffs cleansed, ` +
-              `**all 3 Attunement Modes empowered for ${SOLACE_FORTE_EMPOWERED_TURNS} turns!**`;
+              `**all 3 Attunement Modes empowered for ${solaceUltimateDoubleTurns(ws.solaceConstellation)} turns!**`;
           } else {
-            ws.attunementDoubleTurnsLeft = SOLACE_ULTIMATE_DOUBLE_TURNS + 1; // +1 compensates for the same-round decrement
+            ws.attunementDoubleTurnsLeft = solaceUltimateDoubleTurns(ws.solaceConstellation) + 1; // +1 compensates for the same-round decrement
             ws.forteEmpoweredTurnsLeft = 0;
             moveLine = `⚡ **Convergence!** Team healed (${healSummary}), debuffs cleansed, ` +
-              `**${ws.attunement.mode ?? "no"} mode doubled for ${SOLACE_ULTIMATE_DOUBLE_TURNS} turns!**`;
+              `**${ws.attunement.mode ?? "no"} mode doubled for ${solaceUltimateDoubleTurns(ws.solaceConstellation)} turns!**`;
           }
         }
 
@@ -1169,7 +1174,7 @@ async function runWave(
           const wellspringDefBonus = ws.isDevGuild && ws.allySolaceStats?.hasWellspring ? getWellspringDefBonus(ws.attunement) : 0;
           const forteDefBonus = ws.isDevGuild ? getSolaceForteDefBonus(ws.solaceForteLevel, ws.forteEmpoweredTurnsLeft > 0) : 0;
           const attunementDefBonus = solaceAttunementDefBonus(ws.solaceSkillLevel);
-          const attunementDefMult = (ws.isDevGuild ? getAttunementDefMult(ws.attunement, attunementDefBonus, ws.attunementDoubleTurnsLeft > 0) : 1) * (1 + wellspringDefBonus) * (1 + forteDefBonus);
+          const attunementDefMult = (ws.isDevGuild ? getAttunementDefMult(ws.attunement, attunementDefBonus, ws.attunementDoubleTurnsLeft > 0, ws.solaceConstellation >= 6) : 1) * (1 + wellspringDefBonus) * (1 + forteDefBonus);
           let bossDmg   = Math.max(1, Math.floor(scaled.atk * 0.9 - activeDef * attunementDefMult * 0.4));
           bossDmg       = roll4pcBlock(bonuses, bossDmg);
           const shield  = elemFrostShield(bonuses.elementPassive, bossDmg);
