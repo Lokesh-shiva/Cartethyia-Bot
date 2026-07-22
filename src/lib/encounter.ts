@@ -38,7 +38,7 @@ import {
   getAttunementAtkMult, getAttunementCritRateBonus, getAttunementDefMult,
 } from "./attunement";
 import {
-  WELLSPRING_BASE_ATK_MULT, WELLSPRING_BASE_ENERGY_BONUS,
+  getWellspringBaseAtkMult, getWellspringBaseEnergyBonus,
   getWellspringAtkBonus, getWellspringCritRateBonus, getWellspringDefBonus,
 } from "./wellspring";
 import { ForteState, addForteCharge, isForteMaxed, resetForte } from "./forte";
@@ -679,9 +679,9 @@ export async function handleEncounterFight(
         // (it's hardcoded onto her, not the player's own weapon); the mode
         // amplifier applies regardless of who's attacking, same scope as
         // Attunement's own bonus.
-        const wellspringAtkMult   = isDevGuild && activeUnit === "ally" && allySolaceStats?.hasWellspring ? WELLSPRING_BASE_ATK_MULT : 1;
-        const wellspringAtkBonus  = isDevGuild && allySolaceStats?.hasWellspring ? getWellspringAtkBonus(attunement) : 0;
-        const wellspringCritBonus = isDevGuild && allySolaceStats?.hasWellspring ? getWellspringCritRateBonus(attunement) : 0;
+        const wellspringAtkMult   = isDevGuild && activeUnit === "ally" && allySolaceStats?.hasWellspring ? getWellspringBaseAtkMult(allySolaceStats.wellspringRefinement) : 1;
+        const wellspringAtkBonus  = isDevGuild && allySolaceStats?.hasWellspring ? getWellspringAtkBonus(attunement, allySolaceStats.wellspringRefinement) : 0;
+        const wellspringCritBonus = isDevGuild && allySolaceStats?.hasWellspring ? getWellspringCritRateBonus(attunement, allySolaceStats.wellspringRefinement) : 0;
         const forteAtkBonus  = isDevGuild ? getSolaceForteAtkBonus(solaceForteLevel, forteEmpoweredTurnsLeft > 0) : 0;
         const forteCritBonus = isDevGuild ? getSolaceForteCritRateBonus(solaceForteLevel, forteEmpoweredTurnsLeft > 0) : 0;
         const attunementAtkBonus  = solaceAttunementAtkCritBonus(solaceSkillLevel);
@@ -758,7 +758,7 @@ export async function handleEncounterFight(
         // No base ATK boost here — this branch only ever runs for the
         // player's own Ultimate (Solace's Ultimate is the else-if branch
         // below, which deals no damage), and the base boost is Solace-only.
-        const wellspringAtkBonus = isDevGuild && allySolaceStats?.hasWellspring ? getWellspringAtkBonus(attunement) : 0;
+        const wellspringAtkBonus = isDevGuild && allySolaceStats?.hasWellspring ? getWellspringAtkBonus(attunement, allySolaceStats.wellspringRefinement) : 0;
         const forteAtkBonus = isDevGuild ? getSolaceForteAtkBonus(solaceForteLevel, forteEmpoweredTurnsLeft > 0) : 0;
         const attunementAtkBonus = solaceAttunementAtkCritBonus(solaceSkillLevel);
         const atkMult = getWeakenedMult(playerDebuffs) * (isDevGuild ? getAttunementAtkMult(attunement, attunementAtkBonus, attunementDoubleTurnsLeft > 0, solaceConstellation >= 6) : 1) * (1 + wellspringAtkBonus) * (1 + forteAtkBonus);
@@ -873,7 +873,7 @@ export async function handleEncounterFight(
         // Wellspring's Energy Regen passive — only while Solace is the one
         // acting (it's hardcoded onto her, not a shared account-level weapon,
         // so it shouldn't boost the player's own turns).
-        if (concertoGain > 0 && activeUnit === "ally" && allySolaceStats?.hasWellspring) concertoGain += WELLSPRING_BASE_ENERGY_BONUS;
+        if (concertoGain > 0 && activeUnit === "ally" && allySolaceStats?.hasWellspring) concertoGain += getWellspringBaseEnergyBonus(allySolaceStats.wellspringRefinement);
         if (concertoGain > 0) concertoEnergy = addConcertoEnergy(concertoEnergy, concertoGain);
       }
 
@@ -973,7 +973,7 @@ export async function handleEncounterFight(
         }
       } else {
         const move     = boss.moves[Math.floor(Math.random() * boss.moves.length)];
-        const wellspringDefBonus = isDevGuild && allySolaceStats?.hasWellspring ? getWellspringDefBonus(attunement) : 0;
+        const wellspringDefBonus = isDevGuild && allySolaceStats?.hasWellspring ? getWellspringDefBonus(attunement, allySolaceStats.wellspringRefinement) : 0;
         const forteDefBonus = isDevGuild ? getSolaceForteDefBonus(solaceForteLevel, forteEmpoweredTurnsLeft > 0) : 0;
         const attunementDefBonus = solaceAttunementDefBonus(solaceSkillLevel);
         const attunementDefMult = (isDevGuild ? getAttunementDefMult(attunement, attunementDefBonus, attunementDoubleTurnsLeft > 0, solaceConstellation >= 6) : 1) * (1 + wellspringDefBonus) * (1 + forteDefBonus);

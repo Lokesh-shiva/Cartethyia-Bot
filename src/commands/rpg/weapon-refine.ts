@@ -38,7 +38,12 @@ export async function execute(interaction: ChatInputCommandInteraction) {
   // Group by name — a weapon can only be refined if there's at least one
   // OTHER unequipped copy of the same name to consume as fodder, and the
   // keeper itself must have room to grow (below R5) and a real passive to
-  // scale (no WEAPON_PASSIVES entry = nothing for refinement to amplify).
+  // scale. Forged weapons have one in WEAPON_PASSIVES; Wellspring's passive
+  // lives in wellspring.ts's getWellspringXBonus functions instead (fixed
+  // 2026-07-22 — she was a real /wish pull with a real mechanical passive,
+  // but WEAPON_PASSIVES-only gating silently excluded her from refinement
+  // entirely). Standard 5★ wish weapons stay excluded — their passives are
+  // still flavor-text-only, nothing for refinement to actually scale yet.
   const byName = new Map<string, typeof weapons>();
   for (const w of weapons) {
     if (!byName.has(w.name)) byName.set(w.name, []);
@@ -47,7 +52,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
 
   const refinable = weapons.filter(w => {
     if (w.refinement >= MAX_REFINEMENT) return false;
-    if (!WEAPON_PASSIVES[w.name]) return false;
+    if (!WEAPON_PASSIVES[w.name] && w.name !== "Wellspring") return false;
     const dupes = byName.get(w.name)!.filter(x => x.id !== w.id && !x.isEquipped);
     return dupes.length > 0;
   });

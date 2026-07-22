@@ -45,7 +45,7 @@ import {
   getAttunementAtkMult, getAttunementCritRateBonus, getAttunementDefMult,
 } from "../../lib/attunement";
 import {
-  WELLSPRING_BASE_ATK_MULT, WELLSPRING_BASE_ENERGY_BONUS,
+  getWellspringBaseAtkMult, getWellspringBaseEnergyBonus,
   getWellspringAtkBonus, getWellspringCritRateBonus, getWellspringDefBonus,
 } from "../../lib/wellspring";
 import { ForteState, addForteCharge, isForteMaxed, resetForte } from "../../lib/forte";
@@ -297,7 +297,7 @@ async function runDungeon(
   const hasSolace = solaceProgress !== null;
   const isDevGuild = hasSolace;
   // Milestone 3.5b: her own resolved stats (her base + HER OWN echoes/weapon).
-  const allySolaceStats: (ResolvedStats & { hasWellspring: boolean }) | null = hasSolace ? await resolveSolaceStats(interaction.user.id) : null;
+  const allySolaceStats: (ResolvedStats & { hasWellspring: boolean; wellspringRefinement: number }) | null = hasSolace ? await resolveSolaceStats(interaction.user.id) : null;
   const solaceBasicLevel    = solaceProgress?.basicLevel    ?? 1;
   const solaceSkillLevel    = solaceProgress?.skillLevel    ?? 1;
   const solaceUltimateLevel = solaceProgress?.ultimateLevel ?? 1;
@@ -549,7 +549,7 @@ interface WaveState {
   // Milestone 3.5a/b: owns+selected Solace via /team, and her own resolved
   // stats (her own echoes/weapon) — narrower than isDevGuild alone.
   hasSolace: boolean;
-  allySolaceStats: (ResolvedStats & { hasWellspring: boolean }) | null;
+  allySolaceStats: (ResolvedStats & { hasWellspring: boolean; wellspringRefinement: number }) | null;
   activeUnit: "player" | "ally";
   allyHp: number;
   allyHpMax: number;
@@ -810,9 +810,9 @@ async function runWave(
           // calcPlayerDamage() call (this file doesn't use that helper).
           const teamAtkMult  = ws.isDevGuild ? getAttunementAtkMult(ws.attunement, solaceAttunementAtkCritBonus(ws.solaceSkillLevel), ws.attunementDoubleTurnsLeft > 0, ws.solaceConstellation >= 6) : 1;
           const teamCritBonus = ws.isDevGuild ? getAttunementCritRateBonus(ws.attunement, solaceAttunementAtkCritBonus(ws.solaceSkillLevel), ws.attunementDoubleTurnsLeft > 0, ws.solaceConstellation >= 6) : 0;
-          const wellspringAtkMult   = ws.isDevGuild && ws.activeUnit === "ally" && ws.allySolaceStats?.hasWellspring ? WELLSPRING_BASE_ATK_MULT : 1;
-          const wellspringAtkBonus  = ws.isDevGuild && ws.allySolaceStats?.hasWellspring ? getWellspringAtkBonus(ws.attunement) : 0;
-          const wellspringCritBonus = ws.isDevGuild && ws.allySolaceStats?.hasWellspring ? getWellspringCritRateBonus(ws.attunement) : 0;
+          const wellspringAtkMult   = ws.isDevGuild && ws.activeUnit === "ally" && ws.allySolaceStats?.hasWellspring ? getWellspringBaseAtkMult(ws.allySolaceStats.wellspringRefinement) : 1;
+          const wellspringAtkBonus  = ws.isDevGuild && ws.allySolaceStats?.hasWellspring ? getWellspringAtkBonus(ws.attunement, ws.allySolaceStats.wellspringRefinement) : 0;
+          const wellspringCritBonus = ws.isDevGuild && ws.allySolaceStats?.hasWellspring ? getWellspringCritRateBonus(ws.attunement, ws.allySolaceStats.wellspringRefinement) : 0;
           const forteAtkBonus  = ws.isDevGuild ? getSolaceForteAtkBonus(ws.solaceForteLevel, ws.forteEmpoweredTurnsLeft > 0) : 0;
           const forteCritBonus = ws.isDevGuild ? getSolaceForteCritRateBonus(ws.solaceForteLevel, ws.forteEmpoweredTurnsLeft > 0) : 0;
           const teamMult = getWeakenedMult(ws.playerDebuffs) * teamAtkMult * wellspringAtkMult * (1 + wellspringAtkBonus) * (1 + forteAtkBonus);
@@ -886,8 +886,8 @@ async function runWave(
         } else if (btn.customId === "dg_skill") {
           const teamAtkMult  = ws.isDevGuild ? getAttunementAtkMult(ws.attunement, solaceAttunementAtkCritBonus(ws.solaceSkillLevel), ws.attunementDoubleTurnsLeft > 0, ws.solaceConstellation >= 6) : 1;
           const teamCritBonus = ws.isDevGuild ? getAttunementCritRateBonus(ws.attunement, solaceAttunementAtkCritBonus(ws.solaceSkillLevel), ws.attunementDoubleTurnsLeft > 0, ws.solaceConstellation >= 6) : 0;
-          const wellspringAtkBonus  = ws.isDevGuild && ws.allySolaceStats?.hasWellspring ? getWellspringAtkBonus(ws.attunement) : 0;
-          const wellspringCritBonus = ws.isDevGuild && ws.allySolaceStats?.hasWellspring ? getWellspringCritRateBonus(ws.attunement) : 0;
+          const wellspringAtkBonus  = ws.isDevGuild && ws.allySolaceStats?.hasWellspring ? getWellspringAtkBonus(ws.attunement, ws.allySolaceStats.wellspringRefinement) : 0;
+          const wellspringCritBonus = ws.isDevGuild && ws.allySolaceStats?.hasWellspring ? getWellspringCritRateBonus(ws.attunement, ws.allySolaceStats.wellspringRefinement) : 0;
           const forteAtkBonus  = ws.isDevGuild ? getSolaceForteAtkBonus(ws.solaceForteLevel, ws.forteEmpoweredTurnsLeft > 0) : 0;
           const forteCritBonus = ws.isDevGuild ? getSolaceForteCritRateBonus(ws.solaceForteLevel, ws.forteEmpoweredTurnsLeft > 0) : 0;
           const teamMult = getWeakenedMult(ws.playerDebuffs) * teamAtkMult * (1 + wellspringAtkBonus) * (1 + forteAtkBonus);
@@ -934,7 +934,7 @@ async function runWave(
           // (Solace's own Ultimate/Convergence is a separate branch, Task 5).
           abilCrit  = true;
           const teamAtkMult = ws.isDevGuild ? getAttunementAtkMult(ws.attunement, solaceAttunementAtkCritBonus(ws.solaceSkillLevel), ws.attunementDoubleTurnsLeft > 0, ws.solaceConstellation >= 6) : 1;
-          const wellspringAtkBonus = ws.isDevGuild && ws.allySolaceStats?.hasWellspring ? getWellspringAtkBonus(ws.attunement) : 0;
+          const wellspringAtkBonus = ws.isDevGuild && ws.allySolaceStats?.hasWellspring ? getWellspringAtkBonus(ws.attunement, ws.allySolaceStats.wellspringRefinement) : 0;
           const forteAtkBonus = ws.isDevGuild ? getSolaceForteAtkBonus(ws.solaceForteLevel, ws.forteEmpoweredTurnsLeft > 0) : 0;
           const teamMult = getWeakenedMult(ws.playerDebuffs) * teamAtkMult * (1 + wellspringAtkBonus) * (1 + forteAtkBonus);
           const smolderMultUlt = bonuses.activeNamedSetId === "SMOLDERING_SOVEREIGN"
@@ -1102,7 +1102,7 @@ async function runWave(
         };
         if (ws.isDevGuild && !convergenceUsedThisTurn) {
           let concertoGain = CONCERTO_GAIN_BY_MOVE[btn.customId] ?? 0;
-          if (concertoGain > 0 && ws.activeUnit === "ally" && ws.allySolaceStats?.hasWellspring) concertoGain += WELLSPRING_BASE_ENERGY_BONUS;
+          if (concertoGain > 0 && ws.activeUnit === "ally" && ws.allySolaceStats?.hasWellspring) concertoGain += getWellspringBaseEnergyBonus(ws.allySolaceStats.wellspringRefinement);
           if (concertoGain > 0) ws.concertoEnergy = addConcertoEnergy(ws.concertoEnergy, concertoGain);
         }
 
@@ -1171,7 +1171,7 @@ async function runWave(
           else moveLine += `\n◇ Enemy stunned (${shatterLeft} turn${shatterLeft > 1 ? "s" : ""} left).`;
         } else {
           const move    = ["strikes back", "retaliates", "lashes out"][Math.floor(Math.random() * 3)];
-          const wellspringDefBonus = ws.isDevGuild && ws.allySolaceStats?.hasWellspring ? getWellspringDefBonus(ws.attunement) : 0;
+          const wellspringDefBonus = ws.isDevGuild && ws.allySolaceStats?.hasWellspring ? getWellspringDefBonus(ws.attunement, ws.allySolaceStats.wellspringRefinement) : 0;
           const forteDefBonus = ws.isDevGuild ? getSolaceForteDefBonus(ws.solaceForteLevel, ws.forteEmpoweredTurnsLeft > 0) : 0;
           const attunementDefBonus = solaceAttunementDefBonus(ws.solaceSkillLevel);
           const attunementDefMult = (ws.isDevGuild ? getAttunementDefMult(ws.attunement, attunementDefBonus, ws.attunementDoubleTurnsLeft > 0, ws.solaceConstellation >= 6) : 1) * (1 + wellspringDefBonus) * (1 + forteDefBonus);

@@ -2,6 +2,7 @@ import { WeaponType } from "@prisma/client";
 import path from "path";
 import fs   from "fs";
 import { formatEffects } from "./abilityEffects";
+import { ALL_WISH_WEAPONS } from "./wishWeapons";
 
 export interface WeaponDefinition {
   id:          string;
@@ -239,5 +240,10 @@ export function describeWeaponPassiveForRow(weapon: { name: string; awakened: bo
     if (effectsText) lines.push(effectsText);
     return lines.join("\n") || ap.desc || "";
   }
-  return describeWeaponPassive(weapon.name);
+  const structured = describeWeaponPassive(weapon.name);
+  if (structured) return structured;
+  // Wish-banner weapons (Wellspring, standard 5★s) aren't in WEAPON_PASSIVES —
+  // their passive is prose, not a structured {effects: [...]} entry. Show that
+  // instead of a blank "no passive" line.
+  return ALL_WISH_WEAPONS.find(w => w.name === weapon.name)?.passive ?? "";
 }

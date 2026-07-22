@@ -244,7 +244,7 @@ export function solaceForteEmpoweredDefBonus(forteLevel: number): number {
 // whichever player owns her. Every combat surface's Solace/ally branch
 // should call this once per fight (not per action — bonuses don't change
 // mid-fight) and use the result instead of the acting player's own stats.
-export async function resolveSolaceStats(userId: string): Promise<ResolvedStats & { hasWellspring: boolean }> {
+export async function resolveSolaceStats(userId: string): Promise<ResolvedStats & { hasWellspring: boolean; wellspringRefinement: number }> {
   const [bonuses, progress] = await Promise.all([
     resolvePlayerBonuses(userId, "solace"),
     prisma.characterProgress.findUnique({
@@ -260,5 +260,5 @@ export async function resolveSolaceStats(userId: string): Promise<ResolvedStats 
   // Milestone 4a: Wellspring's mode-linked bonus (getWellspringXBonus in
   // wellspring.ts) only applies when Solace has ACTUALLY equipped Wellspring
   // — she's a real, optional item now, not an always-on hardcoded stopgap.
-  return { ...stats, hasWellspring: bonuses.equippedWeaponName === "Wellspring" };
+  return { ...stats, hasWellspring: bonuses.equippedWeaponName === "Wellspring", wellspringRefinement: bonuses.equippedWeaponRefinement };
 }

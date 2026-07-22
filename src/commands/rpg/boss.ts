@@ -54,7 +54,7 @@ import {
   getAttunementAtkMult, getAttunementCritRateBonus, getAttunementDefMult,
 } from "../../lib/attunement";
 import {
-  WELLSPRING_BASE_ATK_MULT, WELLSPRING_BASE_ENERGY_BONUS,
+  getWellspringBaseAtkMult, getWellspringBaseEnergyBonus,
   getWellspringAtkBonus, getWellspringCritRateBonus, getWellspringDefBonus,
 } from "../../lib/wellspring";
 import { ForteState, addForteCharge, isForteMaxed, resetForte } from "../../lib/forte";
@@ -579,9 +579,9 @@ const command: Command = {
               ? windstridersLegacyCheckExplosion(namedState) : { proc: false, guaranteedCrit: false, bonusMult: 1.0 };
             const teamAtkMult  = isDevGuild ? getAttunementAtkMult(attunement, solaceAttunementAtkCritBonus(solaceSkillLevel), attunementDoubleTurnsLeft > 0, solaceConstellation >= 6) : 1;
             const teamCritBonus = isDevGuild ? getAttunementCritRateBonus(attunement, solaceAttunementAtkCritBonus(solaceSkillLevel), attunementDoubleTurnsLeft > 0, solaceConstellation >= 6) : 0;
-            const wellspringAtkMult   = isDevGuild && activeUnit === "ally" && allySolaceStats?.hasWellspring ? WELLSPRING_BASE_ATK_MULT : 1;
-            const wellspringAtkBonus  = isDevGuild && allySolaceStats?.hasWellspring ? getWellspringAtkBonus(attunement) : 0;
-            const wellspringCritBonus = isDevGuild && allySolaceStats?.hasWellspring ? getWellspringCritRateBonus(attunement) : 0;
+            const wellspringAtkMult   = isDevGuild && activeUnit === "ally" && allySolaceStats?.hasWellspring ? getWellspringBaseAtkMult(allySolaceStats.wellspringRefinement) : 1;
+            const wellspringAtkBonus  = isDevGuild && allySolaceStats?.hasWellspring ? getWellspringAtkBonus(attunement, allySolaceStats.wellspringRefinement) : 0;
+            const wellspringCritBonus = isDevGuild && allySolaceStats?.hasWellspring ? getWellspringCritRateBonus(attunement, allySolaceStats.wellspringRefinement) : 0;
             const forteAtkBonus  = isDevGuild ? getSolaceForteAtkBonus(solaceForteLevel, forteEmpoweredTurnsLeft > 0) : 0;
             const forteCritBonus = isDevGuild ? getSolaceForteCritRateBonus(solaceForteLevel, forteEmpoweredTurnsLeft > 0) : 0;
             const teamMult = getWeakenedMult(playerDebuffs) * teamAtkMult * wellspringAtkMult * (1 + wellspringAtkBonus) * (1 + forteAtkBonus);
@@ -652,8 +652,8 @@ const command: Command = {
           } else if (btn.customId === "boss_skill") {
             const teamAtkMult  = isDevGuild ? getAttunementAtkMult(attunement, solaceAttunementAtkCritBonus(solaceSkillLevel), attunementDoubleTurnsLeft > 0, solaceConstellation >= 6) : 1;
             const teamCritBonus = isDevGuild ? getAttunementCritRateBonus(attunement, solaceAttunementAtkCritBonus(solaceSkillLevel), attunementDoubleTurnsLeft > 0, solaceConstellation >= 6) : 0;
-            const wellspringAtkBonus  = isDevGuild && allySolaceStats?.hasWellspring ? getWellspringAtkBonus(attunement) : 0;
-            const wellspringCritBonus = isDevGuild && allySolaceStats?.hasWellspring ? getWellspringCritRateBonus(attunement) : 0;
+            const wellspringAtkBonus  = isDevGuild && allySolaceStats?.hasWellspring ? getWellspringAtkBonus(attunement, allySolaceStats.wellspringRefinement) : 0;
+            const wellspringCritBonus = isDevGuild && allySolaceStats?.hasWellspring ? getWellspringCritRateBonus(attunement, allySolaceStats.wellspringRefinement) : 0;
             const forteAtkBonus  = isDevGuild ? getSolaceForteAtkBonus(solaceForteLevel, forteEmpoweredTurnsLeft > 0) : 0;
             const forteCritBonus = isDevGuild ? getSolaceForteCritRateBonus(solaceForteLevel, forteEmpoweredTurnsLeft > 0) : 0;
             const teamMult = getWeakenedMult(playerDebuffs) * teamAtkMult * (1 + wellspringAtkBonus) * (1 + forteAtkBonus);
@@ -700,7 +700,7 @@ const command: Command = {
           if (btn.customId === "boss_ultimate" && !(isDevGuild && activeUnit === "ally")) {
             abilCrit     = true;
             const teamAtkMult = isDevGuild ? getAttunementAtkMult(attunement, solaceAttunementAtkCritBonus(solaceSkillLevel), attunementDoubleTurnsLeft > 0, solaceConstellation >= 6) : 1;
-            const wellspringAtkBonus = isDevGuild && allySolaceStats?.hasWellspring ? getWellspringAtkBonus(attunement) : 0;
+            const wellspringAtkBonus = isDevGuild && allySolaceStats?.hasWellspring ? getWellspringAtkBonus(attunement, allySolaceStats.wellspringRefinement) : 0;
             const forteAtkBonus = isDevGuild ? getSolaceForteAtkBonus(solaceForteLevel, forteEmpoweredTurnsLeft > 0) : 0;
             const teamMult = getWeakenedMult(playerDebuffs) * teamAtkMult * (1 + wellspringAtkBonus) * (1 + forteAtkBonus);
             const smolderMult = bonuses.activeNamedSetId === "SMOLDERING_SOVEREIGN"
@@ -865,7 +865,7 @@ const command: Command = {
           };
           if (isDevGuild && !convergenceUsedThisTurn) {
             let concertoGain = CONCERTO_GAIN_BY_MOVE[btn.customId] ?? 0;
-            if (concertoGain > 0 && activeUnit === "ally" && allySolaceStats?.hasWellspring) concertoGain += WELLSPRING_BASE_ENERGY_BONUS;
+            if (concertoGain > 0 && activeUnit === "ally" && allySolaceStats?.hasWellspring) concertoGain += getWellspringBaseEnergyBonus(allySolaceStats.wellspringRefinement);
             if (concertoGain > 0) concertoEnergy = addConcertoEnergy(concertoEnergy, concertoGain);
           }
 
@@ -949,7 +949,7 @@ const command: Command = {
             const move       = isEnraged
               ? boss.moves.reduce((a, b) => a.damage >= b.damage ? a : b)
               : boss.moves[Math.floor(Math.random() * boss.moves.length)];
-            const wellspringDefBonus = isDevGuild && allySolaceStats?.hasWellspring ? getWellspringDefBonus(attunement) : 0;
+            const wellspringDefBonus = isDevGuild && allySolaceStats?.hasWellspring ? getWellspringDefBonus(attunement, allySolaceStats.wellspringRefinement) : 0;
             const forteDefBonus = isDevGuild ? getSolaceForteDefBonus(solaceForteLevel, forteEmpoweredTurnsLeft > 0) : 0;
             const attunementDefBonus = solaceAttunementDefBonus(solaceSkillLevel);
             const attunementDefMult = (isDevGuild ? getAttunementDefMult(attunement, attunementDefBonus, attunementDoubleTurnsLeft > 0, solaceConstellation >= 6) : 1) * (1 + wellspringDefBonus) * (1 + forteDefBonus);

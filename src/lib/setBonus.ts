@@ -204,6 +204,10 @@ export interface PlayerBonuses {
   // Attunement-mode amplification) check "is MY specific weapon actually
   // equipped" without a second DB query.
   equippedWeaponName: string | null;
+  // Milestone 4d: lets bespoke weapon-specific mechanics (e.g. Wellspring's
+  // flat-constant bonuses) scale with Refinement the same way WEAPON_PASSIVES
+  // entries already do, without a second DB query.
+  equippedWeaponRefinement: number;
 }
 
 // ── Bonus cache — 30s TTL, invalidated on any combat/equip write ──────────────
@@ -262,6 +266,7 @@ export async function resolvePlayerBonuses(userId: string, characterId: string =
     activeLabels:    [],
     echoSkill:       null,
     equippedWeaponName: weapon?.name ?? null,
+    equippedWeaponRefinement: weapon?.refinement ?? 1,
   };
 
   if (!user) return bonuses;
