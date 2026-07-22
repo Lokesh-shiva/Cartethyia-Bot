@@ -121,7 +121,7 @@ async function handleBundles(interaction: ChatInputCommandInteraction) {
   await interaction.deferReply({ flags: 64 });
 
   const lines = Object.values(LUNAKITE_BUNDLES).map(b =>
-    `${b.emoji}  **${b.name}** — ${b.price}\n` +
+    `${b.emoji}  **[${b.name} — ${b.price}](${b.koFiUrl})**\n` +
     `*${b.desc}*\n` +
     `› ${b.rewards.lunakite} Lunakite · ${b.rewards.auraPrisms} Aura Prisms · ${b.rewards.fractonite} Fractonite`
   ).join("\n\n");
@@ -133,8 +133,9 @@ async function handleBundles(interaction: ChatInputCommandInteraction) {
       .setDescription(
         `One-time currency packs — separate from monthly Patreon tiers.\n\n` +
         `${lines}\n\n` +
-        `**How to get one:** buy the matching pack on our [Ko-fi shop](${KOFI_URL}) ` +
-        `and message the owner your order. You'll receive a code to redeem with \`/patron redeem\`.`
+        `**How to get one:** click a pack above to buy it on Ko-fi, then message the owner your order ` +
+        `(or visit our [full Ko-fi page](${KOFI_URL})). You'll receive a code to redeem with \`/patron redeem\`.\n\n` +
+        `☕ Just want to tip instead? You can leave any amount on our [Ko-fi page](${KOFI_URL}) — no strings attached!`
       )
       .setFooter({ text: "CARTETHYIA  ·  Ko-fi Bundles" })],
   });
