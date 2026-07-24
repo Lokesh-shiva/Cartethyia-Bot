@@ -13,9 +13,18 @@ const PATRON_TIERS = [
   { name: 'Calamity',  price: '$10/mo', perks: ['12 Lunakite', '500 Fractonite', '3 Aura Prisms'],           aura: '8' },
 ];
 
+const KOFI_URL = 'https://ko-fi.com/cartethyiabot';
+const BUNDLES = [
+  { name: 'Starter Pack',        price: '$4.25',  emoji: '🔹', perks: ['3 Lunakite', '1 Aura Prism', '100 Fractonite'],  url: 'https://ko-fi.com/s/ea2c57241c' },
+  { name: "Wanderer's Bundle",   price: '$5.99',  emoji: '🔷', perks: ['8 Lunakite', '2 Aura Prisms', '250 Fractonite'], url: 'https://ko-fi.com/s/67ae3bed84' },
+  { name: 'Voyager Bundle',      price: '$11.99', emoji: '💠', perks: ['18 Lunakite', '5 Aura Prisms', '600 Fractonite'], url: 'https://ko-fi.com/s/719224c10f' },
+  { name: 'Resonance Vault',     price: '$22.99', emoji: '🌌', perks: ['40 Lunakite', '10 Aura Prisms', '1500 Fractonite'], url: 'https://ko-fi.com/s/f04dda5050' },
+];
+
 export default function Vote() {
   const titleRef  = useReveal('up');
   const patronRef = useReveal('up');
+  const kofiRef   = useReveal('up');
   return (
     <section id="vote" className="section">
       {/* ── Vote ── */}
@@ -57,6 +66,22 @@ export default function Vote() {
           <p className="vote-note">DM the owner on Patreon · redeem your code with <code>/patron redeem</code></p>
         </div>
       </div>
+
+      {/* ── Ko-fi bundles ── */}
+      <div ref={kofiRef} className="patron-block will-reveal">
+        <div className="section-label" style={{ marginTop: '4rem' }}>Ko-fi</div>
+        <h2 className="section-title">One-time bundles &amp; tips</h2>
+        <p className="section-sub">A one-off currency boost, no subscription needed — separate from the monthly Patreon tiers above.</p>
+        <div className="patron-grid">
+          {BUNDLES.map((b, i) => <BundleCard key={b.name} bundle={b} delay={i * 0.1} />)}
+        </div>
+        <div className="vote-cta">
+          <a href={KOFI_URL} className="btn btn-primary vote-btn" target="_blank" rel="noopener noreferrer">
+            ☕ Tip or browse on Ko-fi
+          </a>
+          <p className="vote-note">Message the owner your order after purchase · redeem your code with <code>/patron redeem</code></p>
+        </div>
+      </div>
     </section>
   );
 }
@@ -86,5 +111,25 @@ function PatronCard({ tier, delay }) {
         {tier.aura && <li className="patron-perk-aura">◈ Aura cap → {tier.aura}</li>}
       </ul>
     </div>
+  );
+}
+
+function BundleCard({ bundle, delay }) {
+  const ref = useReveal('up');
+  return (
+    <a
+      ref={ref}
+      href={bundle.url}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="patron-card will-reveal"
+      style={{ animationDelay: `${delay}s`, textDecoration: 'none', display: 'block' }}
+    >
+      <div className="patron-name">{bundle.emoji}  {bundle.name}</div>
+      <div className="patron-price">{bundle.price}</div>
+      <ul className="patron-perks">
+        {bundle.perks.map(p => <li key={p}>✦ {p}</li>)}
+      </ul>
+    </a>
   );
 }
