@@ -31,6 +31,7 @@ import { echoEmojiResolvable } from "../../lib/emojiManager";
 import { Element } from "@prisma/client";
 import fs from "fs";
 import path from "path";
+import { pageSlice, pageCount, buildPageNavRow } from "../../lib/pagination";
 
 // Only "solace" exists today — future characters add entries here, and the
 // select menu below automatically grows to offer them. No other code in this
@@ -471,7 +472,7 @@ const command: Command = {
          i.customId.startsWith("charequipweaponpick:") || i.customId.startsWith("charequipecho:") ||
          i.customId.startsWith("charequipechopick:") || i.customId.startsWith("charequipechoclear:") ||
          i.customId.startsWith("charequipechofilter:") || i.customId.startsWith("charequipechocostfilter:") ||
-         i.customId.startsWith("charconunlock:")),
+         i.customId.startsWith("charconunlock:") || i.customId.startsWith("charequipweaponnav:")),
       time: 5 * 60 * 1000,
     });
 
@@ -663,14 +664,16 @@ const command: Command = {
         return;
       }
 
-      if (i.customId.startsWith("charequipweapon:") && i.isButton()) {
-        const btn = i as ButtonInteraction;
-        const [, characterId] = btn.customId.split(":");
-        if (!CHARACTERS[characterId] || !ownedCharacterIds.has(characterId)) { await btn.deferUpdate().catch(() => {}); return; }
-
-        const weapons = await prisma.weapon.findMany({ where: { userId: interaction.user.id } });
+      const renderWeaponPicker = async (
+        target: ButtonInteraction,
+        characterId: string, page: number,
+      ) => {
+        const weapons = await prisma.weapon.findMany({
+          where:   { userId: interaction.user.id },
+          orderBy: [{ isEquipped: "desc" }, { rarity: "desc" }, { level: "desc" }],
+        });
         if (weapons.length === 0) {
-          await btn.update({
+          await target.update({
             embeds: [new EmbedBuilder().setColor(0x334155).setDescription("◈ You don't own any weapons yet.\nUse **/forge** to craft one.")],
             components: [selectRow, ...navRows(characterId, "weapon")],
           }).catch(() => {});
@@ -678,10 +681,17 @@ const command: Command = {
         }
 
         const owner = (w: typeof weapons[number]) => w.characterId === "self" ? "Yourself" : (CHARACTERS[w.characterId]?.label ?? w.characterId);
+        const count = pageCount(weapons.length);
+        const pageWeapons = pageSlice(weapons, page);
+        const listText = pageWeapons.map(w => {
+          const label = w.awakened && w.awakenedName ? w.awakenedName : w.name;
+          return `${w.isEquipped ? "▶" : "◇"}  **${label}**  ${RARITY_STARS[w.rarity]}  ·  Lv${w.level}${w.isEquipped ? `  *(${owner(w)})*` : ""}`;
+        }).join("\n");
+
         const pickSelect = new StringSelectMenuBuilder()
           .setCustomId(`charequipweaponpick:${characterId}`)
           .setPlaceholder("Choose a weapon to equip…")
-          .addOptions(weapons.slice(0, 25).map(w => {
+          .addOptions(pageWeapons.map(w => {
             const label = w.awakened && w.awakenedName ? w.awakenedName : w.name;
             return new StringSelectMenuOptionBuilder()
               .setLabel(`${label}  ${RARITY_STARS[w.rarity]}${w.isEquipped ? `  ← ${owner(w)}` : ""}`)
@@ -689,10 +699,36 @@ const command: Command = {
               .setValue(w.id);
           }));
 
-        await btn.update({
-          embeds: [new EmbedBuilder().setColor(0x6366F1).setDescription(`◈ Choose a weapon to equip to **${CHARACTERS[characterId].label}**.\n⚠ Picking one already equipped elsewhere will move it here.`)],
-          components: [selectRow, ...navRows(characterId, "weapon"), new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(pickSelect)],
+        const components = [
+          selectRow, ...navRows(characterId, "weapon"),
+          new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(pickSelect),
+          ...(count > 1 ? [buildPageNavRow(`charequipweaponnav:${characterId}:${page}`, page, count)] : []),
+        ];
+
+        await target.update({
+          embeds: [new EmbedBuilder().setColor(0x6366F1)
+            .setDescription(
+              `◈ Choose a weapon to equip to **${CHARACTERS[characterId].label}**.\n⚠ Picking one already equipped elsewhere will move it here.\n\n` +
+              `**All weapons (${weapons.length}):**\n${listText}`
+            )],
+          components,
         }).catch(() => {});
+      };
+
+      if (i.customId.startsWith("charequipweapon:") && i.isButton()) {
+        const btn = i as ButtonInteraction;
+        const [, characterId] = btn.customId.split(":");
+        if (!CHARACTERS[characterId] || !ownedCharacterIds.has(characterId)) { await btn.deferUpdate().catch(() => {}); return; }
+        await renderWeaponPicker(btn, characterId, 0);
+        return;
+      }
+
+      if (i.customId.startsWith("charequipweaponnav:") && i.isButton()) {
+        const btn = i as ButtonInteraction;
+        const [, characterId, pageStr, dir] = btn.customId.split(":");
+        if (!CHARACTERS[characterId] || !ownedCharacterIds.has(characterId)) { await btn.deferUpdate().catch(() => {}); return; }
+        const newPage = Number(pageStr) + (dir === "next" ? 1 : -1);
+        await renderWeaponPicker(btn, characterId, newPage);
         return;
       }
 
