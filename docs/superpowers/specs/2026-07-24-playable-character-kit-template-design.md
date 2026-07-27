@@ -124,6 +124,10 @@ if (btn.customId === "X_skill" && hasAlly && activeUnit === "ally") {
 
 Solace's existing functions (`solaceIntroEffect`, `solaceOutroEffect`, `getAttunementAtkMult`/etc., `resolveSolaceStats`) **do not get rewritten** — they get wrapped. A new `src/lib/kits/solaceKit.ts` builds a `PlayableCharacterKit` object whose `introEffect`/`outroEffect`/`resolveStats` fields just call the existing `solace.ts` functions directly, and whose `onSkill`/`onUltimate` wrap the existing Attunement mode-cycle / Convergence heal logic (moving that inline combat-loop code into these two functions, reading/writing `mechanicState.attunement` instead of a loop-local `attunement` variable). This is the highest-risk part of the whole project — it touches Solace's live, working mechanics — so it's the first thing built and the most heavily manually-tested before any new character is added on top.
 
+## Phasing (added after implementation-plan review)
+
+The combat-loop rewiring described above (all 7 files dispatching through `CHARACTER_KITS`) is **deferred to Kaelith's implementation**, not built in this pass. Reasoning: Solace's Skill/Ultimate logic in each combat loop is more entangled with Forte/Wellspring/named-set bonuses than a clean extraction suggests, and rewiring it with nothing yet to *dispatch to* (no second character exists yet) is pure regression risk with no corresponding benefit. This pass builds and verifies `characterKit.ts` + `solaceKit.ts` in isolation (a standalone script confirms the wrapped functions produce identical output to the existing inline logic for representative inputs) — the actual combat-loop dispatch rewiring happens as the first step of Kaelith's own implementation plan, when a second character genuinely needs to be dispatched to.
+
 ## Non-goals
 
 - No schema changes — `CharacterProgress` is already keyed generically by `characterId`.
