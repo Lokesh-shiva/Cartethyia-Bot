@@ -105,6 +105,18 @@ export const NAMED_SET_ECHO_DEFINITIONS: EchoDefinition[] = [
     rarityWeights: [75, 22, 3],
   },
   {
+    name: "Cinderfang Stalker", element: "FUSION", cost: 3, setId: "SMOLDERING_SOVEREIGN",
+    assetFile: "Cinderfang Stalker.png",
+    hp: 520, atk: 72, def: 38,
+    rarityWeights: [75, 22, 3],
+  },
+  {
+    name: "Cinder Reaver", element: "FUSION", cost: 3, setId: "SMOLDERING_SOVEREIGN",
+    assetFile: "Cinder Reaver.png",
+    hp: 520, atk: 72, def: 38,
+    rarityWeights: [75, 22, 3],
+  },
+  {
     name: "Kindling Wretch", element: "FUSION", cost: 1, setId: "SMOLDERING_SOVEREIGN",
     assetFile: "Kindling Wretch.png",
     hp: 180, atk: 28, def: 12,
@@ -132,6 +144,18 @@ export const NAMED_SET_ECHO_DEFINITIONS: EchoDefinition[] = [
   {
     name: "Rime Sentinel", element: "GLACIO", cost: 3, setId: "FROSTVEIL_BASTION",
     assetFile: "Rime Sentinel.png",
+    hp: 580, atk: 60, def: 55,
+    rarityWeights: [75, 22, 3],
+  },
+  {
+    name: "Frostfang Stalker", element: "GLACIO", cost: 3, setId: "FROSTVEIL_BASTION",
+    assetFile: "Frostfang Stalker.png",
+    hp: 580, atk: 60, def: 55,
+    rarityWeights: [75, 22, 3],
+  },
+  {
+    name: "Frost Reaver", element: "GLACIO", cost: 3, setId: "FROSTVEIL_BASTION",
+    assetFile: "Frost Reaver.png",
     hp: 580, atk: 60, def: 55,
     rarityWeights: [75, 22, 3],
   },
@@ -167,6 +191,12 @@ export const NAMED_SET_ECHO_DEFINITIONS: EchoDefinition[] = [
     rarityWeights: [75, 22, 3],
   },
   {
+    name: "Voltfang Stalker", element: "ELECTRO", cost: 3, setId: "STORMCALLERS_OATH",
+    assetFile: "Voltfang Stalker.png",
+    hp: 490, atk: 82, def: 32,
+    rarityWeights: [75, 22, 3],
+  },
+  {
     name: "Sparkmite", element: "ELECTRO", cost: 1, setId: "STORMCALLERS_OATH",
     assetFile: "Sparkmite.png",
     hp: 160, atk: 32, def: 10,
@@ -192,6 +222,18 @@ export const NAMED_SET_ECHO_DEFINITIONS: EchoDefinition[] = [
     rarityWeights: [75, 22, 3],
   },
   {
+    name: "Galefang Stalker", element: "AERO", cost: 3, setId: "WINDSTRIDERS_LEGACY",
+    assetFile: "Galefang Stalker.png",
+    hp: 510, atk: 76, def: 36,
+    rarityWeights: [75, 22, 3],
+  },
+  {
+    name: "Gale Reaver", element: "AERO", cost: 3, setId: "WINDSTRIDERS_LEGACY",
+    assetFile: "Gale Reaver.png",
+    hp: 510, atk: 76, def: 36,
+    rarityWeights: [75, 22, 3],
+  },
+  {
     name: "Zephyr Sprite", element: "AERO", cost: 1, setId: "WINDSTRIDERS_LEGACY",
     assetFile: "Zephyr Sprite.png",
     hp: 170, atk: 30, def: 14,
@@ -213,6 +255,12 @@ export const NAMED_SET_ECHO_DEFINITIONS: EchoDefinition[] = [
   {
     name: "Duskfang Stalker", element: "HAVOC", cost: 3, setId: "VOIDBORN_REMNANT",
     assetFile: "Duskfang Stalker.png",
+    hp: 550, atk: 68, def: 44,
+    rarityWeights: [75, 22, 3],
+  },
+  {
+    name: "Umbra Reaver", element: "HAVOC", cost: 3, setId: "VOIDBORN_REMNANT",
+    assetFile: "Umbra Reaver.png",
     hp: 550, atk: 68, def: 44,
     rarityWeights: [75, 22, 3],
   },
@@ -244,6 +292,18 @@ export const NAMED_SET_ECHO_DEFINITIONS: EchoDefinition[] = [
   {
     name: "Prism Warden", element: "SPECTRO", cost: 3, setId: "RADIANT_CONVERGENCE",
     assetFile: "Prism Warden.png",
+    hp: 540, atk: 64, def: 50,
+    rarityWeights: [75, 22, 3],
+  },
+  {
+    name: "Lumenfang Stalker", element: "SPECTRO", cost: 3, setId: "RADIANT_CONVERGENCE",
+    assetFile: "Lumenfang Stalker.png",
+    hp: 540, atk: 64, def: 50,
+    rarityWeights: [75, 22, 3],
+  },
+  {
+    name: "Lumen Reaver", element: "SPECTRO", cost: 3, setId: "RADIANT_CONVERGENCE",
+    assetFile: "Lumen Reaver.png",
     hp: 540, atk: 64, def: 50,
     rarityWeights: [75, 22, 3],
   },
