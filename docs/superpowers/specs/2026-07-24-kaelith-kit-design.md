@@ -23,7 +23,15 @@ Kaelith is the first character built on the `PlayableCharacterKit` template. Sta
 | Crit Rate | 0.10 | 0.60 |
 | Crit DMG | 1.8 | 0.60 |
 
-Ascension level caps: same table as Solace (`[20, 40, 50, 60, 70, 80, 90]`, 7 phases). Ascension cost and level-up cost formulas: identical shape to `solaceAscensionCost`/`solaceLevelUpCost` (`credits: 2000 * targetPhase`, `forgingOres: 10 * targetPhase`, `paradoxCores: 2 * targetPhase`, `starfallShards: targetPhase >= 2 ? 3 * (targetPhase - 1) : 0`; level-up `resonanceRecords: Math.ceil(currentLevel / 2) + 1, credits: currentLevel * 50`) — no reason for a standard 4★'s progression economy to differ from a limited 5★'s.
+Ascension level caps: same table as Solace (`[20, 40, 50, 60, 70, 80, 90]`, 7 phases). Ascension cost and level-up cost formulas: identical shape to `solaceAscensionCost`/`solaceLevelUpCost` (`credits: 2000 * targetPhase`, `forgingOres: 10 * targetPhase`, `paradoxCores: 2 * targetPhase`; level-up `resonanceRecords: Math.ceil(currentLevel / 2) + 1, credits: currentLevel * 50`) — no reason for a standard 4★'s progression economy to differ from a limited 5★'s.
+
+**Ascension material — new currency `umbralShards`.** Solace's ascension consumes Starfall Shards (dropped by Luminal Specter, the base-tier Spectro field boss). Kaelith gets the direct Havoc parallel: a new **Umbral Shard** currency, dropped by **Null Ravager** — the base-tier Havoc field boss, chosen over Voidmaw Devourer specifically because Voidmaw is WL2-gated and a named-set guardian, which would wall newer players out of ascending him. Cost curve mirrors Solace's exactly: `umbralShards: targetPhase >= 2 ? 3 * (targetPhase - 1) : 0`.
+
+This requires:
+- A `umbralShards Int @default(0)` column on `User` (Prisma schema change → `npm run db:push && npx prisma generate` before build).
+- A guaranteed drop on Null Ravager kills in `field-boss.ts`, mirroring the Starfall Shard grant (which is unconditional on Luminal Specter kills, per the 2026-07-21 fix).
+- Registration in `inventoryCard.ts`'s `CURRENCIES` display list and `emojiManager.ts` (both places, per the CLAUDE.md gotcha), plus the `Mail` model's grantable-currency fields.
+- A `/guide` currencies-section entry, and a note on Null Ravager's picker option that it drops Umbral Shards (mirroring the Luminal Specter hint added 2026-07-21).
 
 ## Basic Attack
 
@@ -37,6 +45,7 @@ export function kaelithBasicDamageMult(basicLevel: number): number {
 
 ## Skill — partial detonate
 
+- **Cooldown: 3 turns.** Unlike Solace's Skill (no cooldown — it's a utility mode-cycle, not a damage move), Kaelith's Skill is a real damage move with a stack-detonate bonus, so it needs gating. Reuses the same `skillCooldown` state field and countdown logic every combat loop already runs for the player's own Resonance Skill — no new mechanism needed, just a per-character cooldown value on the kit (`skillCooldownTurns: 3`) instead of a hardcoded constant.
 - Base stack cost: 2 (1 at Constellation ≥ 2).
 - Damage: `baseSkillMult(skillLevel) + stacksConsumed * PER_STACK_SKILL_BONUS`, where `PER_STACK_SKILL_BONUS = 0.5` (flat ATK-multiplier bonus per stack spent) and `baseSkillMult` scales 1.4 (Lv1) → 2.2 (Lv10), same linear-interpolation shape as every other kit-level curve in this game.
 
@@ -124,7 +133,7 @@ export function kaelithStackCap(constellation: number): number {
 
 ## Required `characterKit.ts` template extensions
 
-Kaelith's kit is the first to need things Solace's never did — the interface (and one shared helper module) needs three small, backward-compatible additions (all optional/additive, so `solaceKit.ts` needs zero changes):
+Kaelith's kit is the first to need things Solace's never did — the interface (and one shared helper module) needs five small, backward-compatible additions. Four are optional or additive; the two new *required* fields (`loreFragments`, `skillCooldownTurns`) are trivially satisfied for Solace with her existing data (`SOLACE_LORE_FRAGMENTS` and `0`), so her behavior is unchanged:
 
 1. **`IntroOutroEffect` gains two optional fields:**
    ```typescript
@@ -141,10 +150,24 @@ Kaelith's kit is the first to need things Solace's never did — the interface (
 
 3. **`allyActions.ts`'s `AllyActionType` gains `BUFF_ALLY_CRIT_RATE`** (value = fraction Crit Rate bonus), added to `applyAllyAction()`'s switch and `AllyActionResult` the same way `BUFF_ALLY_ATK` already works. Needed for Outro's C1 Crit Rate grant. Backward-compatible — existing callers unaffected.
 
-All three additions are scoped into Kaelith's implementation plan directly (not a separate template-revision pass), since they're proven against a real second character rather than speculated about with only Solace to validate against.
+4. **`PlayableCharacterKit` gains `loreFragments: string[]`** (7 entries — index `i` unlocks at `ascensionPhase >= i`, same rule as Solace's). `/character`'s Lore page currently calls `unlockedLoreFragments()`, which is hardcoded to `SOLACE_LORE_FRAGMENTS`; it becomes a generic helper taking the kit's own fragment array. Kaelith needs 7 fragments written — Havoc-flavored, matching the "worn-out, relentless fighter" tone established by his portrait design, and following Solace's structure (fragment 1 always visible as an intro, 2–7 revealing his history progressively).
+
+5. **`PlayableCharacterKit` gains `skillCooldownTurns: number`** — Solace's is `0` (no cooldown, current behavior preserved exactly), Kaelith's is `3`.
+
+All five additions are scoped into Kaelith's implementation plan directly (not a separate template-revision pass), since they're proven against a real second character rather than speculated about with only Solace to validate against.
+
+## Out-of-kit changes this character requires
+
+These aren't part of the kit interface, but Kaelith can't ship without them:
+
+- **`/team` becomes a menu instead of slash-command choices.** It currently hardcodes `{ name: "✨ Solace", value: "solace" }` as a command option, meaning every new character would need a command-schema redeploy (including the ~1h global propagation). Replacing that with a select menu listing the player's *owned* characters removes that requirement permanently — future characters need no `npm run deploy` at all. Also fixes the same ownership-visibility class of bug already fixed in `/character` (non-owners shouldn't see characters they don't have).
+- **`/profile` gains a player-chosen display character.** `canvas.ts` currently has a `solaceLevel` field hardcoded to `Solace_icon.png`. With multiple characters this would clutter the card, so the player picks which owned character appears. Kaelith's icon asset (`Kaelith_icon.png`) is added later — the code handles a missing icon by simply not rendering that tile, same as the existing missing-art paths elsewhere.
+- **Standard-banner 4★ pool integration.** Kaelith joins the existing 4★ tier alongside the 4 existing 4★ weapons, matching how Genshin and WuWa both use a *mixed* character-and-weapon 4★ pool with a 10-pull guarantee. No rate or pity changes — he's simply another entry in the pool. Constellation token cost stays **1 per rank** (deliberately not raised: unlike Genshin's purchasable primogems, keys here are earned-only, so pull volume is already the real constraint).
 
 ## Non-goals
 
 - No signature weapon (standard 4★ convention, confirmed earlier).
 - No multi-hit Basic combo (WuWa-style Basic 1→2→3→4→5) — explicitly deferred per earlier discussion, too complex for this character.
-- Standard-banner wish-pool roll integration (making him actually pullable) is a separate, smaller piece of work layered on top of this kit + the combat-loop dispatch rewiring — not detailed here.
+- No new field boss — Kaelith's ascension material drops from the existing Null Ravager rather than introducing a new Havoc boss (which would also require new art and its own 4-cost echo).
+- No change to 4★ pull rates, pity, or constellation token costs.
+- Vesper is out of scope entirely — she gets her own spec once Kaelith proves the template end-to-end.
