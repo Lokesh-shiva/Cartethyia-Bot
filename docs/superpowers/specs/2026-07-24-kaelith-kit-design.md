@@ -74,25 +74,28 @@ export function kaelithUltimateSelfHealPct(constellation: number): number {
 ## Intro / Outro
 
 - **Intro:** grants **+2 stacks** immediately (capped) and a **+20% ATK** buff (`BUFF_ALLY_ATK`) for Kaelith's first action after swapping in.
-- **Outro:** applies a **15% DEF-shred** debuff to the enemy for 2 turns as he swaps out (a parting shot that benefits whoever swaps in next, mirroring the "swap synergy" idea Solace's Outro already has, just offense-flavored instead of defense-flavored).
-- At Constellation 1: Outro's debuff **also** grants the incoming ally +10% Crit Rate for their first action after the swap.
+- **Outro:** applies a **15% DEF-shred** debuff to the enemy for 2 turns as he swaps out (a parting shot that benefits whoever swaps in next, mirroring the "swap synergy" idea Solace's Outro already has, just offense-flavored instead of defense-flavored). **Non-stacking** — re-applying refreshes the 2-turn duration rather than compounding, so repeated fast swapping can't shred DEF toward zero.
+- At Constellation 1: Outro's debuff also grants the incoming ally +10% Crit Rate for their first action after the swap, **and the DEF-shred itself increases from 15% to 20%**.
 
 ```typescript
 export function kaelithIntroEffect(introLevel: number): IntroOutroEffect {
   // introLevel doesn't scale this effect today (both grants are flat) — kept
   // as a parameter for interface consistency and to leave room for a future
   // rebalance without an interface change.
-  return { actions: [{ type: "BUFF_ALLY_ATK", value: 0.20 }] };
-  // Stack grant is NOT an AllyAction (stacks aren't HP/shield/buff/cleanse) —
-  // it's applied directly by the combat loop reading kaelithKit-specific
-  // logic, same way Solace's Concerto Energy grants aren't AllyActions either.
+  return {
+    actions: [{ type: "BUFF_ALLY_ATK", value: 0.20 }],
+    newMechanicState: { /* caller merges +2 stacks (capped) into existing state */ },
+  };
 }
-// Outro's enemy-facing debuff similarly isn't an AllyAction (those only ever
-// target allies) — it's a separate enemy-debuff hook the combat loop applies,
-// analogous to how existing debuffs.ts effects already work for enemies.
+export function kaelithOutroEffect(constellation: number): IntroOutroEffect {
+  return {
+    actions: constellation >= 1 ? [{ type: "BUFF_ALLY_CRIT_RATE", value: 0.10 }] : [],
+    enemyDebuff: { type: "DEF_SHRED", value: constellation >= 1 ? 0.20 : 0.15, turns: 2 },
+  };
+}
 ```
 
-*(Design note: the Intro/Outro "stack grant" and "enemy debuff" pieces don't fit cleanly into the existing `AllyAction`/`IntroOutroEffect` shape, which is ally-heal/shield/buff/cleanse only. The implementation plan needs to decide exactly how Kaelith's kit module communicates "also grant 2 stacks" and "also apply an enemy DEF-shred" back to the combat loop — likely as additional fields on his own kit's return values rather than forcing them through `IntroOutroEffect`. Flagging this now so the plan addresses it explicitly rather than discovering it mid-implementation.)*
+`AllyAction`'s existing type union (`HEAL_ALLY` | `SHIELD_ALLY` | `BUFF_ALLY_ATK` | `CLEANSE_ALLY`) has no Crit Rate variant — this needs one more small addition: `BUFF_ALLY_CRIT_RATE` (value = fraction Crit Rate bonus), following the exact same pattern as the existing `BUFF_ALLY_ATK` in `allyActions.ts`'s `applyAllyAction()` switch and `AllyActionResult`. Backward-compatible (existing callers unaffected, new variant simply unused until Kaelith's Outro emits it).
 
 ## Forte
 
@@ -103,7 +106,7 @@ export function kaelithIntroEffect(introLevel: number): IntroOutroEffect {
 
 | # | Effect |
 |---|---|
-| C1 | Outro's debuff also grants the incoming ally +10% Crit Rate for their first action after the swap |
+| C1 | Outro's debuff also grants the incoming ally +10% Crit Rate for their first action after the swap; the DEF-shred itself increases from 15% to 20% |
 | C2 | Skill's stack cost drops from 2 to 1; stack cap increases 5→6 |
 | C3 | Basic Attacks have a 30% chance to grant +2 stacks instead of +1 |
 | C4 | Ultimate's detonate also heals Kaelith for 15% of the damage dealt; stack cap increases 6→7 |
@@ -121,7 +124,7 @@ export function kaelithStackCap(constellation: number): number {
 
 ## Required `characterKit.ts` template extensions
 
-Kaelith's kit is the first to need things Solace's never did — the interface needs two small, backward-compatible additions (both optional, so `solaceKit.ts` needs zero changes):
+Kaelith's kit is the first to need things Solace's never did — the interface (and one shared helper module) needs three small, backward-compatible additions (all optional/additive, so `solaceKit.ts` needs zero changes):
 
 1. **`IntroOutroEffect` gains two optional fields:**
    ```typescript
@@ -136,7 +139,9 @@ Kaelith's kit is the first to need things Solace's never did — the interface n
 
 2. **`PlayableCharacterKit` gains a required `statusLineText(mechanicState: unknown): string` method.** Today, every combat loop constructs Solace's status line text ("Concerto Energy: X/100", "(ATK mode)") from loop-local variables directly — there's no generic hook for it at all, because there was only ever one character to hardcode against. This method generalizes that: `solaceKit.statusLineText` renders her attunement mode + Concerto Energy from the same `SolaceMechanicState` shape her `onSkill`/`onUltimate` already use; `kaelithKit.statusLineText` renders `"Stacks: 3/5"` from his own state shape. This is a real, immediately-necessary addition (not deferred) since Kaelith's whole kit is illegible in the status line without it.
 
-Both additions are scoped into Kaelith's implementation plan directly (not a separate template-revision pass), since they're proven against a real second character rather than speculated about with only Solace to validate against.
+3. **`allyActions.ts`'s `AllyActionType` gains `BUFF_ALLY_CRIT_RATE`** (value = fraction Crit Rate bonus), added to `applyAllyAction()`'s switch and `AllyActionResult` the same way `BUFF_ALLY_ATK` already works. Needed for Outro's C1 Crit Rate grant. Backward-compatible — existing callers unaffected.
+
+All three additions are scoped into Kaelith's implementation plan directly (not a separate template-revision pass), since they're proven against a real second character rather than speculated about with only Solace to validate against.
 
 ## Non-goals
 
