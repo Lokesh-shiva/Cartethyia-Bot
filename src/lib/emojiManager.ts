@@ -54,6 +54,17 @@ const EMOJI_ASSETS: { name: string; file: string }[] = [
   { name: "ec_skyrend",       file: "assets/echoes/3-cost/Skyrend Talon.png"     },
   { name: "ec_duskfang",      file: "assets/echoes/3-cost/Duskfang Stalker.png"  },
   { name: "ec_prismwarden",   file: "assets/echoes/3-cost/Prism Warden.png"      },
+  // Elemental recolor variants (Milestone 5)
+  { name: "ec_cindermite",   file: "assets/echoes/1-cost/Cindermite.png"    },
+  { name: "ec_cindernipper", file: "assets/echoes/1-cost/Cindernipper.png"  },
+  { name: "ec_frostmite",    file: "assets/echoes/1-cost/Frostmite.png"     },
+  { name: "ec_frostnipper",  file: "assets/echoes/1-cost/Frostnipper.png"   },
+  { name: "ec_sparknipper",  file: "assets/echoes/1-cost/Sparknipper.png"   },
+  { name: "ec_gustmite",     file: "assets/echoes/1-cost/Gustmite.png"      },
+  { name: "ec_voidmite",     file: "assets/echoes/1-cost/Voidmite.png"      },
+  { name: "ec_shadownipper", file: "assets/echoes/1-cost/Shadownipper.png"  },
+  { name: "ec_glowmite",     file: "assets/echoes/1-cost/Glowmite.png"      },
+  { name: "ec_lumennipper",  file: "assets/echoes/1-cost/Lumennipper.png"   },
 ];
 
 // ── In-memory cache: emojiName → "<:name:id>" string ─────────────────────────
@@ -92,6 +103,17 @@ const ECHO_EMOJI_MAP: Record<string, string> = {
   "Glimmermote":       "ec_glimmermote",
   "Halo Sprite":       "ec_halosprite",
   "Prism Warden":      "ec_prismwarden",
+  // Elemental recolor variants (Milestone 5)
+  "Cindermite":    "ec_cindermite",
+  "Cindernipper":  "ec_cindernipper",
+  "Frostmite":     "ec_frostmite",
+  "Frostnipper":   "ec_frostnipper",
+  "Sparknipper":   "ec_sparknipper",
+  "Gustmite":      "ec_gustmite",
+  "Voidmite":      "ec_voidmite",
+  "Shadownipper":  "ec_shadownipper",
+  "Glowmite":      "ec_glowmite",
+  "Lumennipper":   "ec_lumennipper",
 };
 
 const CURRENCY_EMOJI_MAP: Record<string, string> = {

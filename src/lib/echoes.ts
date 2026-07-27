@@ -116,6 +116,18 @@ export const NAMED_SET_ECHO_DEFINITIONS: EchoDefinition[] = [
     hp: 180, atk: 28, def: 12,
     rarityWeights: [92, 8, 0],
   },
+  {
+    name: "Cindermite", element: "FUSION", cost: 1, setId: "SMOLDERING_SOVEREIGN",
+    assetFile: "Cindermite.png",
+    hp: 180, atk: 28, def: 12,
+    rarityWeights: [92, 8, 0],
+  },
+  {
+    name: "Cindernipper", element: "FUSION", cost: 1, setId: "SMOLDERING_SOVEREIGN",
+    assetFile: "Cindernipper.png",
+    hp: 180, atk: 28, def: 12,
+    rarityWeights: [92, 8, 0],
+  },
   // Frostveil Bastion (Glacio)
   {
     name: "Rime Sentinel", element: "GLACIO", cost: 3, setId: "FROSTVEIL_BASTION",
@@ -132,6 +144,18 @@ export const NAMED_SET_ECHO_DEFINITIONS: EchoDefinition[] = [
   {
     name: "Hoarfrost Crawler", element: "GLACIO", cost: 1, setId: "FROSTVEIL_BASTION",
     assetFile: "Hoarfrost Crawler.png",
+    hp: 200, atk: 22, def: 18,
+    rarityWeights: [92, 8, 0],
+  },
+  {
+    name: "Frostmite", element: "GLACIO", cost: 1, setId: "FROSTVEIL_BASTION",
+    assetFile: "Frostmite.png",
+    hp: 200, atk: 22, def: 18,
+    rarityWeights: [92, 8, 0],
+  },
+  {
+    name: "Frostnipper", element: "GLACIO", cost: 1, setId: "FROSTVEIL_BASTION",
+    assetFile: "Frostnipper.png",
     hp: 200, atk: 22, def: 18,
     rarityWeights: [92, 8, 0],
   },
@@ -154,6 +178,12 @@ export const NAMED_SET_ECHO_DEFINITIONS: EchoDefinition[] = [
     hp: 160, atk: 32, def: 10,
     rarityWeights: [92, 8, 0],
   },
+  {
+    name: "Sparknipper", element: "ELECTRO", cost: 1, setId: "STORMCALLERS_OATH",
+    assetFile: "Sparknipper.png",
+    hp: 160, atk: 32, def: 10,
+    rarityWeights: [92, 8, 0],
+  },
   // Windstrider's Legacy (Aero)
   {
     name: "Skyrend Talon", element: "AERO", cost: 3, setId: "WINDSTRIDERS_LEGACY",
@@ -170,6 +200,12 @@ export const NAMED_SET_ECHO_DEFINITIONS: EchoDefinition[] = [
   {
     name: "Windnipper", element: "AERO", cost: 1, setId: "WINDSTRIDERS_LEGACY",
     assetFile: "Windnipper.png",
+    hp: 170, atk: 30, def: 14,
+    rarityWeights: [92, 8, 0],
+  },
+  {
+    name: "Gustmite", element: "AERO", cost: 1, setId: "WINDSTRIDERS_LEGACY",
+    assetFile: "Gustmite.png",
     hp: 170, atk: 30, def: 14,
     rarityWeights: [92, 8, 0],
   },
@@ -192,6 +228,18 @@ export const NAMED_SET_ECHO_DEFINITIONS: EchoDefinition[] = [
     hp: 190, atk: 26, def: 16,
     rarityWeights: [92, 8, 0],
   },
+  {
+    name: "Voidmite", element: "HAVOC", cost: 1, setId: "VOIDBORN_REMNANT",
+    assetFile: "Voidmite.png",
+    hp: 190, atk: 26, def: 16,
+    rarityWeights: [92, 8, 0],
+  },
+  {
+    name: "Shadownipper", element: "HAVOC", cost: 1, setId: "VOIDBORN_REMNANT",
+    assetFile: "Shadownipper.png",
+    hp: 190, atk: 26, def: 16,
+    rarityWeights: [92, 8, 0],
+  },
   // Radiant Convergence (Spectro)
   {
     name: "Prism Warden", element: "SPECTRO", cost: 3, setId: "RADIANT_CONVERGENCE",
@@ -208,6 +256,18 @@ export const NAMED_SET_ECHO_DEFINITIONS: EchoDefinition[] = [
   {
     name: "Halo Sprite", element: "SPECTRO", cost: 1, setId: "RADIANT_CONVERGENCE",
     assetFile: "Halo Sprite.png",
+    hp: 175, atk: 24, def: 20,
+    rarityWeights: [92, 8, 0],
+  },
+  {
+    name: "Glowmite", element: "SPECTRO", cost: 1, setId: "RADIANT_CONVERGENCE",
+    assetFile: "Glowmite.png",
+    hp: 175, atk: 24, def: 20,
+    rarityWeights: [92, 8, 0],
+  },
+  {
+    name: "Lumennipper", element: "SPECTRO", cost: 1, setId: "RADIANT_CONVERGENCE",
+    assetFile: "Lumennipper.png",
     hp: 175, atk: 24, def: 20,
     rarityWeights: [92, 8, 0],
   },
