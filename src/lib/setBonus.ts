@@ -15,6 +15,7 @@ import { bondMultiplier } from "./weaponAwakening";
 import { calcSubstatValue } from "./echoes";
 import { NamedSetId, NAMED_TWO_PC, NAMED_ELEM_DMG_2PC, NAMED_SET_DESCRIPTIONS, NAMED_SETS } from "./namedSets";
 import { EchoSkillDef, getEchoSkillDef, genericEchoSkill } from "./echoSkills";
+import { CHARACTER_ELEMENTS } from "./characterElements";
 
 // ── Set bonus definitions ─────────────────────────────────────────────────────
 
@@ -271,7 +272,11 @@ export async function resolvePlayerBonuses(userId: string, characterId: string =
 
   if (!user) return bonuses;
 
-  const playerElem = user.element;
+  // Milestone: allies use their OWN element's innate passive, not whichever
+  // element the human player picked — e.g. Solace is always Spectro
+  // regardless of her owner's element. "self" keeps inheriting the player's
+  // own chosen element as before.
+  const playerElem = characterId === "self" ? user.element : ((CHARACTER_ELEMENTS[characterId] ?? user.element) as typeof user.element);
 
   // ── Echo Skill (Main slot only) ───────────────────────────────────────────
   const mainEcho = echoes.find(e => e.equippedSlot === 0) ?? null;
