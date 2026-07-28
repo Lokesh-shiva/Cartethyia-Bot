@@ -45,6 +45,8 @@ export interface PlayableCharacterKit {
   emoji:         string;
   element:       string;
   portraitPath:  string;
+  loreFragments: string[];      // 7 entries; fragment i unlocks at ascensionPhase >= i
+  skillCooldownTurns: number;   // 0 = no cooldown (Solace); a real damage-move Skill should set this
 
   statsAtLevel(level: number): { hpMax: number; baseAtk: number; baseDef: number; baseSpeed: number; critRate: number; critDmg: number };
   resolveStats(userId: string): Promise<ResolvedStats & { hasSignatureWeapon: boolean; signatureWeaponRefinement: number }>;
@@ -63,6 +65,7 @@ export interface PlayableCharacterKit {
   createInitialMechanicState(): unknown;
   onSkill(ctx: CharacterCombatContext, kitLevels: Record<string, number>, constellation: number): SkillEffectResult;
   onUltimate(ctx: CharacterCombatContext, kitLevels: Record<string, number>, constellation: number): UltimateEffectResult;
+  statusLineText(mechanicState: unknown): string; // renders this character's mechanic state for the battle status line
 
   constellationEffects: string[]; // exactly 6 entries
   maxConstellation: number;

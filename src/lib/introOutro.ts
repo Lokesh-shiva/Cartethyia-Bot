@@ -17,6 +17,8 @@ export interface IntroOutroEffect {
   dmgMult?: number;       // if present, this hook also deals damage to the enemy —
                           // damage = wielder's ATK * dmgMult, resolved via the
                           // standard calcPlayerDamage path once wired in a future milestone
+  newMechanicState?: unknown; // lets Intro/Outro update a character's opaque mechanic state (e.g. Kaelith's Intro adding stacks)
+  enemyDebuff?: { type: string; value: number; turns: number }; // Outro-only — targets the enemy, not an ally
 }
 
 export interface IntroOutroResult extends AllyActionResult {
