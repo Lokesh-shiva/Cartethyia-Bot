@@ -16,7 +16,8 @@ import { Element } from "@prisma/client";
 // Only "solace" exists today — future characters add entries here, mirroring
 // the same growth pattern already used by CHARACTERS in character.ts.
 const BANNER_CHARACTERS: Record<string, { label: string; emoji: string }> = {
-  solace: { label: "Solace", emoji: "✨" },
+  solace:  { label: "Solace",  emoji: "✨" },
+  kaelith: { label: "Kaelith", emoji: "🌑" },
 };
 
 export const data = new SlashCommandBuilder()
@@ -27,8 +28,9 @@ export const data = new SlashCommandBuilder()
       .setDescription("Which owned banner character to set as your ally (omit to just view your team)")
       .setRequired(false)
       .addChoices(
-        { name: "None — solo",   value: "none"   },
-        { name: "✨ Solace",     value: "solace" },
+        { name: "None — solo",   value: "none"    },
+        { name: "✨ Solace",     value: "solace"  },
+        { name: "🌑 Kaelith",    value: "kaelith" },
       )
   );
 
