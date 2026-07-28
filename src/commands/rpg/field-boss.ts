@@ -218,7 +218,9 @@ const command: Command = {
     const options = ALL_FIELD_BOSSES.map(fb => {
       const elemEmoji = (ELEMENT_EMOJI as any)[fb.element] ?? "◇";
       const locked = (fb.unlockWorldLevel ?? 0) > user.worldLevel;
-      const dropNote = fb.id === "luminal_specter" ? "  ✦ drops Starfall Shards" : "";
+      const dropNote = fb.id === "luminal_specter" ? "  ✦ drops Starfall Shards"
+                      : fb.id === "null_ravager"    ? "  ✦ drops Umbral Shards"
+                      : "";
       return {
         label:       locked ? `🔒 ${fb.name}  (WL${fb.unlockWorldLevel} required)` : `${elemEmoji}  ${fb.name}`,
         description: locked ? `Reach World Level ${fb.unlockWorldLevel} to unlock` : `${fb.element}  ·  Weakness: ${fb.weakness}${dropNote}`,
@@ -468,6 +470,14 @@ const command: Command = {
               data: { starfallShards: { increment: 1 } },
             });
           }
+          let umbralShardsDropped = 0;
+          if (fb.id === "null_ravager") {
+            umbralShardsDropped = 1;
+            await prisma.user.update({
+              where: { id: interaction.user.id },
+              data: { umbralShards: { increment: 1 } },
+            });
+          }
 
           const lvl        = await checkLevelUp(interaction.user.id);
           const bondResult = await incrementWeaponBond(interaction.user.id).catch(() => null);
@@ -481,6 +491,7 @@ const command: Command = {
                 (echoLines.length ? `**Echo Dropped:**\n${echoLines.join("\n")}\n\n` : "") +
                 `${CE.cr} ${credits} Credits  ·  ${CE.ft ?? "🔷"} 60 Fractonite` +
                 (starfallShardsDropped ? `\n${CE.sf} **1 Starfall Shard**` : "") +
+                (umbralShardsDropped ? `\n${CE.us} **1 Umbral Shard**` : "") +
                 (lvl.didLevelUp ? `\n◈ Level **${lvl.oldLevel}** → **${lvl.newLevel}**` : "") +
                 (bondResult ? `\n✦ Weapon Bond **${bondResult.bond}/10**${bondResult.milestone ? ` — *${bondResult.milestone}*` : ""}` : "") +
                 voteNudge() + supportNudge() + await mailNudge(interaction.user.id)
