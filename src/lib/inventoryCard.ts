@@ -22,6 +22,7 @@ const CURRENCIES = [
   { key: "auraPrisms",     file: "Aura Prism.png",     label: "Aura Prisms",    color: "#38BDF8", desc: "Restores 3 ◈ Aura"    },
   { key: "radiantKeys",    file: "Radiant Key.png",    label: "Radiant Keys",   color: "#FCD34D", desc: "Limited wish pulls"   },
   { key: "starfallShards", file: "Starfall Shard.png", label: "Starfall Shards",color: "#EAB308", desc: "Solace ascension"     },
+  { key: "umbralShards",   file: "Umbral Shard.png",   label: "Umbral Shards",  color: "#7C3AED", desc: "Kaelith ascension"    },
 ];
 
 const ELEMENT_COLORS: Record<string, string> = {
