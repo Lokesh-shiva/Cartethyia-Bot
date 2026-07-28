@@ -32,12 +32,13 @@ export interface IntroOutroResult extends AllyActionResult {
 // character while something else affects the whole team) is future work once real
 // swap targeting exists — this covers the common single-target case.
 export function resolveIntroOutroEffect(effect: IntroOutroEffect, target: AllyActionTarget): IntroOutroResult {
-  const total: IntroOutroResult = { hpDelta: 0, shieldDelta: 0, atkBuffPct: 0, cleanseCount: 0, dmgMult: effect.dmgMult ?? 0 };
+  const total: IntroOutroResult = { hpDelta: 0, shieldDelta: 0, atkBuffPct: 0, critRateBuffPct: 0, cleanseCount: 0, dmgMult: effect.dmgMult ?? 0 };
   for (const action of effect.actions) {
     const r = applyAllyAction(action, target);
     total.hpDelta       += r.hpDelta;
     total.shieldDelta    += r.shieldDelta;
     total.atkBuffPct     += r.atkBuffPct;
+    total.critRateBuffPct += r.critRateBuffPct;
     total.cleanseCount   += r.cleanseCount;
   }
   return total;
