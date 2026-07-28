@@ -54,6 +54,12 @@ import { AllyActionTarget } from "../../lib/allyActions";
 import { addConcertoEnergy } from "../../lib/concertoEnergy";
 import { DebuffState, applyDebuff, tickDebuffs, getWeakenedMult, cleanseDebuffs } from "../../lib/debuffs";
 import { getOrCreateCharacterProgress } from "../../lib/characterProgress";
+import { CHARACTER_KITS } from "../../lib/characterKit";
+import {
+  kaelithStackCap, kaelithBasicStackGain, kaelithUltimateBaseMult, KAELITH_PER_STACK_ULT_BONUS,
+  KAELITH_FORTE_CONFIG, KAELITH_FORTE_GAIN_PER_BASIC, KaelithMechanicState,
+} from "../../lib/kits/kaelithKit";
+import "../../lib/kits"; // registers CHARACTER_KITS side-effects (solaceKit, kaelithKit)
 
 const ELEMENT_HEX: Record<string, number> = {
   FUSION: 0xFF6B35, GLACIO: 0x38BDF8, ELECTRO: 0xA855F7,
@@ -328,39 +334,47 @@ const command: Command = {
     // teamAllyCharacterId flag is "solace" but who doesn't actually own her
     // (e.g. after an admin correction), bypassing the gacha entirely. Only
     // call getOrCreateCharacterProgress once hasSolace is already confirmed.
-    const solaceProgress = user.teamAllyCharacterId === "solace"
-      ? await prisma.characterProgress.findUnique({ where: { userId_characterId: { userId: interaction.user.id, characterId: "solace" } } })
+    const activeAllyCharacterId: string | null =
+      user.teamAllyCharacterId && CHARACTER_KITS[user.teamAllyCharacterId] ? user.teamAllyCharacterId : null;
+    const allyProgress = activeAllyCharacterId
+      ? await prisma.characterProgress.findUnique({ where: { userId_characterId: { userId: interaction.user.id, characterId: activeAllyCharacterId } } })
       : null;
-    const hasSolace = solaceProgress !== null;
+    // `hasSolace`/`isDevGuild` are legacy names kept to avoid a blanket rename
+    // across the ~30 call sites below — they now mean "has ANY active ally kit",
+    // not specifically Solace or the dev guild.
+    const hasSolace = allyProgress !== null;
     const isDevGuild = hasSolace;
-    // Milestone 3.5b: her own resolved stats (her base + HER OWN echoes/weapon).
-    const allySolaceStats = hasSolace ? await resolveSolaceStats(interaction.user.id) : null;
-    const solaceBasicLevel    = solaceProgress?.basicLevel    ?? 1;
-    const solaceSkillLevel    = solaceProgress?.skillLevel    ?? 1;
-    const solaceUltimateLevel = solaceProgress?.ultimateLevel ?? 1;
-    const solaceIntroLevel    = solaceProgress?.introLevel    ?? 1;
-    const solaceForteLevel    = solaceProgress?.forteLevel    ?? 1;
-    const solaceConstellation = solaceProgress?.constellation ?? 0;
+    const allyKit = activeAllyCharacterId ? CHARACTER_KITS[activeAllyCharacterId] : null;
+    // Her/his own resolved stats (own base + OWN echoes/weapon).
+    const allyResolvedStats = hasSolace && allyKit ? await allyKit.resolveStats(interaction.user.id) : null;
+    const allySolaceStats = allyResolvedStats as (typeof allyResolvedStats & { hasWellspring?: boolean; wellspringRefinement?: number }); // legacy alias — Wellspring-branch call sites guard on activeAllyCharacterId === "solace" before reading hasWellspring
+    const allyBasicLevel    = allyProgress?.basicLevel    ?? 1;
+    const allySkillLevel    = allyProgress?.skillLevel    ?? 1;
+    const allyUltimateLevel = allyProgress?.ultimateLevel ?? 1;
+    const allyIntroLevel    = allyProgress?.introLevel    ?? 1;
+    const allyForteLevel    = allyProgress?.forteLevel    ?? 1;
+    const allyConstellation = allyProgress?.constellation ?? 0;
     let activeUnit: "player" | "ally" = "player";
-    let allyHp    = SOLACE.hpMax;
-    const allyHpMax = SOLACE.hpMax;
+    let allyHp    = allyKit ? allyKit.statsAtLevel(90).hpMax : 0;
+    const allyHpMax = allyHp;
     let concertoEnergy: number = 0;
     let playerDebuffs: DebuffState = [];
     let attunement: AttunementState = { mode: null };
     let attunementDoubleTurnsLeft = 0;
     let solaceForte: ForteState = { phase: 0, charge: 0 };
     let forteEmpoweredTurnsLeft = 0;
+    let allyMechanicState: unknown = allyKit ? allyKit.createInitialMechanicState() : null;
 
     function teamStatusLine(): string {
-      if (!hasSolace) return "";
-      const benchedName = activeUnit === "player" ? SOLACE.name : displayName;
+      if (!hasSolace || !allyKit) return "";
+      const benchedName = activeUnit === "player" ? allyKit.label : displayName;
       const benchedHp   = activeUnit === "player" ? allyHp : state.playerHp;
       const benchedMax  = activeUnit === "player" ? allyHpMax : state.playerHpMax;
       const debuffLine  = playerDebuffs.length > 0
         ? `  ·  ${playerDebuffs.map(d => `${d.type} (${d.turnsLeft})`).join(", ")}`
         : "";
       return `\n\n🔄 Benched: **${benchedName}** — ${benchedHp}/${benchedMax} HP  ·  ` +
-             `Concerto Energy: **${concertoEnergy}/100**${debuffLine}`;
+             `Concerto Energy: **${concertoEnergy}/100**  ·  ${allyKit.statusLineText(allyMechanicState)}${debuffLine}`;
     }
 
     function teamButtonContext(): TeamButtonContext {
