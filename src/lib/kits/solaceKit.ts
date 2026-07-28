@@ -11,7 +11,7 @@ import {
   solaceStatsAtLevel, resolveSolaceStats, solaceAscensionCost, solaceLevelUpCost,
   ASCENSION_LEVEL_CAP, solaceBasicDamageMult, solaceIntroEffect, solaceOutroEffect,
   solaceConvergenceHealPct, solaceConvergenceCleanseCount,
-  SOLACE_FORTE_CONFIG, SOLACE_FORTE_GAIN_PER_BASIC,
+  SOLACE_FORTE_CONFIG, SOLACE_FORTE_GAIN_PER_BASIC, SOLACE_LORE_FRAGMENTS,
 } from "../solace";
 import { AttunementState, cycleAttunementMode } from "../attunement";
 import { CONSTELLATION_EFFECTS_SOLACE } from "./solaceConstellationText";
@@ -27,6 +27,8 @@ export const solaceKit: PlayableCharacterKit = {
   emoji: "✨",
   element: "SPECTRO",
   portraitPath: "assets/Characters/Solace.png",
+  loreFragments: SOLACE_LORE_FRAGMENTS,
+  skillCooldownTurns: 0, // no cooldown — Attunement is a utility mode-cycle, not a damage move
 
   statsAtLevel: solaceStatsAtLevel,
   resolveStats: async (userId: string) => {
@@ -74,6 +76,11 @@ export const solaceKit: PlayableCharacterKit = {
       newMechanicState: { attunement: state.attunement, concertoEnergy: 0 },
       resetsConcertoEnergy: true,
     };
+  },
+
+  statusLineText(mechanicState: unknown): string {
+    const state = mechanicState as SolaceMechanicState;
+    return `${state.attunement.mode ? `(${state.attunement.mode} mode)` : "(no mode)"}  ·  Concerto Energy: ${state.concertoEnergy}/100`;
   },
 
   constellationEffects: CONSTELLATION_EFFECTS_SOLACE,
