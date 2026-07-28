@@ -4,5 +4,6 @@
 // populates CHARACTER_KITS as a side effect.
 import { CHARACTER_KITS } from "../characterKit";
 import { solaceKit } from "./solaceKit";
+import "./kaelithKit";
 
 CHARACTER_KITS[solaceKit.id] = solaceKit;

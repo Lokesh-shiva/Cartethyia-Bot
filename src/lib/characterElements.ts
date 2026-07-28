@@ -11,4 +11,5 @@
 // character.ts's CHARACTERS registry itself).
 export const CHARACTER_ELEMENTS: Record<string, string> = {
   solace: "SPECTRO",
+  kaelith: "HAVOC",
 };
