@@ -608,22 +608,47 @@ const command: Command = {
           }
         }
 
-        if (btn.customId === "battle_skill" && isDevGuild && activeUnit === "ally") {
+        const isSolaceAlly = isDevGuild && activeAllyCharacterId === "solace";
+
+        if (btn.customId === "battle_skill" && isDevGuild && activeUnit === "ally" && activeAllyCharacterId === "solace") {
           // Solace's Skill is Attunement — a mode cycle, not a damage move.
           attunement.mode = cycleAttunementMode(attunement.mode);
-          if (solaceConstellation >= 3) concertoEnergy = addConcertoEnergy(concertoEnergy, 25);
+          if (allyConstellation >= 3) concertoEnergy = addConcertoEnergy(concertoEnergy, 25);
           const crit = Math.random() < activeCritRate; abilCrit = crit;
           const dmg  = Math.max(1, Math.floor(activeAtk * 0.6 * (1 - defReduction) * (crit ? activeCritDmg : 1) * (isWeak ? 1.5 : 1) * (1 + bonuses.elemDmgBonus)));
           playerDmg  = dmg;
           moveName   = `✦ Attunement — now in **${attunement.mode}** mode! ${playerDmg} DMG${crit ? " **(CRIT)**" : ""}`;
           state.bossVibNow = Math.max(0, state.bossVibNow - Math.floor(playerDmg * 0.3 * totalVibMult));
+        } else if (btn.customId === "battle_skill" && isDevGuild && activeUnit === "ally" && activeAllyCharacterId === "kaelith" && allyKit) {
+          const kState = allyMechanicState as KaelithMechanicState;
+          if (kState.stacks <= 0) {
+            moveName = `🌑 Umbral Detonation — no stacks to consume! (0 DMG bonus)`;
+            playerDmg = 0;
+            state.bossVibNow = Math.max(0, state.bossVibNow - 0);
+          } else {
+            const crit = Math.random() < activeCritRate; abilCrit = crit;
+            const result = allyKit.onSkill(
+              { playerHp: state.playerHp, playerHpMax: state.playerHpMax, allyHp, allyHpMax, turn: state.turn, isShattered: state.isShattered, mechanicState: kState },
+              { basicLevel: allyBasicLevel, skillLevel: allySkillLevel, ultimateLevel: allyUltimateLevel, introLevel: allyIntroLevel, forteLevel: allyForteLevel },
+              allyConstellation,
+            );
+            allyMechanicState = result.newMechanicState;
+            const base = Math.max(1, Math.floor(activeAtk * result.damageMult * (1 - defReduction)));
+            const dmg  = Math.floor(base * (crit ? activeCritDmg : 1) * (isWeak ? 1.5 : 1) * (1 + bonuses.elemDmgBonus));
+            playerDmg  = dmg;
+            moveName   = `🌑 ${result.moveLabel} — ${playerDmg} DMG${crit ? " **(CRIT)**" : ""}`;
+            state.bossVibNow = Math.max(0, state.bossVibNow - Math.floor(playerDmg * result.vibFrac * totalVibMult));
+          }
+          // Kaelith's Skill has its own 3-turn cooldown, unlike Solace's Skill
+          // (Attunement), which has none.
+          state.skillCooldown = allyKit.skillCooldownTurns;
         } else if (btn.customId === "battle_skill") {
-          const teamAtkMult  = isDevGuild ? getAttunementAtkMult(attunement, solaceAttunementAtkCritBonus(solaceSkillLevel), attunementDoubleTurnsLeft > 0, solaceConstellation >= 6) : 1;
-          const teamCritBonus = isDevGuild ? getAttunementCritRateBonus(attunement, solaceAttunementAtkCritBonus(solaceSkillLevel), attunementDoubleTurnsLeft > 0, solaceConstellation >= 6) : 0;
-          const wellspringAtkBonus  = isDevGuild && allySolaceStats?.hasWellspring ? getWellspringAtkBonus(attunement, allySolaceStats.wellspringRefinement) : 0;
-          const wellspringCritBonus = isDevGuild && allySolaceStats?.hasWellspring ? getWellspringCritRateBonus(attunement, allySolaceStats.wellspringRefinement) : 0;
-          const forteAtkBonus  = isDevGuild ? getSolaceForteAtkBonus(solaceForteLevel, forteEmpoweredTurnsLeft > 0) : 0;
-          const forteCritBonus = isDevGuild ? getSolaceForteCritRateBonus(solaceForteLevel, forteEmpoweredTurnsLeft > 0) : 0;
+          const teamAtkMult  = isSolaceAlly ? getAttunementAtkMult(attunement, solaceAttunementAtkCritBonus(allySkillLevel), attunementDoubleTurnsLeft > 0, allyConstellation >= 6) : 1;
+          const teamCritBonus = isSolaceAlly ? getAttunementCritRateBonus(attunement, solaceAttunementAtkCritBonus(allySkillLevel), attunementDoubleTurnsLeft > 0, allyConstellation >= 6) : 0;
+          const wellspringAtkBonus  = isSolaceAlly && allySolaceStats?.hasWellspring ? getWellspringAtkBonus(attunement, allySolaceStats.wellspringRefinement!) : 0;
+          const wellspringCritBonus = isSolaceAlly && allySolaceStats?.hasWellspring ? getWellspringCritRateBonus(attunement, allySolaceStats.wellspringRefinement!) : 0;
+          const forteAtkBonus  = isSolaceAlly ? getSolaceForteAtkBonus(allyForteLevel, forteEmpoweredTurnsLeft > 0) : 0;
+          const forteCritBonus = isSolaceAlly ? getSolaceForteCritRateBonus(allyForteLevel, forteEmpoweredTurnsLeft > 0) : 0;
           const teamMult = getWeakenedMult(playerDebuffs) * teamAtkMult * (1 + wellspringAtkBonus) * (1 + forteAtkBonus);
           const crit   = forcedCritActive || Math.random() < Math.min(1, activeCritRate + 0.1 + teamCritBonus + wellspringCritBonus + forteCritBonus); abilCrit = crit;
           const smolderMult = bonuses.activeNamedSetId === "SMOLDERING_SOVEREIGN"
@@ -667,9 +692,9 @@ const command: Command = {
 
         if (btn.customId === "battle_ultimate" && !(isDevGuild && activeUnit === "ally")) {
           abilCrit     = true;
-          const teamAtkMult = isDevGuild ? getAttunementAtkMult(attunement, solaceAttunementAtkCritBonus(solaceSkillLevel), attunementDoubleTurnsLeft > 0, solaceConstellation >= 6) : 1;
-          const wellspringAtkBonus = isDevGuild && allySolaceStats?.hasWellspring ? getWellspringAtkBonus(attunement, allySolaceStats.wellspringRefinement) : 0;
-          const forteAtkBonus = isDevGuild ? getSolaceForteAtkBonus(solaceForteLevel, forteEmpoweredTurnsLeft > 0) : 0;
+          const teamAtkMult = isSolaceAlly ? getAttunementAtkMult(attunement, solaceAttunementAtkCritBonus(allySkillLevel), attunementDoubleTurnsLeft > 0, allyConstellation >= 6) : 1;
+          const wellspringAtkBonus = isSolaceAlly && allySolaceStats?.hasWellspring ? getWellspringAtkBonus(attunement, allySolaceStats.wellspringRefinement!) : 0;
+          const forteAtkBonus = isSolaceAlly ? getSolaceForteAtkBonus(allyForteLevel, forteEmpoweredTurnsLeft > 0) : 0;
           const teamMult = getWeakenedMult(playerDebuffs) * teamAtkMult * (1 + wellspringAtkBonus) * (1 + forteAtkBonus);
           const smolderMultUlt = bonuses.activeNamedSetId === "SMOLDERING_SOVEREIGN"
             ? smolderingSovereignOnAction(namedState) : 1;
@@ -696,12 +721,12 @@ const command: Command = {
             stormBuffTurnsLeft = surge.turnsLeft + 1;
             stormBuffCritBonus = surge.critRateBonus;
           }
-        } else if (btn.customId === "battle_ultimate" && isDevGuild && activeUnit === "ally") {
+        } else if (btn.customId === "battle_ultimate" && isDevGuild && activeUnit === "ally" && activeAllyCharacterId === "solace") {
           // Solace's Ultimate spends Concerto Energy, not personal Energy.
-          const healPct = solaceConvergenceHealPct(solaceUltimateLevel, solaceConstellation);
+          const healPct = solaceConvergenceHealPct(allyUltimateLevel, allyConstellation);
           const healResult = resolveIntroOutroEffect({ actions: [
             { type: "HEAL_ALLY", value: healPct },
-            { type: "CLEANSE_ALLY", value: solaceConvergenceCleanseCount(solaceConstellation) },
+            { type: "CLEANSE_ALLY", value: solaceConvergenceCleanseCount(allyConstellation) },
           ] }, { hp: state.playerHp, hpMax: state.playerHpMax });
           const allyHealResult = resolveIntroOutroEffect({ actions: [
             { type: "HEAL_ALLY", value: healPct },
@@ -721,20 +746,52 @@ const command: Command = {
           convergenceUsedThisTurn = true;
           playerDmg = 0; abilCrit = false;
 
-          const healSummary = `${displayName} +${actualHealPlayer} HP, ${SOLACE.name} +${actualHealAlly} HP`;
+          const healSummary = `${displayName} +${actualHealPlayer} HP, ${allyKit?.label ?? "Solace"} +${actualHealAlly} HP`;
 
           if (isForteMaxed(solaceForte, SOLACE_FORTE_CONFIG)) {
-            forteEmpoweredTurnsLeft = solaceUltimateDoubleTurns(solaceConstellation) + 1; // +1 compensates for the same-round decrement
+            forteEmpoweredTurnsLeft = solaceUltimateDoubleTurns(allyConstellation) + 1; // +1 compensates for the same-round decrement
             attunementDoubleTurnsLeft = 0;
             solaceForte = resetForte();
             moveName = `⚡ **Empowered Convergence!** Team healed (${healSummary}), debuffs cleansed, ` +
-              `**all 3 Attunement Modes empowered for ${solaceUltimateDoubleTurns(solaceConstellation)} turns!**`;
+              `**all 3 Attunement Modes empowered for ${solaceUltimateDoubleTurns(allyConstellation)} turns!**`;
           } else {
-            attunementDoubleTurnsLeft = solaceUltimateDoubleTurns(solaceConstellation) + 1; // +1 compensates for the same-round decrement
+            attunementDoubleTurnsLeft = solaceUltimateDoubleTurns(allyConstellation) + 1; // +1 compensates for the same-round decrement
             forteEmpoweredTurnsLeft = 0;
             moveName = `⚡ **Convergence!** Team healed (${healSummary}), debuffs cleansed, ` +
-              `**${attunement.mode ?? "no"} mode doubled for ${solaceUltimateDoubleTurns(solaceConstellation)} turns!**`;
+              `**${attunement.mode ?? "no"} mode doubled for ${solaceUltimateDoubleTurns(allyConstellation)} turns!**`;
           }
+        } else if (btn.customId === "battle_ultimate" && isDevGuild && activeUnit === "ally" && activeAllyCharacterId === "kaelith" && allyKit) {
+          const kState = allyMechanicState as KaelithMechanicState;
+          const stacksConsumed = kState.stacks;
+
+          // UltimateEffectResult has no damage field (only healResult/moveLabel/
+          // newMechanicState/resetsConcertoEnergy) — Kaelith's ultimate damage
+          // multiplier is computed inline here, duplicating the 2-line formula
+          // kaelithOnUltimate uses internally for its own bookkeeping, exactly
+          // how Solace's own Ultimate damage is computed inline above rather
+          // than returned from a shared helper.
+          const ultDamageMult = allyConstellation >= 6
+            ? stacksConsumed * (KAELITH_PER_STACK_ULT_BONUS * 1.6)
+            : kaelithUltimateBaseMult(allyUltimateLevel) + stacksConsumed * KAELITH_PER_STACK_ULT_BONUS;
+
+          const result = allyKit.onUltimate(
+            { playerHp: state.playerHp, playerHpMax: state.playerHpMax, allyHp, allyHpMax, turn: state.turn, isShattered: state.isShattered, mechanicState: kState },
+            { basicLevel: allyBasicLevel, skillLevel: allySkillLevel, ultimateLevel: allyUltimateLevel, introLevel: allyIntroLevel, forteLevel: allyForteLevel },
+            allyConstellation,
+          );
+          allyMechanicState = result.newMechanicState;
+
+          const base = Math.max(1, Math.floor(activeAtk * ultDamageMult * (1 - defReduction)));
+          const dmg  = Math.floor(base * (isWeak ? 1.5 : 1) * (1 + bonuses.elemDmgBonus));
+          playerDmg = dmg;
+          moveName  = `🌑 ${result.moveLabel} — ${playerDmg} DMG`;
+          state.bossVibNow = Math.max(0, state.bossVibNow - Math.floor(playerDmg * 0.8 * totalVibMult));
+
+          if (result.healResult.actions.length > 0) {
+            const healResult = resolveIntroOutroEffect(result.healResult, { hp: allyHp, hpMax: allyHpMax });
+            allyHp = Math.min(allyHpMax, allyHp + healResult.hpDelta);
+          }
+          if (result.resetsConcertoEnergy) { concertoEnergy = 0; convergenceUsedThisTurn = true; }
         }
 
         if (btn.customId === "battle_echoskill" && bonuses.echoSkill) {
