@@ -98,6 +98,7 @@ model User {
   resonanceRecords Int            @default(0)
   fractureKeys     Int            @default(0)
   starfallShards   Int            @default(0) // Solace ascension mat (Lv40+), drops only from the Spectro field boss
+  umbralShards     Int            @default(0) // Kaelith ascension mat (Lv40+), drops only from Null Ravager (Havoc field boss)
 
   // Wish / gacha pity
   wishPity         Int            @default(0)   // pulls since last 5★
@@ -456,6 +457,7 @@ model Mail {
   resonanceRecords Int @default(0)
   radiantKeys      Int @default(0)
   starfallShards   Int @default(0)
+  umbralShards     Int @default(0)
 
   claims  MailClaim[]
 
