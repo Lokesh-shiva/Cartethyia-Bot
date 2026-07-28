@@ -898,7 +898,10 @@ const command: Command = {
         if (v2Regen.energy > 0) state.playerEnergy = Math.min(100, state.playerEnergy + v2Regen.energy);
 
         // SPD quick-strike — once per fight, if invested SPD clears the boss's derived SPD
-        const isSolaceConvergence = btn.customId === "battle_ultimate" && isDevGuild && activeUnit === "ally";
+        // Quick Strike is excluded only for Solace's Convergence (a pure heal,
+        // deals 0 playerDmg) — Kaelith's Ultimate is a real damage move and
+        // should still be eligible for the bonus.
+        const isSolaceConvergence = btn.customId === "battle_ultimate" && isDevGuild && activeUnit === "ally" && activeAllyCharacterId === "solace";
         if (!quickStrikeUsed && btn.customId !== "battle_flee" && btn.customId !== "battle_swap" && !isSolaceConvergence && hasQuickStrike(stats.spd, WORLD_LEVEL_CAPS[boss.worldLevel] ?? 20)) {
           quickStrikeUsed = true;
           const bonusDmg = Math.max(1, Math.floor(stats.atk * (1 - defReduction)));
@@ -1043,10 +1046,11 @@ const command: Command = {
           const move       = isEnraged
             ? boss.moves.reduce((a, b) => a.damage >= b.damage ? a : b)
             : boss.moves[Math.floor(Math.random() * boss.moves.length)];
-          const wellspringDefBonus = isDevGuild && allySolaceStats?.hasWellspring ? getWellspringDefBonus(attunement, allySolaceStats.wellspringRefinement) : 0;
-          const forteDefBonus = isDevGuild ? getSolaceForteDefBonus(solaceForteLevel, forteEmpoweredTurnsLeft > 0) : 0;
-          const attunementDefBonus = solaceAttunementDefBonus(solaceSkillLevel);
-          const attunementDefMult = (isDevGuild ? getAttunementDefMult(attunement, attunementDefBonus, attunementDoubleTurnsLeft > 0, solaceConstellation >= 6) : 1) * (1 + wellspringDefBonus) * (1 + forteDefBonus);
+          const isSolaceAllyForDef = isDevGuild && activeAllyCharacterId === "solace";
+          const wellspringDefBonus = isSolaceAllyForDef && allySolaceStats?.hasWellspring ? getWellspringDefBonus(attunement, allySolaceStats.wellspringRefinement!) : 0;
+          const forteDefBonus = isSolaceAllyForDef ? getSolaceForteDefBonus(allyForteLevel, forteEmpoweredTurnsLeft > 0) : 0;
+          const attunementDefBonus = solaceAttunementDefBonus(allySkillLevel);
+          const attunementDefMult = (isSolaceAllyForDef ? getAttunementDefMult(attunement, attunementDefBonus, attunementDoubleTurnsLeft > 0, allyConstellation >= 6) : 1) * (1 + wellspringDefBonus) * (1 + forteDefBonus);
           let bossDmg     = Math.max(1, Math.floor(scaled.atk * move.damage * enrageMult - activeDef * attunementDefMult * 0.4));
           bossDmg         = roll4pcBlock(bonuses, bossDmg);
           const shield    = elemFrostShield(bonuses.elementPassive, bossDmg);
@@ -1124,7 +1128,7 @@ const command: Command = {
         if (isDevGuild && activeUnit === "ally" && allyHp <= 0) {
           allyHp = 0;
           activeUnit = "player";
-          state.lastMove += `\n◇ **${SOLACE.name} was knocked out** — swapped back to ${displayName}.`;
+          state.lastMove += `\n◇ **${allyKit?.label ?? "Your ally"} was knocked out** — swapped back to ${displayName}.`;
         }
 
         // ── Second Wind — survive a lethal blow once ──────────────────────────
