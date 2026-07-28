@@ -95,6 +95,8 @@ interface TeamButtonContext {
   attunement: AttunementState;
   concertoEnergy: number;
   allyHp: number; // 0 = KO'd — swap button disables rather than letting the player swap back into a dead ally
+  activeAllyCharacterId: string | null;
+  allyLabel: string;
 }
 
 function buildButtons(
@@ -104,7 +106,18 @@ function buildButtons(
 ): ActionRowBuilder<ButtonBuilder>[] {
   const rows: ActionRowBuilder<ButtonBuilder>[] = [];
 
-  if (team?.isDevGuild && team.activeUnit === "ally") {
+  if (team?.isDevGuild && team.activeUnit === "ally" && team.activeAllyCharacterId === "kaelith") {
+    const skillReady = state.skillCooldown === 0;
+    rows.push(new ActionRowBuilder<ButtonBuilder>().addComponents(
+      new ButtonBuilder().setCustomId("battle_basic").setLabel("⚔️  Basic Attack").setStyle(ButtonStyle.Primary),
+      new ButtonBuilder().setCustomId("battle_skill")
+        .setLabel(skillReady ? "🌑  Umbral Detonation" : `🌑  Detonation (${state.skillCooldown}🔄)`)
+        .setStyle(ButtonStyle.Secondary).setDisabled(!skillReady),
+      new ButtonBuilder().setCustomId("battle_ultimate").setLabel("🌑  Umbral Cataclysm")
+        .setStyle(ButtonStyle.Success).setDisabled(team.concertoEnergy < 100),
+      new ButtonBuilder().setCustomId("battle_flee").setLabel("🚪  Flee").setStyle(ButtonStyle.Danger),
+    ));
+  } else if (team?.isDevGuild && team.activeUnit === "ally") {
     const modeLabel = team.attunement.mode ? `(${team.attunement.mode})` : "(inactive)";
     rows.push(new ActionRowBuilder<ButtonBuilder>().addComponents(
       new ButtonBuilder().setCustomId("battle_basic").setLabel("⚔️  Chime Strike").setStyle(ButtonStyle.Primary),
@@ -154,7 +167,7 @@ function buildButtons(
     const swapDisabled = team.activeUnit === "player" && team.allyHp <= 0;
     rows.push(new ActionRowBuilder<ButtonBuilder>().addComponents(
       new ButtonBuilder().setCustomId("battle_swap")
-        .setLabel(team.activeUnit === "player" ? `🔄  Swap to ${SOLACE.name}` : `🔄  Swap to ${team.displayName}`)
+        .setLabel(team.activeUnit === "player" ? `🔄  Swap to ${team.allyLabel}` : `🔄  Swap to ${team.displayName}`)
         .setStyle(ButtonStyle.Secondary).setDisabled(swapDisabled),
     ));
   }
@@ -378,7 +391,7 @@ const command: Command = {
     }
 
     function teamButtonContext(): TeamButtonContext {
-      return { isDevGuild: hasSolace, activeUnit, displayName, attunement, concertoEnergy, allyHp };
+      return { isDevGuild: hasSolace, activeUnit, displayName, attunement, concertoEnergy, allyHp, activeAllyCharacterId, allyLabel: allyKit?.label ?? "Ally" };
     }
 
     const runTurn = async () => {
@@ -455,7 +468,7 @@ const command: Command = {
         // shared tail below (Win-check/Boss-turn/decrements/Lose-check/next
         // turn), same as every other action. Ported from boss.ts's Milestone
         // 3b swap handler (itself ported from encounter.ts's Milestone 1/2a).
-        if (btn.customId === "battle_swap" && hasSolace && !(activeUnit === "player" && allyHp <= 0)) {
+        if (btn.customId === "battle_swap" && hasSolace && allyKit && !(activeUnit === "player" && allyHp <= 0)) {
           const outgoingIsPlayer = activeUnit === "player";
           const comboReady = concertoEnergy >= 100;
 
@@ -464,10 +477,28 @@ const command: Command = {
               ? { hp: allyHp, hpMax: allyHpMax }
               : { hp: state.playerHp, hpMax: state.playerHpMax };
 
-            const outroEffect = outgoingIsPlayer ? PLAYER_SELF_OUTRO : solaceOutroEffect(solaceConstellation);
-            const introEffect: IntroOutroEffect = outgoingIsPlayer ? solaceIntroEffect(solaceIntroLevel, solaceConstellation) : PLAYER_SELF_INTRO;
+            const outroEffect = outgoingIsPlayer ? PLAYER_SELF_OUTRO : allyKit.outroEffect(allyConstellation);
+            const introEffect: IntroOutroEffect = outgoingIsPlayer ? allyKit.introEffect(allyIntroLevel, allyConstellation) : PLAYER_SELF_INTRO;
             const outroResult = resolveIntroOutroEffect(outroEffect, incomingTarget);
             const introResult = resolveIntroOutroEffect(introEffect, incomingTarget);
+
+            // Kaelith's intro grants stacks rather than a plain HP/shield bonus —
+            // applied here via introEffect's newMechanicState side-channel since
+            // AllyAction has no "grant stacks" primitive (deliberately kept out of
+            // the shared ally-action vocabulary — stack-granting is Kaelith-only).
+            if (!outgoingIsPlayer && introEffect.newMechanicState && activeAllyCharacterId === "kaelith") {
+              const grant = (introEffect.newMechanicState as any).grantStacksOnIntro as number | undefined;
+              if (grant) {
+                const cur = (allyMechanicState as KaelithMechanicState).stacks;
+                const cap = kaelithStackCap(allyConstellation);
+                allyMechanicState = { ...(allyMechanicState as KaelithMechanicState), stacks: Math.min(cap, cur + grant) };
+              }
+            }
+            if (!outgoingIsPlayer && outroEffect.enemyDebuff) {
+              // Non-stacking: refresh duration, never compound (explicit anti-exploit decision).
+              enemyDefShredTurnsLeft = outroEffect.enemyDebuff.turns + 1;
+              enemyDefShredPct = outroEffect.enemyDebuff.value;
+            }
 
             if (!outgoingIsPlayer) nextAttackCritArmed = true;
 
@@ -485,11 +516,11 @@ const command: Command = {
             }
 
             moveName = actualGain > 0
-              ? `🔄 Swapped to **${outgoingIsPlayer ? SOLACE.name : displayName}** — Outro+Intro combo! +${actualGain} HP.`
-              : `🔄 Swapped to **${outgoingIsPlayer ? SOLACE.name : displayName}** — Outro+Intro combo! (already at full HP, no heal needed)`;
+              ? `🔄 Swapped to **${outgoingIsPlayer ? allyKit.label : displayName}** — Outro+Intro combo! +${actualGain} HP.`
+              : `🔄 Swapped to **${outgoingIsPlayer ? allyKit.label : displayName}** — Outro+Intro combo! (already at full HP, no heal needed)`;
             concertoEnergy = addConcertoEnergy(0, 20); // headstart, matches CONCERTO_INTRO_HEADSTART in encounter.ts
           } else {
-            moveName = `🔄 Swapped to **${outgoingIsPlayer ? SOLACE.name : displayName}** — Concerto Energy not full, no combo triggered.`;
+            moveName = `🔄 Swapped to **${outgoingIsPlayer ? allyKit.label : displayName}** — Concerto Energy not full, no combo triggered.`;
           }
 
           activeUnit = outgoingIsPlayer ? "ally" : "player";
