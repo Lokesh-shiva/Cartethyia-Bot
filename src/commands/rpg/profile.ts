@@ -10,6 +10,9 @@ import { computeAura, getMaxAura } from "../../lib/aura";
 import { communityFooter } from "../../lib/communityFooter";
 import { mailNudge } from "../../lib/mailNudge";
 import prisma from "../../lib/prisma";
+import { CHARACTER_KITS } from "../../lib/characterKit";
+import { ELEMENT_COLORS } from "../../lib/echoes";
+import "../../lib/kits";
 
 const command: Command = {
   data: new SlashCommandBuilder()
@@ -110,10 +113,27 @@ const command: Command = {
     const bonuses = await resolvePlayerBonuses(target.id);
     const stats   = applyBonuses(user, bonuses);
 
-    const solaceProgress = await prisma.characterProgress.findUnique({
-      where: { userId_characterId: { userId: target.id, characterId: "solace" } },
-      select: { level: true },
-    });
+    // Show only the ONE character the player has set as their team ally
+    // (not every owned character) so the card doesn't clutter as the roster
+    // grows — reuses the existing /team selection rather than adding a
+    // separate display-preference field.
+    const teamRow = await prisma.user.findUnique({ where: { id: target.id }, select: { teamAllyCharacterId: true } });
+    const displayCharacterId = teamRow?.teamAllyCharacterId && CHARACTER_KITS[teamRow.teamAllyCharacterId] ? teamRow.teamAllyCharacterId : null;
+    const displayProgress = displayCharacterId
+      ? await prisma.characterProgress.findUnique({
+          where: { userId_characterId: { userId: target.id, characterId: displayCharacterId } },
+          select: { level: true },
+        })
+      : null;
+    const displayKit = displayCharacterId ? CHARACTER_KITS[displayCharacterId] : null;
+    const displayCharacter = displayProgress && displayKit
+      ? {
+          label: displayKit.label,
+          level: displayProgress.level,
+          portraitPath: displayKit.portraitPath,
+          color: "#" + ELEMENT_COLORS[displayKit.element as keyof typeof ELEMENT_COLORS].toString(16).padStart(6, "0"),
+        }
+      : null;
 
     // ── Generate card ───────────────────────────────────────────────────────
     const buffer = await generateProfileCard({
@@ -138,7 +158,7 @@ const command: Command = {
       auraNextRegenMs:   auraState.nextRegenMs,
       uniqueAbilityName: user.uniqueAbilityName,
       patronTier:        (user as any).patronTier ?? 0,
-      solaceLevel:       solaceProgress?.level,
+      displayCharacter: displayCharacter ?? undefined,
       displayName,
       bonds,
       echoes,
@@ -149,7 +169,7 @@ const command: Command = {
     const extraBonds = totalBonds > 3 ? `  ·  +${totalBonds - 3} more bond${totalBonds - 3 !== 1 ? "s" : ""} — use /bonds` : "";
     const PATRON_TIER_NAMES: Record<number, string> = { 1: "Attuned", 2: "Ascendant", 3: "Calamity" };
     const patronTitle = (user as any).patronTier ? `  ·  ✦ ${PATRON_TIER_NAMES[(user as any).patronTier]} Patron` : "";
-    const solaceBadge = solaceProgress ? `  ·  ✨ Solace (Lv${solaceProgress.level})` : "";
+    const solaceBadge = displayCharacter ? `  ·  ${displayKit?.emoji ?? "◈"} ${displayCharacter.label} (Lv${displayCharacter.level})` : "";
 
     // Only nudge for own profile (not when viewing others)
     const nudge = target.id === interaction.user.id

@@ -125,7 +125,7 @@ export interface ProfileCardInput {
   auraNextRegenMs: number;   // ms until next charge (Infinity = full)
   uniqueAbilityName: string | null;
   patronTier?:     number;  // 0/undefined = none, 1 = Attuned, 2 = Ascendant, 3 = Calamity
-  solaceLevel?:    number;  // set only when this player owns Solace — draws a small badge
+  displayCharacter?: { label: string; level: number; portraitPath: string; color: string }; // the player's chosen team-ally character — draws a small badge
   // Extra
   displayName:     string;
   bonds:           BondData[];
@@ -733,22 +733,24 @@ export async function generateProfileCard(input: ProfileCardInput): Promise<Buff
     }
   }
 
-  // Solace ownership icon — reuses the exact echo-slot visual (rounded tile,
-  // cover-fit portrait, colored border/glow, Lv badge) in the one grid cell
-  // row 2 leaves empty (3-column layout, only 2 slots in that row), instead
-  // of a separate text badge up near the name.
-  if (input.solaceLevel != null) {
+  // Team-ally ownership icon — reuses the exact echo-slot visual (rounded
+  // tile, cover-fit portrait, colored border/glow, Lv badge) in the one grid
+  // cell row 2 leaves empty (3-column layout, only 2 slots in that row),
+  // instead of a separate text badge up near the name. Shows only the ONE
+  // character the player has set as their team ally (not every owned
+  // character) so the card doesn't clutter as the roster grows.
+  if (input.displayCharacter) {
     const ex = RPX + 2 * (SS + GAP);
     const ey = 34 + 1 * (SS + GAP);
-    const solaceColor = "#FFD54F";
+    const charColor = input.displayCharacter.color;
 
-    ctx.shadowColor = solaceColor; ctx.shadowBlur = 14;
-    ctx.fillStyle = rgba(solaceColor, 0.22);
+    ctx.shadowColor = charColor; ctx.shadowBlur = 14;
+    ctx.fillStyle = rgba(charColor, 0.22);
     rrect(ctx, ex, ey, SS, SS, 9); ctx.fill();
     ctx.shadowBlur = 0;
 
     try {
-      const img = await loadImage(path.join(process.cwd(), "assets", "Characters", "Solace_icon.png"));
+      const img = await loadImage(path.join(process.cwd(), input.displayCharacter.portraitPath));
       ctx.save();
       rrect(ctx, ex, ey, SS, SS, 9); ctx.clip();
       const scale = Math.max(SS / img.width, SS / img.height);
@@ -757,14 +759,14 @@ export async function generateProfileCard(input: ProfileCardInput): Promise<Buff
       ctx.fillStyle = "rgba(0,0,0,0.15)";
       ctx.fillRect(ex, ey, SS, SS);
       ctx.restore();
-    } catch { /* art missing — border/tint alone still reads as "Solace" */ }
+    } catch { /* art missing — border/tint alone still reads as the character */ }
 
-    ctx.strokeStyle = rgba(solaceColor, 0.9); ctx.lineWidth = 1.5;
+    ctx.strokeStyle = rgba(charColor, 0.9); ctx.lineWidth = 1.5;
     rrect(ctx, ex, ey, SS, SS, 9); ctx.stroke();
 
     ctx.fillStyle = "rgba(0,0,0,0.60)";
     ctx.font = `bold 7px Rajdhani, 'Noto Sans', 'Noto Sans CJK SC', 'Noto Sans JP', Arial, sans-serif`;
-    ctx.fillText(`Lv${input.solaceLevel}`, ex + 3, ey + SS - 3);
+    ctx.fillText(`Lv${input.displayCharacter.level}`, ex + 3, ey + SS - 3);
   }
 
   // ── Bonds ─────────────────────────────────────────────────────────────────
