@@ -624,8 +624,8 @@ export const GUIDE_SECTIONS: Record<string, GuideSection> = {
       .setColor(0xA855F7)
       .setTitle("🗝️  Resonance Wish — Standard Banner")
       .setDescription(
-        `Spend 🗝️ **Fracture Keys** to pull weapons from the evergreen Standard Banner.\n` +
-        `Each pull costs **1 Fracture Key**. Use \`/wish\` → **Standard** to open it.\n\n` +
+        `Spend 🗝️ **Fracture Keys** to pull weapons — and sometimes characters — from the evergreen Standard Banner.\n` +
+        `Each pull costs **1 Fracture Key**. Use \`/wish\` → **Standard** to open it. 30% of 4★ hits are **Kaelith** instead of a weapon.\n\n` +
         `-# Looking for Solace or Wellspring? Those are the separate Limited banners — see the **Solace** guide page.`
       )
       .addFields(
@@ -731,7 +731,7 @@ export const GUIDE_SECTIONS: Record<string, GuideSection> = {
         {
           name: "Fighting With Her — `/team`",
           value: [
-            `\`/team ally:Solace\` sets her as your fight partner (requires owning her).`,
+            `\`/team\` opens a menu of your owned characters — pick Solace to set her as your fight partner (requires owning her).`,
             `In combat, a **Swap** button lets you switch who's acting — you always go first, she's available to swap into afterward.`,
             `The swap button disables if she's been knocked out — no reviving mid-fight.`,
             `Works across ascend/boss/dungeon/field-boss/encounter/duel/raid.`,
@@ -741,6 +741,76 @@ export const GUIDE_SECTIONS: Record<string, GuideSection> = {
         {
           name: "Starfall Shards",
           value: `Required for her ascension from Phase 2 onward. **Guaranteed drop** from defeating the Spectro field boss — specifically **Luminal Specter**, not Lumenwrought Seraph (the other Spectro field boss). Use \`/field-boss\` and pick Luminal Specter.`,
+          inline: false,
+        },
+      )
+      .setFooter({ text: "CARTETHYIA  ·  /wish · /character · /team" }),
+  },
+
+  kaelith: {
+    label: "Kaelith — Banner Character",
+    description: "Recruit Kaelith, level him up, and fight alongside him — /wish, /character, /team",
+    emoji: "🌑",
+    embed: () => new EmbedBuilder()
+      .setColor(0x7C3AED)
+      .setTitle("🌑  Kaelith — Havoc Stack-DPS")
+      .setDescription(
+        `A Havoc-element damage dealer built around a stacking Detonation mechanic. Once you own him, ` +
+        `he's a real combat unit with his own leveling, gear, and kit — not a cosmetic.`
+      )
+      .addFields(
+        {
+          name: "Recruiting Him",
+          value: [
+            `\`/wish\` → **Standard Banner** — a 4★-tier hit has a **30% chance** to be Kaelith instead of a weapon.`,
+            `A duplicate pull converts into a **Constellation Token** instead of a second copy.`,
+            `Unlike Solace, he has no signature weapon — any weapon type works, no limited weapon banner tied to him.`,
+          ].join("\n"),
+          inline: false,
+        },
+        {
+          name: "Leveling & Ascension — `/character`",
+          value: [
+            `Once owned, \`/character\` → Kaelith shows his full profile: Stats, Weapon, Echoes, Kit Levels, Constellations, Lore.`,
+            `**Level Up** spends Resonance Records + Credits, up to your current phase's cap.`,
+            `**Ascend** (once at cap) raises the cap — costs Credits + Forging Ores + Paradox Cores, and from Phase 2 onward, **Umbral Shards** too.`,
+            `He's built as a **DPS unit** — ATK/Crit grow heavily with level (low floor, high ceiling), unlike Solace's support-shaped curve.`,
+          ].join("\n"),
+          inline: false,
+        },
+        {
+          name: "Gear — Weapon & Echoes",
+          value: [
+            `\`/character\` → Weapon page has an inline **Equip Weapon** button — pick from your arsenal right there.`,
+            `\`/character\` → Echoes page has 5 slot buttons that open an inline echo picker (with Element/Cost filters if you own a lot of echoes).`,
+            `Recommended echo set: **Voidborn Remnant** (Havoc) — its Frenzy mechanics amplify his own stack-detonation damage.`,
+            `A weapon/echo equipped to Kaelith is equipped to *him*, not you — it won't show up on your own \`/profile\` or \`/weapon\` while equipped to him.`,
+          ].join("\n"),
+          inline: false,
+        },
+        {
+          name: "His Stack Mechanic",
+          value: [
+            `Basic Attack grants **stacks** (cap 5, higher at Constellations 2/4/6).`,
+            `**Skill** *(Umbral Detonation)* is a partial detonate — consumes 2 stacks (1 at C2+) for bonus damage. 3-turn cooldown.`,
+            `**Ultimate** *(Umbral Cataclysm)* is a full detonate — consumes ALL current stacks for a much bigger hit.`,
+            `**Intro** grants +2 stacks on swap-in. **Outro** shreds the enemy's DEF for 2 turns (doesn't stack with itself — refreshes duration only).`,
+          ].join("\n"),
+          inline: false,
+        },
+        {
+          name: "Fighting With Him — `/team`",
+          value: [
+            `\`/team\` opens a menu of your owned characters — pick Kaelith to set him as your fight partner (requires owning him).`,
+            `In combat, a **Swap** button lets you switch who's acting — you always go first, he's available to swap into afterward.`,
+            `The swap button disables if he's been knocked out — no reviving mid-fight.`,
+            `Works across ascend/boss/dungeon/field-boss/encounter/duel/raid.`,
+          ].join("\n"),
+          inline: false,
+        },
+        {
+          name: "Umbral Shards",
+          value: `Required for his ascension from Phase 2 onward. **Guaranteed drop** from defeating the Havoc field boss — **Null Ravager**. Use \`/field-boss\` and pick Null Ravager.`,
           inline: false,
         },
       )
