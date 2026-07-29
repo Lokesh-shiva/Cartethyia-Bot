@@ -1,6 +1,8 @@
 import {
   SlashCommandBuilder, ChatInputCommandInteraction,
   AttachmentBuilder, EmbedBuilder,
+  ActionRowBuilder, StringSelectMenuBuilder, StringSelectMenuInteraction,
+  ComponentType,
 } from "discord.js";
 import { Command } from "../../types";
 import { getOrCreateUser } from "../../lib/economy";
@@ -113,12 +115,19 @@ const command: Command = {
     const bonuses = await resolvePlayerBonuses(target.id);
     const stats   = applyBonuses(user, bonuses);
 
-    // Show only the ONE character the player has set as their team ally
-    // (not every owned character) so the card doesn't clutter as the roster
-    // grows — reuses the existing /team selection rather than adding a
-    // separate display-preference field.
-    const teamRow = await prisma.user.findUnique({ where: { id: target.id }, select: { teamAllyCharacterId: true } });
-    const displayCharacterId = teamRow?.teamAllyCharacterId && CHARACTER_KITS[teamRow.teamAllyCharacterId] ? teamRow.teamAllyCharacterId : null;
+    // Show only the ONE character the player has chosen to display (not
+    // every owned character) so the card doesn't clutter as the roster
+    // grows. This is a standalone preference (profileDisplayCharacterId),
+    // independent of /team's combat-ally slot — /team is headed toward a
+    // multi-character roster later, and coupling profile display to "the"
+    // team ally wouldn't survive that. Falls back to the team ally for
+    // players who set one before this preference existed.
+    const prefRow = await prisma.user.findUnique({
+      where:  { id: target.id },
+      select: { profileDisplayCharacterId: true, teamAllyCharacterId: true },
+    });
+    const rawDisplayId = prefRow?.profileDisplayCharacterId ?? prefRow?.teamAllyCharacterId ?? null;
+    const displayCharacterId = rawDisplayId && CHARACTER_KITS[rawDisplayId] ? rawDisplayId : null;
     const displayProgress = displayCharacterId
       ? await prisma.characterProgress.findUnique({
           where: { userId_characterId: { userId: target.id, characterId: displayCharacterId } },
@@ -185,7 +194,54 @@ const command: Command = {
       .setImage("attachment://profile.webp")
       .setFooter({ text: `CARTETHYIA  ·  ${displayName}'s Profile${patronTitle}${solaceBadge}${extraBonds}`, iconURL: avatarUrl });
 
-    await interaction.editReply({ embeds: [embed], files: [attachment] });
+    // Own-profile view gets a picker to change which owned character's badge
+    // shows — independent of /team's combat-ally selection.
+    let components: ActionRowBuilder<StringSelectMenuBuilder>[] = [];
+    let ownedIds: string[] = [];
+    if (target.id === interaction.user.id) {
+      const ownedProgress = await prisma.characterProgress.findMany({
+        where:  { userId: interaction.user.id },
+        select: { characterId: true },
+      });
+      ownedIds = ownedProgress.map(p => p.characterId).filter(id => CHARACTER_KITS[id] !== undefined);
+      if (ownedIds.length > 0) {
+        const options = [
+          { label: "None — no badge", description: "Don't show any character on your profile", value: "none", emoji: "🚫" },
+          ...ownedIds.map(id => {
+            const kit = CHARACTER_KITS[id];
+            return { label: kit.label, description: `Show ${kit.label} on your profile card`, value: id, emoji: kit.emoji };
+          }),
+        ];
+        const select = new StringSelectMenuBuilder()
+          .setCustomId("profile_display_select")
+          .setPlaceholder(displayCharacterId ? `Showing: ${displayKit?.label}` : "Showing: nothing — pick a character")
+          .addOptions(options);
+        components = [new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(select)];
+      }
+    }
+
+    const msg = await interaction.editReply({ embeds: [embed], files: [attachment], components });
+
+    if (target.id === interaction.user.id && ownedIds.length > 0) {
+      const collector = msg.createMessageComponentCollector({
+        componentType: ComponentType.StringSelect,
+        filter: i => i.user.id === interaction.user.id && i.customId === "profile_display_select",
+        time: 120_000, max: 1,
+      });
+      collector.on("collect", async (sel: StringSelectMenuInteraction) => {
+        await sel.deferUpdate();
+        const choice = sel.values[0];
+        const newDisplayId = choice === "none" ? null : (ownedIds.includes(choice) ? choice : null);
+        await prisma.user.update({ where: { id: interaction.user.id }, data: { profileDisplayCharacterId: newDisplayId } });
+        await sel.followUp({
+          content: newDisplayId
+            ? `◈ **${CHARACTER_KITS[newDisplayId].label}** will now show on your profile. Run \`/profile\` again to see it.`
+            : `◈ Profile badge cleared. Run \`/profile\` again to see it.`,
+          flags: 64,
+        });
+      });
+      collector.on("end", () => { interaction.editReply({ components: [] }).catch(() => {}); });
+    }
 
     // Tutorial: viewing own profile at step 1 → advance to step 2 (fight pending)
     if (target.id === interaction.user.id && (user as any).tutorialStep === 1) {
