@@ -24,7 +24,11 @@ import "../../lib/kits";
 // Solace's Wellspring is designed as a limited-banner exclusive, so a
 // character carrying one stays off the standard pool permanently). A 4★
 // pull rolls a real character instead of a weapon this often.
-const STANDARD_CHARACTER_POOL: string[] = ["kaelith"];
+//
+// LAUNCH GATE: Kaelith is built and tested but deliberately held back —
+// he's meant to launch alongside the next new 5★ character, not before.
+// Add "kaelith" back to this array (and redeploy) when that's ready to ship.
+const STANDARD_CHARACTER_POOL: string[] = [];
 const STANDARD_CHARACTER_CHANCE = 0.30;
 
 function roll4StarOrCharacter(): { weapon: WishWeapon | null; character?: string } {
@@ -157,7 +161,7 @@ function bannerEmbed(
         name: "Rates",
         value: [
           `5★: **0.6%** base · soft pity **${SOFT_PITY}** · hard pity **${HARD_PITY}**`,
-          `4★: **5.1%** base · guaranteed every **10** pulls · **30%** of 4★ hits are a character instead of a weapon`,
+          `4★: **5.1%** base · guaranteed every **10** pulls` + (STANDARD_CHARACTER_POOL.length > 0 ? ` · **30%** of 4★ hits are a character instead of a weapon` : ""),
           `5★ 50/50: win = **your target** · lose = random 5★ · next pull guaranteed target`,
           guaranteed ? `✦ **Next 5★ is guaranteed your target**` : "",
         ].filter(Boolean).join("\n"),

@@ -625,7 +625,7 @@ export const GUIDE_SECTIONS: Record<string, GuideSection> = {
       .setTitle("🗝️  Resonance Wish — Standard Banner")
       .setDescription(
         `Spend 🗝️ **Fracture Keys** to pull weapons — and sometimes characters — from the evergreen Standard Banner.\n` +
-        `Each pull costs **1 Fracture Key**. Use \`/wish\` → **Standard** to open it. 30% of 4★ hits are **Kaelith** instead of a weapon.\n\n` +
+        `Each pull costs **1 Fracture Key**. Use \`/wish\` → **Standard** to open it.\n\n` +
         `-# Looking for Solace or Wellspring? Those are the separate Limited banners — see the **Solace** guide page.`
       )
       .addFields(
@@ -762,7 +762,8 @@ export const GUIDE_SECTIONS: Record<string, GuideSection> = {
         {
           name: "Recruiting Him",
           value: [
-            `\`/wish\` → **Standard Banner** — a 4★-tier hit has a **30% chance** to be Kaelith instead of a weapon.`,
+            `**Not yet available** — Kaelith is launching alongside a future new 5★ character. Check back soon!`,
+            `Once live: \`/wish\` → **Standard Banner** — a 4★-tier hit will have a **30% chance** to be Kaelith instead of a weapon.`,
             `A duplicate pull converts into a **Constellation Token** instead of a second copy.`,
             `Unlike Solace, he has no signature weapon — any weapon type works, no limited weapon banner tied to him.`,
           ].join("\n"),
