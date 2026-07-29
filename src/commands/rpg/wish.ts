@@ -16,6 +16,24 @@ import { getWeaponImagePath } from "../../lib/weapons";
 import { CE, getEmojiResolvable } from "../../lib/emojiManager";
 import path from "path";
 import fs from "fs";
+import { CHARACTER_KITS } from "../../lib/characterKit";
+import "../../lib/kits";
+
+// Standard-banner 4★ character pool — characters here have no signature
+// weapon (that's exactly why they're eligible: a signature weapon like
+// Solace's Wellspring is designed as a limited-banner exclusive, so a
+// character carrying one stays off the standard pool permanently). A 4★
+// pull rolls a real character instead of a weapon this often.
+const STANDARD_CHARACTER_POOL: string[] = ["kaelith"];
+const STANDARD_CHARACTER_CHANCE = 0.30;
+
+function roll4StarOrCharacter(): { weapon: WishWeapon | null; character?: string } {
+  if (STANDARD_CHARACTER_POOL.length > 0 && Math.random() < STANDARD_CHARACTER_CHANCE) {
+    const characterId = STANDARD_CHARACTER_POOL[Math.floor(Math.random() * STANDARD_CHARACTER_POOL.length)];
+    return { weapon: null, character: characterId };
+  }
+  return { weapon: roll4Star() };
+}
 
 // ── 3★ material rewards ───────────────────────────────────────────────────────
 interface MaterialDrop { forgingOres: number; tuningModules: number; credits: number; label: string; }
@@ -70,7 +88,7 @@ function roll4Star(): WishWeapon {
 
 type PullResult =
   | { tier: 5; weapon: WishWeapon; newPity: number; new4Pity: number; newGuaranteed: boolean }
-  | { tier: 4; weapon: WishWeapon; newPity: number; new4Pity: number; newGuaranteed: boolean }
+  | { tier: 4; weapon: WishWeapon | null; character?: string; newPity: number; new4Pity: number; newGuaranteed: boolean }
   | { tier: 3; mat: MaterialDrop;  newPity: number; new4Pity: number; newGuaranteed: boolean };
 
 function doSinglePull(wishPity: number, wish4Pity: number, wishGuaranteed: boolean, targetId: string | null): PullResult {
@@ -88,7 +106,7 @@ function doSinglePull(wishPity: number, wish4Pity: number, wishGuaranteed: boole
     return { tier: 5, weapon, newPity: 0, new4Pity: 0, newGuaranteed };
   }
   if (new4Pity >= HARD_PITY_4 || r < BASE_5_RATE + BASE_4_RATE) {
-    return { tier: 4, weapon: roll4Star(), newPity, new4Pity: 0, newGuaranteed };
+    return { tier: 4, ...roll4StarOrCharacter(), newPity, new4Pity: 0, newGuaranteed };
   }
   return { tier: 3, mat: rollMaterials(), newPity, new4Pity, newGuaranteed };
 }
@@ -122,7 +140,10 @@ function bannerEmbed(
         ``,
         `*Available 5★ weapons:*`,
         WISH_WEAPONS_5STAR.map(w => `◈  **${w.name}**  ·  ${w.type}`).join("\n"),
-      ].join("\n");
+        STANDARD_CHARACTER_POOL.length > 0
+          ? `\n*A 4★ hit can also be a character:*\n` + STANDARD_CHARACTER_POOL.map(id => `${CHARACTER_KITS[id].emoji}  **${CHARACTER_KITS[id].label}**`).join("\n")
+          : "",
+      ].filter(Boolean).join("\n");
 
   const e = new EmbedBuilder()
     .setColor(target ? 0xF5A623 : color)
@@ -136,7 +157,7 @@ function bannerEmbed(
         name: "Rates",
         value: [
           `5★: **0.6%** base · soft pity **${SOFT_PITY}** · hard pity **${HARD_PITY}**`,
-          `4★: **5.1%** base · guaranteed every **10** pulls`,
+          `4★: **5.1%** base · guaranteed every **10** pulls · **30%** of 4★ hits are a character instead of a weapon`,
           `5★ 50/50: win = **your target** · lose = random 5★ · next pull guaranteed target`,
           guaranteed ? `✦ **Next 5★ is guaranteed your target**` : "",
         ].filter(Boolean).join("\n"),
@@ -418,17 +439,32 @@ async function runStandardBanner(interaction: ChatInputCommandInteraction, dbUse
         const res = doSinglePull(fresh.wishPity, fresh.wish4Pity, fresh.wishGuaranteed, targetId);
         const { newPity, new4Pity, newGuaranteed } = res;
 
+        let pulledCharacterIsDupe = false;
         if (res.tier === 3) {
           await prisma.user.update({
             where: { id: interaction.user.id },
             data: { fractureKeys: { decrement: 1 }, wishPity: newPity, wish4Pity: new4Pity, wishGuaranteed: newGuaranteed,
                     forgingOres: { increment: res.mat.forgingOres }, tuningModules: { increment: res.mat.tuningModules }, credits: { increment: res.mat.credits } },
           });
+        } else if (res.tier === 4 && res.character) {
+          const existingProgress = await prisma.characterProgress.findUnique({
+            where: { userId_characterId: { userId: interaction.user.id, characterId: res.character } },
+          });
+          pulledCharacterIsDupe = existingProgress !== null;
+          await prisma.$transaction([
+            prisma.user.update({ where: { id: interaction.user.id },
+              data: { fractureKeys: { decrement: 1 }, wishPity: newPity, wish4Pity: new4Pity, wishGuaranteed: newGuaranteed } }),
+            prisma.characterProgress.upsert({
+              where:  { userId_characterId: { userId: interaction.user.id, characterId: res.character } },
+              create: { userId: interaction.user.id, characterId: res.character },
+              update: { constellationTokens: { increment: 1 } },
+            }),
+          ]);
         } else {
           await prisma.$transaction([
             prisma.user.update({ where: { id: interaction.user.id },
               data: { fractureKeys: { decrement: 1 }, wishPity: newPity, wish4Pity: new4Pity, wishGuaranteed: newGuaranteed } }),
-            prisma.weapon.create({ data: weaponCreateData(interaction.user.id, res.weapon) }),
+            prisma.weapon.create({ data: weaponCreateData(interaction.user.id, res.weapon!) }),
           ]);
         }
         auditSpend(interaction.user.id, { fractureKeys: 1 }, `wish:1pull:${res.tier}star`);
@@ -446,12 +482,25 @@ async function runStandardBanner(interaction: ChatInputCommandInteraction, dbUse
               .setFooter({ text: "CARTETHYIA  ·  Wish  ·  Keep pulling — pity carries over" })],
             files: [], components: continueRow,
           });
+        } else if (res.tier === 4 && res.character) {
+          const kit = CHARACTER_KITS[res.character];
+          const artPath = path.join(process.cwd(), kit.portraitPath);
+          const hasArt = fs.existsSync(artPath);
+          const files = hasArt ? [new AttachmentBuilder(artPath, { name: "character.png" })] : [];
+          const embed = new EmbedBuilder()
+            .setColor(RARITY_COLOR[4])
+            .setTitle(`◆  ${kit.label}!`)
+            .setDescription(`${kit.emoji} **${kit.label}**  ★★★★${pulledCharacterIsDupe ? "  *(duplicate — converted to a Constellation Token)*" : ""}`)
+            .addFields({ name: "Pity", value: `${newPity} / ${HARD_PITY}`, inline: true })
+            .setFooter({ text: "CARTETHYIA  ·  Wish" });
+          if (hasArt) embed.setImage("attachment://character.png");
+          await interaction.editReply({ embeds: [embed], files, components: continueRow });
         } else {
           const tgt      = targetId ? WISH_WEAPONS_5STAR.find(w => w.id === targetId) ?? null : null;
-          const lostCoin = res.weapon.rarity === 5 && !fresh.wishGuaranteed && tgt != null && res.weapon.id !== tgt.id;
-          const imgPath  = getWeaponImagePath(res.weapon.type, res.weapon.name);
+          const lostCoin = res.weapon!.rarity === 5 && !fresh.wishGuaranteed && tgt != null && res.weapon!.id !== tgt.id;
+          const imgPath  = getWeaponImagePath(res.weapon!.type, res.weapon!.name);
           const files    = imgPath ? [new AttachmentBuilder(imgPath, { name: "weapon.png" })] : [];
-          const embed    = resultEmbed(res.weapon, newPity, color, fresh.wishGuaranteed, lostCoin);
+          const embed    = resultEmbed(res.weapon!, newPity, color, fresh.wishGuaranteed, lostCoin);
           if (imgPath) embed.setImage("attachment://weapon.png");
           await interaction.editReply({ embeds: [embed], files, components: continueRow });
         }
@@ -473,29 +522,64 @@ async function runStandardBanner(interaction: ChatInputCommandInteraction, dbUse
       for (const r of results) if (r.tier === 3) {
         matTotals.forgingOres += r.mat.forgingOres; matTotals.tuningModules += r.mat.tuningModules; matTotals.credits += r.mat.credits;
       }
-      const weaponResults = results.filter((r): r is Extract<PullResult, { tier: 4|5 }> => r.tier >= 4);
-      const star3count    = results.filter(r => r.tier === 3).length;
+      const weaponResults = results.filter(r => r.tier === 5 || (r.tier === 4 && r.weapon != null)) as
+        (Extract<PullResult, { tier: 5 }> | (Extract<PullResult, { tier: 4 }> & { weapon: WishWeapon }))[];
+      const characterResults = results.filter(r => r.tier === 4 && r.character != null) as
+        (Extract<PullResult, { tier: 4 }> & { character: string })[];
+      const star3count       = results.filter(r => r.tier === 3).length;
+
+      // Standard-banner character hits are rare (one 4★ roll in ~3.3), but a
+      // ×10 batch could still pull the same character twice — track
+      // ownership across the batch the same way the Solace banner does, so
+      // the SECOND hit in one pull correctly converts to a token instead of
+      // silently no-oping on the upsert.
+      const existingOwnership = await prisma.characterProgress.findMany({
+        where:  { userId: interaction.user.id, characterId: { in: [...new Set(characterResults.map(r => r.character))] } },
+        select: { characterId: true },
+      });
+      const ownedSet = new Set(existingOwnership.map(p => p.characterId));
+      const characterDupes = new Map<string, boolean>(); // per-result dupe flag, keyed by result index via closure below
+      const characterCounts = new Map<string, number>(); // total copies pulled this batch, per character
+      for (const r of characterResults) {
+        const isDupe = ownedSet.has(r.character);
+        characterDupes.set(`${results.indexOf(r)}`, isDupe);
+        ownedSet.add(r.character); // first copy this batch flips it owned for any later duplicate in the same batch
+        characterCounts.set(r.character, (characterCounts.get(r.character) ?? 0) + 1);
+      }
 
       await prisma.$transaction([
         prisma.user.update({ where: { id: interaction.user.id },
           data: { fractureKeys: { decrement: 10 }, wishPity: pity, wish4Pity: p4, wishGuaranteed: guar,
                   forgingOres: { increment: matTotals.forgingOres }, tuningModules: { increment: matTotals.tuningModules }, credits: { increment: matTotals.credits } } }),
-        ...weaponResults.map(r => prisma.weapon.create({ data: weaponCreateData(interaction.user.id, r.weapon) })),
+        ...weaponResults.map(r => prisma.weapon.create({ data: weaponCreateData(interaction.user.id, r.weapon!) })),
+        ...[...characterCounts.entries()].map(([characterId, count]) => {
+          const wasOwnedBeforeBatch = existingOwnership.some(p => p.characterId === characterId);
+          const dupeCountThisBatch = wasOwnedBeforeBatch ? count : count - 1; // first-ever copy grants ownership, not a token
+          return prisma.characterProgress.upsert({
+            where:  { userId_characterId: { userId: interaction.user.id, characterId } },
+            create: { userId: interaction.user.id, characterId, constellationTokens: dupeCountThisBatch },
+            update: { constellationTokens: { increment: dupeCountThisBatch } },
+          });
+        }),
       ]);
-      auditSpend(interaction.user.id, { fractureKeys: 10 }, `wish:10pull:${weaponResults.length}weapons`);
+      auditSpend(interaction.user.id, { fractureKeys: 10 }, `wish:10pull:${weaponResults.length}weapons:${characterResults.length}chars`);
 
       const has5 = results.some(r => r.tier === 5), has4 = results.some(r => r.tier === 4);
       await runSuspense(interaction, has5 ? 5 : has4 ? 4 : 3);
 
       const star5s    = results.filter(r => r.tier === 5) as Extract<PullResult, { tier:5 }>[];
       const star4s    = results.filter(r => r.tier === 4) as Extract<PullResult, { tier:4 }>[];
-      const highlight = star5s[0] ?? star4s[0];
+      const highlight: (Extract<PullResult, { tier: 5 }> | Extract<PullResult, { tier: 4 }>) | undefined = star5s[0] ?? star4s[0];
 
-      const lines = results.map(r =>
-        r.tier === 3
-          ? `◇  *${r.mat.label}*`
-          : `${RARITY_LABEL[r.tier]}  **${r.weapon.name}**  ${"★".repeat(r.tier)}  ·  ${r.weapon.type}`
-      );
+      const lines = results.map((r, idx) => {
+        if (r.tier === 3) return `◇  *${r.mat.label}*`;
+        if (r.tier === 4 && r.character) {
+          const kit = CHARACTER_KITS[r.character];
+          const isDupe = characterDupes.get(`${idx}`) ?? false;
+          return `◆  ${kit.emoji} **${kit.label}**  ★★★★${isDupe ? "  *(dupe → token)*" : ""}`;
+        }
+        return `${RARITY_LABEL[r.tier]}  **${r.weapon!.name}**  ${"★".repeat(r.tier)}  ·  ${r.weapon!.type}`;
+      });
 
       const summaryEmbed = new EmbedBuilder()
         .setColor(star5s.length ? RARITY_COLOR[5] : star4s.length ? RARITY_COLOR[4] : 0x4A4A5A)
@@ -508,9 +592,13 @@ async function runStandardBanner(interaction: ChatInputCommandInteraction, dbUse
         )
         .setFooter({ text: "CARTETHYIA  ·  Wish  ·  All weapons added to arsenal  ·  /equip to swap" });
 
-      const hlImg = highlight ? getWeaponImagePath(highlight.weapon.type, highlight.weapon.name) : null;
-      const files = hlImg ? [new AttachmentBuilder(hlImg, { name: "weapon.png" })] : [];
-      if (hlImg) summaryEmbed.setImage("attachment://weapon.png");
+      const highlightCharacterId: string | null = (highlight as any)?.character ?? null;
+      const highlightIsCharacter = highlightCharacterId !== null;
+      const hlImg = highlightCharacterId
+        ? (fs.existsSync(path.join(process.cwd(), CHARACTER_KITS[highlightCharacterId].portraitPath)) ? path.join(process.cwd(), CHARACTER_KITS[highlightCharacterId].portraitPath) : null)
+        : (highlight ? getWeaponImagePath(highlight.weapon!.type, highlight.weapon!.name) : null);
+      const files = hlImg ? [new AttachmentBuilder(hlImg, { name: highlightIsCharacter ? "character.png" : "weapon.png" })] : [];
+      if (hlImg) summaryEmbed.setImage(highlightIsCharacter ? "attachment://character.png" : "attachment://weapon.png");
       await interaction.editReply({ embeds: [summaryEmbed], files, components: [targetRow, buildPullRow(fresh.fractureKeys - 10)] });
     });
 
@@ -857,7 +945,7 @@ async function runWeaponBanner(interaction: ChatInputCommandInteraction, dbUser:
         data: { radiantKeys: { decrement: spend.radiantKeysToSpend }, fractonite: { decrement: spend.fractoniteToSpend },
                 limitedWeaponBannerPity: pity, limitedWeaponBanner4Pity: p4, limitedWeaponBannerGuaranteed: guar,
                 forgingOres: { increment: matTotals.forgingOres }, tuningModules: { increment: matTotals.tuningModules }, credits: { increment: matTotals.credits } } }),
-      ...weaponResults.map(r => prisma.weapon.create({ data: weaponCreateData(interaction.user.id, r.weapon) })),
+      ...weaponResults.map(r => prisma.weapon.create({ data: weaponCreateData(interaction.user.id, r.weapon!) })),
     ]);
     auditSpend(interaction.user.id, { radiantKeys: spend.radiantKeysToSpend, fractonite: spend.fractoniteToSpend }, `wish:wellspring:${amount}pull:${weaponResults.length}weapons`);
 
@@ -872,7 +960,7 @@ async function runWeaponBanner(interaction: ChatInputCommandInteraction, dbUser:
     const lines = results.map(r =>
       r.tier === 3
         ? `◇  *${r.mat.label}*`
-        : `${RARITY_LABEL[r.tier]}  **${r.weapon.name}**  ${"★".repeat(r.tier)}  ·  ${r.weapon.type}`
+        : `${RARITY_LABEL[r.tier]}  **${r.weapon!.name}**  ${"★".repeat(r.tier)}  ·  ${r.weapon!.type}`
     );
 
     const star5s = results.filter(r => r.tier === 5) as Extract<PullResult, { tier: 5 }>[];
