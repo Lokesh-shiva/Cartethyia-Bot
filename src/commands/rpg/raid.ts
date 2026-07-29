@@ -59,6 +59,12 @@ import { AllyActionTarget } from "../../lib/allyActions";
 import { addConcertoEnergy } from "../../lib/concertoEnergy";
 import { DebuffState, applyDebuff, tickDebuffs, getWeakenedMult, cleanseDebuffs } from "../../lib/debuffs";
 import { getOrCreateCharacterProgress } from "../../lib/characterProgress";
+import { CHARACTER_KITS, PlayableCharacterKit } from "../../lib/characterKit";
+import {
+  kaelithStackCap, kaelithBasicStackGain, kaelithUltimateBaseMult, KAELITH_PER_STACK_ULT_BONUS,
+  KAELITH_FORTE_CONFIG, KAELITH_FORTE_GAIN_PER_BASIC, KaelithMechanicState,
+} from "../../lib/kits/kaelithKit";
+import "../../lib/kits";
 
 // ── Unified boss handle (works for both World bosses and Field bosses) ─────────
 interface RaidBossConfig {
@@ -248,7 +254,7 @@ interface RaidParticipant {
   nextCritArmed:         boolean;
   // ── Milestone 3d: per-participant team state (dev guild only) ────────────────
   hasSolace:      boolean;
-  allySolaceStats: (ResolvedStats & { hasWellspring: boolean; wellspringRefinement: number }) | null; // Milestone 3.5b: her own resolved stats
+  allySolaceStats: (ResolvedStats & { hasWellspring?: boolean; wellspringRefinement?: number }) | null; // each participant's own resolved stats
   solaceBasicLevel: number;
   solaceSkillLevel: number;
   solaceUltimateLevel: number;
@@ -264,6 +270,9 @@ interface RaidParticipant {
   attunementDoubleTurnsLeft: number;
   solaceForte:    ForteState;
   forteEmpoweredTurnsLeft:   number;
+  activeAllyCharacterId: string | null;
+  allyKit: PlayableCharacterKit | null;
+  allyMechanicState: unknown;
 }
 
 interface ActiveRaid {
@@ -325,13 +334,15 @@ function raidTeamStatusLine(raid: ActiveRaid): string {
   if (withSolace.length === 0) return "";
 
   const lines = withSolace.map(p => {
+    const label = p.allyKit?.label ?? "Ally";
+    const kitLine = p.allyKit ? `  ·  ${p.allyKit.statusLineText(p.allyMechanicState)}` : "";
     if (p.activeUnit === "ally") {
       const debuffTag = p.playerDebuffs.length > 0
         ? `  ·  ${p.playerDebuffs.map(d => `${d.type} (${d.turnsLeft})`).join(", ")}`
         : "";
-      return `🔄 **${p.name}** → *${SOLACE.name}* — ${p.allyHp}/${p.allyHpMax} HP  ·  Concerto Energy: **${p.concertoEnergy}/100**${debuffTag}`;
+      return `🔄 **${p.name}** → *${label}* — ${p.allyHp}/${p.allyHpMax} HP  ·  Concerto Energy: **${p.concertoEnergy}/100**${kitLine}${debuffTag}`;
     }
-    return `◇ **${p.name}** — *${SOLACE.name}* benched  ·  Concerto Energy: **${p.concertoEnergy}/100**`;
+    return `◇ **${p.name}** — *${label}* benched  ·  Concerto Energy: **${p.concertoEnergy}/100**${kitLine}`;
   });
 
   return `\n\n${lines.join("\n")}`;
@@ -375,7 +386,19 @@ function raidEmbed(raid: ActiveRaid, boss: RaidBossConfig, lastAction: string): 
 function buildRaidButtons(p: RaidParticipant, isDevGuild: boolean): ActionRowBuilder<ButtonBuilder>[] {
   const rows: ActionRowBuilder<ButtonBuilder>[] = [];
 
-  if (isDevGuild && p.hasSolace && p.activeUnit === "ally") {
+  if (isDevGuild && p.hasSolace && p.activeUnit === "ally" && p.activeAllyCharacterId === "kaelith") {
+    const skillReady = p.skillCd === 0;
+    rows.push(new ActionRowBuilder<ButtonBuilder>().addComponents(
+      new ButtonBuilder().setCustomId("raid_basic").setLabel("⚔️  Basic Attack").setStyle(ButtonStyle.Primary),
+      new ButtonBuilder().setCustomId("raid_skill")
+        .setLabel(skillReady ? "🌑  Umbral Detonation" : `🌑  Detonation (${p.skillCd}🔄)`)
+        .setStyle(ButtonStyle.Secondary).setDisabled(!skillReady),
+      new ButtonBuilder().setCustomId("raid_ultimate").setLabel("🌑  Umbral Cataclysm")
+        .setStyle(ButtonStyle.Success).setDisabled(p.concertoEnergy < 100),
+      new ButtonBuilder().setCustomId("raid_retreat")
+        .setLabel("↩  Retreat").setStyle(ButtonStyle.Danger),
+    ));
+  } else if (isDevGuild && p.hasSolace && p.activeUnit === "ally") {
     const modeLabel = p.attunement.mode ? `(${p.attunement.mode})` : "(inactive)";
     rows.push(new ActionRowBuilder<ButtonBuilder>().addComponents(
       new ButtonBuilder().setCustomId("raid_basic").setLabel("⚔️  Chime Strike").setStyle(ButtonStyle.Primary),
@@ -413,7 +436,7 @@ function buildRaidButtons(p: RaidParticipant, isDevGuild: boolean): ActionRowBui
     const swapDisabled = p.activeUnit === "player" && p.allyHp <= 0;
     rows.push(new ActionRowBuilder<ButtonBuilder>().addComponents(
       new ButtonBuilder().setCustomId("raid_swap")
-        .setLabel(p.activeUnit === "player" ? `🔄  Swap to ${SOLACE.name}` : `🔄  Swap to ${p.name}`)
+        .setLabel(p.activeUnit === "player" ? `🔄  Swap to ${p.allyKit?.label ?? "Ally"}` : `🔄  Swap to ${p.name}`)
         .setStyle(ButtonStyle.Secondary).setDisabled(swapDisabled),
     ));
   }
@@ -448,7 +471,10 @@ function partyWideTeamBonuses(raid: ActiveRaid): {
   let critBonus = 0;
   let defMult   = 1;
   for (const ally of raid.participants) {
-    if (ally.activeUnit !== "ally" || ally.isDefeated) continue;
+    // Only Solace's kit contributes party-wide Attunement/Wellspring/Forte-ATK
+    // standing bonuses — Kaelith's Forte payoff ("keeps stacks") isn't a stat
+    // buff, so his active-ally participants simply contribute nothing here.
+    if (ally.activeUnit !== "ally" || ally.isDefeated || ally.activeAllyCharacterId !== "solace") continue;
     const attuneAtkBonus = solaceAttunementAtkCritBonus(ally.solaceSkillLevel);
     const attuneDefBonus = solaceAttunementDefBonus(ally.solaceSkillLevel);
     const doubled = ally.attunementDoubleTurnsLeft > 0;
@@ -666,12 +692,16 @@ async function addParticipant(raid: ActiveRaid, userId: string, displayName: str
   // — that helper CREATES a row if missing, which would silently re-grant
   // Solace ownership to anyone whose teamAllyCharacterId flag is "solace"
   // but doesn't actually own her, bypassing the gacha entirely.
-  const solaceProgress = db.teamAllyCharacterId === "solace"
-    ? await prisma.characterProgress.findUnique({ where: { userId_characterId: { userId, characterId: "solace" } } })
+  const activeAllyCharacterId: string | null =
+    db.teamAllyCharacterId && CHARACTER_KITS[db.teamAllyCharacterId] ? db.teamAllyCharacterId : null;
+  const solaceProgress = activeAllyCharacterId
+    ? await prisma.characterProgress.findUnique({ where: { userId_characterId: { userId, characterId: activeAllyCharacterId } } })
     : null;
   const hasSolaceGate = solaceProgress !== null;
-  // Milestone 3.5b: this participant's own Solace's resolved stats.
-  const allySolaceStats = hasSolaceGate ? await resolveSolaceStats(userId) : null;
+  const allyKit: PlayableCharacterKit | null = activeAllyCharacterId ? CHARACTER_KITS[activeAllyCharacterId] : null;
+  // This participant's own ally's resolved stats.
+  const allySolaceStatsRaw = hasSolaceGate && allyKit ? await allyKit.resolveStats(userId) : null;
+  const allySolaceStats = allySolaceStatsRaw as (typeof allySolaceStatsRaw & { hasWellspring?: boolean; wellspringRefinement?: number });
 
   raid.participants.push({
     userId, name: displayName, element: db.element, worldLevel: db.worldLevel,
@@ -695,13 +725,14 @@ async function addParticipant(raid: ActiveRaid, userId: string, displayName: str
     solaceForteLevel:    solaceProgress?.forteLevel    ?? 1,
     solaceConstellation: solaceProgress?.constellation ?? 0,
     activeUnit: "player",
-    allyHp: SOLACE.hpMax, allyHpMax: SOLACE.hpMax,
+    allyHp: allyKit ? allyKit.statsAtLevel(90).hpMax : 0, allyHpMax: allyKit ? allyKit.statsAtLevel(90).hpMax : 0,
     concertoEnergy: 0,
     playerDebuffs: [],
     attunement: { mode: null },
     attunementDoubleTurnsLeft: 0,
     solaceForte: resetForte(),
     forteEmpoweredTurnsLeft: 0,
+    activeAllyCharacterId, allyKit, allyMechanicState: allyKit ? allyKit.createInitialMechanicState() : null,
   });
   return true;
 }
@@ -1042,7 +1073,7 @@ async function launchRaid(
       // shared tail below (AoE counter-attack / decrements / next-turn send),
       // same as every other action. Ported from boss.ts's Milestone 3b Task 2
       // swap handler, adapted to per-participant team state.
-      if (btn.customId === "raid_swap" && raid.isDevGuild && current.hasSolace && !(current.activeUnit === "player" && current.allyHp <= 0)) {
+      if (btn.customId === "raid_swap" && raid.isDevGuild && current.hasSolace && current.allyKit && !(current.activeUnit === "player" && current.allyHp <= 0)) {
         const outgoingIsPlayer = current.activeUnit === "player";
         const comboReady = current.concertoEnergy >= 100;
 
@@ -1051,10 +1082,25 @@ async function launchRaid(
             ? { hp: current.allyHp, hpMax: current.allyHpMax }
             : { hp: current.hp, hpMax: current.hpMax };
 
-          const outroEffect = outgoingIsPlayer ? PLAYER_SELF_OUTRO : solaceOutroEffect(current.solaceConstellation);
-          const introEffect: IntroOutroEffect = outgoingIsPlayer ? solaceIntroEffect(current.solaceIntroLevel, current.solaceConstellation) : PLAYER_SELF_INTRO;
+          const outroEffect = outgoingIsPlayer ? PLAYER_SELF_OUTRO : current.allyKit.outroEffect(current.solaceConstellation);
+          const introEffect: IntroOutroEffect = outgoingIsPlayer ? current.allyKit.introEffect(current.solaceIntroLevel, current.solaceConstellation) : PLAYER_SELF_INTRO;
           const outroResult = resolveIntroOutroEffect(outroEffect, incomingTarget);
           const introResult = resolveIntroOutroEffect(introEffect, incomingTarget);
+
+          if (!outgoingIsPlayer && introEffect.newMechanicState && current.activeAllyCharacterId === "kaelith") {
+            const grant = (introEffect.newMechanicState as any).grantStacksOnIntro as number | undefined;
+            if (grant) {
+              const cur = (current.allyMechanicState as KaelithMechanicState).stacks;
+              const cap = kaelithStackCap(current.solaceConstellation);
+              current.allyMechanicState = { ...(current.allyMechanicState as KaelithMechanicState), stacks: Math.min(cap, cur + grant) };
+            }
+          }
+          if (!outgoingIsPlayer && outroEffect.enemyDebuff) {
+            // Raid's boss is one shared target — the debuff lands on the
+            // raid-wide boss fields, not a per-participant one.
+            raid.bossDefShredTurnsLeft = outroEffect.enemyDebuff.turns + 1;
+            raid.bossDefShredPct = outroEffect.enemyDebuff.value;
+          }
 
           if (!outgoingIsPlayer) current.nextCritArmed = true;
 
@@ -1072,11 +1118,11 @@ async function launchRaid(
           }
 
           moveLine = actualGain > 0
-            ? `🔄 ${current.name} swapped to **${outgoingIsPlayer ? SOLACE.name : current.name}** — Outro+Intro combo! +${actualGain} HP.`
-            : `🔄 ${current.name} swapped to **${outgoingIsPlayer ? SOLACE.name : current.name}** — Outro+Intro combo! (already at full HP, no heal needed)`;
+            ? `🔄 ${current.name} swapped to **${outgoingIsPlayer ? current.allyKit.label : current.name}** — Outro+Intro combo! +${actualGain} HP.`
+            : `🔄 ${current.name} swapped to **${outgoingIsPlayer ? current.allyKit.label : current.name}** — Outro+Intro combo! (already at full HP, no heal needed)`;
           current.concertoEnergy = addConcertoEnergy(0, 20); // headstart, matches CONCERTO_INTRO_HEADSTART in boss.ts
         } else {
-          moveLine = `🔄 ${current.name} swapped to **${outgoingIsPlayer ? SOLACE.name : current.name}** — Concerto Energy not full, no combo triggered.`;
+          moveLine = `🔄 ${current.name} swapped to **${outgoingIsPlayer ? current.allyKit.label : current.name}** — Concerto Energy not full, no combo triggered.`;
         }
 
         current.activeUnit = outgoingIsPlayer ? "ally" : "player";
@@ -1100,12 +1146,14 @@ async function launchRaid(
         // Solace's own Basic ("Chime Strike") uses her own level-scaled
         // multiplier instead of the player's plain Basic — and gets Wellspring's
         // base +18% ATK on top, same as boss.ts's single-owner case.
-        const isSolaceActing = raid.isDevGuild && current.activeUnit === "ally";
-        const basicMoveMult = isSolaceActing ? solaceBasicDamageMult(current.solaceBasicLevel) : 1.0;
-        const wellspringSelfAtkMult = isSolaceActing && current.allySolaceStats?.hasWellspring ? getWellspringBaseAtkMult(current.allySolaceStats.wellspringRefinement) : 1;
+        const isAllyActing = raid.isDevGuild && current.activeUnit === "ally";
+        const isSolaceActing = isAllyActing && current.activeAllyCharacterId === "solace";
+        const isKaelithActing = isAllyActing && current.activeAllyCharacterId === "kaelith";
+        const basicMoveMult = isAllyActing && current.allyKit ? current.allyKit.basicDamageMult(current.solaceBasicLevel) : 1.0;
+        const wellspringSelfAtkMult = isSolaceActing && current.allySolaceStats?.hasWellspring ? getWellspringBaseAtkMult(current.allySolaceStats.wellspringRefinement!) : 1;
         const teamMult = weakenedMult * party.atkMult * wellspringSelfAtkMult * basicMoveMult;
-        // Forte fills only from Solace's own Chime Strike — announce only on
-        // the turn a threshold is actually crossed (mirrors boss.ts).
+        // Forte fills only from the active ally's own Basic Attack — announce
+        // only on the turn a threshold is actually crossed (mirrors boss.ts).
         if (isSolaceActing) {
           const forteBefore = current.solaceForte;
           current.solaceForte = addForteCharge(current.solaceForte, SOLACE_FORTE_CONFIG, SOLACE_FORTE_GAIN_PER_BASIC);
@@ -1115,6 +1163,18 @@ async function launchRaid(
             forteAnnounce = `\n✨ Forte is **FULLY CHARGED** — next Convergence will be Empowered!`;
           } else if (isHalf && !wasHalf) {
             forteAnnounce = `\n✨ Forte is **HALF CHARGED**.`;
+          }
+        } else if (isKaelithActing) {
+          const kState = current.allyMechanicState as KaelithMechanicState;
+          const gain = kaelithBasicStackGain(current.solaceConstellation);
+          const cap = kaelithStackCap(current.solaceConstellation);
+          current.allyMechanicState = { ...kState, stacks: Math.min(cap, kState.stacks + gain) };
+          forteAnnounce = `\n🌑 +${gain} stack${gain === 1 ? "" : "s"} (${(current.allyMechanicState as KaelithMechanicState).stacks}/${cap})`;
+
+          const forteBefore = current.solaceForte;
+          current.solaceForte = addForteCharge(current.solaceForte, KAELITH_FORTE_CONFIG, KAELITH_FORTE_GAIN_PER_BASIC);
+          if (isForteMaxed(current.solaceForte, KAELITH_FORTE_CONFIG) && !isForteMaxed(forteBefore, KAELITH_FORTE_CONFIG)) {
+            forteAnnounce += `\n✨ Forte is **FULLY CHARGED** — next Umbral Cataclysm will keep your stacks!`;
           }
         }
         const r    = calcPlayerDamage(activeAtk * smolderMult * havocAtkMult * teamMult, defVal, forcedCrit ? 1 : Math.min(1, aCrit + party.critBonus), activeCritDmg, 1.0, isWeak, raid.isShattered);
@@ -1137,7 +1197,7 @@ async function launchRaid(
         current.energy = Math.min(100, current.energy + ENERGY_PER_TURN + Math.floor(current.bonuses.spdFlat / 20) + elemDischargeEnergy(current.bonuses.elementPassive, r.isCrit) + thunderboltEnergy);
         if (mySetId === "STORMCALLERS_OATH") stormcallersOathCheckThunderbolt(current.namedState, current.energy);
 
-      } else if (raid.isDevGuild && current.activeUnit === "ally" && btn.customId === "raid_skill") {
+      } else if (raid.isDevGuild && current.activeUnit === "ally" && current.activeAllyCharacterId === "solace" && btn.customId === "raid_skill") {
         // Solace's Skill is Attunement — a mode cycle, not a damage move.
         // The ORIGINAL player Skill logic below is untouched and only runs
         // when this branch's condition is false.
@@ -1150,6 +1210,26 @@ async function launchRaid(
         const base = Math.floor(r.damage * (1 + current.elemDmg + extraElemBonus) * radiantDmgMult);
         damage = base; isCrit = r.isCrit; vibFrac = 0.3;
         moveLine = `${current.name} — ✦ Attunement — now in **${current.attunement.mode}** mode!`;
+
+      } else if (raid.isDevGuild && current.activeUnit === "ally" && current.activeAllyCharacterId === "kaelith" && current.allyKit && btn.customId === "raid_skill") {
+        const kState = current.allyMechanicState as KaelithMechanicState;
+        if (kState.stacks <= 0) {
+          moveLine = `${current.name} — 🌑 Umbral Detonation — no stacks to consume! (0 DMG bonus)`;
+          damage = 0;
+        } else {
+          const crit = forcedCritActive || Math.random() < aCrit;
+          const result = current.allyKit.onSkill(
+            { playerHp: current.hp, playerHpMax: current.hpMax, allyHp: current.allyHp, allyHpMax: current.allyHpMax, turn: raid.turn, isShattered: raid.isShattered, mechanicState: kState },
+            { basicLevel: current.solaceBasicLevel, skillLevel: current.solaceSkillLevel, ultimateLevel: current.solaceUltimateLevel, introLevel: current.solaceIntroLevel, forteLevel: current.solaceForteLevel },
+            current.solaceConstellation,
+          );
+          current.allyMechanicState = result.newMechanicState;
+          const r = calcPlayerDamage(activeAtk * havocAtkMult, defVal, crit ? 1 : 0, activeCritDmg, result.damageMult, isWeak, raid.isShattered);
+          const base = Math.floor(r.damage * (1 + current.elemDmg + extraElemBonus) * radiantDmgMult);
+          damage = base; isCrit = r.isCrit; vibFrac = result.vibFrac;
+          moveLine = `${current.name} — 🌑 ${result.moveLabel}${crit ? " **(CRIT)**" : ""}`;
+        }
+        current.skillCd = current.allyKit.skillCooldownTurns;
 
       } else if (btn.customId === "raid_skill") {
         const smolderMult = mySetId === "SMOLDERING_SOVEREIGN" ? smolderingSovereignOnAction(current.namedState) : 1;
@@ -1188,7 +1268,7 @@ async function launchRaid(
           current.stormBuffTurnsLeft = surge.turnsLeft + 1;
           current.stormBuffCritBonus = surge.critRateBonus;
         }
-      } else if (raid.isDevGuild && current.activeUnit === "ally" && btn.customId === "raid_ultimate") {
+      } else if (raid.isDevGuild && current.activeUnit === "ally" && current.activeAllyCharacterId === "solace" && btn.customId === "raid_ultimate") {
         // Solace's Ultimate (Convergence) spends Concerto Energy, not personal
         // Energy, and heals the WHOLE living party (not just the caster) —
         // this is the one place /raid genuinely diverges from boss.ts's
@@ -1215,7 +1295,7 @@ async function launchRaid(
           p.playerDebuffs = cleanseDebuffs(p.playerDebuffs, bodyResult.cleanseCount);
 
           if (actualBody > 0 || actualAlly > 0) {
-            healLines.push(`${p.name} +${actualBody} HP${p.hasSolace ? `, ${SOLACE.name} +${actualAlly} HP` : ""}`);
+            healLines.push(`${p.name} +${actualBody} HP${p.hasSolace ? `, ${p.allyKit?.label ?? "Solace"} +${actualAlly} HP` : ""}`);
           }
         }
 
@@ -1237,6 +1317,31 @@ async function launchRaid(
           moveLine = `${current.name} — ⚡ **Convergence!** Team healed (${healSummary}), debuffs cleansed, ` +
             `**${current.attunement.mode ?? "no"} mode doubled for ${solaceUltimateDoubleTurns(current.solaceConstellation)} turns!**`;
         }
+      } else if (raid.isDevGuild && current.activeUnit === "ally" && current.activeAllyCharacterId === "kaelith" && current.allyKit && btn.customId === "raid_ultimate") {
+        const kState = current.allyMechanicState as KaelithMechanicState;
+        const stacksConsumed = kState.stacks;
+
+        const ultDamageMult = current.solaceConstellation >= 6
+          ? stacksConsumed * (KAELITH_PER_STACK_ULT_BONUS * 1.6)
+          : kaelithUltimateBaseMult(current.solaceUltimateLevel) + stacksConsumed * KAELITH_PER_STACK_ULT_BONUS;
+
+        const result = current.allyKit.onUltimate(
+          { playerHp: current.hp, playerHpMax: current.hpMax, allyHp: current.allyHp, allyHpMax: current.allyHpMax, turn: raid.turn, isShattered: raid.isShattered, mechanicState: kState },
+          { basicLevel: current.solaceBasicLevel, skillLevel: current.solaceSkillLevel, ultimateLevel: current.solaceUltimateLevel, introLevel: current.solaceIntroLevel, forteLevel: current.solaceForteLevel },
+          current.solaceConstellation,
+        );
+        current.allyMechanicState = result.newMechanicState;
+
+        const r = calcPlayerDamage(activeAtk * havocAtkMult * ultDamageMult, defVal, 1.0, activeCritDmg, 1.0, isWeak, raid.isShattered);
+        const base = Math.floor(r.damage * (1 + current.elemDmg + extraElemBonus) * radiantDmgMult);
+        damage = base; isCrit = true; moveType = "ULT"; vibFrac = 0.8;
+        moveLine = `${current.name} — 🌑 ${result.moveLabel}`;
+
+        if (result.healResult.actions.length > 0) {
+          const healResult = resolveIntroOutroEffect(result.healResult, { hp: current.allyHp, hpMax: current.allyHpMax });
+          current.allyHp = Math.min(current.allyHpMax, current.allyHp + healResult.hpDelta);
+        }
+        if (result.resetsConcertoEnergy) { current.concertoEnergy = 0; convergenceUsedThisTurn = true; }
       } else if (btn.customId === "raid_echoskill" && current.bonuses.echoSkill) {
         const def = current.bonuses.echoSkill;
         const echoCrit = forcedCritActive || def.kind === "GUARANTEED_CRIT" || Math.random() < aCrit;
@@ -1459,10 +1564,10 @@ async function launchRaid(
             if (p.allyHp <= 0) {
               p.allyHp = 0;
               p.activeUnit = "player";
-              dmgLines.push(`${p.name}'s ${SOLACE.name} -${bossDmg} — swapped back!`);
+              dmgLines.push(`${p.name}'s ${p.allyKit?.label ?? "ally"} -${bossDmg} — swapped back!`);
             } else {
               const suffix = shield.blocked ? " 🛡" : radRegen > 0 ? ` +${radRegen}✨` : "";
-              dmgLines.push(`${p.name}'s ${SOLACE.name} -${bossDmg}${suffix}`);
+              dmgLines.push(`${p.name}'s ${p.allyKit?.label ?? "ally"} -${bossDmg}${suffix}`);
             }
           } else if (p.hp <= 0) {
             if (compositeHasSecondWind(p.bonuses.abilityEffects) && !p.secondWindUsed) {
