@@ -15,6 +15,8 @@ import prisma from "../../lib/prisma";
 import { CHARACTER_KITS } from "../../lib/characterKit";
 import { ELEMENT_COLORS } from "../../lib/echoes";
 import "../../lib/kits";
+import path from "path";
+import fs from "fs";
 
 const command: Command = {
   data: new SlashCommandBuilder()
@@ -135,11 +137,20 @@ const command: Command = {
         })
       : null;
     const displayKit = displayCharacterId ? CHARACTER_KITS[displayCharacterId] : null;
+    // Prefer a dedicated "<Name>_icon.png" crop for the small badge tile —
+    // falls back to the full portrait (cover-fit clipped into the tile
+    // already) if no icon variant has been drawn yet for this character.
+    const displayIconPath = (() => {
+      if (!displayKit) return null;
+      const ext = path.extname(displayKit.portraitPath);
+      const iconCandidate = displayKit.portraitPath.slice(0, -ext.length) + "_icon" + ext;
+      return fs.existsSync(path.join(process.cwd(), iconCandidate)) ? iconCandidate : displayKit.portraitPath;
+    })();
     const displayCharacter = displayProgress && displayKit
       ? {
           label: displayKit.label,
           level: displayProgress.level,
-          portraitPath: displayKit.portraitPath,
+          portraitPath: displayIconPath!,
           color: "#" + ELEMENT_COLORS[displayKit.element as keyof typeof ELEMENT_COLORS].toString(16).padStart(6, "0"),
         }
       : null;
