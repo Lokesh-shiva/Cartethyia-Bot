@@ -53,6 +53,12 @@ import { AllyActionTarget } from "../../lib/allyActions";
 import { addConcertoEnergy } from "../../lib/concertoEnergy";
 import { DebuffState, applyDebuff, tickDebuffs, getWeakenedMult, cleanseDebuffs } from "../../lib/debuffs";
 import { getOrCreateCharacterProgress } from "../../lib/characterProgress";
+import { CHARACTER_KITS, PlayableCharacterKit } from "../../lib/characterKit";
+import {
+  kaelithStackCap, kaelithBasicStackGain, kaelithUltimateBaseMult, KAELITH_PER_STACK_ULT_BONUS,
+  KAELITH_FORTE_CONFIG, KAELITH_FORTE_GAIN_PER_BASIC, KaelithMechanicState,
+} from "../../lib/kits/kaelithKit";
+import "../../lib/kits";
 
 const SKILL_CD     = 3;
 const ECHO_SKILL_COOLDOWN = 4;
@@ -291,19 +297,23 @@ async function runDungeon(
   // — that helper CREATES a row if missing, which would silently re-grant
   // Solace ownership to anyone whose teamAllyCharacterId flag is "solace"
   // but doesn't actually own her, bypassing the gacha entirely.
-  const solaceProgress = teamRow?.teamAllyCharacterId === "solace"
-    ? await prisma.characterProgress.findUnique({ where: { userId_characterId: { userId: interaction.user.id, characterId: "solace" } } })
+  const activeAllyCharacterId: string | null =
+    teamRow?.teamAllyCharacterId && CHARACTER_KITS[teamRow.teamAllyCharacterId] ? teamRow.teamAllyCharacterId : null;
+  const allyProgress = activeAllyCharacterId
+    ? await prisma.characterProgress.findUnique({ where: { userId_characterId: { userId: interaction.user.id, characterId: activeAllyCharacterId } } })
     : null;
-  const hasSolace = solaceProgress !== null;
+  const hasSolace = allyProgress !== null;
   const isDevGuild = hasSolace;
-  // Milestone 3.5b: her own resolved stats (her base + HER OWN echoes/weapon).
-  const allySolaceStats: (ResolvedStats & { hasWellspring: boolean; wellspringRefinement: number }) | null = hasSolace ? await resolveSolaceStats(interaction.user.id) : null;
-  const solaceBasicLevel    = solaceProgress?.basicLevel    ?? 1;
-  const solaceSkillLevel    = solaceProgress?.skillLevel    ?? 1;
-  const solaceUltimateLevel = solaceProgress?.ultimateLevel ?? 1;
-  const solaceIntroLevel    = solaceProgress?.introLevel    ?? 1;
-  const solaceForteLevel    = solaceProgress?.forteLevel    ?? 1;
-  const solaceConstellation = solaceProgress?.constellation ?? 0;
+  const allyKit: PlayableCharacterKit | null = activeAllyCharacterId ? CHARACTER_KITS[activeAllyCharacterId] : null;
+  // Own resolved stats (own base + OWN echoes/weapon).
+  const allyResolvedStats = hasSolace && allyKit ? await allyKit.resolveStats(interaction.user.id) : null;
+  const allySolaceStats = allyResolvedStats as (typeof allyResolvedStats & { hasWellspring?: boolean; wellspringRefinement?: number });
+  const allyBasicLevel    = allyProgress?.basicLevel    ?? 1;
+  const allySkillLevel    = allyProgress?.skillLevel    ?? 1;
+  const allyUltimateLevel = allyProgress?.ultimateLevel ?? 1;
+  const allyIntroLevel    = allyProgress?.introLevel    ?? 1;
+  const allyForteLevel    = allyProgress?.forteLevel    ?? 1;
+  const allyConstellation = allyProgress?.constellation ?? 0;
 
   const displayName = interaction.guild?.members.cache.get(interaction.user.id)?.displayName
     ?? interaction.user.displayName;
@@ -367,14 +377,15 @@ async function runDungeon(
     // ── Milestone 3a: team state (dev guild only), carried across waves the
     // same way playerHp/skillCooldown/etc. already are above. ────────────────
     let activeUnit: "player" | "ally" = "player";
-    let allyHp    = SOLACE.hpMax;
-    const allyHpMax = SOLACE.hpMax;
+    let allyHp    = allyKit ? allyKit.statsAtLevel(90).hpMax : 0;
+    const allyHpMax = allyHp;
     let concertoEnergy: number = 0;
     let playerDebuffs: DebuffState = [];
     let attunement: AttunementState = { mode: null };
     let attunementDoubleTurnsLeft = 0;
     let solaceForte: ForteState = { phase: 0, charge: 0 };
     let forteEmpoweredTurnsLeft = 0;
+    let allyMechanicState: unknown = allyKit ? allyKit.createInitialMechanicState() : null;
 
     for (let waveIdx = 0; waveIdx < dungeon.waves.length; waveIdx++) {
       const result = await runWave(
@@ -386,8 +397,9 @@ async function runDungeon(
           echoSkillCooldown, enemyDefShredTurnsLeft, enemyDefShredPct, nextAttackCritArmed,
           isDevGuild, hasSolace, allySolaceStats, activeUnit, allyHp, allyHpMax, concertoEnergy, playerDebuffs, attunement,
           attunementDoubleTurnsLeft, solaceForte, forteEmpoweredTurnsLeft,
-          solaceBasicLevel, solaceSkillLevel, solaceUltimateLevel, solaceIntroLevel, solaceForteLevel,
-          solaceConstellation,
+          activeAllyCharacterId, allyKit, allyMechanicState,
+          allyBasicLevel, allySkillLevel, allyUltimateLevel, allyIntroLevel, allyForteLevel,
+          allyConstellation,
           displayName,
         },
         displayName,
@@ -443,6 +455,7 @@ async function runDungeon(
       attunementDoubleTurnsLeft = Math.max(0, result.attunementDoubleTurnsLeft - 1);
       solaceForte   = result.solaceForte;
       forteEmpoweredTurnsLeft = Math.max(0, result.forteEmpoweredTurnsLeft - 1);
+      allyMechanicState = result.allyMechanicState;
 
       if (waveIdx < dungeon.waves.length - 1) {
         await thread.send({
@@ -546,10 +559,10 @@ interface WaveState {
   nextAttackCritArmed:    boolean;
   // ── Milestone 3a: team state ──────────────────────────────────────────
   isDevGuild: boolean;
-  // Milestone 3.5a/b: owns+selected Solace via /team, and her own resolved
-  // stats (her own echoes/weapon) — narrower than isDevGuild alone.
+  // Owns+selected an ally via /team, and their own resolved stats (own
+  // echoes/weapon) — narrower than isDevGuild alone.
   hasSolace: boolean;
-  allySolaceStats: (ResolvedStats & { hasWellspring: boolean; wellspringRefinement: number }) | null;
+  allySolaceStats: (ResolvedStats & { hasWellspring?: boolean; wellspringRefinement?: number }) | null;
   activeUnit: "player" | "ally";
   allyHp: number;
   allyHpMax: number;
@@ -559,12 +572,15 @@ interface WaveState {
   attunementDoubleTurnsLeft: number;
   solaceForte: ForteState;
   forteEmpoweredTurnsLeft: number;
-  solaceBasicLevel: number;
-  solaceSkillLevel: number;
-  solaceUltimateLevel: number;
-  solaceIntroLevel: number;
-  solaceForteLevel: number;
-  solaceConstellation: number;
+  activeAllyCharacterId: string | null;
+  allyKit: PlayableCharacterKit | null;
+  allyMechanicState: unknown;
+  allyBasicLevel: number;
+  allySkillLevel: number;
+  allyUltimateLevel: number;
+  allyIntroLevel: number;
+  allyForteLevel: number;
+  allyConstellation: number;
   // Staged ahead of Tasks 3/5 (swap handler, Solace's Convergence) — those will
   // read ws.displayName inside runWave's turn-handling logic for swap/heal
   // messages, mirroring how encounter.ts reads displayName from function
@@ -607,15 +623,15 @@ async function runWave(
   const vibMult   = get5pcVibDrainMult(bonuses);
 
   function teamStatusLine(): string {
-    if (!ws.hasSolace) return "";
-    const benchedName = ws.activeUnit === "player" ? SOLACE.name : ws.displayName;
+    if (!ws.hasSolace || !ws.allyKit) return "";
+    const benchedName = ws.activeUnit === "player" ? ws.allyKit.label : ws.displayName;
     const benchedHp   = ws.activeUnit === "player" ? ws.allyHp : ws.playerHp;
     const benchedMax  = ws.activeUnit === "player" ? ws.allyHpMax : ws.playerHpMax;
     const debuffLine  = ws.playerDebuffs.length > 0
       ? `  ·  ${ws.playerDebuffs.map(d => `${d.type} (${d.turnsLeft})`).join(", ")}`
       : "";
     return `\n\n🔄 Benched: **${benchedName}** — ${benchedHp}/${benchedMax} HP  ·  ` +
-           `Concerto Energy: **${ws.concertoEnergy}/100**${debuffLine}`;
+           `Concerto Energy: **${ws.concertoEnergy}/100**  ·  ${ws.allyKit.statusLineText(ws.allyMechanicState)}${debuffLine}`;
   }
 
   function buildWaveEmbed(lastAction: string): EmbedBuilder {
@@ -650,7 +666,18 @@ async function runWave(
   function buildButtons(): ActionRowBuilder<ButtonBuilder>[] {
     const rows: ActionRowBuilder<ButtonBuilder>[] = [];
 
-    if (ws.hasSolace && ws.activeUnit === "ally") {
+    if (ws.hasSolace && ws.activeUnit === "ally" && ws.activeAllyCharacterId === "kaelith") {
+      const skillReady = ws.skillCooldown === 0;
+      rows.push(new ActionRowBuilder<ButtonBuilder>().addComponents(
+        new ButtonBuilder().setCustomId("dg_basic").setLabel("⚔️  Basic Attack").setStyle(ButtonStyle.Primary),
+        new ButtonBuilder().setCustomId("dg_skill")
+          .setLabel(skillReady ? "🌑  Umbral Detonation" : `🌑  Detonation (${ws.skillCooldown}🔄)`)
+          .setStyle(ButtonStyle.Secondary).setDisabled(!skillReady),
+        new ButtonBuilder().setCustomId("dg_ultimate").setLabel("🌑  Umbral Cataclysm")
+          .setStyle(ButtonStyle.Success).setDisabled(ws.concertoEnergy < 100),
+        new ButtonBuilder().setCustomId("dg_flee").setLabel("↩  Flee").setStyle(ButtonStyle.Danger),
+      ));
+    } else if (ws.hasSolace && ws.activeUnit === "ally") {
       const modeLabel = ws.attunement.mode ? `(${ws.attunement.mode})` : "(inactive)";
       rows.push(new ActionRowBuilder<ButtonBuilder>().addComponents(
         new ButtonBuilder().setCustomId("dg_basic").setLabel("⚔️  Chime Strike").setStyle(ButtonStyle.Primary),
@@ -686,7 +713,7 @@ async function runWave(
       const swapDisabled = ws.activeUnit === "player" && ws.allyHp <= 0;
       rows.push(new ActionRowBuilder<ButtonBuilder>().addComponents(
         new ButtonBuilder().setCustomId("dg_swap")
-          .setLabel(ws.activeUnit === "player" ? `🔄  Swap to ${SOLACE.name}` : `🔄  Swap to ${ws.displayName}`)
+          .setLabel(ws.activeUnit === "player" ? `🔄  Swap to ${ws.allyKit?.label ?? "Ally"}` : `🔄  Swap to ${ws.displayName}`)
           .setStyle(ButtonStyle.Secondary).setDisabled(swapDisabled),
       ));
     }
@@ -760,7 +787,7 @@ async function runWave(
         // (incoming) combo only fires if Concerto Energy is full at the
         // moment of swap. Ported from encounter.ts's Milestone 1/2a swap
         // handler — same logic, same field names via `ws.` instead of `state.`.
-        if (btn.customId === "dg_swap" && ws.hasSolace && !(ws.activeUnit === "player" && ws.allyHp <= 0)) {
+        if (btn.customId === "dg_swap" && ws.hasSolace && ws.allyKit && !(ws.activeUnit === "player" && ws.allyHp <= 0)) {
           const outgoingIsPlayer = ws.activeUnit === "player";
           const comboReady = ws.concertoEnergy >= 100;
 
@@ -769,10 +796,23 @@ async function runWave(
               ? { hp: ws.allyHp, hpMax: ws.allyHpMax }
               : { hp: ws.playerHp, hpMax: ws.playerHpMax };
 
-            const outroEffect = outgoingIsPlayer ? PLAYER_SELF_OUTRO : solaceOutroEffect(ws.solaceConstellation);
-            const introEffect: IntroOutroEffect = outgoingIsPlayer ? solaceIntroEffect(ws.solaceIntroLevel, ws.solaceConstellation) : PLAYER_SELF_INTRO;
+            const outroEffect = outgoingIsPlayer ? PLAYER_SELF_OUTRO : ws.allyKit.outroEffect(ws.allyConstellation);
+            const introEffect: IntroOutroEffect = outgoingIsPlayer ? ws.allyKit.introEffect(ws.allyIntroLevel, ws.allyConstellation) : PLAYER_SELF_INTRO;
             const outroResult = resolveIntroOutroEffect(outroEffect, incomingTarget);
             const introResult = resolveIntroOutroEffect(introEffect, incomingTarget);
+
+            if (!outgoingIsPlayer && introEffect.newMechanicState && ws.activeAllyCharacterId === "kaelith") {
+              const grant = (introEffect.newMechanicState as any).grantStacksOnIntro as number | undefined;
+              if (grant) {
+                const cur = (ws.allyMechanicState as KaelithMechanicState).stacks;
+                const cap = kaelithStackCap(ws.allyConstellation);
+                ws.allyMechanicState = { ...(ws.allyMechanicState as KaelithMechanicState), stacks: Math.min(cap, cur + grant) };
+              }
+            }
+            if (!outgoingIsPlayer && outroEffect.enemyDebuff) {
+              ws.enemyDefShredTurnsLeft = outroEffect.enemyDebuff.turns + 1;
+              ws.enemyDefShredPct = outroEffect.enemyDebuff.value;
+            }
 
             if (!outgoingIsPlayer) ws.nextAttackCritArmed = true;
 
@@ -790,11 +830,11 @@ async function runWave(
             }
 
             moveLine = actualGain > 0
-              ? `🔄 Swapped to **${outgoingIsPlayer ? SOLACE.name : ws.displayName}** — Outro+Intro combo! +${actualGain} HP.`
-              : `🔄 Swapped to **${outgoingIsPlayer ? SOLACE.name : ws.displayName}** — Outro+Intro combo! (already at full HP, no heal needed)`;
+              ? `🔄 Swapped to **${outgoingIsPlayer ? ws.allyKit.label : ws.displayName}** — Outro+Intro combo! +${actualGain} HP.`
+              : `🔄 Swapped to **${outgoingIsPlayer ? ws.allyKit.label : ws.displayName}** — Outro+Intro combo! (already at full HP, no heal needed)`;
             ws.concertoEnergy = addConcertoEnergy(0, 20); // headstart, matches CONCERTO_INTRO_HEADSTART in encounter.ts
           } else {
-            moveLine = `🔄 Swapped to **${outgoingIsPlayer ? SOLACE.name : ws.displayName}** — Concerto Energy not full, no combo triggered.`;
+            moveLine = `🔄 Swapped to **${outgoingIsPlayer ? ws.allyKit.label : ws.displayName}** — Concerto Energy not full, no combo triggered.`;
           }
 
           ws.activeUnit = outgoingIsPlayer ? "ally" : "player";
@@ -808,18 +848,18 @@ async function runWave(
           // /encounter's Basic Attack, folded into this move's crit-rate
           // computation and damage formula below instead of a shared
           // calcPlayerDamage() call (this file doesn't use that helper).
-          const teamAtkMult  = ws.isDevGuild ? getAttunementAtkMult(ws.attunement, solaceAttunementAtkCritBonus(ws.solaceSkillLevel), ws.attunementDoubleTurnsLeft > 0, ws.solaceConstellation >= 6) : 1;
-          const teamCritBonus = ws.isDevGuild ? getAttunementCritRateBonus(ws.attunement, solaceAttunementAtkCritBonus(ws.solaceSkillLevel), ws.attunementDoubleTurnsLeft > 0, ws.solaceConstellation >= 6) : 0;
-          const wellspringAtkMult   = ws.isDevGuild && ws.activeUnit === "ally" && ws.allySolaceStats?.hasWellspring ? getWellspringBaseAtkMult(ws.allySolaceStats.wellspringRefinement) : 1;
-          const wellspringAtkBonus  = ws.isDevGuild && ws.allySolaceStats?.hasWellspring ? getWellspringAtkBonus(ws.attunement, ws.allySolaceStats.wellspringRefinement) : 0;
-          const wellspringCritBonus = ws.isDevGuild && ws.allySolaceStats?.hasWellspring ? getWellspringCritRateBonus(ws.attunement, ws.allySolaceStats.wellspringRefinement) : 0;
-          const forteAtkBonus  = ws.isDevGuild ? getSolaceForteAtkBonus(ws.solaceForteLevel, ws.forteEmpoweredTurnsLeft > 0) : 0;
-          const forteCritBonus = ws.isDevGuild ? getSolaceForteCritRateBonus(ws.solaceForteLevel, ws.forteEmpoweredTurnsLeft > 0) : 0;
+          const isSolaceAlly = ws.isDevGuild && ws.activeAllyCharacterId === "solace";
+          const teamAtkMult  = isSolaceAlly ? getAttunementAtkMult(ws.attunement, solaceAttunementAtkCritBonus(ws.allySkillLevel), ws.attunementDoubleTurnsLeft > 0, ws.allyConstellation >= 6) : 1;
+          const teamCritBonus = isSolaceAlly ? getAttunementCritRateBonus(ws.attunement, solaceAttunementAtkCritBonus(ws.allySkillLevel), ws.attunementDoubleTurnsLeft > 0, ws.allyConstellation >= 6) : 0;
+          const wellspringAtkMult   = isSolaceAlly && ws.activeUnit === "ally" && ws.allySolaceStats?.hasWellspring ? getWellspringBaseAtkMult(ws.allySolaceStats.wellspringRefinement!) : 1;
+          const wellspringAtkBonus  = isSolaceAlly && ws.allySolaceStats?.hasWellspring ? getWellspringAtkBonus(ws.attunement, ws.allySolaceStats.wellspringRefinement!) : 0;
+          const wellspringCritBonus = isSolaceAlly && ws.allySolaceStats?.hasWellspring ? getWellspringCritRateBonus(ws.attunement, ws.allySolaceStats.wellspringRefinement!) : 0;
+          const forteAtkBonus  = isSolaceAlly ? getSolaceForteAtkBonus(ws.allyForteLevel, ws.forteEmpoweredTurnsLeft > 0) : 0;
+          const forteCritBonus = isSolaceAlly ? getSolaceForteCritRateBonus(ws.allyForteLevel, ws.forteEmpoweredTurnsLeft > 0) : 0;
           const teamMult = getWeakenedMult(ws.playerDebuffs) * teamAtkMult * wellspringAtkMult * (1 + wellspringAtkBonus) * (1 + forteAtkBonus);
-          // Solace's own Basic-track level multiplier — Solace-only (this
-          // handler is shared with the player's own Basic Attack), matching
-          // how /encounter gates its equivalent `basicMoveMult`.
-          const basicMoveMult = ws.isDevGuild && ws.activeUnit === "ally" ? solaceBasicDamageMult(ws.solaceBasicLevel) : 1.0;
+          // The active ally's own Basic-track level multiplier — ally-only
+          // (this handler is shared with the player's own Basic Attack).
+          const basicMoveMult = ws.isDevGuild && ws.activeUnit === "ally" && ws.allyKit ? ws.allyKit.basicDamageMult(ws.allyBasicLevel) : 1.0;
           const crit   = forcedCritActive || windExplosion.guaranteedCrit || Math.random() < Math.min(1, cRate + teamCritBonus + wellspringCritBonus + forteCritBonus); abilCrit = crit;
           const smolderMult = bonuses.activeNamedSetId === "SMOLDERING_SOVEREIGN"
             ? smolderingSovereignOnAction(ws.namedState) : 1;
@@ -855,10 +895,18 @@ async function runWave(
           ws.playerHp      = applyLifesteal(bonuses.lifesteal + havocLifesteal + (ar_b.lifesteal ?? 0), playerDmg, ws.playerHp, ws.playerHpMax);
           if (bonuses.activeNamedSetId === "STORMCALLERS_OATH") stormcallersOathCheckThunderbolt(ws.namedState, ws.playerEnergy);
 
-          // Forte fills only from Solace's own Chime Strike — announce only
-          // on the turn a threshold is actually crossed, matching
+          if (ws.isDevGuild && ws.activeUnit === "ally" && ws.activeAllyCharacterId === "kaelith") {
+            const kState = ws.allyMechanicState as KaelithMechanicState;
+            const gain = kaelithBasicStackGain(ws.allyConstellation);
+            const cap = kaelithStackCap(ws.allyConstellation);
+            ws.allyMechanicState = { ...kState, stacks: Math.min(cap, kState.stacks + gain) };
+            moveLine += `\n🌑 +${gain} stack${gain === 1 ? "" : "s"} (${(ws.allyMechanicState as KaelithMechanicState).stacks}/${cap})`;
+          }
+
+          // Forte fills only from the active ally's own Basic Attack — announce
+          // only on the turn a threshold is actually crossed, matching
           // encounter.ts's Milestone 2c Forte-fill logic.
-          if (ws.isDevGuild && ws.activeUnit === "ally") {
+          if (isSolaceAlly) {
             const forteBefore = ws.solaceForte;
             ws.solaceForte = addForteCharge(ws.solaceForte, SOLACE_FORTE_CONFIG, SOLACE_FORTE_GAIN_PER_BASIC);
             const wasHalf = forteBefore.charge >= SOLACE_FORTE_CONFIG.phaseThresholds[0] / 2;
@@ -871,25 +919,45 @@ async function runWave(
           }
         }
 
-        if (btn.customId === "dg_skill" && ws.isDevGuild && ws.activeUnit === "ally") {
+        if (btn.customId === "dg_skill" && ws.isDevGuild && ws.activeUnit === "ally" && ws.activeAllyCharacterId === "solace") {
           // Solace's Skill is Attunement — a mode cycle, not a damage move.
           // Deals a small hit using the player's own stat block (Solace has
           // no independent stat block yet — same simplification /encounter
           // uses). Ported from encounter.ts's Milestone 2a Skill branch.
           ws.attunement.mode = cycleAttunementMode(ws.attunement.mode);
-          if (ws.solaceConstellation >= 3) ws.concertoEnergy = addConcertoEnergy(ws.concertoEnergy, 25);
+          if (ws.allyConstellation >= 3) ws.concertoEnergy = addConcertoEnergy(ws.concertoEnergy, 25);
           const crit = Math.random() < cRate; abilCrit = crit;
           const dmg  = Math.max(1, Math.floor(activeAtk * 0.6 * (1 - defReduction) * (crit ? activeCritDmg : 1) * (isWeak ? 1.5 : 1) * (1 + bonuses.elemDmgBonus)));
           playerDmg  = dmg;
           moveLine   = `✦ Attunement — now in **${ws.attunement.mode}** mode! ${playerDmg} DMG${crit ? " **(CRIT)**" : ""}`;
           vibBar     = Math.max(0, vibBar - Math.floor(playerDmg * 0.3 * totalVibMult));
+        } else if (btn.customId === "dg_skill" && ws.isDevGuild && ws.activeUnit === "ally" && ws.activeAllyCharacterId === "kaelith" && ws.allyKit) {
+          const kState = ws.allyMechanicState as KaelithMechanicState;
+          if (kState.stacks <= 0) {
+            moveLine = `🌑 Umbral Detonation — no stacks to consume! (0 DMG bonus)`;
+            playerDmg = 0;
+          } else {
+            const crit = Math.random() < cRate; abilCrit = crit;
+            const result = ws.allyKit.onSkill(
+              { playerHp: ws.playerHp, playerHpMax: ws.playerHpMax, allyHp: ws.allyHp, allyHpMax: ws.allyHpMax, turn: 1, isShattered, mechanicState: kState },
+              { basicLevel: ws.allyBasicLevel, skillLevel: ws.allySkillLevel, ultimateLevel: ws.allyUltimateLevel, introLevel: ws.allyIntroLevel, forteLevel: ws.allyForteLevel },
+              ws.allyConstellation,
+            );
+            ws.allyMechanicState = result.newMechanicState;
+            const dmg = Math.max(1, Math.floor(activeAtk * result.damageMult * (1 - defReduction) * (crit ? activeCritDmg : 1) * (isWeak ? 1.5 : 1) * (1 + bonuses.elemDmgBonus)));
+            playerDmg = dmg;
+            moveLine  = `🌑 ${result.moveLabel} — ${playerDmg} DMG${crit ? " **(CRIT)**" : ""}`;
+            vibBar    = Math.max(0, vibBar - Math.floor(playerDmg * result.vibFrac * totalVibMult));
+          }
+          ws.skillCooldown = ws.allyKit.skillCooldownTurns;
         } else if (btn.customId === "dg_skill") {
-          const teamAtkMult  = ws.isDevGuild ? getAttunementAtkMult(ws.attunement, solaceAttunementAtkCritBonus(ws.solaceSkillLevel), ws.attunementDoubleTurnsLeft > 0, ws.solaceConstellation >= 6) : 1;
-          const teamCritBonus = ws.isDevGuild ? getAttunementCritRateBonus(ws.attunement, solaceAttunementAtkCritBonus(ws.solaceSkillLevel), ws.attunementDoubleTurnsLeft > 0, ws.solaceConstellation >= 6) : 0;
-          const wellspringAtkBonus  = ws.isDevGuild && ws.allySolaceStats?.hasWellspring ? getWellspringAtkBonus(ws.attunement, ws.allySolaceStats.wellspringRefinement) : 0;
-          const wellspringCritBonus = ws.isDevGuild && ws.allySolaceStats?.hasWellspring ? getWellspringCritRateBonus(ws.attunement, ws.allySolaceStats.wellspringRefinement) : 0;
-          const forteAtkBonus  = ws.isDevGuild ? getSolaceForteAtkBonus(ws.solaceForteLevel, ws.forteEmpoweredTurnsLeft > 0) : 0;
-          const forteCritBonus = ws.isDevGuild ? getSolaceForteCritRateBonus(ws.solaceForteLevel, ws.forteEmpoweredTurnsLeft > 0) : 0;
+          const isSolaceAllySkill = ws.isDevGuild && ws.activeAllyCharacterId === "solace";
+          const teamAtkMult  = isSolaceAllySkill ? getAttunementAtkMult(ws.attunement, solaceAttunementAtkCritBonus(ws.allySkillLevel), ws.attunementDoubleTurnsLeft > 0, ws.allyConstellation >= 6) : 1;
+          const teamCritBonus = isSolaceAllySkill ? getAttunementCritRateBonus(ws.attunement, solaceAttunementAtkCritBonus(ws.allySkillLevel), ws.attunementDoubleTurnsLeft > 0, ws.allyConstellation >= 6) : 0;
+          const wellspringAtkBonus  = isSolaceAllySkill && ws.allySolaceStats?.hasWellspring ? getWellspringAtkBonus(ws.attunement, ws.allySolaceStats.wellspringRefinement!) : 0;
+          const wellspringCritBonus = isSolaceAllySkill && ws.allySolaceStats?.hasWellspring ? getWellspringCritRateBonus(ws.attunement, ws.allySolaceStats.wellspringRefinement!) : 0;
+          const forteAtkBonus  = isSolaceAllySkill ? getSolaceForteAtkBonus(ws.allyForteLevel, ws.forteEmpoweredTurnsLeft > 0) : 0;
+          const forteCritBonus = isSolaceAllySkill ? getSolaceForteCritRateBonus(ws.allyForteLevel, ws.forteEmpoweredTurnsLeft > 0) : 0;
           const teamMult = getWeakenedMult(ws.playerDebuffs) * teamAtkMult * (1 + wellspringAtkBonus) * (1 + forteAtkBonus);
           const crit   = forcedCritActive || Math.random() < Math.min(1, cRate + 0.1 + teamCritBonus + wellspringCritBonus + forteCritBonus); abilCrit = crit;
           const smolderMult = bonuses.activeNamedSetId === "SMOLDERING_SOVEREIGN"
@@ -933,9 +1001,10 @@ async function runWave(
           // and this branch only ever runs for the player's own Ultimate
           // (Solace's own Ultimate/Convergence is a separate branch, Task 5).
           abilCrit  = true;
-          const teamAtkMult = ws.isDevGuild ? getAttunementAtkMult(ws.attunement, solaceAttunementAtkCritBonus(ws.solaceSkillLevel), ws.attunementDoubleTurnsLeft > 0, ws.solaceConstellation >= 6) : 1;
-          const wellspringAtkBonus = ws.isDevGuild && ws.allySolaceStats?.hasWellspring ? getWellspringAtkBonus(ws.attunement, ws.allySolaceStats.wellspringRefinement) : 0;
-          const forteAtkBonus = ws.isDevGuild ? getSolaceForteAtkBonus(ws.solaceForteLevel, ws.forteEmpoweredTurnsLeft > 0) : 0;
+          const isSolaceAllyUlt = ws.isDevGuild && ws.activeAllyCharacterId === "solace";
+          const teamAtkMult = isSolaceAllyUlt ? getAttunementAtkMult(ws.attunement, solaceAttunementAtkCritBonus(ws.allySkillLevel), ws.attunementDoubleTurnsLeft > 0, ws.allyConstellation >= 6) : 1;
+          const wellspringAtkBonus = isSolaceAllyUlt && ws.allySolaceStats?.hasWellspring ? getWellspringAtkBonus(ws.attunement, ws.allySolaceStats.wellspringRefinement!) : 0;
+          const forteAtkBonus = isSolaceAllyUlt ? getSolaceForteAtkBonus(ws.allyForteLevel, ws.forteEmpoweredTurnsLeft > 0) : 0;
           const teamMult = getWeakenedMult(ws.playerDebuffs) * teamAtkMult * (1 + wellspringAtkBonus) * (1 + forteAtkBonus);
           const smolderMultUlt = bonuses.activeNamedSetId === "SMOLDERING_SOVEREIGN"
             ? smolderingSovereignOnAction(ws.namedState) : 1;
@@ -961,16 +1030,16 @@ async function runWave(
             ws.stormBuffTurnsLeft = surge.turnsLeft + 1;
             ws.stormBuffCritBonus = surge.critRateBonus;
           }
-        } else if (btn.customId === "dg_ultimate" && ws.isDevGuild && ws.activeUnit === "ally") {
+        } else if (btn.customId === "dg_ultimate" && ws.isDevGuild && ws.activeUnit === "ally" && ws.activeAllyCharacterId === "solace") {
           // Solace's Ultimate spends Concerto Energy, not personal Energy —
           // team heal (both HP pools, level-scaled %) + cleanse + doubles the
           // active Attunement mode for 3 turns (or, if Forte is maxed,
           // Empowered Convergence — all 3 modes at once). Ported from
           // encounter.ts's Milestone 2a/2c/2e Convergence branch.
-          const healPct = solaceConvergenceHealPct(ws.solaceUltimateLevel, ws.solaceConstellation);
+          const healPct = solaceConvergenceHealPct(ws.allyUltimateLevel, ws.allyConstellation);
           const healResult = resolveIntroOutroEffect({ actions: [
             { type: "HEAL_ALLY", value: healPct },
-            { type: "CLEANSE_ALLY", value: solaceConvergenceCleanseCount(ws.solaceConstellation) },
+            { type: "CLEANSE_ALLY", value: solaceConvergenceCleanseCount(ws.allyConstellation) },
           ] }, { hp: ws.playerHp, hpMax: ws.playerHpMax });
           const allyHealResult = resolveIntroOutroEffect({ actions: [
             { type: "HEAL_ALLY", value: healPct },
@@ -990,20 +1059,45 @@ async function runWave(
           convergenceUsedThisTurn = true;
           playerDmg = 0; abilCrit = false;
 
-          const healSummary = `${ws.displayName} +${actualHealPlayer} HP, ${SOLACE.name} +${actualHealAlly} HP`;
+          const healSummary = `${ws.displayName} +${actualHealPlayer} HP, ${ws.allyKit?.label ?? "Solace"} +${actualHealAlly} HP`;
 
           if (isForteMaxed(ws.solaceForte, SOLACE_FORTE_CONFIG)) {
-            ws.forteEmpoweredTurnsLeft = solaceUltimateDoubleTurns(ws.solaceConstellation) + 1; // +1 compensates for the same-round decrement
+            ws.forteEmpoweredTurnsLeft = solaceUltimateDoubleTurns(ws.allyConstellation) + 1; // +1 compensates for the same-round decrement
             ws.attunementDoubleTurnsLeft = 0;
             ws.solaceForte = resetForte();
             moveLine = `⚡ **Empowered Convergence!** Team healed (${healSummary}), debuffs cleansed, ` +
-              `**all 3 Attunement Modes empowered for ${solaceUltimateDoubleTurns(ws.solaceConstellation)} turns!**`;
+              `**all 3 Attunement Modes empowered for ${solaceUltimateDoubleTurns(ws.allyConstellation)} turns!**`;
           } else {
-            ws.attunementDoubleTurnsLeft = solaceUltimateDoubleTurns(ws.solaceConstellation) + 1; // +1 compensates for the same-round decrement
+            ws.attunementDoubleTurnsLeft = solaceUltimateDoubleTurns(ws.allyConstellation) + 1; // +1 compensates for the same-round decrement
             ws.forteEmpoweredTurnsLeft = 0;
             moveLine = `⚡ **Convergence!** Team healed (${healSummary}), debuffs cleansed, ` +
-              `**${ws.attunement.mode ?? "no"} mode doubled for ${solaceUltimateDoubleTurns(ws.solaceConstellation)} turns!**`;
+              `**${ws.attunement.mode ?? "no"} mode doubled for ${solaceUltimateDoubleTurns(ws.allyConstellation)} turns!**`;
           }
+        } else if (btn.customId === "dg_ultimate" && ws.isDevGuild && ws.activeUnit === "ally" && ws.activeAllyCharacterId === "kaelith" && ws.allyKit) {
+          const kState = ws.allyMechanicState as KaelithMechanicState;
+          const stacksConsumed = kState.stacks;
+
+          const ultDamageMult = ws.allyConstellation >= 6
+            ? stacksConsumed * (KAELITH_PER_STACK_ULT_BONUS * 1.6)
+            : kaelithUltimateBaseMult(ws.allyUltimateLevel) + stacksConsumed * KAELITH_PER_STACK_ULT_BONUS;
+
+          const result = ws.allyKit.onUltimate(
+            { playerHp: ws.playerHp, playerHpMax: ws.playerHpMax, allyHp: ws.allyHp, allyHpMax: ws.allyHpMax, turn: 1, isShattered, mechanicState: kState },
+            { basicLevel: ws.allyBasicLevel, skillLevel: ws.allySkillLevel, ultimateLevel: ws.allyUltimateLevel, introLevel: ws.allyIntroLevel, forteLevel: ws.allyForteLevel },
+            ws.allyConstellation,
+          );
+          ws.allyMechanicState = result.newMechanicState;
+
+          const dmg = Math.max(1, Math.floor(activeAtk * ultDamageMult * (1 - defReduction) * (isWeak ? 1.5 : 1) * (1 + bonuses.elemDmgBonus)));
+          playerDmg = dmg;
+          moveLine  = `🌑 ${result.moveLabel} — ${playerDmg} DMG`;
+          vibBar    = Math.max(0, vibBar - Math.floor(playerDmg * 0.8 * totalVibMult));
+
+          if (result.healResult.actions.length > 0) {
+            const healResult = resolveIntroOutroEffect(result.healResult, { hp: ws.allyHp, hpMax: ws.allyHpMax });
+            ws.allyHp = Math.min(ws.allyHpMax, ws.allyHp + healResult.hpDelta);
+          }
+          if (result.resetsConcertoEnergy) { ws.concertoEnergy = 0; convergenceUsedThisTurn = true; }
         }
 
         if (btn.customId === "dg_echoskill" && bonuses.echoSkill) {
@@ -1119,7 +1213,7 @@ async function runWave(
         // (excludes dg_swap too — a swap deals no damage, so Quick Strike shouldn't fire on it.
         // Also excludes Solace's Convergence — a zero-damage support Ultimate that deliberately
         // deals no damage, unlike the player's own Ultimate which remains eligible.)
-        const isSolaceConvergence = btn.customId === "dg_ultimate" && ws.isDevGuild && ws.activeUnit === "ally";
+        const isSolaceConvergence = btn.customId === "dg_ultimate" && ws.isDevGuild && ws.activeUnit === "ally" && ws.activeAllyCharacterId === "solace";
         if (!ws.quickStrikeUsed && btn.customId !== "dg_flee" && btn.customId !== "dg_swap" && !isSolaceConvergence && hasQuickStrike(stats.spd, dbUser.level)) {
           ws.quickStrikeUsed = true;
           const bonusDmg = Math.max(1, Math.floor(stats.atk * (1 - defReduction)));
@@ -1171,10 +1265,11 @@ async function runWave(
           else moveLine += `\n◇ Enemy stunned (${shatterLeft} turn${shatterLeft > 1 ? "s" : ""} left).`;
         } else {
           const move    = ["strikes back", "retaliates", "lashes out"][Math.floor(Math.random() * 3)];
-          const wellspringDefBonus = ws.isDevGuild && ws.allySolaceStats?.hasWellspring ? getWellspringDefBonus(ws.attunement, ws.allySolaceStats.wellspringRefinement) : 0;
-          const forteDefBonus = ws.isDevGuild ? getSolaceForteDefBonus(ws.solaceForteLevel, ws.forteEmpoweredTurnsLeft > 0) : 0;
-          const attunementDefBonus = solaceAttunementDefBonus(ws.solaceSkillLevel);
-          const attunementDefMult = (ws.isDevGuild ? getAttunementDefMult(ws.attunement, attunementDefBonus, ws.attunementDoubleTurnsLeft > 0, ws.solaceConstellation >= 6) : 1) * (1 + wellspringDefBonus) * (1 + forteDefBonus);
+          const isSolaceAllyForDef = ws.isDevGuild && ws.activeAllyCharacterId === "solace";
+          const wellspringDefBonus = isSolaceAllyForDef && ws.allySolaceStats?.hasWellspring ? getWellspringDefBonus(ws.attunement, ws.allySolaceStats.wellspringRefinement!) : 0;
+          const forteDefBonus = isSolaceAllyForDef ? getSolaceForteDefBonus(ws.allyForteLevel, ws.forteEmpoweredTurnsLeft > 0) : 0;
+          const attunementDefBonus = solaceAttunementDefBonus(ws.allySkillLevel);
+          const attunementDefMult = (isSolaceAllyForDef ? getAttunementDefMult(ws.attunement, attunementDefBonus, ws.attunementDoubleTurnsLeft > 0, ws.allyConstellation >= 6) : 1) * (1 + wellspringDefBonus) * (1 + forteDefBonus);
           let bossDmg   = Math.max(1, Math.floor(scaled.atk * 0.9 - activeDef * attunementDefMult * 0.4));
           bossDmg       = roll4pcBlock(bonuses, bossDmg);
           const shield  = elemFrostShield(bonuses.elementPassive, bossDmg);
@@ -1258,7 +1353,7 @@ async function runWave(
         if (ws.isDevGuild && ws.activeUnit === "ally" && ws.allyHp <= 0) {
           ws.allyHp = 0;
           ws.activeUnit = "player";
-          moveLine += `\n◇ **${SOLACE.name} was knocked out** — swapped back to ${ws.displayName}.`;
+          moveLine += `\n◇ **${ws.allyKit?.label ?? "Your ally"} was knocked out** — swapped back to ${ws.displayName}.`;
         }
 
         // Lose
