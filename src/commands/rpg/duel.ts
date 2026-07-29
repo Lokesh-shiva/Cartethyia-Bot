@@ -53,6 +53,12 @@ import { addConcertoEnergy } from "../../lib/concertoEnergy";
 import { DebuffState, applyDebuff, tickDebuffs, getWeakenedMult, cleanseDebuffs } from "../../lib/debuffs";
 import { getOrCreateCharacterProgress } from "../../lib/characterProgress";
 import { AttachmentBuilder } from "discord.js";
+import { CHARACTER_KITS, PlayableCharacterKit } from "../../lib/characterKit";
+import {
+  kaelithStackCap, kaelithBasicStackGain, kaelithUltimateBaseMult, KAELITH_PER_STACK_ULT_BONUS,
+  KAELITH_FORTE_CONFIG, KAELITH_FORTE_GAIN_PER_BASIC, KaelithMechanicState,
+} from "../../lib/kits/kaelithKit";
+import "../../lib/kits";
 
 // ── In-memory active duels ────────────────────────────────────────────────────
 // activeDuels replaced by shared combatLock
@@ -74,13 +80,14 @@ interface DuelState {
   cEchoSkillCd: number; cDefShredTurnsLeft: number; cDefShredPct: number; cNextCritArmed: boolean;
   // Milestone 3e: challenger team state (dev guild only)
   cHasSolace: boolean;
-  cAllySolaceStats: (ResolvedStats & { hasWellspring: boolean; wellspringRefinement: number }) | null; // Milestone 3.5b: her own resolved stats
+  cAllySolaceStats: (ResolvedStats & { hasWellspring?: boolean; wellspringRefinement?: number }) | null; // each side's own resolved stats
   cSolaceBasicLevel: number; cSolaceSkillLevel: number; cSolaceUltimateLevel: number;
   cSolaceIntroLevel: number; cSolaceForteLevel: number; cSolaceConstellation: number;
   cActiveUnit: "player" | "ally"; cAllyHp: number; cAllyHpMax: number;
   cConcertoEnergy: number; cPlayerDebuffs: DebuffState;
   cAttunement: AttunementState; cAttunementDoubleTurnsLeft: number;
   cSolaceForte: ForteState; cForteEmpoweredTurnsLeft: number;
+  cActiveAllyCharacterId: string | null; cAllyKit: PlayableCharacterKit | null; cAllyMechanicState: unknown;
   // Challenged stats
   dHp:     number; dHpMax: number; dEnergy:  number; dSkillCd: number;
   dAtk:    number; dDef:   number; dSpd: number; dCritRate: number; dCritDmg: number; dElement: string;
@@ -93,13 +100,14 @@ interface DuelState {
   dEchoSkillCd: number; dDefShredTurnsLeft: number; dDefShredPct: number; dNextCritArmed: boolean;
   // Milestone 3e: challenged team state (dev guild only)
   dHasSolace: boolean;
-  dAllySolaceStats: (ResolvedStats & { hasWellspring: boolean; wellspringRefinement: number }) | null; // Milestone 3.5b: her own resolved stats
+  dAllySolaceStats: (ResolvedStats & { hasWellspring?: boolean; wellspringRefinement?: number }) | null; // each side's own resolved stats
   dSolaceBasicLevel: number; dSolaceSkillLevel: number; dSolaceUltimateLevel: number;
   dSolaceIntroLevel: number; dSolaceForteLevel: number; dSolaceConstellation: number;
   dActiveUnit: "player" | "ally"; dAllyHp: number; dAllyHpMax: number;
   dConcertoEnergy: number; dPlayerDebuffs: DebuffState;
   dAttunement: AttunementState; dAttunementDoubleTurnsLeft: number;
   dSolaceForte: ForteState; dForteEmpoweredTurnsLeft: number;
+  dActiveAllyCharacterId: string | null; dAllyKit: PlayableCharacterKit | null; dAllyMechanicState: unknown;
   // Turn tracking
   currentTurn: string; // userId
   turn:        number;
@@ -155,18 +163,19 @@ function duelEmbed(state: DuelState, lastMove: string, _color: number): EmbedBui
 
 function duelTeamStatusLine(state: DuelState): string | null {
   const lines: string[] = [];
-  if (state.cHasSolace) lines.push(duelSideStatusLine(state.challengerName, state.cActiveUnit, state.cAllyHp, state.cAllyHpMax, state.cConcertoEnergy, state.cPlayerDebuffs));
-  if (state.dHasSolace) lines.push(duelSideStatusLine(state.challengedName, state.dActiveUnit, state.dAllyHp, state.dAllyHpMax, state.dConcertoEnergy, state.dPlayerDebuffs));
+  if (state.cHasSolace) lines.push(duelSideStatusLine(state.challengerName, state.cActiveUnit, state.cAllyHp, state.cAllyHpMax, state.cConcertoEnergy, state.cPlayerDebuffs, state.cAllyKit, state.cAllyMechanicState));
+  if (state.dHasSolace) lines.push(duelSideStatusLine(state.challengedName, state.dActiveUnit, state.dAllyHp, state.dAllyHpMax, state.dConcertoEnergy, state.dPlayerDebuffs, state.dAllyKit, state.dAllyMechanicState));
   return lines.length > 0 ? lines.join("\n") : null;
 }
 
 function duelSideStatusLine(
   name: string, activeUnit: "player" | "ally", allyHp: number, allyHpMax: number,
-  concertoEnergy: number, debuffs: DebuffState,
+  concertoEnergy: number, debuffs: DebuffState, allyKit: PlayableCharacterKit | null, allyMechanicState: unknown,
 ): string {
   const debuffLine = debuffs.length > 0 ? `  ·  ${debuffs.map(d => `${d.type} (${d.turnsLeft})`).join(", ")}` : "";
-  const soloLine = activeUnit === "ally" ? `  ·  ${SOLACE.name} ${allyHp}/${allyHpMax} HP` : "";
-  return `🔄 **${name}**: Concerto Energy **${concertoEnergy}/100**${soloLine}${debuffLine}`;
+  const soloLine = activeUnit === "ally" && allyKit ? `  ·  ${allyKit.label} ${allyHp}/${allyHpMax} HP` : "";
+  const kitLine = allyKit ? `  ·  ${allyKit.statusLineText(allyMechanicState)}` : "";
+  return `🔄 **${name}**: Concerto Energy **${concertoEnergy}/100**${soloLine}${kitLine}${debuffLine}`;
 }
 
 function buildDuelButtons(state: DuelState, forUserId: string, isDevGuild: boolean): ActionRowBuilder<ButtonBuilder>[] {
@@ -181,10 +190,23 @@ function buildDuelButtons(state: DuelState, forUserId: string, isDevGuild: boole
   const myAttunement          = isChallenger ? state.cAttunement : state.dAttunement;
   const myName                 = isChallenger ? state.challengerName : state.challengedName;
   const myAllyHp                = isChallenger ? state.cAllyHp : state.dAllyHp;
+  const myActiveAllyCharacterId = isChallenger ? state.cActiveAllyCharacterId : state.dActiveAllyCharacterId;
+  const myAllyKit               = isChallenger ? state.cAllyKit : state.dAllyKit;
 
   const rows: ActionRowBuilder<ButtonBuilder>[] = [];
 
-  if (isDevGuild && myHasSolace && myActiveUnit === "ally") {
+  if (isDevGuild && myHasSolace && myActiveUnit === "ally" && myActiveAllyCharacterId === "kaelith") {
+    const skillReady = mySkillCd === 0;
+    rows.push(new ActionRowBuilder<ButtonBuilder>().addComponents(
+      new ButtonBuilder().setCustomId("duel_basic").setLabel("⚔️  Basic Attack").setStyle(ButtonStyle.Primary),
+      new ButtonBuilder().setCustomId("duel_skill")
+        .setLabel(skillReady ? "🌑  Umbral Detonation" : `🌑  Detonation (${mySkillCd}🔄)`)
+        .setStyle(ButtonStyle.Secondary).setDisabled(!skillReady),
+      new ButtonBuilder().setCustomId("duel_ultimate").setLabel("🌑  Umbral Cataclysm")
+        .setStyle(ButtonStyle.Success).setDisabled(myConcertoEnergy < 100),
+      new ButtonBuilder().setCustomId("duel_forfeit").setLabel("🏳️  Forfeit").setStyle(ButtonStyle.Danger),
+    ));
+  } else if (isDevGuild && myHasSolace && myActiveUnit === "ally") {
     const modeLabel = myAttunement.mode ? `(${myAttunement.mode})` : "(inactive)";
     rows.push(new ActionRowBuilder<ButtonBuilder>().addComponents(
       new ButtonBuilder().setCustomId("duel_basic").setLabel("⚔️  Chime Strike").setStyle(ButtonStyle.Primary),
@@ -220,7 +242,7 @@ function buildDuelButtons(state: DuelState, forUserId: string, isDevGuild: boole
     const swapDisabled = myActiveUnit === "player" && myAllyHp <= 0;
     rows.push(new ActionRowBuilder<ButtonBuilder>().addComponents(
       new ButtonBuilder().setCustomId("duel_swap")
-        .setLabel(myActiveUnit === "player" ? `🔄  Swap to ${SOLACE.name}` : `🔄  Swap to ${myName}`)
+        .setLabel(myActiveUnit === "player" ? `🔄  Swap to ${myAllyKit?.label ?? "Ally"}` : `🔄  Swap to ${myName}`)
         .setStyle(ButtonStyle.Secondary).setDisabled(swapDisabled),
     ));
   }
@@ -366,22 +388,30 @@ export async function execute(interaction: ChatInputCommandInteraction) {
     // — that helper CREATES a row if missing, which would silently re-grant
     // Solace ownership to anyone whose teamAllyCharacterId flag is "solace"
     // but doesn't actually own her, bypassing the gacha entirely.
+    const cActiveAllyCharacterId: string | null =
+      challengerDb.teamAllyCharacterId && CHARACTER_KITS[challengerDb.teamAllyCharacterId] ? challengerDb.teamAllyCharacterId : null;
+    const dActiveAllyCharacterId: string | null =
+      challengedDb.teamAllyCharacterId && CHARACTER_KITS[challengedDb.teamAllyCharacterId] ? challengedDb.teamAllyCharacterId : null;
     const [cSolaceProgress, dSolaceProgress] = await Promise.all([
-      challengerDb.teamAllyCharacterId === "solace"
-        ? prisma.characterProgress.findUnique({ where: { userId_characterId: { userId: interaction.user.id, characterId: "solace" } } })
+      cActiveAllyCharacterId
+        ? prisma.characterProgress.findUnique({ where: { userId_characterId: { userId: interaction.user.id, characterId: cActiveAllyCharacterId } } })
         : Promise.resolve(null),
-      challengedDb.teamAllyCharacterId === "solace"
-        ? prisma.characterProgress.findUnique({ where: { userId_characterId: { userId: target.id, characterId: "solace" } } })
+      dActiveAllyCharacterId
+        ? prisma.characterProgress.findUnique({ where: { userId_characterId: { userId: target.id, characterId: dActiveAllyCharacterId } } })
         : Promise.resolve(null),
     ]);
     const cHasSolaceGate = cSolaceProgress !== null;
     const dHasSolaceGate = dSolaceProgress !== null;
     const isDevGuild = cHasSolaceGate || dHasSolaceGate;
-    // Milestone 3.5b: each side's own resolved stats (own base + OWN echoes/weapon).
-    const [cAllySolaceStats, dAllySolaceStats] = await Promise.all([
-      cHasSolaceGate ? resolveSolaceStats(interaction.user.id) : Promise.resolve(null),
-      dHasSolaceGate ? resolveSolaceStats(target.id) : Promise.resolve(null),
+    const cAllyKit: PlayableCharacterKit | null = cActiveAllyCharacterId ? CHARACTER_KITS[cActiveAllyCharacterId] : null;
+    const dAllyKit: PlayableCharacterKit | null = dActiveAllyCharacterId ? CHARACTER_KITS[dActiveAllyCharacterId] : null;
+    // Each side's own resolved stats (own base + OWN echoes/weapon).
+    const [cAllySolaceStatsRaw, dAllySolaceStatsRaw] = await Promise.all([
+      cHasSolaceGate && cAllyKit ? cAllyKit.resolveStats(interaction.user.id) : Promise.resolve(null),
+      dHasSolaceGate && dAllyKit ? dAllyKit.resolveStats(target.id) : Promise.resolve(null),
     ]);
+    const cAllySolaceStats = cAllySolaceStatsRaw as (typeof cAllySolaceStatsRaw & { hasWellspring?: boolean; wellspringRefinement?: number });
+    const dAllySolaceStats = dAllySolaceStatsRaw as (typeof dAllySolaceStatsRaw & { hasWellspring?: boolean; wellspringRefinement?: number });
 
     const state: DuelState = {
       challengerId: interaction.user.id, challengedId: target.id,
@@ -403,10 +433,11 @@ export async function execute(interaction: ChatInputCommandInteraction) {
       cSolaceUltimateLevel: cSolaceProgress?.ultimateLevel ?? 1, cSolaceIntroLevel: cSolaceProgress?.introLevel ?? 1,
       cSolaceForteLevel: cSolaceProgress?.forteLevel ?? 1,
       cSolaceConstellation: cSolaceProgress?.constellation ?? 0,
-      cActiveUnit: "player", cAllyHp: SOLACE.hpMax, cAllyHpMax: SOLACE.hpMax,
+      cActiveUnit: "player", cAllyHp: cAllyKit ? cAllyKit.statsAtLevel(90).hpMax : 0, cAllyHpMax: cAllyKit ? cAllyKit.statsAtLevel(90).hpMax : 0,
       cConcertoEnergy: 0, cPlayerDebuffs: [],
       cAttunement: { mode: null }, cAttunementDoubleTurnsLeft: 0,
       cSolaceForte: { phase: 0, charge: 0 }, cForteEmpoweredTurnsLeft: 0,
+      cActiveAllyCharacterId, cAllyKit, cAllyMechanicState: cAllyKit ? cAllyKit.createInitialMechanicState() : null,
       dHp: dStats.hp, dHpMax: dStats.hp, dEnergy: 0, dSkillCd: 0,
       dAtk: dStats.atk, dDef: dStats.def, dSpd: dStats.spd,
       dCritRate: dStats.critRate, dCritDmg: dStats.critDmg,
@@ -424,10 +455,11 @@ export async function execute(interaction: ChatInputCommandInteraction) {
       dSolaceUltimateLevel: dSolaceProgress?.ultimateLevel ?? 1, dSolaceIntroLevel: dSolaceProgress?.introLevel ?? 1,
       dSolaceForteLevel: dSolaceProgress?.forteLevel ?? 1,
       dSolaceConstellation: dSolaceProgress?.constellation ?? 0,
-      dActiveUnit: "player", dAllyHp: SOLACE.hpMax, dAllyHpMax: SOLACE.hpMax,
+      dActiveUnit: "player", dAllyHp: dAllyKit ? dAllyKit.statsAtLevel(90).hpMax : 0, dAllyHpMax: dAllyKit ? dAllyKit.statsAtLevel(90).hpMax : 0,
       dConcertoEnergy: 0, dPlayerDebuffs: [],
       dAttunement: { mode: null }, dAttunementDoubleTurnsLeft: 0,
       dSolaceForte: { phase: 0, charge: 0 }, dForteEmpoweredTurnsLeft: 0,
+      dActiveAllyCharacterId, dAllyKit, dAllyMechanicState: dAllyKit ? dAllyKit.createInitialMechanicState() : null,
       // Higher SPD acts first; ties keep the challenger-first default
       currentTurn: dStats.spd > cStats.spd ? target.id : interaction.user.id,
       turn: 1,
@@ -564,6 +596,10 @@ export async function execute(interaction: ChatInputCommandInteraction) {
         const mySolaceIntroLevel   = isChallenger ? state.cSolaceIntroLevel : state.dSolaceIntroLevel;
         const mySolaceForteLevel   = isChallenger ? state.cSolaceForteLevel : state.dSolaceForteLevel;
         const mySolaceConstellation = isChallenger ? state.cSolaceConstellation : state.dSolaceConstellation;
+        const myActiveAllyCharacterId = isChallenger ? state.cActiveAllyCharacterId : state.dActiveAllyCharacterId;
+        const myAllyKit               = isChallenger ? state.cAllyKit : state.dAllyKit;
+        const myAllyMechanicState     = isChallenger ? state.cAllyMechanicState : state.dAllyMechanicState;
+        const isMySolaceAlly = myHasSolace && myActiveAllyCharacterId === "solace";
         let convergenceUsedThisTurn = false;
 
         const myNamedState  = isChallenger ? state.cNamedState : state.dNamedState;
@@ -589,11 +625,14 @@ export async function execute(interaction: ChatInputCommandInteraction) {
         const oppForteEmpoweredTurns = isChallenger ? state.dForteEmpoweredTurnsLeft : state.cForteEmpoweredTurnsLeft;
         const oppSolaceForteLevel    = isChallenger ? state.dSolaceForteLevel : state.cSolaceForteLevel;
         const oppSolaceConstellation = isChallenger ? state.dSolaceConstellation : state.cSolaceConstellation;
+        const oppActiveAllyCharacterId = isChallenger ? state.dActiveAllyCharacterId : state.cActiveAllyCharacterId;
+        const oppHasSolaceForDef = isChallenger ? state.dHasSolace : state.cHasSolace;
+        const isOppSolaceAlly = oppHasSolaceForDef && oppActiveAllyCharacterId === "solace";
         const oppAllySolaceStatsForDef = isChallenger ? state.dAllySolaceStats : state.cAllySolaceStats;
-        const oppWellspringDefBonus  = isDevGuild && oppAllySolaceStatsForDef?.hasWellspring ? getWellspringDefBonus(oppAttunement, oppAllySolaceStatsForDef.wellspringRefinement) : 0;
-        const oppForteDefBonus       = isDevGuild ? getSolaceForteDefBonus(oppSolaceForteLevel, oppForteEmpoweredTurns > 0) : 0;
+        const oppWellspringDefBonus  = isOppSolaceAlly && oppAllySolaceStatsForDef?.hasWellspring ? getWellspringDefBonus(oppAttunement, oppAllySolaceStatsForDef.wellspringRefinement!) : 0;
+        const oppForteDefBonus       = isOppSolaceAlly ? getSolaceForteDefBonus(oppSolaceForteLevel, oppForteEmpoweredTurns > 0) : 0;
         const oppAttunementDefBonus  = solaceAttunementDefBonus(oppSolaceSkillLevel);
-        const oppAttunementDefMult   = (isDevGuild ? getAttunementDefMult(oppAttunement, oppAttunementDefBonus, oppAttunementDblTurns > 0, oppSolaceConstellation >= 6) : 1)
+        const oppAttunementDefMult   = (isOppSolaceAlly ? getAttunementDefMult(oppAttunement, oppAttunementDefBonus, oppAttunementDblTurns > 0, oppSolaceConstellation >= 6) : 1)
           * (1 + oppWellspringDefBonus) * (1 + oppForteDefBonus);
 
         // Milestone 3.5b: whichever unit is currently acting/defending on
@@ -634,7 +673,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
         // Milestone 3e: swap — always consumes the turn, falls through to the
         // shared tail below, same as every other action. Ported from
         // boss.ts's Milestone 3b swap handler.
-        if (btn.customId === "duel_swap" && isDevGuild && myHasSolace && !(myActiveUnit === "player" && myAllyHpVal <= 0)) {
+        if (btn.customId === "duel_swap" && isDevGuild && myHasSolace && myAllyKit && !(myActiveUnit === "player" && myAllyHpVal <= 0)) {
           const outgoingIsPlayer = myActiveUnit === "player";
           const comboReady = myConcertoEnergy >= 100;
 
@@ -643,10 +682,25 @@ export async function execute(interaction: ChatInputCommandInteraction) {
               ? { hp: myAllyHpVal, hpMax: myAllyHpMaxVal }
               : { hp: myHp, hpMax: myHpMax };
 
-            const outroEffect = outgoingIsPlayer ? PLAYER_SELF_OUTRO : solaceOutroEffect(mySolaceConstellation);
-            const introEffect: IntroOutroEffect = outgoingIsPlayer ? solaceIntroEffect(mySolaceIntroLevel, mySolaceConstellation) : PLAYER_SELF_INTRO;
+            const outroEffect = outgoingIsPlayer ? PLAYER_SELF_OUTRO : myAllyKit.outroEffect(mySolaceConstellation);
+            const introEffect: IntroOutroEffect = outgoingIsPlayer ? myAllyKit.introEffect(mySolaceIntroLevel, mySolaceConstellation) : PLAYER_SELF_INTRO;
             const outroResult = resolveIntroOutroEffect(outroEffect, incomingTarget);
             const introResult = resolveIntroOutroEffect(introEffect, incomingTarget);
+
+            if (!outgoingIsPlayer && introEffect.newMechanicState && myActiveAllyCharacterId === "kaelith") {
+              const grant = (introEffect.newMechanicState as any).grantStacksOnIntro as number | undefined;
+              if (grant) {
+                const cur = (myAllyMechanicState as KaelithMechanicState).stacks;
+                const cap = kaelithStackCap(mySolaceConstellation);
+                const newState = { ...(myAllyMechanicState as KaelithMechanicState), stacks: Math.min(cap, cur + grant) };
+                if (isChallenger) state.cAllyMechanicState = newState; else state.dAllyMechanicState = newState;
+              }
+            }
+            if (!outgoingIsPlayer && outroEffect.enemyDebuff) {
+              // Debuff targets the OPPONENT's side, not the caster's own.
+              if (isChallenger) { state.dDefShredTurnsLeft = outroEffect.enemyDebuff.turns + 1; state.dDefShredPct = outroEffect.enemyDebuff.value; }
+              else              { state.cDefShredTurnsLeft = outroEffect.enemyDebuff.turns + 1; state.cDefShredPct = outroEffect.enemyDebuff.value; }
+            }
 
             if (!outgoingIsPlayer) {
               if (isChallenger) state.cNextCritArmed = true; else state.dNextCritArmed = true;
@@ -667,12 +721,12 @@ export async function execute(interaction: ChatInputCommandInteraction) {
             }
 
             moveLine = actualGain > 0
-              ? `${myName} — 🔄 Swapped to **${outgoingIsPlayer ? SOLACE.name : myName}** — Outro+Intro combo! +${actualGain} HP.`
-              : `${myName} — 🔄 Swapped to **${outgoingIsPlayer ? SOLACE.name : myName}** — Outro+Intro combo! (already full HP, no heal needed)`;
+              ? `${myName} — 🔄 Swapped to **${outgoingIsPlayer ? myAllyKit.label : myName}** — Outro+Intro combo! +${actualGain} HP.`
+              : `${myName} — 🔄 Swapped to **${outgoingIsPlayer ? myAllyKit.label : myName}** — Outro+Intro combo! (already full HP, no heal needed)`;
             const newConcerto = addConcertoEnergy(0, 20); // headstart, matches CONCERTO_INTRO_HEADSTART
             if (isChallenger) state.cConcertoEnergy = newConcerto; else state.dConcertoEnergy = newConcerto;
           } else {
-            moveLine = `${myName} — 🔄 Swapped to **${outgoingIsPlayer ? SOLACE.name : myName}** — Concerto Energy not full, no combo triggered.`;
+            moveLine = `${myName} — 🔄 Swapped to **${outgoingIsPlayer ? myAllyKit.label : myName}** — Concerto Energy not full, no combo triggered.`;
           }
 
           if (isChallenger) state.cActiveUnit = outgoingIsPlayer ? "ally" : "player";
@@ -703,15 +757,15 @@ export async function execute(interaction: ChatInputCommandInteraction) {
         let isCrit = false;
 
         if (btn.customId === "duel_basic") {
-          const teamAtkMult   = isDevGuild ? getAttunementAtkMult(myAttunement, solaceAttunementAtkCritBonus(mySolaceSkillLevel), myAttunementDblTurns > 0, mySolaceConstellation >= 6) : 1;
-          const teamCritBonus = isDevGuild ? getAttunementCritRateBonus(myAttunement, solaceAttunementAtkCritBonus(mySolaceSkillLevel), myAttunementDblTurns > 0, mySolaceConstellation >= 6) : 0;
-          const wellspringAtkMult   = isDevGuild && myActiveUnit === "ally" && myAllySolaceStats?.hasWellspring ? getWellspringBaseAtkMult(myAllySolaceStats.wellspringRefinement) : 1;
-          const wellspringAtkBonus  = isDevGuild && myAllySolaceStats?.hasWellspring ? getWellspringAtkBonus(myAttunement, myAllySolaceStats.wellspringRefinement) : 0;
-          const wellspringCritBonus = isDevGuild && myAllySolaceStats?.hasWellspring ? getWellspringCritRateBonus(myAttunement, myAllySolaceStats.wellspringRefinement) : 0;
-          const forteAtkBonus  = isDevGuild ? getSolaceForteAtkBonus(mySolaceForteLevel, myForteEmpoweredTurns > 0) : 0;
-          const forteCritBonus = isDevGuild ? getSolaceForteCritRateBonus(mySolaceForteLevel, myForteEmpoweredTurns > 0) : 0;
+          const teamAtkMult   = isMySolaceAlly ? getAttunementAtkMult(myAttunement, solaceAttunementAtkCritBonus(mySolaceSkillLevel), myAttunementDblTurns > 0, mySolaceConstellation >= 6) : 1;
+          const teamCritBonus = isMySolaceAlly ? getAttunementCritRateBonus(myAttunement, solaceAttunementAtkCritBonus(mySolaceSkillLevel), myAttunementDblTurns > 0, mySolaceConstellation >= 6) : 0;
+          const wellspringAtkMult   = isMySolaceAlly && myActiveUnit === "ally" && myAllySolaceStats?.hasWellspring ? getWellspringBaseAtkMult(myAllySolaceStats.wellspringRefinement!) : 1;
+          const wellspringAtkBonus  = isMySolaceAlly && myAllySolaceStats?.hasWellspring ? getWellspringAtkBonus(myAttunement, myAllySolaceStats.wellspringRefinement!) : 0;
+          const wellspringCritBonus = isMySolaceAlly && myAllySolaceStats?.hasWellspring ? getWellspringCritRateBonus(myAttunement, myAllySolaceStats.wellspringRefinement!) : 0;
+          const forteAtkBonus  = isMySolaceAlly ? getSolaceForteAtkBonus(mySolaceForteLevel, myForteEmpoweredTurns > 0) : 0;
+          const forteCritBonus = isMySolaceAlly ? getSolaceForteCritRateBonus(mySolaceForteLevel, myForteEmpoweredTurns > 0) : 0;
           const teamMult = getWeakenedMult(myPlayerDebuffs) * teamAtkMult * wellspringAtkMult * (1 + wellspringAtkBonus) * (1 + forteAtkBonus);
-          const basicMoveMult = isDevGuild && myActiveUnit === "ally" ? solaceBasicDamageMult(mySolaceBasicLevel) : 1.0;
+          const basicMoveMult = myHasSolace && myActiveUnit === "ally" && myAllyKit ? myAllyKit.basicDamageMult(mySolaceBasicLevel) : 1.0;
           const windExplosion = mySetId === "WINDSTRIDERS_LEGACY"
             ? windstridersLegacyCheckExplosion(myNamedState) : { proc: false, guaranteedCrit: false, bonusMult: 1.0 };
           const smolderMult = mySetId === "SMOLDERING_SOVEREIGN" ? smolderingSovereignOnAction(myNamedState) : 1;
@@ -738,8 +792,17 @@ export async function execute(interaction: ChatInputCommandInteraction) {
           else              state.dEnergy = Math.min(100, state.dEnergy + enGain);
           if (mySetId === "STORMCALLERS_OATH") stormcallersOathCheckThunderbolt(myNamedState, isChallenger ? state.cEnergy : state.dEnergy);
 
-          // Forte fills only from Solace's own Chime Strike.
-          if (isDevGuild && myActiveUnit === "ally") {
+          if (myHasSolace && myActiveUnit === "ally" && myActiveAllyCharacterId === "kaelith") {
+            const kState = myAllyMechanicState as KaelithMechanicState;
+            const gain = kaelithBasicStackGain(mySolaceConstellation);
+            const cap = kaelithStackCap(mySolaceConstellation);
+            const newState = { ...kState, stacks: Math.min(cap, kState.stacks + gain) };
+            if (isChallenger) state.cAllyMechanicState = newState; else state.dAllyMechanicState = newState;
+            moveLine += `\n🌑 +${gain} stack${gain === 1 ? "" : "s"} (${newState.stacks}/${cap})`;
+          }
+
+          // Forte fills only from the active ally's own Basic Attack.
+          if (isMySolaceAlly) {
             const forteBefore = mySolaceForte;
             const forteAfter  = addForteCharge(forteBefore, SOLACE_FORTE_CONFIG, SOLACE_FORTE_GAIN_PER_BASIC);
             if (isChallenger) state.cSolaceForte = forteAfter; else state.dSolaceForte = forteAfter;
@@ -750,10 +813,17 @@ export async function execute(interaction: ChatInputCommandInteraction) {
             } else if (isHalf && !wasHalf) {
               moveLine += `\n✨ Forte is **HALF CHARGED**.`;
             }
+          } else if (myHasSolace && myActiveUnit === "ally" && myActiveAllyCharacterId === "kaelith") {
+            const forteBefore = mySolaceForte;
+            const forteAfter  = addForteCharge(forteBefore, KAELITH_FORTE_CONFIG, KAELITH_FORTE_GAIN_PER_BASIC);
+            if (isChallenger) state.cSolaceForte = forteAfter; else state.dSolaceForte = forteAfter;
+            if (isForteMaxed(forteAfter, KAELITH_FORTE_CONFIG) && !isForteMaxed(forteBefore, KAELITH_FORTE_CONFIG)) {
+              moveLine += `\n✨ Forte is **FULLY CHARGED** — next Umbral Cataclysm will keep your stacks!`;
+            }
           }
         }
 
-        if (btn.customId === "duel_skill" && isDevGuild && myActiveUnit === "ally") {
+        if (btn.customId === "duel_skill" && isDevGuild && myActiveUnit === "ally" && myActiveAllyCharacterId === "solace") {
           // Solace's Skill is Attunement — a mode cycle, not a damage move.
           const newMode = cycleAttunementMode(myAttunement.mode);
           if (isChallenger) state.cAttunement.mode = newMode; else state.dAttunement.mode = newMode;
@@ -769,13 +839,34 @@ export async function execute(interaction: ChatInputCommandInteraction) {
           const enGain = ENERGY_PER_TURN;
           if (isChallenger) state.cEnergy = Math.min(100, state.cEnergy + enGain);
           else              state.dEnergy = Math.min(100, state.dEnergy + enGain);
+        } else if (btn.customId === "duel_skill" && isDevGuild && myActiveUnit === "ally" && myActiveAllyCharacterId === "kaelith" && myAllyKit) {
+          const kState = myAllyMechanicState as KaelithMechanicState;
+          if (kState.stacks <= 0) {
+            moveLine = `${myName} — 🌑 Umbral Detonation — no stacks to consume! (0 DMG bonus)`;
+            damage = 0;
+          } else {
+            const crit = Math.random() < aCrit;
+            const result = myAllyKit.onSkill(
+              { playerHp: myHp, playerHpMax: myHpMax, allyHp: myAllyHpVal, allyHpMax: myAllyHpMaxVal, turn: state.turn, isShattered: false, mechanicState: kState },
+              { basicLevel: mySolaceBasicLevel, skillLevel: mySolaceSkillLevel, ultimateLevel: mySolaceUltimateLvl, introLevel: mySolaceIntroLevel, forteLevel: mySolaceForteLevel },
+              mySolaceConstellation,
+            );
+            if (isChallenger) state.cAllyMechanicState = result.newMechanicState; else state.dAllyMechanicState = result.newMechanicState;
+            const r = calcPlayerDamage(activeAtk * result.damageMult, effectiveOppDef, crit ? 1 : 0, activeCritDmg, 1.0, isWeak, false);
+            damage = Math.floor(r.damage * (1 + myElemDmg + extraElemBonus));
+            isCrit = r.isCrit; moveType = "SKILL";
+            moveLine = `${myName} — 🌑 ${result.moveLabel}${crit ? " **(CRIT)**" : ""}`;
+          }
+          const mySkillCdKaelith = myAllyKit.skillCooldownTurns;
+          if (isChallenger) state.cSkillCd = mySkillCdKaelith; else state.dSkillCd = mySkillCdKaelith;
         } else if (btn.customId === "duel_skill") {
-          const teamAtkMult    = isDevGuild ? getAttunementAtkMult(myAttunement, solaceAttunementAtkCritBonus(mySolaceSkillLevel), myAttunementDblTurns > 0, mySolaceConstellation >= 6) : 1;
-          const teamCritBonus  = isDevGuild ? getAttunementCritRateBonus(myAttunement, solaceAttunementAtkCritBonus(mySolaceSkillLevel), myAttunementDblTurns > 0, mySolaceConstellation >= 6) : 0;
-          const wellspringAtkBonus  = isDevGuild && myAllySolaceStats?.hasWellspring ? getWellspringAtkBonus(myAttunement, myAllySolaceStats.wellspringRefinement) : 0;
-          const wellspringCritBonus = isDevGuild && myAllySolaceStats?.hasWellspring ? getWellspringCritRateBonus(myAttunement, myAllySolaceStats.wellspringRefinement) : 0;
-          const forteAtkBonus  = isDevGuild ? getSolaceForteAtkBonus(mySolaceForteLevel, myForteEmpoweredTurns > 0) : 0;
-          const forteCritBonus = isDevGuild ? getSolaceForteCritRateBonus(mySolaceForteLevel, myForteEmpoweredTurns > 0) : 0;
+          const isSolaceAllySkill = isMySolaceAlly;
+          const teamAtkMult    = isSolaceAllySkill ? getAttunementAtkMult(myAttunement, solaceAttunementAtkCritBonus(mySolaceSkillLevel), myAttunementDblTurns > 0, mySolaceConstellation >= 6) : 1;
+          const teamCritBonus  = isSolaceAllySkill ? getAttunementCritRateBonus(myAttunement, solaceAttunementAtkCritBonus(mySolaceSkillLevel), myAttunementDblTurns > 0, mySolaceConstellation >= 6) : 0;
+          const wellspringAtkBonus  = isSolaceAllySkill && myAllySolaceStats?.hasWellspring ? getWellspringAtkBonus(myAttunement, myAllySolaceStats.wellspringRefinement!) : 0;
+          const wellspringCritBonus = isSolaceAllySkill && myAllySolaceStats?.hasWellspring ? getWellspringCritRateBonus(myAttunement, myAllySolaceStats.wellspringRefinement!) : 0;
+          const forteAtkBonus  = isSolaceAllySkill ? getSolaceForteAtkBonus(mySolaceForteLevel, myForteEmpoweredTurns > 0) : 0;
+          const forteCritBonus = isSolaceAllySkill ? getSolaceForteCritRateBonus(mySolaceForteLevel, myForteEmpoweredTurns > 0) : 0;
           const teamMult = getWeakenedMult(myPlayerDebuffs) * teamAtkMult * (1 + wellspringAtkBonus) * (1 + forteAtkBonus);
           const smolderMult = mySetId === "SMOLDERING_SOVEREIGN" ? smolderingSovereignOnAction(myNamedState) : 1;
           const r      = calcPlayerDamage(myAtk * teamMult * smolderMult * myHavocAtkMult, effectiveOppDef, forcedCritActive ? 1 : Math.min(1, aCrit + 0.1 + teamCritBonus + wellspringCritBonus + forteCritBonus), myCritDmg, 1.8, isWeak, false);
@@ -797,9 +888,9 @@ export async function execute(interaction: ChatInputCommandInteraction) {
         }
 
         if (btn.customId === "duel_ultimate" && !(isDevGuild && myActiveUnit === "ally")) {
-          const teamAtkMult   = isDevGuild ? getAttunementAtkMult(myAttunement, solaceAttunementAtkCritBonus(mySolaceSkillLevel), myAttunementDblTurns > 0, mySolaceConstellation >= 6) : 1;
-          const wellspringAtkBonus = isDevGuild && myAllySolaceStats?.hasWellspring ? getWellspringAtkBonus(myAttunement, myAllySolaceStats.wellspringRefinement) : 0;
-          const forteAtkBonus = isDevGuild ? getSolaceForteAtkBonus(mySolaceForteLevel, myForteEmpoweredTurns > 0) : 0;
+          const teamAtkMult   = isMySolaceAlly ? getAttunementAtkMult(myAttunement, solaceAttunementAtkCritBonus(mySolaceSkillLevel), myAttunementDblTurns > 0, mySolaceConstellation >= 6) : 1;
+          const wellspringAtkBonus = isMySolaceAlly && myAllySolaceStats?.hasWellspring ? getWellspringAtkBonus(myAttunement, myAllySolaceStats.wellspringRefinement!) : 0;
+          const forteAtkBonus = isMySolaceAlly ? getSolaceForteAtkBonus(mySolaceForteLevel, myForteEmpoweredTurns > 0) : 0;
           const teamMult = getWeakenedMult(myPlayerDebuffs) * teamAtkMult * (1 + wellspringAtkBonus) * (1 + forteAtkBonus);
           const smolderMult = mySetId === "SMOLDERING_SOVEREIGN" ? smolderingSovereignOnAction(myNamedState) : 1;
           const r  = calcPlayerDamage(myAtk * teamMult * smolderMult * myHavocAtkMult, effectiveOppDef, 1.0, myCritDmg, 3.5, isWeak, false);
@@ -815,7 +906,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
             if (isChallenger) { state.cStormBuffTurnsLeft = surge.turnsLeft + 1; state.cStormBuffCritBonus = surge.critRateBonus; }
             else              { state.dStormBuffTurnsLeft = surge.turnsLeft + 1; state.dStormBuffCritBonus = surge.critRateBonus; }
           }
-        } else if (btn.customId === "duel_ultimate" && isDevGuild && myActiveUnit === "ally") {
+        } else if (btn.customId === "duel_ultimate" && isDevGuild && myActiveUnit === "ally" && myActiveAllyCharacterId === "solace") {
           // Solace's Ultimate spends Concerto Energy, not personal Energy, and
           // heals the 2-unit side (player + Solace) — no party to heal in a
           // duel, matching /dungeon's/`boss.ts`'s 2-unit Convergence, not
@@ -847,7 +938,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
           convergenceUsedThisTurn = true;
           damage = 0; isCrit = false; moveType = "ULT";
 
-          const healSummary = `${myName} +${actualHealPlayer} HP, ${SOLACE.name} +${actualHealAlly} HP`;
+          const healSummary = `${myName} +${actualHealPlayer} HP, ${myAllyKit?.label ?? "Solace"} +${actualHealAlly} HP`;
           if (isForteMaxed(mySolaceForte, SOLACE_FORTE_CONFIG)) {
             const emp = solaceUltimateDoubleTurns(mySolaceConstellation) + 1;
             const reset = resetForte();
@@ -861,6 +952,34 @@ export async function execute(interaction: ChatInputCommandInteraction) {
             else              { state.dAttunementDoubleTurnsLeft = dbl; state.dForteEmpoweredTurnsLeft = 0; }
             moveLine = `${myName} — ⚡ **Convergence!** Team healed (${healSummary}), debuffs cleansed, ` +
               `**${myAttunement.mode ?? "no"} mode doubled for ${solaceUltimateDoubleTurns(mySolaceConstellation)} turns!**`;
+          }
+        } else if (btn.customId === "duel_ultimate" && isDevGuild && myActiveUnit === "ally" && myActiveAllyCharacterId === "kaelith" && myAllyKit) {
+          const kState = myAllyMechanicState as KaelithMechanicState;
+          const stacksConsumed = kState.stacks;
+
+          const ultDamageMult = mySolaceConstellation >= 6
+            ? stacksConsumed * (KAELITH_PER_STACK_ULT_BONUS * 1.6)
+            : kaelithUltimateBaseMult(mySolaceUltimateLvl) + stacksConsumed * KAELITH_PER_STACK_ULT_BONUS;
+
+          const result = myAllyKit.onUltimate(
+            { playerHp: myHp, playerHpMax: myHpMax, allyHp: myAllyHpVal, allyHpMax: myAllyHpMaxVal, turn: state.turn, isShattered: false, mechanicState: kState },
+            { basicLevel: mySolaceBasicLevel, skillLevel: mySolaceSkillLevel, ultimateLevel: mySolaceUltimateLvl, introLevel: mySolaceIntroLevel, forteLevel: mySolaceForteLevel },
+            mySolaceConstellation,
+          );
+          if (isChallenger) state.cAllyMechanicState = result.newMechanicState; else state.dAllyMechanicState = result.newMechanicState;
+
+          const r = calcPlayerDamage(activeAtk * ultDamageMult, effectiveOppDef, 1.0, activeCritDmg, 1.0, isWeak, false);
+          damage = r.damage; isCrit = true; moveType = "ULT";
+          moveLine = `${myName} — 🌑 ${result.moveLabel}`;
+
+          if (result.healResult.actions.length > 0) {
+            const healResult = resolveIntroOutroEffect(result.healResult, { hp: myAllyHpVal, hpMax: myAllyHpMaxVal });
+            const afterAlly = Math.min(myAllyHpMaxVal, myAllyHpVal + healResult.hpDelta);
+            if (isChallenger) state.cAllyHp = afterAlly; else state.dAllyHp = afterAlly;
+          }
+          if (result.resetsConcertoEnergy) {
+            convergenceUsedThisTurn = true;
+            if (isChallenger) state.cConcertoEnergy = 0; else state.dConcertoEnergy = 0;
           }
         }
 
@@ -978,7 +1097,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
         // (a real action, but shouldn't get a damage bonus it can't use), mirroring the
         // Quick-Strike exclusion already applied to Convergence in /boss and /ascend.
         if (state.turn === 1 && mySpd > oppSpd && btn.customId !== "duel_swap" &&
-            !(btn.customId === "duel_ultimate" && isDevGuild && myActiveUnit === "ally")) {
+            !(btn.customId === "duel_ultimate" && isDevGuild && myActiveUnit === "ally" && myActiveAllyCharacterId === "solace")) {
           const bonusDmg = Math.floor(damage * 0.15);
           damage += bonusDmg;
           moveLine += `\n⚡ **First Strike** — you got the jump on them! +${bonusDmg} bonus DMG!`;
@@ -1082,10 +1201,10 @@ export async function execute(interaction: ChatInputCommandInteraction) {
         if (isDevGuild) {
           if (isChallenger && state.dActiveUnit === "ally" && state.dAllyHp <= 0) {
             state.dAllyHp = 0; state.dActiveUnit = "player";
-            moveLine += `\n◇ **${SOLACE.name} was knocked out** — ${state.challengedName} swapped back.`;
+            moveLine += `\n◇ **${state.dAllyKit?.label ?? "Their ally"} was knocked out** — ${state.challengedName} swapped back.`;
           } else if (!isChallenger && state.cActiveUnit === "ally" && state.cAllyHp <= 0) {
             state.cAllyHp = 0; state.cActiveUnit = "player";
-            moveLine += `\n◇ **${SOLACE.name} was knocked out** — ${state.challengerName} swapped back.`;
+            moveLine += `\n◇ **${state.cAllyKit?.label ?? "Their ally"} was knocked out** — ${state.challengerName} swapped back.`;
           }
         }
 
