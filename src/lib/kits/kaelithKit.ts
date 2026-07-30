@@ -199,6 +199,7 @@ export const kaelithKit: PlayableCharacterKit = {
   label: "Kaelith",
   emoji: "🌑",
   element: "HAVOC",
+  rarity: 4,
   portraitPath: "assets/Characters/Kaelith.png",
   loreFragments: KAELITH_LORE_FRAGMENTS,
   skillCooldownTurns: 3,

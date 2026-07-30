@@ -64,7 +64,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
     { label: "None — solo", description: "No ally will join your fights", value: "none", emoji: "🚫" },
     ...ownedIds.map(id => {
       const kit = CHARACTER_KITS[id];
-      return { label: kit.label, description: `${kit.element} — set as your team's 2nd slot`, value: id, emoji: kit.emoji };
+      return { label: `${kit.label}  ${"★".repeat(kit.rarity)}`, description: `${kit.rarity}★ ${kit.element} — set as your team's 2nd slot`, value: id, emoji: kit.emoji };
     }),
   ];
 

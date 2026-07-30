@@ -34,10 +34,10 @@ import { pageSlice, pageCount, buildPageNavRow } from "../../lib/pagination";
 // Derived directly from CHARACTER_KITS — adding a character to the kit
 // registry automatically makes it selectable here, no separate catalog to
 // keep in sync.
-const CHARACTERS: Record<string, { label: string; emoji: string; element: string; portraitPath: string }> =
+const CHARACTERS: Record<string, { label: string; emoji: string; element: string; rarity: 4 | 5; portraitPath: string }> =
   Object.fromEntries(
     Object.entries(CHARACTER_KITS).map(([id, kit]) => [
-      id, { label: kit.label, emoji: kit.emoji, element: kit.element, portraitPath: kit.portraitPath },
+      id, { label: kit.label, emoji: kit.emoji, element: kit.element, rarity: kit.rarity, portraitPath: kit.portraitPath },
     ]),
   );
 
@@ -196,7 +196,7 @@ async function buildStatsView(userId: string, characterId: string): Promise<Page
   const cap = currentLevelCap(progress.ascensionPhase);
   const buf = await renderStatBarsCard({
     characterName: char.label, element: char.element,
-    subtitle: `Lv ${progress.level}/${cap} · Phase ${progress.ascensionPhase}/${maxAscensionPhase}`,
+    subtitle: `${"★".repeat(kit.rarity)}  ·  Lv ${progress.level}/${cap} · Phase ${progress.ascensionPhase}/${maxAscensionPhase}`,
     portraitPath: char.portraitPath,
     bars: [
       { label: "HP",        value: stats.hp,       max: stats.hp,      displayValue: `${Math.round(stats.hp)}` },
@@ -481,7 +481,8 @@ const command: Command = {
         Object.entries(CHARACTERS)
           .filter(([id]) => ownedCharacterIds.has(id))
           .map(([value, c]) => ({
-            label: `${c.emoji}  ${c.label}`,
+            label: `${c.emoji}  ${c.label}  ${"★".repeat(c.rarity)}`,
+            description: `${c.rarity}★  ·  ${c.element}`,
             value,
           }))
       );

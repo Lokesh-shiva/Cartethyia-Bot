@@ -44,6 +44,7 @@ export interface PlayableCharacterKit {
   label:         string;
   emoji:         string;
   element:       string;
+  rarity:        4 | 5;         // banner rarity — shown as ★ count in character pickers
   portraitPath:  string;
   loreFragments: string[];      // 7 entries; fragment i unlocks at ascensionPhase >= i
   skillCooldownTurns: number;   // 0 = no cooldown (Solace); a real damage-move Skill should set this

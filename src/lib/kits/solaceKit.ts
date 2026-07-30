@@ -26,6 +26,7 @@ export const solaceKit: PlayableCharacterKit = {
   label: "Solace",
   emoji: "✨",
   element: "SPECTRO",
+  rarity: 5,
   portraitPath: "assets/Characters/Solace.png",
   loreFragments: SOLACE_LORE_FRAGMENTS,
   skillCooldownTurns: 0, // no cooldown — Attunement is a utility mode-cycle, not a damage move
