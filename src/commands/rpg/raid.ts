@@ -64,6 +64,9 @@ import {
   kaelithStackCap, kaelithBasicStackGain, kaelithUltimateBaseMult, KAELITH_PER_STACK_ULT_BONUS,
   KAELITH_FORTE_CONFIG, KAELITH_FORTE_GAIN_PER_BASIC, KaelithMechanicState,
 } from "../../lib/kits/kaelithKit";
+import {
+  VesperMechanicState, VesperSkillResult, VESPER_FORTE_CONFIG, VESPER_FORTE_GAIN_PER_BASIC, vesperUltimateBaseMult,
+} from "../../lib/kits/vesperKit";
 import "../../lib/kits";
 
 // ── Unified boss handle (works for both World bosses and Field bosses) ─────────
@@ -395,6 +398,15 @@ function buildRaidButtons(p: RaidParticipant, isDevGuild: boolean): ActionRowBui
         .setStyle(ButtonStyle.Secondary).setDisabled(!skillReady),
       new ButtonBuilder().setCustomId("raid_ultimate").setLabel("🌑  Umbral Cataclysm")
         .setStyle(ButtonStyle.Success).setDisabled(p.concertoEnergy < 100),
+      new ButtonBuilder().setCustomId("raid_retreat")
+        .setLabel("↩  Retreat").setStyle(ButtonStyle.Danger),
+    ));
+  } else if (isDevGuild && p.hasSolace && p.activeUnit === "ally" && p.activeAllyCharacterId === "vesper") {
+    rows.push(new ActionRowBuilder<ButtonBuilder>().addComponents(
+      new ButtonBuilder().setCustomId("raid_basic").setLabel("⚔️  Basic Attack").setStyle(ButtonStyle.Primary),
+      new ButtonBuilder().setCustomId("raid_skill").setLabel("⚡  Discharge").setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder().setCustomId("raid_ultimate").setLabel("⚡  Overload")
+        .setStyle(ButtonStyle.Success).setDisabled(p.energy < 100),
       new ButtonBuilder().setCustomId("raid_retreat")
         .setLabel("↩  Retreat").setStyle(ButtonStyle.Danger),
     ));
@@ -1101,6 +1113,17 @@ async function launchRaid(
             raid.bossDefShredTurnsLeft = outroEffect.enemyDebuff.turns + 1;
             raid.bossDefShredPct = outroEffect.enemyDebuff.value;
           }
+          if (!outgoingIsPlayer && outroEffect.newMechanicState && current.activeAllyCharacterId === "vesper") {
+            const grantMark = (outroEffect.newMechanicState as any).grantMarkOnOutro === true;
+            const charged = (outroEffect.newMechanicState as any).chargedMark === true;
+            if (grantMark) {
+              current.allyMechanicState = { ...(current.allyMechanicState as VesperMechanicState), markPresent: true, chargedMark: charged };
+            }
+          }
+          if (outgoingIsPlayer && introEffect.newMechanicState && current.activeAllyCharacterId === "vesper") {
+            const energyGrant = (introEffect.newMechanicState as any).grantEnergyOnIntro as number | undefined;
+            if (energyGrant) current.energy = Math.min(100, current.energy + energyGrant);
+          }
 
           if (!outgoingIsPlayer) current.nextCritArmed = true;
 
@@ -1149,6 +1172,7 @@ async function launchRaid(
         const isAllyActing = raid.isDevGuild && current.activeUnit === "ally";
         const isSolaceActing = isAllyActing && current.activeAllyCharacterId === "solace";
         const isKaelithActing = isAllyActing && current.activeAllyCharacterId === "kaelith";
+        const isVesperActing = isAllyActing && current.activeAllyCharacterId === "vesper";
         const basicMoveMult = isAllyActing && current.allyKit ? current.allyKit.basicDamageMult(current.solaceBasicLevel) : 1.0;
         const wellspringSelfAtkMult = isSolaceActing && current.allySolaceStats?.hasWellspring ? getWellspringBaseAtkMult(current.allySolaceStats.wellspringRefinement!) : 1;
         const teamMult = weakenedMult * party.atkMult * wellspringSelfAtkMult * basicMoveMult;
@@ -1175,6 +1199,16 @@ async function launchRaid(
           current.solaceForte = addForteCharge(current.solaceForte, KAELITH_FORTE_CONFIG, KAELITH_FORTE_GAIN_PER_BASIC);
           if (isForteMaxed(current.solaceForte, KAELITH_FORTE_CONFIG) && !isForteMaxed(forteBefore, KAELITH_FORTE_CONFIG)) {
             forteAnnounce += `\n✨ Forte is **FULLY CHARGED** — next Umbral Cataclysm will keep your stacks!`;
+          }
+        } else if (isVesperActing) {
+          const vState = current.allyMechanicState as VesperMechanicState;
+          current.allyMechanicState = { ...vState, markPresent: true };
+          forteAnnounce = `\n⚡ Static Mark applied!`;
+
+          const forteBefore = current.solaceForte;
+          current.solaceForte = addForteCharge(current.solaceForte, VESPER_FORTE_CONFIG, VESPER_FORTE_GAIN_PER_BASIC);
+          if (isForteMaxed(current.solaceForte, VESPER_FORTE_CONFIG) && !isForteMaxed(forteBefore, VESPER_FORTE_CONFIG)) {
+            forteAnnounce += `\n✨ Forte is **FULLY CHARGED** — next Discharge will be an Arc Discharge!`;
           }
         }
         const r    = calcPlayerDamage(activeAtk * smolderMult * havocAtkMult * teamMult, defVal, forcedCrit ? 1 : Math.min(1, aCrit + party.critBonus), activeCritDmg, 1.0, isWeak, raid.isShattered);
@@ -1228,6 +1262,41 @@ async function launchRaid(
           const base = Math.floor(r.damage * (1 + current.elemDmg + extraElemBonus) * radiantDmgMult);
           damage = base; isCrit = r.isCrit; vibFrac = result.vibFrac;
           moveLine = `${current.name} — 🌑 ${result.moveLabel}${crit ? " **(CRIT)**" : ""}`;
+        }
+        current.skillCd = current.allyKit.skillCooldownTurns;
+
+      } else if (raid.isDevGuild && current.activeUnit === "ally" && current.activeAllyCharacterId === "vesper" && current.allyKit && btn.customId === "raid_skill") {
+        const vState = current.allyMechanicState as VesperMechanicState;
+        const crit = forcedCritActive || Math.random() < aCrit;
+        const forteEmpowered = isForteMaxed(current.solaceForte, VESPER_FORTE_CONFIG);
+        const result = current.allyKit.onSkill(
+          { playerHp: current.hp, playerHpMax: current.hpMax, allyHp: current.allyHp, allyHpMax: current.allyHpMax, turn: raid.turn, isShattered: raid.isShattered, mechanicState: vState, forteEmpowered } as any,
+          { basicLevel: current.solaceBasicLevel, skillLevel: current.solaceSkillLevel, ultimateLevel: current.solaceUltimateLevel, introLevel: current.solaceIntroLevel, forteLevel: current.solaceForteLevel },
+          current.solaceConstellation,
+        ) as VesperSkillResult;
+        current.allyMechanicState = result.newMechanicState;
+        if (forteEmpowered) current.solaceForte = resetForte();
+
+        const effectiveDefVal = defVal * (1 - result.defIgnorePct);
+        const perHit = calcPlayerDamage(activeAtk * havocAtkMult, effectiveDefVal, crit ? 1 : 0, activeCritDmg, result.damageMult / result.hits, isWeak, raid.isShattered);
+        const perHitDmg = Math.floor(perHit.damage * (1 + current.elemDmg + extraElemBonus) * radiantDmgMult);
+
+        if (result.hits > 1) {
+          const hitLines = Array.from({ length: result.hits }, (_, i) => `Hit ${i + 1}: ${perHitDmg} dmg`).join("\n");
+          damage = perHitDmg * result.hits;
+          moveLine = `${current.name} — ⚡ ${result.moveLabel}\n${hitLines}\n**Total: ${damage} DMG**${crit ? " **(CRIT)**" : ""}`;
+        } else {
+          damage = perHitDmg;
+          moveLine = `${current.name} — ⚡ ${result.moveLabel}${crit ? " **(CRIT)**" : ""}`;
+        }
+        isCrit = crit; vibFrac = result.vibFrac;
+
+        if (!forteEmpowered) {
+          const forteBefore = current.solaceForte;
+          current.solaceForte = addForteCharge(current.solaceForte, VESPER_FORTE_CONFIG, VESPER_FORTE_GAIN_PER_BASIC);
+          if (isForteMaxed(current.solaceForte, VESPER_FORTE_CONFIG) && !isForteMaxed(forteBefore, VESPER_FORTE_CONFIG)) {
+            moveLine += `\n✨ Forte is **FULLY CHARGED** — next Discharge will be an Arc Discharge!`;
+          }
         }
         current.skillCd = current.allyKit.skillCooldownTurns;
 
@@ -1342,6 +1411,26 @@ async function launchRaid(
           current.allyHp = Math.min(current.allyHpMax, current.allyHp + healResult.hpDelta);
         }
         if (result.resetsConcertoEnergy) { current.concertoEnergy = 0; convergenceUsedThisTurn = true; }
+      } else if (raid.isDevGuild && current.activeUnit === "ally" && current.activeAllyCharacterId === "vesper" && current.allyKit && btn.customId === "raid_ultimate") {
+        const vState = current.allyMechanicState as VesperMechanicState;
+        const consumedMark = vState.markPresent;
+        const energyPct = Math.min(100, current.energy) / 100;
+        const markBonus = consumedMark ? 0.8 : 0;
+        const c6Bonus = current.solaceConstellation >= 6 ? vState.dischargesSinceUltimate * 0.15 : 0;
+        const c3Bonus = current.solaceConstellation >= 3 ? energyPct * 0.5 : 0;
+        const ultDamageMult = vesperUltimateBaseMult(current.solaceUltimateLevel) + markBonus + c6Bonus + c3Bonus;
+
+        const result = current.allyKit.onUltimate(
+          { playerHp: current.hp, playerHpMax: current.hpMax, allyHp: current.allyHp, allyHpMax: current.allyHpMax, turn: raid.turn, isShattered: raid.isShattered, mechanicState: vState, playerEnergy: current.energy, playerEnergyMax: 100 },
+          { basicLevel: current.solaceBasicLevel, skillLevel: current.solaceSkillLevel, ultimateLevel: current.solaceUltimateLevel, introLevel: current.solaceIntroLevel, forteLevel: current.solaceForteLevel },
+          current.solaceConstellation,
+        );
+        current.allyMechanicState = result.newMechanicState;
+
+        const r = calcPlayerDamage(activeAtk * havocAtkMult * ultDamageMult, defVal, 1.0, activeCritDmg, 1.0, isWeak, raid.isShattered);
+        const base = Math.floor(r.damage * (1 + current.elemDmg + extraElemBonus) * radiantDmgMult);
+        damage = base; isCrit = true; moveType = "ULT"; vibFrac = 0.8;
+        moveLine = `${current.name} — ⚡ ${result.moveLabel}`;
       } else if (btn.customId === "raid_echoskill" && current.bonuses.echoSkill) {
         const def = current.bonuses.echoSkill;
         const echoCrit = forcedCritActive || def.kind === "GUARANTEED_CRIT" || Math.random() < aCrit;
