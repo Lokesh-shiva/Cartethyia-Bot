@@ -19,6 +19,8 @@
 Same low-floor/high-ceiling shape as Kaelith (HP/ATK/DEF/CritRate/CritDmg scale heavily across levels, matching a DPS-biased build-reward curve), except:
 - **SPD floor is meaningfully higher than Kaelith's** — reflects Electro's energy/speed theme and her sub-DPS role (she's built to act more often / enable faster rotations, not just hit hardest).
 
+**Confirmed: no bespoke SPD mechanic.** SPD affects her only through the existing global hooks every character already gets (`CLAUDE.md`'s SPD system): +1 Energy/turn per 20 `spdFlat` (the one that actually matters for her, since her whole kit — Discharge/Overload chain, Intro's Energy burst — is Energy-driven), Quick Strike, and duel/raid turn order. Her higher SPD floor just means she's more likely to benefit from these by default without a min-maxed SPD substat build; it's a stat-curve choice, not new mechanic code. This was explicitly considered and rejected in favor of simplicity during design — do not add a bespoke SPD-gated bonus (e.g. "if SPD clears a threshold, Discharge does X extra") without checking back in first.
+
 Exact numeric curves (ceiling/floor-fraction pairs per stat, mirroring `kaelithStatsAtLevel`'s shape) are an implementation-time decision, not fixed in this spec — the implementer should follow the same `scaleStat(ceil, floorFrac, level)` pattern already established in `kaelithKit.ts`, picking a SPD floor fraction noticeably above Kaelith's 0.50.
 
 ## Core Mechanic: Static Mark → Discharge → Overload
