@@ -23,6 +23,7 @@ const CURRENCIES = [
   { key: "radiantKeys",    file: "Radiant Key.png",    label: "Radiant Keys",   color: "#FCD34D", desc: "Limited wish pulls"   },
   { key: "starfallShards", file: "Starfall Shard.png", label: "Starfall Shards",color: "#EAB308", desc: "Solace ascension"     },
   { key: "umbralShards",   file: "Umbral Shard.png",   label: "Umbral Shards",  color: "#7C3AED", desc: "Kaelith ascension"    },
+  { key: "voltaicShards",  file: "Voltaic Shard.png",  label: "Voltaic Shards", color: "#A855F7", desc: "Vesper ascension"     },
 ];
 
 const ELEMENT_COLORS: Record<string, string> = {
