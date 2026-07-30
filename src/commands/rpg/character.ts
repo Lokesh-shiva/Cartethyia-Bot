@@ -15,10 +15,8 @@ import {
   MAX_KIT_LEVEL, KitTrack, TRACK_FIELD, getTrackLevel, kitLevelUpCost,
   getOrCreateCharacterProgress, currentLevelCap,
 } from "../../lib/characterProgress";
-import {
-  resolveSolaceStats, unlockedLoreFragments, MAX_ASCENSION_PHASE,
-  solaceAscensionCost, solaceLevelUpCost,
-} from "../../lib/solace";
+import { CHARACTER_KITS, PlayableCharacterKit } from "../../lib/characterKit";
+import "../../lib/kits";
 import { renderStatBarsCard, renderSlotGridCard, renderLoreCard } from "../../lib/characterCard";
 import { generateWeaponCard } from "../../lib/weaponCard";
 import { WEAPON_TYPE_LABEL, FORGED_WEAPONS, RARITY_STARS } from "../../lib/weapons";
@@ -33,12 +31,31 @@ import fs from "fs";
 import path from "path";
 import { pageSlice, pageCount, buildPageNavRow } from "../../lib/pagination";
 
-// Only "solace" exists today — future characters add entries here, and the
-// select menu below automatically grows to offer them. No other code in this
-// file needs to change when that happens.
-const CHARACTERS: Record<string, { label: string; emoji: string; element: string; portraitPath: string }> = {
-  solace: { label: "Solace", emoji: "✨", element: "SPECTRO", portraitPath: "assets/Characters/Solace.png" },
+// Derived directly from CHARACTER_KITS — adding a character to the kit
+// registry automatically makes it selectable here, no separate catalog to
+// keep in sync.
+const CHARACTERS: Record<string, { label: string; emoji: string; element: string; portraitPath: string }> =
+  Object.fromEntries(
+    Object.entries(CHARACTER_KITS).map(([id, kit]) => [
+      id, { label: kit.label, emoji: kit.emoji, element: kit.element, portraitPath: kit.portraitPath },
+    ]),
+  );
+
+// Ascension's "shard" currency differs per character (Solace: Starfall
+// Shards, Kaelith: Umbral Shards) — PlayableCharacterKit.ascensionCost's
+// return type is currently hardcoded to a `starfallShards` field for every
+// character (a known interface limitation from when Kaelith's kit was
+// built), so kits report their REAL shard cost under an extra, kit-specific
+// property alongside a `starfallShards: 0` filler. This map tells the UI
+// which property + currency/label to actually read and spend per character.
+type ShardDbField = "starfallShards" | "umbralShards";
+const ASCENSION_SHARD_CURRENCY: Record<string, { field: string; dbField: ShardDbField; label: string }> = {
+  solace:  { field: "starfallShards", dbField: "starfallShards", label: "Starfall Shards" },
+  kaelith: { field: "umbralShards",   dbField: "umbralShards",   label: "Umbral Shards"   },
 };
+function shardInfo(characterId: string) {
+  return ASCENSION_SHARD_CURRENCY[characterId] ?? ASCENSION_SHARD_CURRENCY.solace;
+}
 
 // Same lookup as gridCard.ts/canvas.ts/echoCard.ts — deliberately duplicated
 // rather than shared, per this project's existing convention for these art
@@ -104,36 +121,39 @@ function isKitTrack(value: string): value is KitTrack {
 }
 
 // ── Constellations ─────────────────────────────────────────────────────────
-const CONSTELLATION_EFFECTS: Record<string, string[]> = {
-  solace: [
-    "Outro's guaranteed-crit buff also grants the incoming ally +15% ATK for their first action after the swap.",
-    "**(Kit change)** Ultimate's heal significantly increased; cleanses 2 debuffs instead of 1.",
-    "Switching Attunement Mode (Skill) also grants a team-wide Concerto Energy burst.",
-    "**(Kit change)** Intro Skill's heal also grants a shield equal to 30% of the amount healed.",
-    "Ultimate's doubled-mode-effect duration extends from 3 turns to 4.",
-    "**(Defining)** While one Attunement Mode is active, allies ALSO gain 50% of the other two modes' effects.",
-  ],
-};
-const MAX_CONSTELLATION = 6;
+// Constellation text/count now come straight from each kit
+// (CHARACTER_KITS[id].constellationEffects / .maxConstellation) — see
+// buildConstellationsView — instead of a separate static map that could
+// drift out of sync with the kit itself.
 
 // Recommended named echo set per character — shown on the Echoes page so
 // players don't have to guess. Solace is Spectro and a healer/support unit;
 // Radiant Convergence (also Spectro) stacks +Spectro DMG on every heal-tick
 // and its 5pc rewards staying topped-up, which lines up with her kit
 // directly instead of fighting it like an offense-oriented set would.
+// Kaelith is Havoc; Voidborn Remnant's Frenzy mechanics amplify his own
+// stack-detonation damage instead of fighting it.
 const RECOMMENDED_SET: Record<string, string> = {
-  solace: "**Radiant Convergence** (Spectro) — her own element, and its heal-on-turn 4pc/5pc mechanics play directly into her support kit instead of fighting it.",
+  solace:  "**Radiant Convergence** (Spectro) — her own element, and its heal-on-turn 4pc/5pc mechanics play directly into her support kit instead of fighting it.",
+  kaelith: "**Voidborn Remnant** (Havoc) — his own element, and its Frenzy mechanics amplify his stack-detonation damage instead of fighting it.",
 };
 
-// Simulates spending resonanceRecords/credits one level at a time (per
-// solaceLevelUpCost's per-level curve) and returns the highest level reached
-// before either resource runs out or the phase cap is hit. Used both to
-// render the "Jump to Lv N" button label and, mirrored exactly, inside the
-// transaction that actually spends the resources — keep these in sync.
-function maxAffordableLevel(currentLevel: number, cap: number, records: number, credits: number): number {
+// Field boss whose guaranteed drop is this character's ascension shard —
+// shown as a hint on the Ascend button once the player is short on shards.
+const SHARD_FIELD_BOSS: Record<string, string> = {
+  solace:  "Luminal Specter",
+  kaelith: "Null Ravager",
+};
+
+// Simulates spending resonanceRecords/credits one level at a time (per the
+// kit's own levelUpCost curve) and returns the highest level reached before
+// either resource runs out or the phase cap is hit. Used both to render the
+// "Jump to Lv N" button label and, mirrored exactly, inside the transaction
+// that actually spends the resources — keep these in sync.
+function maxAffordableLevel(kit: PlayableCharacterKit, currentLevel: number, cap: number, records: number, credits: number): number {
   let level = currentLevel, r = records, c = credits;
   while (level < cap) {
-    const cost = solaceLevelUpCost(level);
+    const cost = kit.levelUpCost(level);
     if (cost.resonanceRecords > r || cost.credits > c) break;
     r -= cost.resonanceRecords; c -= cost.credits;
     level++;
@@ -162,18 +182,21 @@ interface PageView {
 
 async function buildStatsView(userId: string, characterId: string): Promise<PageView> {
   const char = CHARACTERS[characterId];
+  const kit = CHARACTER_KITS[characterId];
+  const shard = shardInfo(characterId);
+  const maxAscensionPhase = kit.ascensionLevelCap.length - 1;
   const [progress, stats, dbUser] = await Promise.all([
     getOrCreateCharacterProgress(userId, characterId),
-    resolveSolaceStats(userId),
+    kit.resolveStats(userId),
     prisma.user.findUnique({
       where: { id: userId },
-      select: { resonanceRecords: true, credits: true, forgingOres: true, paradoxCores: true, starfallShards: true },
+      select: { resonanceRecords: true, credits: true, forgingOres: true, paradoxCores: true, starfallShards: true, umbralShards: true },
     }),
   ]);
   const cap = currentLevelCap(progress.ascensionPhase);
   const buf = await renderStatBarsCard({
     characterName: char.label, element: char.element,
-    subtitle: `Lv ${progress.level}/${cap} · Phase ${progress.ascensionPhase}/${MAX_ASCENSION_PHASE}`,
+    subtitle: `Lv ${progress.level}/${cap} · Phase ${progress.ascensionPhase}/${maxAscensionPhase}`,
     portraitPath: char.portraitPath,
     bars: [
       { label: "HP",        value: stats.hp,       max: stats.hp,      displayValue: `${Math.round(stats.hp)}` },
@@ -186,36 +209,38 @@ async function buildStatsView(userId: string, characterId: string): Promise<Page
   });
 
   const atCap = progress.level >= cap;
-  const isMaxPhase = progress.ascensionPhase >= MAX_ASCENSION_PHASE;
+  const isMaxPhase = progress.ascensionPhase >= maxAscensionPhase;
   const records = dbUser?.resonanceRecords ?? 0, credits = dbUser?.credits ?? 0;
-  const ores = dbUser?.forgingOres ?? 0, cores = dbUser?.paradoxCores ?? 0, shards = dbUser?.starfallShards ?? 0;
+  const ores = dbUser?.forgingOres ?? 0, cores = dbUser?.paradoxCores ?? 0;
+  const shards = ((dbUser as any)?.[shard.dbField] ?? 0) as number;
   let actionLabel: string;
   let balanceLine: string;
   const buttons: ButtonBuilder[] = [];
   if (isMaxPhase && atCap) {
     actionLabel = "MAX LEVEL";
-    balanceLine = "**Solace is at max level and max ascension.**";
+    balanceLine = `**${char.label} is at max level and max ascension.**`;
     buttons.push(new ButtonBuilder().setCustomId(`charlvl2:${characterId}`).setLabel(actionLabel)
       .setStyle(ButtonStyle.Primary).setDisabled(true));
   } else if (atCap) {
-    const cost = solaceAscensionCost(progress.ascensionPhase);
+    const cost = kit.ascensionCost(progress.ascensionPhase);
+    const costShards = ((cost as any)[shard.field] ?? 0) as number;
     const canAfford = credits >= cost.credits && ores >= cost.forgingOres &&
-      cores >= cost.paradoxCores && shards >= cost.starfallShards;
+      cores >= cost.paradoxCores && shards >= costShards;
     actionLabel = `Ascend: ${cost.credits}cr · ${cost.forgingOres}fo · ${cost.paradoxCores}pc` +
-      (cost.starfallShards > 0 ? ` · ${cost.starfallShards}sf` : "");
+      (costShards > 0 ? ` · ${costShards}sh` : "");
     balanceLine =
       `**Ascend to Phase ${progress.ascensionPhase + 1}** needs ` +
       `${cost.credits} Credits (have ${credits}) · ${cost.forgingOres} Forging Ores (have ${ores}) · ` +
       `${cost.paradoxCores} Paradox Cores (have ${cores})` +
-      (cost.starfallShards > 0 ? ` · ${cost.starfallShards} Starfall Shards (have ${shards})` : "") +
+      (costShards > 0 ? ` · ${costShards} ${shard.label} (have ${shards})` : "") +
       (canAfford ? "\n✅ You can afford this." : "\n❌ Not enough — the button is disabled until you have all of the above.") +
-      (cost.starfallShards > 0 && shards < cost.starfallShards
-        ? `\n-# Starfall Shards drop from the **Spectro field boss** (Luminal Specter) — use **/field-boss** and pick the Spectro one.`
+      (costShards > 0 && shards < costShards
+        ? `\n-# ${shard.label} drop from the **${SHARD_FIELD_BOSS[characterId] ?? "matching"} field boss** — use **/field-boss** and pick it.`
         : "");
     buttons.push(new ButtonBuilder().setCustomId(`charlvl2:${characterId}`).setLabel(actionLabel)
       .setStyle(ButtonStyle.Success).setDisabled(!canAfford));
   } else {
-    const cost = solaceLevelUpCost(progress.level);
+    const cost = kit.levelUpCost(progress.level);
     const canAfford = records >= cost.resonanceRecords && credits >= cost.credits;
     actionLabel = `Level Up (${cost.resonanceRecords} Records · ${cost.credits} Credits)`;
     balanceLine =
@@ -229,7 +254,7 @@ async function buildStatsView(userId: string, characterId: string): Promise<Page
     // against the player's current balance, capped at the phase's level cap,
     // so a big pile of Records/Credits doesn't require clicking Level Up
     // dozens of times one at a time.
-    const affordable = maxAffordableLevel(progress.level, cap, records, credits);
+    const affordable = maxAffordableLevel(kit, progress.level, cap, records, credits);
     const gain = affordable - progress.level;
     buttons.push(new ButtonBuilder().setCustomId(`charlvlmax:${characterId}`)
       .setLabel(gain > 0 ? `Jump to Lv ${affordable} (+${gain})` : "Jump to Max (need more)")
@@ -361,7 +386,9 @@ async function buildKitLevelsView(userId: string, characterId: string): Promise<
 async function buildConstellationsView(userId: string, characterId: string): Promise<PageView> {
   const progress = await getOrCreateCharacterProgress(userId, characterId);
   const char = CHARACTERS[characterId];
-  const tiers = CONSTELLATION_EFFECTS[characterId] ?? [];
+  const kit = CHARACTER_KITS[characterId];
+  const tiers = kit.constellationEffects ?? [];
+  const maxConstellation = kit.maxConstellation;
   const slots = tiers.map((_, i) => {
     const tier = i + 1;
     const unlocked = progress.constellation >= tier;
@@ -369,13 +396,13 @@ async function buildConstellationsView(userId: string, characterId: string): Pro
   });
   const buf = await renderSlotGridCard({
     characterName: char.label, element: char.element,
-    subtitle: `Resonance Chain — C${progress.constellation}/${MAX_CONSTELLATION} · ${progress.constellationTokens} Tokens`,
+    subtitle: `Resonance Chain — C${progress.constellation}/${maxConstellation} · ${progress.constellationTokens} Tokens`,
     slots,
   });
   const embed = new EmbedBuilder().setColor(0x6366F1).setImage("attachment://con.png")
     .setDescription(tiers.map((e, i) => `${progress.constellation >= i + 1 ? "✦" : "◇"} **C${i + 1}** — ${e}`).join("\n\n"))
     .setFooter({ text: "CARTETHYIA  ·  Character  ·  Constellations" });
-  const canUnlock = progress.constellationTokens >= 1 && progress.constellation < MAX_CONSTELLATION;
+  const canUnlock = progress.constellationTokens >= 1 && progress.constellation < maxConstellation;
   const extraRow = canUnlock ? new ActionRowBuilder<ButtonBuilder>().addComponents(
     new ButtonBuilder()
       .setCustomId(`charconunlock:${characterId}`)
@@ -388,9 +415,13 @@ async function buildConstellationsView(userId: string, characterId: string): Pro
 async function buildLoreView(userId: string, characterId: string): Promise<PageView> {
   const progress = await getOrCreateCharacterProgress(userId, characterId);
   const char = CHARACTERS[characterId];
+  const kit = CHARACTER_KITS[characterId];
+  // Fragment index i (0-based) is unlocked once ascensionPhase >= i — same
+  // rule every kit's loreFragments array follows.
+  const fragments = kit.loreFragments.map((text, i) => ({ text, unlocked: progress.ascensionPhase >= i }));
   const buf = await renderLoreCard({
     characterName: char.label, element: char.element, portraitPath: char.portraitPath,
-    fragments: unlockedLoreFragments(progress.ascensionPhase),
+    fragments,
   });
   const embed = new EmbedBuilder().setColor(0x6366F1).setImage("attachment://lore.png")
     .setFooter({ text: "CARTETHYIA  ·  Character  ·  Lore" });
@@ -507,19 +538,24 @@ const command: Command = {
         const [, characterId] = btn.customId.split(":");
         if (!CHARACTERS[characterId] || !ownedCharacterIds.has(characterId)) { await btn.deferUpdate().catch(() => {}); return; }
 
+        const kit = CHARACTER_KITS[characterId];
+        const shard = shardInfo(characterId);
+        const maxAscensionPhase = kit.ascensionLevelCap.length - 1;
         const progress = await getOrCreateCharacterProgress(interaction.user.id, characterId);
         const cap = currentLevelCap(progress.ascensionPhase);
 
         try {
           if (progress.level >= cap) {
-            if (progress.ascensionPhase >= MAX_ASCENSION_PHASE) { await btn.deferUpdate().catch(() => {}); return; }
-            const cost = solaceAscensionCost(progress.ascensionPhase);
+            if (progress.ascensionPhase >= maxAscensionPhase) { await btn.deferUpdate().catch(() => {}); return; }
+            const cost = kit.ascensionCost(progress.ascensionPhase);
+            const costShards = ((cost as any)[shard.field] ?? 0) as number;
             const dbUser2 = await prisma.user.findUnique({
               where: { id: interaction.user.id },
-              select: { credits: true, forgingOres: true, paradoxCores: true, starfallShards: true },
+              select: { credits: true, forgingOres: true, paradoxCores: true, starfallShards: true, umbralShards: true },
             });
+            const haveShards = ((dbUser2 as any)?.[shard.dbField] ?? 0) as number;
             if (!dbUser2 || dbUser2.credits < cost.credits || dbUser2.forgingOres < cost.forgingOres ||
-                dbUser2.paradoxCores < cost.paradoxCores || dbUser2.starfallShards < cost.starfallShards) {
+                dbUser2.paradoxCores < cost.paradoxCores || haveShards < costShards) {
               await btn.deferUpdate().catch(() => {}); return;
             }
             await prisma.$transaction(async (tx) => {
@@ -527,11 +563,11 @@ const command: Command = {
                 where: {
                   id: interaction.user.id,
                   credits: { gte: cost.credits }, forgingOres: { gte: cost.forgingOres },
-                  paradoxCores: { gte: cost.paradoxCores }, starfallShards: { gte: cost.starfallShards },
+                  paradoxCores: { gte: cost.paradoxCores }, [shard.dbField]: { gte: costShards },
                 },
                 data: {
                   credits: { decrement: cost.credits }, forgingOres: { decrement: cost.forgingOres },
-                  paradoxCores: { decrement: cost.paradoxCores }, starfallShards: { decrement: cost.starfallShards },
+                  paradoxCores: { decrement: cost.paradoxCores }, [shard.dbField]: { decrement: costShards },
                 },
               });
               if (spend.count === 0) throw new Error("insufficient-funds-race");
@@ -545,7 +581,7 @@ const command: Command = {
               credits: cost.credits, forgingOres: cost.forgingOres, paradoxCores: cost.paradoxCores,
             }, "character-ascend");
           } else {
-            const cost = solaceLevelUpCost(progress.level);
+            const cost = kit.levelUpCost(progress.level);
             const dbUser2 = await prisma.user.findUnique({
               where: { id: interaction.user.id }, select: { resonanceRecords: true, credits: true },
             });
@@ -615,6 +651,7 @@ const command: Command = {
         const btn = i as ButtonInteraction;
         const [, characterId] = btn.customId.split(":");
         if (!CHARACTERS[characterId] || !ownedCharacterIds.has(characterId)) { await btn.deferUpdate().catch(() => {}); return; }
+        const kit = CHARACTER_KITS[characterId];
 
         const [progress, dbUser2] = await Promise.all([
           getOrCreateCharacterProgress(interaction.user.id, characterId),
@@ -623,7 +660,7 @@ const command: Command = {
         const cap = currentLevelCap(progress.ascensionPhase);
         const records = dbUser2?.resonanceRecords ?? 0;
         const credits = dbUser2?.credits ?? 0;
-        const targetLevel = maxAffordableLevel(progress.level, cap, records, credits);
+        const targetLevel = maxAffordableLevel(kit, progress.level, cap, records, credits);
         if (targetLevel <= progress.level) { await btn.deferUpdate().catch(() => {}); return; }
 
         // Recompute the exact total spend for the same simulated jump, then
@@ -632,7 +669,7 @@ const command: Command = {
         // back on zero matched rows).
         let totalRecords = 0, totalCredits = 0;
         for (let lvl = progress.level; lvl < targetLevel; lvl++) {
-          const cost = solaceLevelUpCost(lvl);
+          const cost = kit.levelUpCost(lvl);
           totalRecords += cost.resonanceRecords; totalCredits += cost.credits;
         }
 
