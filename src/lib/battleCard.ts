@@ -91,6 +91,7 @@ export interface BattleCardState {
   lastMove:      string | null;
   isShattered:   boolean;
   skillCooldown: number;
+  hitBadge?:     number; // set to 2 or 3 when the last move was a multi-hit (Vesper's Arc Discharge) — undefined/1 means no badge
 }
 
 export async function generateBattleCard(state: BattleCardState): Promise<Buffer> {
@@ -242,9 +243,28 @@ export async function generateBattleCard(state: BattleCardState): Promise<Buffer
   if (state.lastMove) {
     ctx.fillStyle = "rgba(255,255,255,0.25)";
     ctx.font      = `11px Rajdhani, 'Noto Sans', 'Noto Sans CJK SC', 'Noto Sans JP', Arial, sans-serif`;
-    // Strip markdown bold for canvas
-    const cleanMove = state.lastMove.replace(/\*\*/g, "").split("\n")[0].slice(0, 90);
+    // Strip markdown bold for canvas. Multi-hit moves (Vesper's Arc
+    // Discharge) embed a per-hit breakdown as extra newlines in lastMove —
+    // joined with a separator here instead of truncated to line 1, so the
+    // breakdown actually shows instead of silently disappearing.
+    const cleanMove = state.lastMove.replace(/\*\*/g, "").replace(/\n/g, "  ·  ").slice(0, 140);
     ctx.fillText(`Turn ${state.turn}  ·  ${cleanMove}`, PAD, PY + 175);
+  }
+
+  // ── Multi-hit badge (Vesper's Arc Discharge) ───────────────
+  // No existing hit-count visual to reuse in this file — first-of-its-kind,
+  // placed as a small chip under the turn counter (top-right of art section).
+  if (state.hitBadge && state.hitBadge > 1) {
+    const badgeText = `×${state.hitBadge} HITS`;
+    ctx.fillStyle = "rgba(0,0,0,0.55)";
+    rrect(ctx, W - 80, 38, 66, 20, 6); ctx.fill();
+    ctx.shadowColor = "#FCD34D"; ctx.shadowBlur = 8;
+    ctx.fillStyle = "#FCD34D";
+    ctx.font = `bold 10px Rajdhani, 'Noto Sans', 'Noto Sans CJK SC', 'Noto Sans JP', Arial, sans-serif`;
+    ctx.textAlign = "center";
+    ctx.fillText(badgeText, W - 47, 52);
+    ctx.textAlign = "left";
+    ctx.shadowBlur = 0;
   }
 
   // ── Turn counter (top-right of art section) ────────────────
