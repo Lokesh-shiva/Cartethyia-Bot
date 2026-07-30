@@ -5,5 +5,6 @@
 import { CHARACTER_KITS } from "../characterKit";
 import { solaceKit } from "./solaceKit";
 import "./kaelithKit";
+import "./vesperKit";
 
 CHARACTER_KITS[solaceKit.id] = solaceKit;

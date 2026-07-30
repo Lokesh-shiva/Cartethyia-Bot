@@ -22,6 +22,8 @@ export interface CharacterCombatContext {
   turn: number;
   isShattered: boolean;
   mechanicState: unknown; // opaque per-character state — combat loop never inspects this
+  playerEnergy?: number;    // acting unit's current Energy — only Vesper's C3 reads this; optional so existing callers don't need updating
+  playerEnergyMax?: number; // always 100 in this codebase, but passed explicitly rather than hardcoded in the kit
 }
 
 export interface SkillEffectResult {
