@@ -17,16 +17,16 @@
 
 ## Stats Profile
 
-Standard-pool 5★, deliberately tuned tankier-not-stronger than Solace (limited-banner 5★) — highest DEF in the roster, lowest SPD (dragging a huge blade), modest ATK/Crit (she is not a damage character):
+Standard-pool 5★, deliberately tuned tankier-not-stronger than Solace (limited-banner 5★) — highest HP **and** DEF in the entire roster (a real tank stacks both, not DEF alone), lowest SPD (dragging a huge blade), ATK/Crit modest and below Solace but never below either 4★ (Kaelith/Vesper) — a 5★ should never sit under a 4★ on every offensive stat at once, tank or not:
 
-| Stat | Rilo (Lv90) | Solace (Lv90, for reference) |
-|---|---|---|
-| HP | 1050 | 1100 |
-| ATK | 100 | 115 |
-| DEF | 115 | 100 |
-| SPD | 90 | 125 |
-| CritRate | 0.05 | 0.05 |
-| CritDmg | 1.5 | 1.5 |
+| Stat | Rilo (Lv90) | Kaelith (4★, Lv90) | Vesper (4★, Lv90) | Solace (5★, for reference) |
+|---|---|---|---|---|
+| HP | **1200** | 950 | 900 | 1100 |
+| ATK | 130 | 145 | 140 | 115 |
+| DEF | **120** | 85 | 80 | 100 |
+| SPD | 90 | 105 | 115 | 125 |
+| CritRate | 0.08 | 0.10 | 0.10 | 0.05 |
+| CritDmg | 1.6 | 1.8 | 1.8 | 1.5 |
 
 Exact floor-fraction curves (mirroring `scaleStat(ceil, floorFrac, level)` from `kaelithKit.ts`/`vesperKit.ts`) are an implementation-time decision — the implementer should follow the same pattern, using these Lv90 ceilings as the target.
 
