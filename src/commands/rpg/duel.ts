@@ -58,6 +58,9 @@ import {
   kaelithStackCap, kaelithBasicStackGain, kaelithUltimateBaseMult, KAELITH_PER_STACK_ULT_BONUS,
   KAELITH_FORTE_CONFIG, KAELITH_FORTE_GAIN_PER_BASIC, KaelithMechanicState,
 } from "../../lib/kits/kaelithKit";
+import {
+  VesperMechanicState, VesperSkillResult, VESPER_FORTE_CONFIG, VESPER_FORTE_GAIN_PER_BASIC, vesperUltimateBaseMult,
+} from "../../lib/kits/vesperKit";
 import "../../lib/kits";
 
 // ── In-memory active duels ────────────────────────────────────────────────────
@@ -204,6 +207,14 @@ function buildDuelButtons(state: DuelState, forUserId: string, isDevGuild: boole
         .setStyle(ButtonStyle.Secondary).setDisabled(!skillReady),
       new ButtonBuilder().setCustomId("duel_ultimate").setLabel("🌑  Umbral Cataclysm")
         .setStyle(ButtonStyle.Success).setDisabled(myConcertoEnergy < 100),
+      new ButtonBuilder().setCustomId("duel_forfeit").setLabel("🏳️  Forfeit").setStyle(ButtonStyle.Danger),
+    ));
+  } else if (isDevGuild && myHasSolace && myActiveUnit === "ally" && myActiveAllyCharacterId === "vesper") {
+    rows.push(new ActionRowBuilder<ButtonBuilder>().addComponents(
+      new ButtonBuilder().setCustomId("duel_basic").setLabel("⚔️  Basic Attack").setStyle(ButtonStyle.Primary),
+      new ButtonBuilder().setCustomId("duel_skill").setLabel("⚡  Discharge").setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder().setCustomId("duel_ultimate").setLabel("⚡  Overload")
+        .setStyle(ButtonStyle.Success).setDisabled(myEnergy < 100),
       new ButtonBuilder().setCustomId("duel_forfeit").setLabel("🏳️  Forfeit").setStyle(ButtonStyle.Danger),
     ));
   } else if (isDevGuild && myHasSolace && myActiveUnit === "ally") {
@@ -701,6 +712,22 @@ export async function execute(interaction: ChatInputCommandInteraction) {
               if (isChallenger) { state.dDefShredTurnsLeft = outroEffect.enemyDebuff.turns + 1; state.dDefShredPct = outroEffect.enemyDebuff.value; }
               else              { state.cDefShredTurnsLeft = outroEffect.enemyDebuff.turns + 1; state.cDefShredPct = outroEffect.enemyDebuff.value; }
             }
+            if (!outgoingIsPlayer && outroEffect.newMechanicState && myActiveAllyCharacterId === "vesper") {
+              const grantMark = (outroEffect.newMechanicState as any).grantMarkOnOutro === true;
+              const charged = (outroEffect.newMechanicState as any).chargedMark === true;
+              if (grantMark) {
+                const newState = { ...(myAllyMechanicState as VesperMechanicState), markPresent: true, chargedMark: charged };
+                if (isChallenger) state.cAllyMechanicState = newState; else state.dAllyMechanicState = newState;
+              }
+            }
+            if (outgoingIsPlayer && introEffect.newMechanicState && myActiveAllyCharacterId === "vesper") {
+              const energyGrant = (introEffect.newMechanicState as any).grantEnergyOnIntro as number | undefined;
+              if (energyGrant) {
+                const curEnergy = isChallenger ? state.cEnergy : state.dEnergy;
+                const newEnergy = Math.min(100, curEnergy + energyGrant);
+                if (isChallenger) state.cEnergy = newEnergy; else state.dEnergy = newEnergy;
+              }
+            }
 
             if (!outgoingIsPlayer) {
               if (isChallenger) state.cNextCritArmed = true; else state.dNextCritArmed = true;
@@ -800,6 +827,12 @@ export async function execute(interaction: ChatInputCommandInteraction) {
             if (isChallenger) state.cAllyMechanicState = newState; else state.dAllyMechanicState = newState;
             moveLine += `\n🌑 +${gain} stack${gain === 1 ? "" : "s"} (${newState.stacks}/${cap})`;
           }
+          if (myHasSolace && myActiveUnit === "ally" && myActiveAllyCharacterId === "vesper") {
+            const vState = myAllyMechanicState as VesperMechanicState;
+            const newState = { ...vState, markPresent: true };
+            if (isChallenger) state.cAllyMechanicState = newState; else state.dAllyMechanicState = newState;
+            moveLine += `\n⚡ Static Mark applied!`;
+          }
 
           // Forte fills only from the active ally's own Basic Attack.
           if (isMySolaceAlly) {
@@ -819,6 +852,13 @@ export async function execute(interaction: ChatInputCommandInteraction) {
             if (isChallenger) state.cSolaceForte = forteAfter; else state.dSolaceForte = forteAfter;
             if (isForteMaxed(forteAfter, KAELITH_FORTE_CONFIG) && !isForteMaxed(forteBefore, KAELITH_FORTE_CONFIG)) {
               moveLine += `\n✨ Forte is **FULLY CHARGED** — next Umbral Cataclysm will keep your stacks!`;
+            }
+          } else if (myHasSolace && myActiveUnit === "ally" && myActiveAllyCharacterId === "vesper") {
+            const forteBefore = mySolaceForte;
+            const forteAfter  = addForteCharge(forteBefore, VESPER_FORTE_CONFIG, VESPER_FORTE_GAIN_PER_BASIC);
+            if (isChallenger) state.cSolaceForte = forteAfter; else state.dSolaceForte = forteAfter;
+            if (isForteMaxed(forteAfter, VESPER_FORTE_CONFIG) && !isForteMaxed(forteBefore, VESPER_FORTE_CONFIG)) {
+              moveLine += `\n✨ Forte is **FULLY CHARGED** — next Discharge will be an Arc Discharge!`;
             }
           }
         }
@@ -859,6 +899,40 @@ export async function execute(interaction: ChatInputCommandInteraction) {
           }
           const mySkillCdKaelith = myAllyKit.skillCooldownTurns;
           if (isChallenger) state.cSkillCd = mySkillCdKaelith; else state.dSkillCd = mySkillCdKaelith;
+        } else if (btn.customId === "duel_skill" && isDevGuild && myActiveUnit === "ally" && myActiveAllyCharacterId === "vesper" && myAllyKit) {
+          const vState = myAllyMechanicState as VesperMechanicState;
+          const crit = forcedCritActive || Math.random() < aCrit;
+          const forteEmpowered = isForteMaxed(mySolaceForte, VESPER_FORTE_CONFIG);
+          const result = myAllyKit.onSkill(
+            { playerHp: myHp, playerHpMax: myHpMax, allyHp: myAllyHpVal, allyHpMax: myAllyHpMaxVal, turn: state.turn, isShattered: false, mechanicState: vState, forteEmpowered } as any,
+            { basicLevel: mySolaceBasicLevel, skillLevel: mySolaceSkillLevel, ultimateLevel: mySolaceUltimateLvl, introLevel: mySolaceIntroLevel, forteLevel: mySolaceForteLevel },
+            mySolaceConstellation,
+          ) as VesperSkillResult;
+          if (isChallenger) state.cAllyMechanicState = result.newMechanicState; else state.dAllyMechanicState = result.newMechanicState;
+          if (forteEmpowered) { const reset = resetForte(); if (isChallenger) state.cSolaceForte = reset; else state.dSolaceForte = reset; }
+
+          const effectiveDefIgnored = effectiveOppDef * (1 - result.defIgnorePct);
+          const perHit = calcPlayerDamage(activeAtk * (result.damageMult / result.hits), effectiveDefIgnored, crit ? 1 : 0, activeCritDmg, 1.0, isWeak, false);
+          const perHitDmg = Math.floor(perHit.damage * (1 + myElemDmg + extraElemBonus));
+
+          if (result.hits > 1) {
+            const hitLines = Array.from({ length: result.hits }, (_, i) => `Hit ${i + 1}: ${perHitDmg} dmg`).join("\n");
+            damage = perHitDmg * result.hits;
+            moveLine = `${myName} — ⚡ ${result.moveLabel}\n${hitLines}\n**Total: ${damage} DMG**${crit ? " **(CRIT)**" : ""}`;
+          } else {
+            damage = perHitDmg;
+            moveLine = `${myName} — ⚡ ${result.moveLabel}${crit ? " **(CRIT)**" : ""}`;
+          }
+          isCrit = crit; moveType = "SKILL";
+
+          if (!forteEmpowered) {
+            const forteBefore = mySolaceForte;
+            const forteAfter  = addForteCharge(forteBefore, VESPER_FORTE_CONFIG, VESPER_FORTE_GAIN_PER_BASIC);
+            if (isChallenger) state.cSolaceForte = forteAfter; else state.dSolaceForte = forteAfter;
+            if (isForteMaxed(forteAfter, VESPER_FORTE_CONFIG) && !isForteMaxed(forteBefore, VESPER_FORTE_CONFIG)) {
+              moveLine += `\n✨ Forte is **FULLY CHARGED** — next Discharge will be an Arc Discharge!`;
+            }
+          }
         } else if (btn.customId === "duel_skill") {
           const isSolaceAllySkill = isMySolaceAlly;
           const teamAtkMult    = isSolaceAllySkill ? getAttunementAtkMult(myAttunement, solaceAttunementAtkCritBonus(mySolaceSkillLevel), myAttunementDblTurns > 0, mySolaceConstellation >= 6) : 1;
@@ -981,6 +1055,26 @@ export async function execute(interaction: ChatInputCommandInteraction) {
             convergenceUsedThisTurn = true;
             if (isChallenger) state.cConcertoEnergy = 0; else state.dConcertoEnergy = 0;
           }
+        } else if (btn.customId === "duel_ultimate" && isDevGuild && myActiveUnit === "ally" && myActiveAllyCharacterId === "vesper" && myAllyKit) {
+          const vState = myAllyMechanicState as VesperMechanicState;
+          const consumedMark = vState.markPresent;
+          const curEnergyForUlt = isChallenger ? state.cEnergy : state.dEnergy;
+          const energyPct = Math.min(100, curEnergyForUlt) / 100;
+          const markBonus = consumedMark ? 0.8 : 0;
+          const c6Bonus = mySolaceConstellation >= 6 ? vState.dischargesSinceUltimate * 0.15 : 0;
+          const c3Bonus = mySolaceConstellation >= 3 ? energyPct * 0.5 : 0;
+          const ultDamageMult = vesperUltimateBaseMult(mySolaceUltimateLvl) + markBonus + c6Bonus + c3Bonus;
+
+          const result = myAllyKit.onUltimate(
+            { playerHp: myHp, playerHpMax: myHpMax, allyHp: myAllyHpVal, allyHpMax: myAllyHpMaxVal, turn: state.turn, isShattered: false, mechanicState: vState, playerEnergy: curEnergyForUlt, playerEnergyMax: 100 },
+            { basicLevel: mySolaceBasicLevel, skillLevel: mySolaceSkillLevel, ultimateLevel: mySolaceUltimateLvl, introLevel: mySolaceIntroLevel, forteLevel: mySolaceForteLevel },
+            mySolaceConstellation,
+          );
+          if (isChallenger) state.cAllyMechanicState = result.newMechanicState; else state.dAllyMechanicState = result.newMechanicState;
+
+          const r = calcPlayerDamage(activeAtk * ultDamageMult, effectiveOppDef, 1.0, activeCritDmg, 1.0, isWeak, false);
+          damage = r.damage; isCrit = true; moveType = "ULT";
+          moveLine = `${myName} — ⚡ ${result.moveLabel}`;
         }
 
         let echoResult: ReturnType<typeof applyEchoSkill> | null = null;
