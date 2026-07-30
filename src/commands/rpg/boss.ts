@@ -67,6 +67,7 @@ import {
   kaelithStackCap, kaelithBasicStackGain, kaelithUltimateBaseMult, KAELITH_PER_STACK_ULT_BONUS,
   KAELITH_FORTE_CONFIG, KAELITH_FORTE_GAIN_PER_BASIC, KaelithMechanicState,
 } from "../../lib/kits/kaelithKit";
+import { VesperMechanicState, VesperSkillResult, VESPER_FORTE_CONFIG, VESPER_FORTE_GAIN_PER_BASIC, vesperUltimateBaseMult } from "../../lib/kits/vesperKit";
 import "../../lib/kits";
 
 const ELEMENT_HEX: Record<string, number> = {
@@ -121,6 +122,14 @@ function buildButtons(
         .setStyle(ButtonStyle.Secondary).setDisabled(!skillReady),
       new ButtonBuilder().setCustomId("boss_ultimate").setLabel("🌑  Umbral Cataclysm")
         .setStyle(ButtonStyle.Success).setDisabled(team.concertoEnergy < 100),
+      new ButtonBuilder().setCustomId("boss_flee").setLabel("🚪  Flee").setStyle(ButtonStyle.Danger),
+    ));
+  } else if (team?.isDevGuild && team.activeUnit === "ally" && team.activeAllyCharacterId === "vesper") {
+    rows.push(new ActionRowBuilder<ButtonBuilder>().addComponents(
+      new ButtonBuilder().setCustomId("boss_basic").setLabel("⚔️  Basic Attack").setStyle(ButtonStyle.Primary),
+      new ButtonBuilder().setCustomId("boss_skill").setLabel("⚡  Discharge").setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder().setCustomId("boss_ultimate").setLabel("⚡  Overload")
+        .setStyle(ButtonStyle.Success).setDisabled(state.playerEnergy < 100),
       new ButtonBuilder().setCustomId("boss_flee").setLabel("🚪  Flee").setStyle(ButtonStyle.Danger),
     ));
   } else if (team?.isDevGuild && team.activeUnit === "ally") {
@@ -498,6 +507,7 @@ const command: Command = {
 
           let playerDmg   = 0;
           let moveName    = "";
+          state.hitBadge = undefined; // cleared every turn — only Vesper's multi-hit Discharge branch sets it
           let radiantDmgMult = 1.0;
           if (bonuses.activeNamedSetId === "RADIANT_CONVERGENCE" && btn.customId !== "boss_flee") {
             const heal = radiantConvergenceOnTurnHeal(namedState, state.playerHpMax);
@@ -578,6 +588,19 @@ const command: Command = {
               if (!outgoingIsPlayer && outroEffect.enemyDebuff) {
                 enemyDefShredTurnsLeft = outroEffect.enemyDebuff.turns + 1;
                 enemyDefShredPct = outroEffect.enemyDebuff.value;
+              }
+              if (!outgoingIsPlayer && outroEffect.newMechanicState && activeAllyCharacterId === "vesper") {
+                const grantMark = (outroEffect.newMechanicState as any).grantMarkOnOutro === true;
+                const charged = (outroEffect.newMechanicState as any).chargedMark === true;
+                if (grantMark) {
+                  allyMechanicState = { ...(allyMechanicState as VesperMechanicState), markPresent: true, chargedMark: charged };
+                }
+              }
+              if (outgoingIsPlayer && introEffect.newMechanicState && activeAllyCharacterId === "vesper") {
+                const energyGrant = (introEffect.newMechanicState as any).grantEnergyOnIntro as number | undefined;
+                if (energyGrant) {
+                  state.playerEnergy = Math.min(100, state.playerEnergy + energyGrant);
+                }
               }
 
               if (!outgoingIsPlayer) nextAttackCritArmed = true;
@@ -666,6 +689,11 @@ const command: Command = {
               allyMechanicState = { ...kState, stacks: Math.min(cap, kState.stacks + gain) };
               moveName += `\n🌑 +${gain} stack${gain === 1 ? "" : "s"} (${(allyMechanicState as KaelithMechanicState).stacks}/${cap})`;
             }
+            if (isDevGuild && activeUnit === "ally" && activeAllyCharacterId === "vesper") {
+              const vState = allyMechanicState as VesperMechanicState;
+              allyMechanicState = { ...vState, markPresent: true };
+              moveName += `\n⚡ Static Mark applied!`;
+            }
 
             // Forte fills only from the active ally's own Basic Attack — announce
             // only on the turn a threshold is actually crossed.
@@ -684,6 +712,12 @@ const command: Command = {
               solaceForte = addForteCharge(solaceForte, KAELITH_FORTE_CONFIG, KAELITH_FORTE_GAIN_PER_BASIC);
               if (isForteMaxed(solaceForte, KAELITH_FORTE_CONFIG) && !isForteMaxed(forteBefore, KAELITH_FORTE_CONFIG)) {
                 moveName += `\n✨ Forte is **FULLY CHARGED** — next Umbral Cataclysm will keep your stacks!`;
+              }
+            } else if (isDevGuild && activeUnit === "ally" && activeAllyCharacterId === "vesper") {
+              const forteBefore = solaceForte;
+              solaceForte = addForteCharge(solaceForte, VESPER_FORTE_CONFIG, VESPER_FORTE_GAIN_PER_BASIC);
+              if (isForteMaxed(solaceForte, VESPER_FORTE_CONFIG) && !isForteMaxed(forteBefore, VESPER_FORTE_CONFIG)) {
+                moveName += `\n✨ Forte is **FULLY CHARGED** — next Discharge will be an Arc Discharge!`;
               }
             }
           }
@@ -719,6 +753,41 @@ const command: Command = {
               state.bossVibNow = Math.max(0, state.bossVibNow - Math.floor(playerDmg * result.vibFrac * totalVibMult));
             }
             state.skillCooldown = allyKit.skillCooldownTurns;
+          } else if (btn.customId === "boss_skill" && isDevGuild && activeUnit === "ally" && activeAllyCharacterId === "vesper" && allyKit) {
+            const vState = allyMechanicState as VesperMechanicState;
+            const crit = Math.random() < activeCritRate; abilCrit = crit;
+            const forteEmpowered = isForteMaxed(solaceForte, VESPER_FORTE_CONFIG);
+            const result = allyKit.onSkill(
+              { playerHp: state.playerHp, playerHpMax: state.playerHpMax, allyHp, allyHpMax, turn: state.turn, isShattered: state.isShattered, mechanicState: vState, forteEmpowered } as any,
+              { basicLevel: allyBasicLevel, skillLevel: allySkillLevel, ultimateLevel: allyUltimateLevel, introLevel: allyIntroLevel, forteLevel: allyForteLevel },
+              allyConstellation,
+            ) as VesperSkillResult;
+            allyMechanicState = result.newMechanicState;
+            if (forteEmpowered) solaceForte = resetForte();
+
+            const effectiveDefReduction = 1 - (1 - defReduction) * (1 - result.defIgnorePct);
+            const perHitBase = Math.max(1, Math.floor(activeAtk * (result.damageMult / result.hits) * (1 - effectiveDefReduction)));
+            const perHitDmg  = Math.floor(perHitBase * (crit ? activeCritDmg : 1) * (isWeak ? 1.5 : 1) * (1 + bonuses.elemDmgBonus));
+
+            if (result.hits > 1) {
+              const hitLines = Array.from({ length: result.hits }, (_, i) => `Hit ${i + 1}: ${perHitDmg} dmg`).join("\n");
+              playerDmg = perHitDmg * result.hits;
+              moveName  = `⚡ ${result.moveLabel}\n${hitLines}\n**Total: ${playerDmg} DMG**${crit ? " **(CRIT)**" : ""}`;
+              state.hitBadge = result.hits;
+            } else {
+              playerDmg = perHitDmg;
+              moveName  = `⚡ ${result.moveLabel} — ${playerDmg} DMG${crit ? " **(CRIT)**" : ""}`;
+              state.hitBadge = undefined;
+            }
+            state.bossVibNow = Math.max(0, state.bossVibNow - Math.floor(playerDmg * result.vibFrac * totalVibMult));
+
+            if (!forteEmpowered) {
+              const forteBefore = solaceForte;
+              solaceForte = addForteCharge(solaceForte, VESPER_FORTE_CONFIG, VESPER_FORTE_GAIN_PER_BASIC);
+              if (isForteMaxed(solaceForte, VESPER_FORTE_CONFIG) && !isForteMaxed(forteBefore, VESPER_FORTE_CONFIG)) {
+                moveName += `\n✨ Forte is **FULLY CHARGED** — next Discharge will be an Arc Discharge!`;
+              }
+            }
           } else if (btn.customId === "boss_skill") {
             const teamAtkMult  = isSolaceAlly ? getAttunementAtkMult(attunement, solaceAttunementAtkCritBonus(allySkillLevel), attunementDoubleTurnsLeft > 0, allyConstellation >= 6) : 1;
             const teamCritBonus = isSolaceAlly ? getAttunementCritRateBonus(attunement, solaceAttunementAtkCritBonus(allySkillLevel), attunementDoubleTurnsLeft > 0, allyConstellation >= 6) : 0;
@@ -864,6 +933,27 @@ const command: Command = {
               allyHp = Math.min(allyHpMax, allyHp + healResult.hpDelta);
             }
             if (result.resetsConcertoEnergy) { concertoEnergy = 0; convergenceUsedThisTurn = true; }
+          } else if (btn.customId === "boss_ultimate" && isDevGuild && activeUnit === "ally" && activeAllyCharacterId === "vesper" && allyKit) {
+            const vState = allyMechanicState as VesperMechanicState;
+            const consumedMark = vState.markPresent;
+            const energyPct = Math.min(100, state.playerEnergy) / 100;
+            const markBonus = consumedMark ? 0.8 : 0;
+            const c6Bonus = allyConstellation >= 6 ? vState.dischargesSinceUltimate * 0.15 : 0;
+            const c3Bonus = allyConstellation >= 3 ? energyPct * 0.5 : 0;
+            const ultDamageMult = vesperUltimateBaseMult(allyUltimateLevel) + markBonus + c6Bonus + c3Bonus;
+
+            const result = allyKit.onUltimate(
+              { playerHp: state.playerHp, playerHpMax: state.playerHpMax, allyHp, allyHpMax, turn: state.turn, isShattered: state.isShattered, mechanicState: vState, playerEnergy: state.playerEnergy, playerEnergyMax: 100 },
+              { basicLevel: allyBasicLevel, skillLevel: allySkillLevel, ultimateLevel: allyUltimateLevel, introLevel: allyIntroLevel, forteLevel: allyForteLevel },
+              allyConstellation,
+            );
+            allyMechanicState = result.newMechanicState;
+
+            const base = Math.max(1, Math.floor(activeAtk * ultDamageMult * (1 - defReduction)));
+            const dmg  = Math.floor(base * (isWeak ? 1.5 : 1) * (1 + bonuses.elemDmgBonus));
+            playerDmg = dmg;
+            moveName  = `⚡ ${result.moveLabel} — ${playerDmg} DMG`;
+            state.bossVibNow = Math.max(0, state.bossVibNow - Math.floor(playerDmg * 0.8 * totalVibMult));
           }
 
           if (btn.customId === "boss_echoskill" && bonuses.echoSkill) {
