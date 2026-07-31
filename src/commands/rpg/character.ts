@@ -48,11 +48,12 @@ const CHARACTERS: Record<string, { label: string; emoji: string; element: string
 // built), so kits report their REAL shard cost under an extra, kit-specific
 // property alongside a `starfallShards: 0` filler. This map tells the UI
 // which property + currency/label to actually read and spend per character.
-type ShardDbField = "starfallShards" | "umbralShards" | "voltaicShards";
+type ShardDbField = "starfallShards" | "umbralShards" | "voltaicShards" | "glacialShards";
 const ASCENSION_SHARD_CURRENCY: Record<string, { field: string; dbField: ShardDbField; label: string }> = {
   solace:  { field: "starfallShards", dbField: "starfallShards", label: "Starfall Shards" },
   kaelith: { field: "umbralShards",   dbField: "umbralShards",   label: "Umbral Shards"   },
   vesper:  { field: "voltaicShards",  dbField: "voltaicShards",  label: "Voltaic Shards"  },
+  rilo:    { field: "glacialShards",  dbField: "glacialShards",  label: "Glacial Shards"  },
 };
 function shardInfo(characterId: string) {
   return ASCENSION_SHARD_CURRENCY[characterId] ?? ASCENSION_SHARD_CURRENCY.solace;
@@ -138,6 +139,7 @@ const RECOMMENDED_SET: Record<string, string> = {
   solace:  "**Radiant Convergence** (Spectro) — her own element, and its heal-on-turn 4pc/5pc mechanics play directly into her support kit instead of fighting it.",
   kaelith: "**Voidborn Remnant** (Havoc) — his own element, and its Frenzy mechanics amplify his stack-detonation damage instead of fighting it.",
   vesper:  "**Stormcaller's Oath** (Electro) — her own element, and its thunderbolt/crit-rate mechanics complement a Discharge-chain playstyle without fighting it.",
+  rilo:    "**Frostveil Bastion** (Glacio) — her own element, and its shield/panic-shield mechanics stack naturally on top of her own Guard gauge instead of fighting it.",
 };
 
 // Field boss whose guaranteed drop is this character's ascension shard —
@@ -146,6 +148,7 @@ const SHARD_FIELD_BOSS: Record<string, string> = {
   solace:  "Luminal Specter",
   kaelith: "Null Ravager",
   vesper:  "Voltaic Aberrant",
+  rilo:    "Permafrost Sovereign",
 };
 
 // Simulates spending resonanceRecords/credits one level at a time (per the
@@ -193,7 +196,7 @@ async function buildStatsView(userId: string, characterId: string): Promise<Page
     kit.resolveStats(userId),
     prisma.user.findUnique({
       where: { id: userId },
-      select: { resonanceRecords: true, credits: true, forgingOres: true, paradoxCores: true, starfallShards: true, umbralShards: true, voltaicShards: true },
+      select: { resonanceRecords: true, credits: true, forgingOres: true, paradoxCores: true, starfallShards: true, umbralShards: true, voltaicShards: true, glacialShards: true },
     }),
   ]);
   const cap = currentLevelCap(progress.ascensionPhase);
@@ -555,7 +558,7 @@ const command: Command = {
             const costShards = ((cost as any)[shard.field] ?? 0) as number;
             const dbUser2 = await prisma.user.findUnique({
               where: { id: interaction.user.id },
-              select: { credits: true, forgingOres: true, paradoxCores: true, starfallShards: true, umbralShards: true, voltaicShards: true },
+              select: { credits: true, forgingOres: true, paradoxCores: true, starfallShards: true, umbralShards: true, voltaicShards: true, glacialShards: true },
             });
             const haveShards = ((dbUser2 as any)?.[shard.dbField] ?? 0) as number;
             if (!dbUser2 || dbUser2.credits < cost.credits || dbUser2.forgingOres < cost.forgingOres ||
