@@ -13,4 +13,5 @@ export const CHARACTER_ELEMENTS: Record<string, string> = {
   solace: "SPECTRO",
   kaelith: "HAVOC",
   vesper: "ELECTRO",
+  rilo: "GLACIO",
 };

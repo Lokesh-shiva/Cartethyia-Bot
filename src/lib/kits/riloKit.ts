@@ -299,3 +299,46 @@ export const RILO_CONSTELLATION_EFFECTS = [
   "Forte also gains a flat, modest amount whenever she takes a hit while holding any Shield — max Shield is also raised from 100 to 140.",
   "**(Defining)** Once per battle, if her Shield ever hits exactly 0, it's immediately restored to 50% of max — and Avalanche Slam hits twice whenever cast while Shield is at max.",
 ];
+
+export const riloKit: PlayableCharacterKit = {
+  id: "rilo",
+  label: "Rilo",
+  emoji: "🛡️",
+  element: "GLACIO",
+  rarity: 5,
+  portraitPath: "assets/Characters/Rilo.png",
+  loreFragments: RILO_LORE_FRAGMENTS,
+  skillCooldownTurns: 0,
+  statsAtLevel: riloStatsAtLevel,
+  async resolveStats(userId: string) {
+    const { prisma } = await import("../prisma");
+    const { resolvePlayerBonuses, applyBonuses } = await import("../setBonus");
+    const progress = await prisma.characterProgress.findUnique({
+      where: { userId_characterId: { userId, characterId: "rilo" } },
+    });
+    const level = progress?.level ?? 1;
+    const lvl = riloStatsAtLevel(level);
+    const bonuses = await resolvePlayerBonuses(userId, "rilo");
+    const stats = applyBonuses(
+      { baseHp: lvl.hpMax, baseAtk: lvl.baseAtk, baseDef: lvl.baseDef, critRate: lvl.critRate, critDmg: lvl.critDmg, baseSpeed: lvl.baseSpeed },
+      bonuses,
+    );
+    return { ...stats, hasSignatureWeapon: false, signatureWeaponRefinement: 0 };
+  },
+  ascensionLevelCap: [20, 40, 50, 60, 70, 80, 90],
+  ascensionCost: riloAscensionCost,
+  levelUpCost: riloLevelUpCost,
+  basicDamageMult: riloBasicDamageMult,
+  introEffect: riloIntroEffect,
+  outroEffect: riloOutroEffect,
+  forteConfig: RILO_FORTE_CONFIG,
+  forteGainPerBasic: RILO_FORTE_GAIN_PER_BASIC,
+  createInitialMechanicState: riloCreateInitialMechanicState,
+  onSkill: (ctx, kitLevels, constellation) => riloOnSkill(ctx, kitLevels.skillLevel, constellation),
+  onUltimate: (ctx, kitLevels, constellation) => riloOnUltimate(ctx, kitLevels.ultimateLevel, constellation),
+  statusLineText: riloStatusLineText,
+  constellationEffects: RILO_CONSTELLATION_EFFECTS,
+  maxConstellation: 6,
+};
+
+CHARACTER_KITS[riloKit.id] = riloKit;
