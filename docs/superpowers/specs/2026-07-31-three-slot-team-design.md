@@ -1,6 +1,6 @@
 # Three-Slot Team Design
 
-**Goal:** Expand `/team` from "player + 1 chosen ally" to "player + 2 chosen allies," with in-combat swapping between all three units directly (not just player↔ally). This is the multi-character roster `profileDisplayCharacterId`'s original comment anticipated ("survives the future multi-character `/team` roster without needing to be untangled from combat-ally selection") — that decoupling already exists, this spec is the roster expansion it was built for.
+**Goal:** Expand `/team` from "player + 1 chosen ally" to "player + 2 chosen allies," with in-combat swapping between all three units directly (not just player↔ally) — and the player themselves becomes a fully symmetric, fully benchable unit rather than a fixed anchor that must always be active turn 1 forever. This is the multi-character roster `profileDisplayCharacterId`'s original comment anticipated ("survives the future multi-character `/team` roster without needing to be untangled from combat-ally selection") — that decoupling already exists, this spec is the roster expansion it was built for.
 
 **Status:** Approved by user 2026-07-31. Not yet implemented.
 
@@ -31,10 +31,19 @@ Every combat loop's `activeUnit: "player" | "ally"` becomes `activeUnit: "player
 
 ## Swap Mechanic
 
-- Any unit may swap directly to any other unit (player → slot1, player → slot2, slot1 → slot2, and the reverses) — six possible transitions instead of today's two.
-- **Button UX**: if only one ally slot is filled (today's common case), the swap button behaves exactly as it does now — a single "Swap to X" button, no picker. If both ally slots are filled, the button opens a `StringSelectMenuBuilder` listing the units NOT currently active (1 or 2 options depending on who's active) — same picker pattern `/team` itself already uses.
-- **Outro/Intro**: unchanged mechanically. Whichever unit is leaving triggers its own `outroEffect()`; whichever unit is arriving triggers its own `introEffect()`. This already generalizes to any-to-any swaps without new logic — the existing code reasons about "outgoing" and "incoming," never hardcodes "player" or "ally" as fixed roles.
+- **The player is now a fully symmetric 3rd unit**, not a fixed anchor. Today's rule ("the player's own character always fights turn-1 and can never be fully benched") is removed — the player can be swapped out entirely and stay benched for the rest of the fight, exactly like an ally slot can today.
+- Any unit may swap directly to any other unit (player ↔ slot1, player ↔ slot2, slot1 ↔ slot2) — six possible transitions instead of today's two. The fight still opens with the player active turn 1 by default (no change to fight *start*), but nothing prevents swapping away from them immediately and never swapping back.
+- **Button UX**: if only one other unit is benched, the swap button behaves exactly as it does now — a single "Swap to X" button, no picker. If two other units are benched, the button opens a `StringSelectMenuBuilder` listing them — same picker pattern `/team` itself already uses.
+- **Outro/Intro**: unchanged mechanically. Whichever unit is leaving triggers its own `outroEffect()`; whichever unit is arriving triggers its own `introEffect()`. This already generalizes to any-to-any swaps without new logic — the existing code reasons about "outgoing" and "incoming," never hardcodes "player" or "ally" as fixed roles. (The player's own Outro/Intro already exists today as `PLAYER_SELF_OUTRO`/`PLAYER_SELF_INTRO` for the player↔ally case — reused unchanged for player↔either-slot.)
 - **Concerto Energy**: stays one shared meter for the whole team (not per-pair, not per-slot) — a swap of any kind consumes the same shared bar, exactly like today's single-ally version.
+
+## Loss Condition
+
+Today, a fight ends in defeat the instant `state.playerHp` hits 0, regardless of who's active, and a KO'd ally auto-swaps back to the player rather than ending the fight. Since the player can now be fully benched, this generalizes:
+
+- **Defeat only triggers once all 3 units (player + both filled ally slots) have hit 0 HP.** An empty ("None — solo") slot doesn't count toward this — if a player runs solo, defeat is still just their own HP hitting 0, unchanged.
+- **A KO'd active unit auto-swaps to any other unit still standing** (player, or either living ally slot) — generalizing today's "KO'd ally swaps back to player" rule, which assumed the player was always the fallback. Now the fallback is "whichever of the remaining units is alive," picking the same priority order the swap-dropdown would show (or an arbitrary deterministic order — e.g. player first if alive, then slot1, then slot2 — since this is an automatic system swap with no player input, not a fight-ending choice).
+- If the currently active unit KOs and no other unit is alive, the fight ends in defeat immediately (all 3 down).
 
 ## Explicitly Out of Scope
 
