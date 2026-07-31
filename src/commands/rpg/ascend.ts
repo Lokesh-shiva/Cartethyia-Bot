@@ -60,6 +60,10 @@ import {
   KAELITH_FORTE_CONFIG, KAELITH_FORTE_GAIN_PER_BASIC, KaelithMechanicState,
 } from "../../lib/kits/kaelithKit";
 import { VesperMechanicState, VesperSkillResult, VESPER_FORTE_CONFIG, VESPER_FORTE_GAIN_PER_BASIC, vesperUltimateBaseMult } from "../../lib/kits/vesperKit";
+import {
+  RiloMechanicState, RiloSkillResult, RILO_FORTE_CONFIG, RILO_FORTE_GAIN_PER_BASIC,
+  RILO_SHIELD_GAIN_PER_BASIC, RILO_C2_DEF_SHRED_PCT, riloMaxShield, riloUltimateBaseMult, riloUltimateShieldFromDamage, riloOnHitTaken,
+} from "../../lib/kits/riloKit";
 import "../../lib/kits"; // registers CHARACTER_KITS side-effects (solaceKit, kaelithKit, vesperKit)
 
 const ELEMENT_HEX: Record<string, number> = {
@@ -127,6 +131,17 @@ function buildButtons(
       new ButtonBuilder().setCustomId("battle_skill").setLabel("⚡  Discharge").setStyle(ButtonStyle.Secondary),
       new ButtonBuilder().setCustomId("battle_ultimate").setLabel("⚡  Overload")
         .setStyle(ButtonStyle.Success).setDisabled(state.playerEnergy < 100),
+      new ButtonBuilder().setCustomId("battle_flee").setLabel("🚪  Flee").setStyle(ButtonStyle.Danger),
+    ));
+  } else if (team?.isDevGuild && team.activeUnit === "ally" && team.activeAllyCharacterId === "rilo") {
+    // Rilo's Ultimate gates on Concerto Energy like Kaelith/Solace's ally
+    // buttons — her own resource is Shield, which isn't what gates the
+    // button (matching Kaelith's precedent of two separate gauges).
+    rows.push(new ActionRowBuilder<ButtonBuilder>().addComponents(
+      new ButtonBuilder().setCustomId("battle_basic").setLabel("⚔️  Basic Attack").setStyle(ButtonStyle.Primary),
+      new ButtonBuilder().setCustomId("battle_skill").setLabel("🛡️  Guard Break").setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder().setCustomId("battle_ultimate").setLabel("🛡️  Avalanche Slam")
+        .setStyle(ButtonStyle.Success).setDisabled(team.concertoEnergy < 100),
       new ButtonBuilder().setCustomId("battle_flee").setLabel("🚪  Flee").setStyle(ButtonStyle.Danger),
     ));
   } else if (team?.isDevGuild && team.activeUnit === "ally") {
@@ -302,6 +317,8 @@ const command: Command = {
     const namedState = initNamedSetState();
     let glacioShieldTurnsLeft  = 0;   // Frostveil Bastion 5pc — elem DMG buff duration
     let glacioShieldElemBonus  = 0;   // active elem DMG bonus while shield buff is up
+    let riloDefBuffTurnsLeft   = 0;   // Rilo C1's Outro DEF buff on whoever swaps in — no existing generic "buff own DEF for N turns" primitive, so this is a dedicated per-fight counter, same shape as glacioShieldTurnsLeft
+    let riloDefBuffPct         = 0;
     let stormBuffTurnsLeft     = 0;   // Stormcaller's Oath 4pc — crit rate buff duration
     let stormBuffCritBonus     = 0;   // active crit rate bonus while post-ult buff is up
     let havocFrenzyAtkMult     = 1.0; // Voidborn Remnant 5pc — active buff values while frenzyActive
@@ -532,10 +549,35 @@ const command: Command = {
                 state.playerEnergy = Math.min(100, state.playerEnergy + energyGrant);
               }
             }
+            // Rilo's Outro transfers a fraction of her remaining Shield to
+            // whoever swaps in, applied as a flat HP-equivalent bonus (same
+            // clamp-like-a-heal treatment the outroResult/introResult
+            // hpDelta bonuses below already use) — no generic "shield buff"
+            // primitive exists yet, so this is the simplest consistent
+            // integration. C1's DEF buff on the incoming unit uses a
+            // dedicated per-fight counter (riloDefBuffTurnsLeft) since no
+            // generic "buff own DEF for N turns" primitive exists either.
+            let riloShieldTransferBonus = 0;
+            if (!outgoingIsPlayer && outroEffect.newMechanicState && activeAllyCharacterId === "rilo") {
+              const rOutgoing = allyMechanicState as RiloMechanicState;
+              const transferFrac = (outroEffect.newMechanicState as any).grantShieldTransferOnOutro as number;
+              riloShieldTransferBonus = Math.floor(rOutgoing.shield * transferFrac);
+              if ((outroEffect.newMechanicState as any).grantDefBuffOnOutro) {
+                riloDefBuffTurnsLeft = ((outroEffect.newMechanicState as any).defBuffTurns as number) + 1; // +1 compensates for the same-round decrement
+                riloDefBuffPct = 0.15;
+              }
+            }
+            if (outgoingIsPlayer && introEffect.newMechanicState && activeAllyCharacterId === "rilo") {
+              const grant = (introEffect.newMechanicState as any).grantShieldOnIntro as number | undefined;
+              if (grant) {
+                const rIncoming = allyMechanicState as RiloMechanicState;
+                allyMechanicState = { ...rIncoming, shield: Math.min(riloMaxShield(allyConstellation), rIncoming.shield + grant) };
+              }
+            }
 
             if (!outgoingIsPlayer) nextAttackCritArmed = true;
 
-            const totalBonus = outroResult.hpDelta + introResult.hpDelta + outroResult.shieldDelta + introResult.shieldDelta;
+            const totalBonus = outroResult.hpDelta + introResult.hpDelta + outroResult.shieldDelta + introResult.shieldDelta + riloShieldTransferBonus;
 
             let actualGain: number;
             if (outgoingIsPlayer) {
@@ -624,6 +666,13 @@ const command: Command = {
             allyMechanicState = { ...vState, markPresent: true };
             moveName += `\n⚡ Static Mark applied!`;
           }
+          if (isDevGuild && activeUnit === "ally" && activeAllyCharacterId === "rilo") {
+            const rState = allyMechanicState as RiloMechanicState;
+            const maxShield = riloMaxShield(allyConstellation);
+            const critBonus = crit ? Math.floor(RILO_SHIELD_GAIN_PER_BASIC * (allyConstellation >= 1 ? 0.5 : 0)) : 0;
+            allyMechanicState = { ...rState, shield: Math.min(maxShield, rState.shield + RILO_SHIELD_GAIN_PER_BASIC + critBonus) };
+            moveName += `\n🛡️ +${RILO_SHIELD_GAIN_PER_BASIC + critBonus} Shield (${(allyMechanicState as RiloMechanicState).shield}/${maxShield})`;
+          }
 
           // Forte fills only from the active ally's own Basic Attack — announce
           // only on the turn a threshold is actually crossed.
@@ -648,6 +697,12 @@ const command: Command = {
             solaceForte = addForteCharge(solaceForte, VESPER_FORTE_CONFIG, VESPER_FORTE_GAIN_PER_BASIC);
             if (isForteMaxed(solaceForte, VESPER_FORTE_CONFIG) && !isForteMaxed(forteBefore, VESPER_FORTE_CONFIG)) {
               moveName += `\n✨ Forte is **FULLY CHARGED** — next Discharge will be an Arc Discharge!`;
+            }
+          } else if (isDevGuild && activeUnit === "ally" && activeAllyCharacterId === "rilo") {
+            const forteBefore = solaceForte;
+            solaceForte = addForteCharge(solaceForte, RILO_FORTE_CONFIG, RILO_FORTE_GAIN_PER_BASIC);
+            if (isForteMaxed(solaceForte, RILO_FORTE_CONFIG) && !isForteMaxed(forteBefore, RILO_FORTE_CONFIG)) {
+              moveName += `\n✨ Forte is **FULLY CHARGED** — next Guard Break will be Braced!`;
             }
           }
         }
@@ -721,6 +776,29 @@ const command: Command = {
               moveName += `\n✨ Forte is **FULLY CHARGED** — next Discharge will be an Arc Discharge!`;
             }
           }
+        } else if (btn.customId === "battle_skill" && isDevGuild && activeUnit === "ally" && activeAllyCharacterId === "rilo" && allyKit) {
+          const rState = allyMechanicState as RiloMechanicState;
+          const crit = true; // Guard Break is always a guaranteed crit, per spec
+          abilCrit = crit;
+          const forteEmpowered = isForteMaxed(solaceForte, RILO_FORTE_CONFIG);
+          const result = allyKit.onSkill(
+            { playerHp: state.playerHp, playerHpMax: state.playerHpMax, allyHp, allyHpMax, turn: state.turn, isShattered: state.isShattered, mechanicState: rState, forteEmpowered } as any,
+            { basicLevel: allyBasicLevel, skillLevel: allySkillLevel, ultimateLevel: allyUltimateLevel, introLevel: allyIntroLevel, forteLevel: allyForteLevel },
+            allyConstellation,
+          ) as RiloSkillResult;
+          allyMechanicState = result.newMechanicState;
+          if (forteEmpowered) solaceForte = resetForte();
+
+          const base = Math.max(1, Math.floor(activeAtk * result.damageMult * (1 - defReduction)));
+          const dmg  = Math.floor(base * activeCritDmg * (isWeak ? 1.5 : 1) * (1 + bonuses.elemDmgBonus));
+          playerDmg  = dmg;
+          moveName   = `🛡️ ${result.moveLabel} — ${playerDmg} DMG **(CRIT)** (consumed ${result.shieldConsumed} Shield)`;
+          if (result.defShredApplied) {
+            enemyDefShredTurnsLeft = 2 + 1; // +1 compensates for the same-round decrement, matching every other user of this shared field
+            enemyDefShredPct = RILO_C2_DEF_SHRED_PCT;
+            moveName += `\n❄️ Enemy DEF shredded 10% for 2 turns!`;
+          }
+          state.bossVibNow = Math.max(0, state.bossVibNow - Math.floor(playerDmg * result.vibFrac * totalVibMult));
         } else if (btn.customId === "battle_skill") {
           const teamAtkMult  = isSolaceAlly ? getAttunementAtkMult(attunement, solaceAttunementAtkCritBonus(allySkillLevel), attunementDoubleTurnsLeft > 0, allyConstellation >= 6) : 1;
           const teamCritBonus = isSolaceAlly ? getAttunementCritRateBonus(attunement, solaceAttunementAtkCritBonus(allySkillLevel), attunementDoubleTurnsLeft > 0, allyConstellation >= 6) : 0;
@@ -895,6 +973,45 @@ const command: Command = {
           playerDmg = dmg;
           moveName  = `⚡ ${result.moveLabel} — ${playerDmg} DMG`;
           state.bossVibNow = Math.max(0, state.bossVibNow - Math.floor(playerDmg * 0.8 * totalVibMult));
+        } else if (btn.customId === "battle_ultimate" && isDevGuild && activeUnit === "ally" && activeAllyCharacterId === "rilo" && allyKit) {
+          const rState = allyMechanicState as RiloMechanicState;
+          const result = allyKit.onUltimate(
+            { playerHp: state.playerHp, playerHpMax: state.playerHpMax, allyHp, allyHpMax, turn: state.turn, isShattered: state.isShattered, mechanicState: rState },
+            { basicLevel: allyBasicLevel, skillLevel: allySkillLevel, ultimateLevel: allyUltimateLevel, introLevel: allyIntroLevel, forteLevel: allyForteLevel },
+            allyConstellation,
+          );
+          const maxShield = riloMaxShield(allyConstellation);
+          const c6DoubleHit = allyConstellation >= 6 && rState.shield >= maxShield;
+          const hits = c6DoubleHit ? 2 : 1;
+
+          const perHitBase = Math.max(1, Math.floor(activeAtk * (riloUltimateBaseMult(allyUltimateLevel) / hits) * (1 - defReduction)));
+          const perHitDmg  = Math.floor(perHitBase * activeCritDmg * (isWeak ? 1.5 : 1) * (1 + bonuses.elemDmgBonus));
+          const totalDmg   = perHitDmg * hits;
+
+          // C4's damage-to-Shield conversion needs the actual damage dealt,
+          // computed above — applied on top of onUltimate's own base refund
+          // (already folded into result.newMechanicState.shield).
+          const c4Bonus = riloUltimateShieldFromDamage(totalDmg, allyConstellation);
+          allyMechanicState = {
+            ...(result.newMechanicState as RiloMechanicState),
+            shield: Math.min(maxShield, (result.newMechanicState as RiloMechanicState).shield + c4Bonus),
+          };
+
+          if (hits > 1) {
+            const hitLines = Array.from({ length: hits }, (_, i) => `Hit ${i + 1}: ${perHitDmg} dmg`).join("\n");
+            playerDmg = totalDmg;
+            moveName  = `🛡️ ${result.moveLabel}\n${hitLines}\n**Total: ${playerDmg} DMG**`;
+            state.hitBadge = hits;
+          } else {
+            playerDmg = totalDmg;
+            moveName  = `🛡️ ${result.moveLabel} — ${playerDmg} DMG`;
+            state.hitBadge = undefined;
+          }
+          state.bossVibNow = Math.max(0, state.bossVibNow - Math.floor(playerDmg * 0.8 * totalVibMult));
+
+          if (result.healResult.actions.length > 0) {
+            playerDebuffs = cleanseDebuffs(playerDebuffs, 1);
+          }
         }
 
         if (btn.customId === "battle_echoskill" && bonuses.echoSkill) {
@@ -1153,12 +1270,22 @@ const command: Command = {
           const wellspringDefBonus = isSolaceAllyForDef && allySolaceStats?.hasWellspring ? getWellspringDefBonus(attunement, allySolaceStats.wellspringRefinement!) : 0;
           const forteDefBonus = isSolaceAllyForDef ? getSolaceForteDefBonus(allyForteLevel, forteEmpoweredTurnsLeft > 0) : 0;
           const attunementDefBonus = solaceAttunementDefBonus(allySkillLevel);
-          const attunementDefMult = (isSolaceAllyForDef ? getAttunementDefMult(attunement, attunementDefBonus, attunementDoubleTurnsLeft > 0, allyConstellation >= 6) : 1) * (1 + wellspringDefBonus) * (1 + forteDefBonus);
+          const riloDefBuffMult = riloDefBuffTurnsLeft > 0 ? (1 + riloDefBuffPct) : 1;
+          const attunementDefMult = (isSolaceAllyForDef ? getAttunementDefMult(attunement, attunementDefBonus, attunementDoubleTurnsLeft > 0, allyConstellation >= 6) : 1) * (1 + wellspringDefBonus) * (1 + forteDefBonus) * riloDefBuffMult;
           let bossDmg     = Math.max(1, Math.floor(scaled.atk * move.damage * enrageMult - activeDef * attunementDefMult * 0.4));
           bossDmg         = roll4pcBlock(bonuses, bossDmg);
           const shield    = elemFrostShield(bonuses.elementPassive, bossDmg);
           bossDmg         = shield.dmg;
           const allyIsActive = isDevGuild && activeUnit === "ally";
+          if (allyIsActive && activeAllyCharacterId === "rilo") {
+            const rState = allyMechanicState as RiloMechanicState;
+            const hitResult = riloOnHitTaken(rState, bossDmg, allyHp, allyHpMax, allyConstellation);
+            allyMechanicState = hitResult.newMechanicState;
+            bossDmg = hitResult.actualDamageTaken;
+            if (hitResult.forteGain > 0) solaceForte = addForteCharge(solaceForte, RILO_FORTE_CONFIG, hitResult.forteGain);
+            if (hitResult.blockedByC3) state.lastMove = (state.lastMove ?? "") + `\n🛡️ **Guard Break Save!** Rilo's Shield fully absorbed a lethal blow!`;
+            if (hitResult.zeroShieldSaveTriggered) state.lastMove = (state.lastMove ?? "") + `\n❄️ **Unbreakable Guard** — Shield surges back from nothing!`;
+          }
           if (allyIsActive) {
             allyHp = Math.max(0, allyHp - bossDmg);
           } else {
@@ -1218,6 +1345,7 @@ const command: Command = {
         state.turn++;
         if (state.skillCooldown > 0) state.skillCooldown--;
         if (glacioShieldTurnsLeft > 0) glacioShieldTurnsLeft--;
+        if (riloDefBuffTurnsLeft > 0) riloDefBuffTurnsLeft--;
         if (stormBuffTurnsLeft > 0) stormBuffTurnsLeft--;
         if (namedState.spectroFractureTurnsLeft > 0) namedState.spectroFractureTurnsLeft--;
         if (echoSkillCooldown > 0) echoSkillCooldown--;
