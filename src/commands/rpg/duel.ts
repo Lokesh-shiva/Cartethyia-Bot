@@ -61,6 +61,10 @@ import {
 import {
   VesperMechanicState, VesperSkillResult, VESPER_FORTE_CONFIG, VESPER_FORTE_GAIN_PER_BASIC, vesperUltimateBaseMult,
 } from "../../lib/kits/vesperKit";
+import {
+  RiloMechanicState, RiloSkillResult, RILO_FORTE_CONFIG, RILO_FORTE_GAIN_PER_BASIC,
+  RILO_SHIELD_GAIN_PER_BASIC, RILO_C2_DEF_SHRED_PCT, riloMaxShield, riloUltimateBaseMult, riloUltimateShieldFromDamage, riloOnHitTaken,
+} from "../../lib/kits/riloKit";
 import "../../lib/kits";
 
 // ── In-memory active duels ────────────────────────────────────────────────────
@@ -78,6 +82,7 @@ interface DuelState {
   cFirstAction: boolean; cSecondWindUsed: boolean; cV2Stacks: number;
   cNamedState: NamedSetState;
   cGlacioShieldTurnsLeft: number; cGlacioShieldElemBonus: number;
+  cRiloDefBuffTurnsLeft: number; cRiloDefBuffPct: number;
   cStormBuffTurnsLeft: number; cStormBuffCritBonus: number;
   cHavocFrenzyAtkMult: number; cHavocFrenzyLifesteal: number; cHavocFrenzyDefIgnore: number;
   cEchoSkillCd: number; cDefShredTurnsLeft: number; cDefShredPct: number; cNextCritArmed: boolean;
@@ -98,6 +103,7 @@ interface DuelState {
   dFirstAction: boolean; dSecondWindUsed: boolean; dV2Stacks: number;
   dNamedState: NamedSetState;
   dGlacioShieldTurnsLeft: number; dGlacioShieldElemBonus: number;
+  dRiloDefBuffTurnsLeft: number; dRiloDefBuffPct: number;
   dStormBuffTurnsLeft: number; dStormBuffCritBonus: number;
   dHavocFrenzyAtkMult: number; dHavocFrenzyLifesteal: number; dHavocFrenzyDefIgnore: number;
   dEchoSkillCd: number; dDefShredTurnsLeft: number; dDefShredPct: number; dNextCritArmed: boolean;
@@ -215,6 +221,14 @@ function buildDuelButtons(state: DuelState, forUserId: string, isDevGuild: boole
       new ButtonBuilder().setCustomId("duel_skill").setLabel("⚡  Discharge").setStyle(ButtonStyle.Secondary),
       new ButtonBuilder().setCustomId("duel_ultimate").setLabel("⚡  Overload")
         .setStyle(ButtonStyle.Success).setDisabled(myEnergy < 100),
+      new ButtonBuilder().setCustomId("duel_forfeit").setLabel("🏳️  Forfeit").setStyle(ButtonStyle.Danger),
+    ));
+  } else if (isDevGuild && myHasSolace && myActiveUnit === "ally" && myActiveAllyCharacterId === "rilo") {
+    rows.push(new ActionRowBuilder<ButtonBuilder>().addComponents(
+      new ButtonBuilder().setCustomId("duel_basic").setLabel("⚔️  Basic Attack").setStyle(ButtonStyle.Primary),
+      new ButtonBuilder().setCustomId("duel_skill").setLabel("🛡️  Guard Break").setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder().setCustomId("duel_ultimate").setLabel("🛡️  Avalanche Slam")
+        .setStyle(ButtonStyle.Success).setDisabled(myConcertoEnergy < 100),
       new ButtonBuilder().setCustomId("duel_forfeit").setLabel("🏳️  Forfeit").setStyle(ButtonStyle.Danger),
     ));
   } else if (isDevGuild && myHasSolace && myActiveUnit === "ally") {
@@ -435,6 +449,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
       cFirstAction: true, cSecondWindUsed: false, cV2Stacks: 0,
       cNamedState: initNamedSetState(),
       cGlacioShieldTurnsLeft: 0, cGlacioShieldElemBonus: 0,
+      cRiloDefBuffTurnsLeft: 0, cRiloDefBuffPct: 0,
       cStormBuffTurnsLeft: 0, cStormBuffCritBonus: 0,
       cHavocFrenzyAtkMult: 1.0, cHavocFrenzyLifesteal: 0, cHavocFrenzyDefIgnore: 0,
       cEchoSkillCd: 0, cDefShredTurnsLeft: 0, cDefShredPct: 0, cNextCritArmed: false,
@@ -457,6 +472,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
       dFirstAction: true, dSecondWindUsed: false, dV2Stacks: 0,
       dNamedState: initNamedSetState(),
       dGlacioShieldTurnsLeft: 0, dGlacioShieldElemBonus: 0,
+      dRiloDefBuffTurnsLeft: 0, dRiloDefBuffPct: 0,
       dStormBuffTurnsLeft: 0, dStormBuffCritBonus: 0,
       dHavocFrenzyAtkMult: 1.0, dHavocFrenzyLifesteal: 0, dHavocFrenzyDefIgnore: 0,
       dEchoSkillCd: 0, dDefShredTurnsLeft: 0, dDefShredPct: 0, dNextCritArmed: false,
@@ -658,7 +674,10 @@ export async function execute(interaction: ChatInputCommandInteraction) {
         const activeCritBase  = myIsAllyActing ? myAllySolaceStats!.critRate : myCrit;
         const oppActiveDef    = oppIsAllyDefending ? oppAllySolaceStats!.def : oppDef;
 
-        const effectiveOppDef  = oppActiveDef * (1 - myHavocDefIgnore) * (oppDefShredTurns > 0 ? (1 - oppDefShredPct) : 1) * oppAttunementDefMult;
+        const oppRiloDefBuffTurns = isChallenger ? state.dRiloDefBuffTurnsLeft : state.cRiloDefBuffTurnsLeft;
+        const oppRiloDefBuffPct   = isChallenger ? state.dRiloDefBuffPct : state.cRiloDefBuffPct;
+        const oppRiloDefBuffMult  = oppRiloDefBuffTurns > 0 ? (1 + oppRiloDefBuffPct) : 1;
+        const effectiveOppDef  = oppActiveDef * (1 - myHavocDefIgnore) * (oppDefShredTurns > 0 ? (1 - oppDefShredPct) : 1) * oppAttunementDefMult * oppRiloDefBuffMult;
         const extraElemBonus   = myGlacioTurns > 0 ? myGlacioBonus : 0;
         const myEchoCd         = isChallenger ? state.cEchoSkillCd : state.dEchoSkillCd;
         const myNextCritArmed  = isChallenger ? state.cNextCritArmed : state.dNextCritArmed;
@@ -728,12 +747,31 @@ export async function execute(interaction: ChatInputCommandInteraction) {
                 if (isChallenger) state.cEnergy = newEnergy; else state.dEnergy = newEnergy;
               }
             }
+            let riloShieldTransferBonus = 0;
+            if (!outgoingIsPlayer && outroEffect.newMechanicState && myActiveAllyCharacterId === "rilo") {
+              const rOutgoing = myAllyMechanicState as RiloMechanicState;
+              const transferFrac = (outroEffect.newMechanicState as any).grantShieldTransferOnOutro as number;
+              riloShieldTransferBonus = Math.floor(rOutgoing.shield * transferFrac);
+              if ((outroEffect.newMechanicState as any).grantDefBuffOnOutro) {
+                const turns = ((outroEffect.newMechanicState as any).defBuffTurns as number) + 1;
+                if (isChallenger) { state.cRiloDefBuffTurnsLeft = turns; state.cRiloDefBuffPct = 0.15; }
+                else              { state.dRiloDefBuffTurnsLeft = turns; state.dRiloDefBuffPct = 0.15; }
+              }
+            }
+            if (outgoingIsPlayer && introEffect.newMechanicState && myActiveAllyCharacterId === "rilo") {
+              const grant = (introEffect.newMechanicState as any).grantShieldOnIntro as number | undefined;
+              if (grant) {
+                const rIncoming = myAllyMechanicState as RiloMechanicState;
+                const newState = { ...rIncoming, shield: Math.min(riloMaxShield(mySolaceConstellation), rIncoming.shield + grant) };
+                if (isChallenger) state.cAllyMechanicState = newState; else state.dAllyMechanicState = newState;
+              }
+            }
 
             if (!outgoingIsPlayer) {
               if (isChallenger) state.cNextCritArmed = true; else state.dNextCritArmed = true;
             }
 
-            const totalBonus = outroResult.hpDelta + introResult.hpDelta + outroResult.shieldDelta + introResult.shieldDelta;
+            const totalBonus = outroResult.hpDelta + introResult.hpDelta + outroResult.shieldDelta + introResult.shieldDelta + riloShieldTransferBonus;
             let actualGain: number;
             if (outgoingIsPlayer) {
               const before = myAllyHpVal;
@@ -833,6 +871,14 @@ export async function execute(interaction: ChatInputCommandInteraction) {
             if (isChallenger) state.cAllyMechanicState = newState; else state.dAllyMechanicState = newState;
             moveLine += `\n⚡ Static Mark applied!`;
           }
+          if (myHasSolace && myActiveUnit === "ally" && myActiveAllyCharacterId === "rilo") {
+            const rState = myAllyMechanicState as RiloMechanicState;
+            const maxShield = riloMaxShield(mySolaceConstellation);
+            const critBonus = r.isCrit ? Math.floor(RILO_SHIELD_GAIN_PER_BASIC * (mySolaceConstellation >= 1 ? 0.5 : 0)) : 0;
+            const newState = { ...rState, shield: Math.min(maxShield, rState.shield + RILO_SHIELD_GAIN_PER_BASIC + critBonus) };
+            if (isChallenger) state.cAllyMechanicState = newState; else state.dAllyMechanicState = newState;
+            moveLine += `\n🛡️ +${RILO_SHIELD_GAIN_PER_BASIC + critBonus} Shield (${newState.shield}/${maxShield})`;
+          }
 
           // Forte fills only from the active ally's own Basic Attack.
           if (isMySolaceAlly) {
@@ -859,6 +905,13 @@ export async function execute(interaction: ChatInputCommandInteraction) {
             if (isChallenger) state.cSolaceForte = forteAfter; else state.dSolaceForte = forteAfter;
             if (isForteMaxed(forteAfter, VESPER_FORTE_CONFIG) && !isForteMaxed(forteBefore, VESPER_FORTE_CONFIG)) {
               moveLine += `\n✨ Forte is **FULLY CHARGED** — next Discharge will be an Arc Discharge!`;
+            }
+          } else if (myHasSolace && myActiveUnit === "ally" && myActiveAllyCharacterId === "rilo") {
+            const forteBefore = mySolaceForte;
+            const forteAfter  = addForteCharge(forteBefore, RILO_FORTE_CONFIG, RILO_FORTE_GAIN_PER_BASIC);
+            if (isChallenger) state.cSolaceForte = forteAfter; else state.dSolaceForte = forteAfter;
+            if (isForteMaxed(forteAfter, RILO_FORTE_CONFIG) && !isForteMaxed(forteBefore, RILO_FORTE_CONFIG)) {
+              moveLine += `\n✨ Forte is **FULLY CHARGED** — next Guard Break will be Braced!`;
             }
           }
         }
@@ -931,6 +984,37 @@ export async function execute(interaction: ChatInputCommandInteraction) {
             if (isChallenger) state.cSolaceForte = forteAfter; else state.dSolaceForte = forteAfter;
             if (isForteMaxed(forteAfter, VESPER_FORTE_CONFIG) && !isForteMaxed(forteBefore, VESPER_FORTE_CONFIG)) {
               moveLine += `\n✨ Forte is **FULLY CHARGED** — next Discharge will be an Arc Discharge!`;
+            }
+          }
+        } else if (btn.customId === "duel_skill" && isDevGuild && myActiveUnit === "ally" && myActiveAllyCharacterId === "rilo" && myAllyKit) {
+          const rState = myAllyMechanicState as RiloMechanicState;
+          const crit = true;
+          const forteEmpowered = isForteMaxed(mySolaceForte, RILO_FORTE_CONFIG);
+          const result = myAllyKit.onSkill(
+            { playerHp: myHp, playerHpMax: myHpMax, allyHp: myAllyHpVal, allyHpMax: myAllyHpMaxVal, turn: state.turn, isShattered: false, mechanicState: rState, forteEmpowered } as any,
+            { basicLevel: mySolaceBasicLevel, skillLevel: mySolaceSkillLevel, ultimateLevel: mySolaceUltimateLvl, introLevel: mySolaceIntroLevel, forteLevel: mySolaceForteLevel },
+            mySolaceConstellation,
+          ) as RiloSkillResult;
+          if (isChallenger) state.cAllyMechanicState = result.newMechanicState; else state.dAllyMechanicState = result.newMechanicState;
+          if (forteEmpowered) { const reset = resetForte(); if (isChallenger) state.cSolaceForte = reset; else state.dSolaceForte = reset; }
+
+          const r = calcPlayerDamage(activeAtk, effectiveOppDef, 1.0, activeCritDmg, result.damageMult, isWeak, false);
+          damage = Math.floor(r.damage * (1 + myElemDmg + extraElemBonus));
+          moveLine = `${myName} — 🛡️ ${result.moveLabel} **(CRIT)** (consumed ${result.shieldConsumed} Shield)`;
+          if (result.defShredApplied) {
+            const turns = 2 + 1;
+            if (isChallenger) { state.dDefShredTurnsLeft = turns; state.dDefShredPct = RILO_C2_DEF_SHRED_PCT; }
+            else              { state.cDefShredTurnsLeft = turns; state.cDefShredPct = RILO_C2_DEF_SHRED_PCT; }
+            moveLine += `\n❄️ Enemy DEF shredded 10% for 2 turns!`;
+          }
+          isCrit = crit; moveType = "SKILL";
+
+          if (!forteEmpowered) {
+            const forteBefore = mySolaceForte;
+            const forteAfter  = addForteCharge(forteBefore, RILO_FORTE_CONFIG, RILO_FORTE_GAIN_PER_BASIC);
+            if (isChallenger) state.cSolaceForte = forteAfter; else state.dSolaceForte = forteAfter;
+            if (isForteMaxed(forteAfter, RILO_FORTE_CONFIG) && !isForteMaxed(forteBefore, RILO_FORTE_CONFIG)) {
+              moveLine += `\n✨ Forte is **FULLY CHARGED** — next Guard Break will be Braced!`;
             }
           }
         } else if (btn.customId === "duel_skill") {
@@ -1075,6 +1159,42 @@ export async function execute(interaction: ChatInputCommandInteraction) {
           const r = calcPlayerDamage(activeAtk * ultDamageMult, effectiveOppDef, 1.0, activeCritDmg, 1.0, isWeak, false);
           damage = r.damage; isCrit = true; moveType = "ULT";
           moveLine = `${myName} — ⚡ ${result.moveLabel}`;
+        } else if (btn.customId === "duel_ultimate" && isDevGuild && myActiveUnit === "ally" && myActiveAllyCharacterId === "rilo" && myAllyKit) {
+          const rState = myAllyMechanicState as RiloMechanicState;
+          const result = myAllyKit.onUltimate(
+            { playerHp: myHp, playerHpMax: myHpMax, allyHp: myAllyHpVal, allyHpMax: myAllyHpMaxVal, turn: state.turn, isShattered: false, mechanicState: rState },
+            { basicLevel: mySolaceBasicLevel, skillLevel: mySolaceSkillLevel, ultimateLevel: mySolaceUltimateLvl, introLevel: mySolaceIntroLevel, forteLevel: mySolaceForteLevel },
+            mySolaceConstellation,
+          );
+          const maxShield = riloMaxShield(mySolaceConstellation);
+          const c6DoubleHit = mySolaceConstellation >= 6 && rState.shield >= maxShield;
+          const hits = c6DoubleHit ? 2 : 1;
+
+          const perHit = calcPlayerDamage(activeAtk, effectiveOppDef, 1.0, activeCritDmg, riloUltimateBaseMult(mySolaceUltimateLvl) / hits, isWeak, false);
+          const perHitDmg = perHit.damage;
+          const totalDmg = perHitDmg * hits;
+
+          const c4Bonus = riloUltimateShieldFromDamage(totalDmg, mySolaceConstellation);
+          const finalState = {
+            ...(result.newMechanicState as RiloMechanicState),
+            shield: Math.min(maxShield, (result.newMechanicState as RiloMechanicState).shield + c4Bonus),
+          };
+          if (isChallenger) state.cAllyMechanicState = finalState; else state.dAllyMechanicState = finalState;
+
+          if (hits > 1) {
+            const hitLines = Array.from({ length: hits }, (_, i) => `Hit ${i + 1}: ${perHitDmg} dmg`).join("\n");
+            damage = totalDmg;
+            moveLine = `${myName} — 🛡️ ${result.moveLabel}\n${hitLines}\n**Total: ${damage} DMG**`;
+          } else {
+            damage = totalDmg;
+            moveLine = `${myName} — 🛡️ ${result.moveLabel} — ${damage} DMG`;
+          }
+          isCrit = true; moveType = "ULT";
+
+          if (result.healResult.actions.length > 0) {
+            const cleansed = cleanseDebuffs(isChallenger ? state.cPlayerDebuffs : state.dPlayerDebuffs, 1);
+            if (isChallenger) state.cPlayerDebuffs = cleansed; else state.dPlayerDebuffs = cleansed;
+          }
         }
 
         let echoResult: ReturnType<typeof applyEchoSkill> | null = null;
@@ -1226,9 +1346,23 @@ export async function execute(interaction: ChatInputCommandInteraction) {
         // Symmetric: both branches need this check, not just one (the
         // biggest copy-paste risk in this file's c*/d* duplication pattern).
         if (isChallenger) {
+          if (isDevGuild && state.dActiveUnit === "ally" && state.dActiveAllyCharacterId === "rilo") {
+            const rState = state.dAllyMechanicState as RiloMechanicState;
+            const hitResult = riloOnHitTaken(rState, damage, state.dAllyHp, state.dAllyHpMax, state.dSolaceConstellation);
+            state.dAllyMechanicState = hitResult.newMechanicState;
+            damage = hitResult.actualDamageTaken;
+            if (hitResult.forteGain > 0) state.dSolaceForte = addForteCharge(state.dSolaceForte, RILO_FORTE_CONFIG, hitResult.forteGain);
+          }
           if (isDevGuild && state.dActiveUnit === "ally") state.dAllyHp = Math.max(0, state.dAllyHp - damage);
           else                                            state.dHp     = Math.max(0, state.dHp - damage);
         } else {
+          if (isDevGuild && state.cActiveUnit === "ally" && state.cActiveAllyCharacterId === "rilo") {
+            const rState = state.cAllyMechanicState as RiloMechanicState;
+            const hitResult = riloOnHitTaken(rState, damage, state.cAllyHp, state.cAllyHpMax, state.cSolaceConstellation);
+            state.cAllyMechanicState = hitResult.newMechanicState;
+            damage = hitResult.actualDamageTaken;
+            if (hitResult.forteGain > 0) state.cSolaceForte = addForteCharge(state.cSolaceForte, RILO_FORTE_CONFIG, hitResult.forteGain);
+          }
           if (isDevGuild && state.cActiveUnit === "ally") state.cAllyHp = Math.max(0, state.cAllyHp - damage);
           else                                            state.cHp     = Math.max(0, state.cHp - damage);
         }
@@ -1328,6 +1462,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
         // Named-set buff timers tick down on the acting player's own turns
         if (isChallenger) {
           if (state.cGlacioShieldTurnsLeft > 0) state.cGlacioShieldTurnsLeft--;
+          if (state.cRiloDefBuffTurnsLeft > 0) state.cRiloDefBuffTurnsLeft--;
           if (state.cStormBuffTurnsLeft > 0) state.cStormBuffTurnsLeft--;
           if (state.cNamedState.spectroFractureTurnsLeft > 0) state.cNamedState.spectroFractureTurnsLeft--;
           if (state.cEchoSkillCd > 0) state.cEchoSkillCd--;
@@ -1337,6 +1472,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
           if (forcedCritActive && btn.customId !== "duel_swap") state.cNextCritArmed = false;
         } else {
           if (state.dGlacioShieldTurnsLeft > 0) state.dGlacioShieldTurnsLeft--;
+          if (state.dRiloDefBuffTurnsLeft > 0) state.dRiloDefBuffTurnsLeft--;
           if (state.dStormBuffTurnsLeft > 0) state.dStormBuffTurnsLeft--;
           if (state.dNamedState.spectroFractureTurnsLeft > 0) state.dNamedState.spectroFractureTurnsLeft--;
           if (state.dEchoSkillCd > 0) state.dEchoSkillCd--;
