@@ -51,8 +51,10 @@ model User {
   avatarUrl        String?
   createdAt        DateTime       @default(now())
   lastSeen         DateTime       @default(now())
-  teamAllyCharacterId String?     // null = solo with own character. Non-null = an owned banner character filling the 2nd combat slot (ownership = a CharacterProgress row exists for this userId+characterId).
-  profileDisplayCharacterId String? // which owned character's badge shows on /profile — independent of teamAllyCharacterId so it survives the future multi-character /team roster without needing to be untangled from combat-ally selection.
+  teamPosition1 String? @default("self") // "self" | a characterId. Fight's starting active unit.
+  teamPosition2 String? // "self" | a characterId | null ("None" — unfilled)
+  teamPosition3 String? // "self" | a characterId | null ("None" — unfilled)
+  profileDisplayCharacterId String? // which owned character's badge shows on /profile — independent of teamPosition1/2/3 so it survives roster changes without needing to be untangled from combat-ally selection.
 
   // Milestone 4a — Banner #1 (The Rising Overture / The Tempered Vow)
   radiantKeys Int @default(0) // spends on the limited character/weapon banners only, never on /wish Standard
