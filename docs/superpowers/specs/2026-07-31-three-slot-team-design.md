@@ -6,44 +6,47 @@
 
 ---
 
-## Roster & `/team` Command
+## Roster & `/team` Command — Unified Position Model
 
-- `/team` gains two independent slot pickers — "Slot 2" and "Slot 3" — each a `StringSelectMenuBuilder` listing the player's owned characters (a `characterProgress` row exists for that `characterId`), same select-menu UX the command already has for its single slot today, just twice.
-- A character can only occupy one slot at a time (picking the same character for both slots is rejected, same validation shape as "you don't own that character").
-- Either slot can be set to "None — solo" independently; a player can run 1, 2, or 3-unit rosters.
+Rather than "pick 2 allies" and "set order" as two separate steps, `/team` exposes three **position pickers** — Position 1, Position 2, Position 3 — each a `StringSelectMenuBuilder` offering "Yourself" plus every owned character (a `characterProgress` row exists for that `characterId`), or "None" for positions 2/3. Filling a position *is* choosing both roster membership and turn/fallback order in one action — there's no separate ordering step.
+
+- Position 1 defaults to "Yourself" but can be changed — the player is not guaranteed to start.
+- The same unit (whether "Yourself" or a specific character) can only occupy one position; picking a unit already placed elsewhere is rejected the same way "you don't own that character" is today.
+- Position 1 must be filled (a team needs a starting unit). Positions 2/3 can independently be "None," supporting 1, 2, or 3-unit rosters.
 
 ## Database
 
-Replace the single column with two:
+Replace the single column with three, directly encoding both roster and order:
 
 ```prisma
-teamAllySlot1CharacterId String?
-teamAllySlot2CharacterId String?
+teamPosition1 String? // "self" | a characterId. Null only transiently invalid — always filled in practice.
+teamPosition2 String? // "self" | a characterId | null ("None")
+teamPosition3 String? // "self" | a characterId | null ("None")
 ```
 
-(Drop `teamAllyCharacterId` — no back-compat needed, single-player game state, not a public API.)
+(Drop `teamAllyCharacterId` — no back-compat needed, single-player game state, not a public API. The literal string `"self"` represents the player's own character occupying that position, distinguishing it from a `characterId` value.)
 
 ## Combat State Shape
 
-Every combat loop's `activeUnit: "player" | "ally"` becomes `activeUnit: "player" | "allySlot1" | "allySlot2"`. Each ally slot carries its own full parallel state set — HP/HPMax, `allyMechanicState`, kit levels (basic/skill/ultimate/intro/forte), constellation, resolved stats — mirroring exactly what today's single `ally*` variable set already tracks, just duplicated per slot (`allySlot1Hp`/`allySlot2Hp`, etc.) rather than a new state concept.
+Every combat loop's `activeUnit: "player" | "ally"` becomes `activeUnit: 1 | 2 | 3` (position index) or an equivalent named union (`"pos1" | "pos2" | "pos3"`) — whichever reads more naturally per file, decided at implementation time. Each position carries its own full parallel state set — HP/HPMax, kit-specific `mechanicState`, kit levels, constellation, resolved stats — mirroring exactly what today's single `ally*` variable set already tracks, just tripled (once per position) instead of doubled. If a position holds "self," its state is the player's own existing stat block (no ally kit involved), same as today's "player" branch.
 
-`allyKit`/`allyConstellation`/etc. become "whichever slot's kit is relevant for the branch currently executing" — resolved once per turn based on `activeUnit`, same as today's single-ally resolution, just branching three ways instead of two.
+Whichever kit/constellation/etc. is "active" resolves once per turn based on `activeUnit`, branching three ways instead of two — same resolution pattern already used for the binary case.
 
 ## Swap Mechanic
 
-- **The player is now a fully symmetric 3rd unit**, not a fixed anchor. Today's rule ("the player's own character always fights turn-1 and can never be fully benched") is removed — the player can be swapped out entirely and stay benched for the rest of the fight, exactly like an ally slot can today.
-- Any unit may swap directly to any other unit (player ↔ slot1, player ↔ slot2, slot1 ↔ slot2) — six possible transitions instead of today's two. The fight still opens with the player active turn 1 by default (no change to fight *start*), but nothing prevents swapping away from them immediately and never swapping back.
-- **Button UX**: if only one other unit is benched, the swap button behaves exactly as it does now — a single "Swap to X" button, no picker. If two other units are benched, the button opens a `StringSelectMenuBuilder` listing them — same picker pattern `/team` itself already uses.
-- **Outro/Intro**: unchanged mechanically. Whichever unit is leaving triggers its own `outroEffect()`; whichever unit is arriving triggers its own `introEffect()`. This already generalizes to any-to-any swaps without new logic — the existing code reasons about "outgoing" and "incoming," never hardcodes "player" or "ally" as fixed roles. (The player's own Outro/Intro already exists today as `PLAYER_SELF_OUTRO`/`PLAYER_SELF_INTRO` for the player↔ally case — reused unchanged for player↔either-slot.)
-- **Concerto Energy**: stays one shared meter for the whole team (not per-pair, not per-slot) — a swap of any kind consumes the same shared bar, exactly like today's single-ally version.
+- **The player is one of the three positions**, not a fixed anchor — if Position 1 is "self," the fight opens with the player active turn 1 by default (no change to fight *start*), but nothing prevents swapping away from them immediately and never swapping back, including for the whole fight.
+- Any position may swap directly to any other filled position — up to six possible transitions (2 units filled = 2 transitions; 3 filled = 6).
+- **Button UX**: if only one other position is filled, the swap button behaves exactly as it does now — a single "Swap to X" button, no picker. If two other positions are filled, the button opens a `StringSelectMenuBuilder` listing them — same picker pattern `/team` itself already uses.
+- **Outro/Intro**: unchanged mechanically. Whichever unit is leaving triggers its own `outroEffect()`; whichever unit is arriving triggers its own `introEffect()` — already generalizes to any-to-any swaps without new logic, since the existing code reasons about "outgoing"/"incoming," never hardcoded position roles. (The player's own Outro/Intro already exists today as `PLAYER_SELF_OUTRO`/`PLAYER_SELF_INTRO` for the player↔ally case — reused unchanged whenever "self" is the outgoing/incoming position.)
+- **Concerto Energy**: stays one shared meter for the whole team (not per-pair, not per-position) — a swap of any kind consumes the same shared bar, exactly like today's single-ally version.
 
-## Loss Condition
+## Loss Condition & KO Fallback
 
-Today, a fight ends in defeat the instant `state.playerHp` hits 0, regardless of who's active, and a KO'd ally auto-swaps back to the player rather than ending the fight. Since the player can now be fully benched, this generalizes:
+Today, a fight ends in defeat the instant `state.playerHp` hits 0, regardless of who's active, and a KO'd ally auto-swaps back to the player rather than ending the fight. Generalized:
 
-- **Defeat only triggers once all 3 units (player + both filled ally slots) have hit 0 HP.** An empty ("None — solo") slot doesn't count toward this — if a player runs solo, defeat is still just their own HP hitting 0, unchanged.
-- **A KO'd active unit auto-swaps to any other unit still standing** (player, or either living ally slot) — generalizing today's "KO'd ally swaps back to player" rule, which assumed the player was always the fallback. Now the fallback is "whichever of the remaining units is alive," picking the same priority order the swap-dropdown would show (or an arbitrary deterministic order — e.g. player first if alive, then slot1, then slot2 — since this is an automatic system swap with no player input, not a fight-ending choice).
-- If the currently active unit KOs and no other unit is alive, the fight ends in defeat immediately (all 3 down).
+- **Defeat only triggers once every filled position has hit 0 HP.** An unfilled ("None") position doesn't count — a solo player's defeat condition is unchanged.
+- **A KO'd active unit auto-swaps to the next living unit in position order**, wrapping around (1 → 2 → 3 → 1). E.g., if Position 2 is active and KOs, fall back to Position 3 if alive, else Position 1, else defeat. This directly reuses the same 1/2/3 ordering the player set in `/team` — no separate fallback-priority concept needed.
+- If the currently active position KOs and every other filled position is also already at 0 HP, the fight ends in defeat immediately.
 
 ## Explicitly Out of Scope
 
