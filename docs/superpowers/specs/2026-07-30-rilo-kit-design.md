@@ -66,14 +66,14 @@ Implementation-time decision — no strong argument either way was raised during
 
 | C | Effect |
 |---|---|
-| C1 | Outro's Shield transfer amount is larger, and the incoming unit also gets a small flat DEF buff for 2 turns (not just raw Shield) — makes her swap-out genuinely protective, not just a number handoff |
-| C2 | Guard Break's guaranteed crit **ignores 15% of the enemy's DEF** — straight damage payoff for the Skill-spam playstyle |
-| C3 | Avalanche Slam's post-cast Shield refund is **doubled**, and she additionally heals for a fraction of the refunded amount — reinforces "go big, then re-guard" with real survivability, not just a bigger number |
-| C4 | Forte-empowered Guard Break's Shield refund is bigger, and a portion of that refund **also carries over to the benched unit** — ties her two systems (Forte, swap-support) together via a shared side-channel |
-| C5 | Max Shield cap raised (100 → 140) and Shield gain per Basic Attack increased — a pure economy scale-up that makes every other constellation hit harder/more often |
-| C6 (Defining) | If Shield is at max when Avalanche Slam is cast, it **hits twice** instead of once — the payoff for a min-maxed "stall to full Shield, then unload" rotation |
+| C1 | Basic Attacks that land a **critical hit** grant **+50% bonus Shield** on top of the normal flat gain (still capped at max Shield) — turns crit RNG into a genuine economy engine instead of pure damage variance |
+| C2 | Guard Break's guaranteed crit also applies a **10% DEF-shred debuff for 2 turns** (non-stacking — reapplying refreshes duration, doesn't compound) — the move now does something to the enemy, not just refunds more to her |
+| C3 | **Once per battle**: if a hit would drop her below 25% HP, and she has any Shield banked, she instead auto-consumes all remaining Shield to fully block that hit. A genuine clutch save, not a repeatable safety net — if Shield is already empty when it would trigger, it doesn't fire |
+| C4 | Avalanche Slam **cleanses one debuff** from her and grants Shield equal to **20% of the damage it dealt** — ties her Ultimate to a new resource path (damage → Shield) instead of a flat refund, plus real utility |
+| C5 | Forte now **also gains a flat, modest amount** (roughly a third of a Basic Attack's contribution) whenever she takes a hit while holding any Shield — makes tanking hits an active part of her pacing instead of just something that happens to her |
+| C6 (Defining) | **Once per battle**, if her Shield ever hits exactly 0, it's immediately restored to 50% of max (an "unbreakable guard" safety net, not permanent immunity to running dry) — **and** Avalanche Slam hits twice whenever cast while Shield is at max |
 
-(Constellation gate numbers — exact percentages, flat amounts, DEF-ignore stacking behavior, etc. — are implementation-time decisions following the same style as `kaelithKit.ts`/`vesperKit.ts`'s constellation-gated formulas; this spec fixes the *mechanic* of each tier, not the exact tuning constants.)
+Deliberate power guardrails baked into the *mechanic* itself (not just tuning numbers): C1's bonus is a percentage of an already-capped resource, C2's debuff is non-stacking, C3 and C6's safety nets are explicitly once-per-battle, C4's conversion is capped at a fraction of Ultimate damage, C5's hit-triggered gain is flat and modest. Exact percentages/flat amounts are still implementation-time decisions following `kaelithKit.ts`/`vesperKit.ts`'s constellation-gated formula style — this spec fixes the *mechanic and its guardrail* for each tier, not the exact tuning constants.
 
 ## Double-Hit Display (C6 Reuse, Not New Work)
 
