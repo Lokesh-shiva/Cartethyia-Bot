@@ -22,6 +22,7 @@ const EMOJI_ASSETS: { name: string; file: string }[] = [
   { name: "cc_starfall",   file: "assets/icons/Starfall Shard.png" },
   { name: "cc_umbral", file: "assets/icons/Umbral Shard.png" },
   { name: "cc_voltaic", file: "assets/icons/Voltaic Shard.png" },
+  { name: "cc_glacial", file: "assets/icons/Glacial Shard.png" },
   // 1-cost echoes
   { name: "ec_ember",    file: "assets/echoes/1-cost/Ember Wisp.png"     },
   { name: "ec_frost",    file: "assets/echoes/1-cost/Frost Mote.png"     },
@@ -154,6 +155,7 @@ const CURRENCY_EMOJI_MAP: Record<string, string> = {
   starfallShards:   "cc_starfall",
   umbralShards:     "cc_umbral",
   voltaicShards:    "cc_voltaic",
+  glacialShards:    "cc_glacial",
 };
 
 // ── Load / create APPLICATION emojis on startup ───────────────────────────────
@@ -266,4 +268,5 @@ export const CE = {
   get sf() { return getEmoji("cc_starfall",   "🌠"); },
   get us() { return getEmoji("cc_umbral", "🔮"); },
   get vs() { return getEmoji("cc_voltaic", "⚡"); },
+  get gs() { return getEmoji("cc_glacial", "❄️"); },
 };

@@ -101,6 +101,7 @@ model User {
   starfallShards   Int            @default(0) // Solace ascension mat (Lv40+), drops only from the Spectro field boss
   umbralShards     Int            @default(0) // Kaelith ascension mat (Lv40+), drops only from Null Ravager (Havoc field boss)
   voltaicShards    Int            @default(0) // Vesper ascension mat (Lv40+), drops only from Voltaic Aberrant (Electro field boss)
+  glacialShards    Int            @default(0) // Rilo ascension mat (Lv40+), drops only from Permafrost Sovereign (Glacio field boss)
 
   // Wish / gacha pity
   wishPity         Int            @default(0)   // pulls since last 5★
@@ -461,6 +462,7 @@ model Mail {
   starfallShards   Int @default(0)
   umbralShards     Int @default(0)
   voltaicShards    Int @default(0)
+  glacialShards    Int @default(0)
 
   claims  MailClaim[]
 

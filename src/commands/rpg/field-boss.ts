@@ -248,9 +248,10 @@ const command: Command = {
     const options = ALL_FIELD_BOSSES.map(fb => {
       const elemEmoji = (ELEMENT_EMOJI as any)[fb.element] ?? "◇";
       const locked = (fb.unlockWorldLevel ?? 0) > user.worldLevel;
-      const dropNote = fb.id === "luminal_specter"  ? "  ✦ drops Starfall Shards"
-                      : fb.id === "null_ravager"     ? "  ✦ drops Umbral Shards"
-                      : fb.id === "voltaic_aberrant" ? "  ✦ drops Voltaic Shards"
+      const dropNote = fb.id === "luminal_specter"      ? "  ✦ drops Starfall Shards"
+                      : fb.id === "null_ravager"         ? "  ✦ drops Umbral Shards"
+                      : fb.id === "voltaic_aberrant"     ? "  ✦ drops Voltaic Shards"
+                      : fb.id === "permafrost_sovereign" ? "  ✦ drops Glacial Shards"
                       : "";
       return {
         label:       locked ? `🔒 ${fb.name}  (WL${fb.unlockWorldLevel} required)` : `${elemEmoji}  ${fb.name}`,
@@ -521,6 +522,14 @@ const command: Command = {
               data: { voltaicShards: { increment: 1 } },
             });
           }
+          let glacialShardsDropped = 0;
+          if (fb.id === "permafrost_sovereign") {
+            glacialShardsDropped = 1;
+            await prisma.user.update({
+              where: { id: interaction.user.id },
+              data: { glacialShards: { increment: 1 } },
+            });
+          }
 
           const lvl        = await checkLevelUp(interaction.user.id);
           const bondResult = await incrementWeaponBond(interaction.user.id).catch(() => null);
@@ -536,6 +545,7 @@ const command: Command = {
                 (starfallShardsDropped ? `\n${CE.sf} **1 Starfall Shard**` : "") +
                 (umbralShardsDropped ? `\n${CE.us} **1 Umbral Shard**` : "") +
                 (voltaicShardsDropped ? `\n${CE.vs} **1 Voltaic Shard**` : "") +
+                (glacialShardsDropped ? `\n${CE.gs} **1 Glacial Shard**` : "") +
                 (lvl.didLevelUp ? `\n◈ Level **${lvl.oldLevel}** → **${lvl.newLevel}**` : "") +
                 (bondResult ? `\n✦ Weapon Bond **${bondResult.bond}/10**${bondResult.milestone ? ` — *${bondResult.milestone}*` : ""}` : "") +
                 voteNudge() + supportNudge() + await mailNudge(interaction.user.id)
