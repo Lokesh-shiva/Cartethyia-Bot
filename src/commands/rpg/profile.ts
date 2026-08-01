@@ -126,9 +126,15 @@ const command: Command = {
     // players who set one before this preference existed.
     const prefRow = await prisma.user.findUnique({
       where:  { id: target.id },
-      select: { profileDisplayCharacterId: true, teamAllyCharacterId: true },
+      select: { profileDisplayCharacterId: true, teamPosition1: true, teamPosition2: true, teamPosition3: true },
     });
-    const rawDisplayId = prefRow?.profileDisplayCharacterId ?? prefRow?.teamAllyCharacterId ?? null;
+    // Fallback for players who never set an explicit profile badge: use the
+    // first non-"self" position on their roster (order 1→2→3). Which one it
+    // picks isn't load-bearing — it's just a sensible default until they
+    // choose one via the /profile picker.
+    const rosterFallback = [prefRow?.teamPosition1, prefRow?.teamPosition2, prefRow?.teamPosition3]
+      .find(v => v != null && v !== "self") ?? null;
+    const rawDisplayId = prefRow?.profileDisplayCharacterId ?? rosterFallback;
     const displayCharacterId = rawDisplayId && CHARACTER_KITS[rawDisplayId] ? rawDisplayId : null;
     const displayProgress = displayCharacterId
       ? await prisma.characterProgress.findUnique({

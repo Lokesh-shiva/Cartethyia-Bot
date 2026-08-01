@@ -2,6 +2,7 @@ import {
   TextChannel, EmbedBuilder, ActionRowBuilder,
   ButtonBuilder, ButtonStyle, AttachmentBuilder,
   ComponentType, ButtonInteraction, Message,
+  StringSelectMenuBuilder, StringSelectMenuInteraction,
 } from "discord.js";
 import * as fs   from "fs";
 import * as path from "path";
@@ -45,7 +46,11 @@ import { ForteState, addForteCharge, isForteMaxed, resetForte } from "./forte";
 import { AllyActionTarget } from "./allyActions";
 import { addConcertoEnergy } from "./concertoEnergy";
 import { DebuffState, applyDebuff, tickDebuffs, getWeakenedMult, cleanseDebuffs } from "./debuffs";
-import { CHARACTER_KITS } from "./characterKit";
+import { CHARACTER_KITS, PlayableCharacterKit } from "./characterKit";
+import {
+  resolveRoster, nextAliveFallback, isTeamWiped, swappableTargets, positionLabel,
+  ResolvedRoster, PositionIndex,
+} from "./teamPositions";
 import {
   kaelithStackCap, kaelithBasicStackGain, kaelithUltimateBaseMult, KAELITH_PER_STACK_ULT_BONUS,
   KAELITH_FORTE_CONFIG, KAELITH_FORTE_GAIN_PER_BASIC, KaelithMechanicState,
@@ -384,7 +389,7 @@ export async function handleEncounterFight(
     where:  { id: interaction.user.id },
     select: { level: true, baseAtk: true, baseDef: true, baseHp: true,
               worldLevel: true, element: true, critRate: true, critDmg: true,
-              isOnboarded: true, teamAllyCharacterId: true },
+              isOnboarded: true, teamPosition1: true, teamPosition2: true, teamPosition3: true },
   });
 
   // A user row can exist without /start (some commands auto-create) — require
@@ -408,45 +413,85 @@ export async function handleEncounterFight(
   // — that helper CREATES a row if missing, which would silently re-grant
   // Solace ownership to anyone whose teamAllyCharacterId flag is "solace"
   // but doesn't actually own her, bypassing the gacha entirely.
-  const activeAllyCharacterId: string | null =
-    dbUser.teamAllyCharacterId && CHARACTER_KITS[dbUser.teamAllyCharacterId] ? dbUser.teamAllyCharacterId : null;
-  const allyOwnedProgress = activeAllyCharacterId
-    ? await prisma.characterProgress.findUnique({ where: { userId_characterId: { userId: interaction.user.id, characterId: activeAllyCharacterId } } })
-    : null;
-  const hasSolace = allyOwnedProgress !== null;
-  const isDevGuild = hasSolace;
-  const allyKit = activeAllyCharacterId ? CHARACTER_KITS[activeAllyCharacterId] : null;
-
   // Resolve full combat stats (echoes + weapon + set bonuses + unique ability)
   const bonuses = await resolvePlayerBonuses(interaction.user.id);
   const stats   = applyBonuses(dbUser, bonuses);
-  // Own resolved stats (own base + OWN echoes/weapon).
-  const allyResolvedStats = hasSolace && allyKit ? await allyKit.resolveStats(interaction.user.id) : null;
-  const allySolaceStats = allyResolvedStats as (typeof allyResolvedStats & { hasWellspring?: boolean; wellspringRefinement?: number });
   let secondWindUsed = false;
 
-  // ── Milestone 1/2a: two-unit team state (dev guild only) ─────────────────────
-  let activeUnit: "player" | "ally" = "player";
-  let allyHp    = allyKit ? allyKit.statsAtLevel(90).hpMax : 0;
-  const allyHpMax = allyHp;
+  // ── 3-position roster state ──────────────────────────────────────────────
+  interface AllyBundle {
+    characterId: string; kit: PlayableCharacterKit;
+    hp: number; hpMax: number; mechanicState: unknown;
+    basicLevel: number; skillLevel: number; ultimateLevel: number; introLevel: number; forteLevel: number;
+    constellation: number; solaceStats: any;
+  }
+  const roster: ResolvedRoster = resolveRoster(dbUser);
+  const allyBundles: Partial<Record<PositionIndex, AllyBundle>> = {};
+  for (const pos of [1, 2, 3] as PositionIndex[]) {
+    const val = pos === 1 ? roster.position1 : pos === 2 ? roster.position2 : roster.position3;
+    if (val === null || val === "self") continue;
+    const kit = CHARACTER_KITS[val];
+    if (!kit) continue;
+    const progress = await prisma.characterProgress.findUnique({ where: { userId_characterId: { userId: interaction.user.id, characterId: val } } });
+    if (!progress) continue;
+    const solaceStats = await kit.resolveStats(interaction.user.id);
+    const hpMax = kit.statsAtLevel(90).hpMax;
+    allyBundles[pos] = {
+      characterId: val, kit, hp: hpMax, hpMax, mechanicState: kit.createInitialMechanicState(),
+      basicLevel: progress.basicLevel, skillLevel: progress.skillLevel, ultimateLevel: progress.ultimateLevel,
+      introLevel: progress.introLevel, forteLevel: progress.forteLevel, constellation: progress.constellation,
+      solaceStats,
+    };
+  }
+  // Legacy names — now mean "roster has ≥1 non-self filled position".
+  const hasSolace = Object.keys(allyBundles).length > 0;
+  const isDevGuild = hasSolace;
+
+  let activeUnit: PositionIndex = 1;
+  function posValue(pos: PositionIndex): string | null {
+    return pos === 1 ? roster.position1 : pos === 2 ? roster.position2 : roster.position3;
+  }
+  function isPlayerActive(): boolean { return posValue(activeUnit) === "self"; }
+
+  let activeAllyCharacterId: string | null = null;
+  let allyKit: PlayableCharacterKit | null = null;
+  let allyHp = 0, allyHpMax = 0;
+  let allyMechanicState: unknown = null;
+  let allyBasicLevel = 1, allySkillLevel = 1, allyUltimateLevel = 1, allyIntroLevel = 1, allyForteLevel = 1, allyConstellation = 0;
+  let allySolaceStats: any = null;
+
+  // Resyncs the legacy ally* vars from whichever bundle activeUnit points to,
+  // so every existing per-character dispatch branch works unchanged.
+  function syncActiveBundle() {
+    if (isPlayerActive()) {
+      activeAllyCharacterId = null; allyKit = null; allyHp = 0; allyHpMax = 0; allyMechanicState = null;
+      allyBasicLevel = 1; allySkillLevel = 1; allyUltimateLevel = 1; allyIntroLevel = 1; allyForteLevel = 1; allyConstellation = 0; allySolaceStats = null;
+      return;
+    }
+    const b = allyBundles[activeUnit];
+    activeAllyCharacterId = b?.characterId ?? null;
+    allyKit = b?.kit ?? null;
+    allyHp = b?.hp ?? 0; allyHpMax = b?.hpMax ?? 0;
+    allyMechanicState = b?.mechanicState ?? null;
+    allyBasicLevel = b?.basicLevel ?? 1; allySkillLevel = b?.skillLevel ?? 1; allyUltimateLevel = b?.ultimateLevel ?? 1;
+    allyIntroLevel = b?.introLevel ?? 1; allyForteLevel = b?.forteLevel ?? 1; allyConstellation = b?.constellation ?? 0;
+    allySolaceStats = b?.solaceStats ?? null;
+  }
+  function commitActiveBundle() {
+    const b = allyBundles[activeUnit];
+    if (b) { b.hp = allyHp; b.mechanicState = allyMechanicState; }
+  }
+  function currentPositionHp(pos: PositionIndex): number {
+    return posValue(pos) === "self" ? state.playerHp : (allyBundles[pos]?.hp ?? 0);
+  }
+  syncActiveBundle();
+
   let concertoEnergy: number = 0;
   let playerDebuffs: DebuffState = [];
   let attunement: AttunementState = { mode: null };
   let attunementDoubleTurnsLeft = 0; // set by a normal (non-Empowered) Convergence
   let solaceForte: ForteState = { phase: 0, charge: 0 };
   let forteEmpoweredTurnsLeft = 0; // set by an Empowered Convergence; mutually exclusive with attunementDoubleTurnsLeft
-  let allyMechanicState: unknown = allyKit ? allyKit.createInitialMechanicState() : null;
-
-  // Milestone 2e: kit levels don't change mid-fight (leveling only happens via
-  // /character, a separate command/interaction) — fetch once here rather than
-  // re-querying every turn.
-  const allyProgress = allyOwnedProgress;
-  const allyBasicLevel    = allyProgress?.basicLevel    ?? 1;
-  const allySkillLevel    = allyProgress?.skillLevel    ?? 1;
-  const allyUltimateLevel = allyProgress?.ultimateLevel ?? 1;
-  const allyIntroLevel    = allyProgress?.introLevel    ?? 1;
-  const allyForteLevel    = allyProgress?.forteLevel    ?? 1;
-  const allyConstellation = allyProgress?.constellation ?? 0;
 
   // Scale enemy to the fighter's progression + gear (still lighter than dedicated boss
   // fights, but bumped 2026-07-03 — chat encounters were reported as trivially easy)
@@ -511,7 +556,7 @@ export async function handleEncounterFight(
     // differ because Solace's Skill is Attunement (no cooldown, always
     // available — it's a mode switch, not a charge-gated move) and her
     // Ultimate spends Concerto Energy rather than personal Energy.
-    if (isDevGuild && activeUnit === "ally" && activeAllyCharacterId === "kaelith") {
+    if (isDevGuild && !isPlayerActive() && activeAllyCharacterId === "kaelith") {
       const skillReady = state.skillCooldown === 0;
       const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
         new ButtonBuilder().setCustomId("enc_basic").setLabel("⚔️  Basic Attack").setStyle(ButtonStyle.Primary),
@@ -523,7 +568,7 @@ export async function handleEncounterFight(
         new ButtonBuilder().setCustomId("enc_flee").setLabel("↩  Flee").setStyle(ButtonStyle.Danger),
       );
       rows.push(row);
-    } else if (isDevGuild && activeUnit === "ally" && activeAllyCharacterId === "vesper") {
+    } else if (isDevGuild && !isPlayerActive() && activeAllyCharacterId === "vesper") {
       const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
         new ButtonBuilder().setCustomId("enc_basic").setLabel("⚔️  Basic Attack").setStyle(ButtonStyle.Primary),
         new ButtonBuilder().setCustomId("enc_skill").setLabel("⚡  Discharge").setStyle(ButtonStyle.Secondary),
@@ -532,7 +577,7 @@ export async function handleEncounterFight(
         new ButtonBuilder().setCustomId("enc_flee").setLabel("↩  Flee").setStyle(ButtonStyle.Danger),
       );
       rows.push(row);
-    } else if (isDevGuild && activeUnit === "ally" && activeAllyCharacterId === "rilo") {
+    } else if (isDevGuild && !isPlayerActive() && activeAllyCharacterId === "rilo") {
       const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
         new ButtonBuilder().setCustomId("enc_basic").setLabel("⚔️  Basic Attack").setStyle(ButtonStyle.Primary),
         new ButtonBuilder().setCustomId("enc_skill").setLabel("🛡️  Guard Break").setStyle(ButtonStyle.Secondary),
@@ -541,7 +586,7 @@ export async function handleEncounterFight(
         new ButtonBuilder().setCustomId("enc_flee").setLabel("↩  Flee").setStyle(ButtonStyle.Danger),
       );
       rows.push(row);
-    } else if (isDevGuild && activeUnit === "ally") {
+    } else if (isDevGuild && !isPlayerActive()) {
       const modeLabel = attunement.mode ? `(${attunement.mode})` : "(inactive)";
       const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
         new ButtonBuilder().setCustomId("enc_basic").setLabel("⚔️  Chime Strike").setStyle(ButtonStyle.Primary),
@@ -575,27 +620,44 @@ export async function handleEncounterFight(
     }
 
     if (hasSolace) {
-      const swapDisabled = activeUnit === "player" && allyHp <= 0;
-      rows.push(new ActionRowBuilder<ButtonBuilder>().addComponents(
-        new ButtonBuilder().setCustomId("enc_swap")
-          .setLabel(activeUnit === "player" ? `🔄  Swap to ${allyKit?.label ?? "Ally"}` : `🔄  Swap to ${displayName}`)
-          .setStyle(ButtonStyle.Secondary).setDisabled(swapDisabled),
-      ));
+      const targets = swappableTargets(roster, activeUnit).map(pos => ({
+        pos, label: positionLabel(roster, pos, displayName, (id) => CHARACTER_KITS[id]?.label ?? null),
+      }));
+      if (targets.length === 1) {
+        rows.push(new ActionRowBuilder<ButtonBuilder>().addComponents(
+          new ButtonBuilder().setCustomId("enc_swap")
+            .setLabel(`🔄  Swap to ${targets[0].label}`)
+            .setStyle(ButtonStyle.Secondary),
+        ));
+      } else if (targets.length > 1) {
+        rows.push(new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(
+          new StringSelectMenuBuilder()
+            .setCustomId("enc_swap_select")
+            .setPlaceholder("🔄  Swap to…")
+            .addOptions(targets.map(t => ({ label: t.label, value: String(t.pos) }))),
+        ) as unknown as ActionRowBuilder<ButtonBuilder>);
+      }
     }
 
     return rows;
   }
 
   function teamStatusLine(): string {
-    if (!hasSolace || !allyKit) return "";
-    const benchedName = activeUnit === "player" ? allyKit.label : displayName;
-    const benchedHp   = activeUnit === "player" ? allyHp : state.playerHp;
-    const benchedMax  = activeUnit === "player" ? allyHpMax : state.playerHpMax;
-    const debuffLine  = playerDebuffs.length > 0
+    if (!hasSolace) return "";
+    const benchedLines = ([1, 2, 3] as PositionIndex[])
+      .filter(p => p !== activeUnit && posValue(p) !== null)
+      .map(p => {
+        if (posValue(p) === "self") return `${displayName} — ${state.playerHp}/${state.playerHpMax} HP`;
+        const b = allyBundles[p];
+        return b ? `${b.kit.label} — ${b.hp}/${b.hpMax} HP  ·  ${b.kit.statusLineText(b.mechanicState)}` : null;
+      })
+      .filter((x): x is string => x !== null);
+    if (benchedLines.length === 0) return "";
+    const debuffLine = playerDebuffs.length > 0
       ? `  ·  ${playerDebuffs.map(d => `${d.type} (${d.turnsLeft})`).join(", ")}`
       : "";
-    return `\n\n🔄 Benched: **${benchedName}** — ${benchedHp}/${benchedMax} HP  ·  ` +
-           `Concerto Energy: **${concertoEnergy}/100**  ·  ${allyKit.statusLineText(allyMechanicState)}${debuffLine}`;
+    return `\n\n🔄 Benched: ${benchedLines.join("  |  ")}\n` +
+           `Concerto Energy: **${concertoEnergy}/100**${debuffLine}`;
   }
 
   // Send the battle card as a new message
@@ -613,14 +675,16 @@ export async function handleEncounterFight(
 
   const runTurn = async () => {
     const collector = battleMsg!.createMessageComponentCollector({
-      componentType: ComponentType.Button,
-      filter: (b: ButtonInteraction) => b.user.id === interaction.user.id,
+      filter: (b: any) => b.user.id === interaction.user.id,
       time:   5 * 60 * 1000,
       max:    1,
     });
 
-    collector.on("collect", async (btn: ButtonInteraction) => {
+    collector.on("collect", async (btn: ButtonInteraction | StringSelectMenuInteraction) => {
       await btn.deferUpdate();
+      syncActiveBundle();
+      const swapSelectTarget = btn.customId === "enc_swap_select" && btn.isStringSelectMenu()
+        ? (Number(btn.values[0]) as PositionIndex) : null;
 
       let moveName = "";
       let playerDmg = 0;
@@ -631,7 +695,7 @@ export async function handleEncounterFight(
       // OWN resolved stats — declared here (not inside the swap if/else) since
       // both the damage-dealing branches AND the shared enemy-turn retaliation
       // tail below need to read it.
-      const isAllyActingOrDefending = activeUnit === "ally" && allySolaceStats !== null;
+      const isAllyActingOrDefending = !isPlayerActive() && allySolaceStats !== null;
       const activeAtk     = isAllyActingOrDefending ? allySolaceStats!.atk     : stats.atk;
       const activeDef     = isAllyActingOrDefending ? allySolaceStats!.def     : stats.def;
       const activeCritDmg = isAllyActingOrDefending ? allySolaceStats!.critDmg : stats.critDmg;
@@ -655,49 +719,60 @@ export async function handleEncounterFight(
       // flips, nothing else happens. Falls through to the shared enemy-turn
       // block below either way (skipping the damage-dealing section, since a
       // swap never deals damage) since swapping still costs the turn. ────────
-      if (btn.customId === "enc_swap" && hasSolace && allyKit && !(activeUnit === "player" && allyHp <= 0)) {
-        const outgoingIsPlayer = activeUnit === "player";
+      const swapTargetsNow = hasSolace ? swappableTargets(roster, activeUnit) : [];
+      const swapTargetPos: PositionIndex | null = swapSelectTarget
+        ?? ((btn.customId === "enc_swap" && swapTargetsNow.length === 1) ? swapTargetsNow[0] : null);
+      const isSwapAction = (btn.customId === "enc_swap" || btn.customId === "enc_swap_select")
+        && hasSolace && swapTargetPos !== null
+        && (posValue(swapTargetPos) === "self" ? state.playerHp : (allyBundles[swapTargetPos]?.hp ?? 0)) > 0;
+
+      if (isSwapAction) {
+        const outgoingPos = activeUnit;
+        const incomingPos = swapTargetPos!;
+        const outgoingIsPlayer = posValue(outgoingPos) === "self";
+        const incomingIsPlayer = posValue(incomingPos) === "self";
+        const outgoingBundle = outgoingIsPlayer ? null : (allyBundles[outgoingPos] ?? null);
+        const incomingBundle = incomingIsPlayer ? null : (allyBundles[incomingPos] ?? null);
+        const outgoingCharacterId = outgoingBundle?.characterId ?? null;
+        const incomingCharacterId = incomingBundle?.characterId ?? null;
+        const incomingHpBefore = incomingIsPlayer ? state.playerHp : (incomingBundle?.hp ?? 0);
+        const incomingHpMax = incomingIsPlayer ? state.playerHpMax : (incomingBundle?.hpMax ?? 0);
+        const incomingLabel = incomingIsPlayer ? displayName : (incomingBundle?.kit.label ?? "Ally");
         const comboReady = concertoEnergy >= 100;
 
         if (comboReady) {
-          const incomingTarget: AllyActionTarget = outgoingIsPlayer
-            ? { hp: allyHp, hpMax: allyHpMax }
-            : { hp: state.playerHp, hpMax: state.playerHpMax };
-
-          const outroEffect = outgoingIsPlayer ? PLAYER_SELF_OUTRO : allyKit.outroEffect(allyConstellation);
-          const introEffect = outgoingIsPlayer ? allyKit.introEffect(allyIntroLevel, allyConstellation) : PLAYER_SELF_INTRO;
+          const incomingTarget: AllyActionTarget = { hp: incomingHpBefore, hpMax: incomingHpMax };
+          const outroEffect = outgoingIsPlayer ? PLAYER_SELF_OUTRO : outgoingBundle!.kit.outroEffect(outgoingBundle!.constellation);
+          const introEffect = incomingIsPlayer ? PLAYER_SELF_INTRO : incomingBundle!.kit.introEffect(incomingBundle!.introLevel, incomingBundle!.constellation);
           const outroResult = resolveIntroOutroEffect(outroEffect, incomingTarget);
           const introResult = resolveIntroOutroEffect(introEffect, incomingTarget);
 
-          // Kaelith's intro grants stacks via the newMechanicState side-channel
-          // (no AllyAction primitive covers stack-granting — deliberately kept
-          // Kaelith-specific).
-          if (!outgoingIsPlayer && introEffect.newMechanicState && activeAllyCharacterId === "kaelith") {
+          if (!incomingIsPlayer && introEffect.newMechanicState && incomingCharacterId === "kaelith") {
             const grant = (introEffect.newMechanicState as any).grantStacksOnIntro as number | undefined;
             if (grant) {
-              const cur = (allyMechanicState as KaelithMechanicState).stacks;
-              const cap = kaelithStackCap(allyConstellation);
-              allyMechanicState = { ...(allyMechanicState as KaelithMechanicState), stacks: Math.min(cap, cur + grant) };
+              const cur = (incomingBundle!.mechanicState as KaelithMechanicState).stacks;
+              const cap = kaelithStackCap(incomingBundle!.constellation);
+              incomingBundle!.mechanicState = { ...(incomingBundle!.mechanicState as KaelithMechanicState), stacks: Math.min(cap, cur + grant) };
             }
           }
           if (!outgoingIsPlayer && outroEffect.enemyDebuff) {
             enemyDefShredTurnsLeft = outroEffect.enemyDebuff.turns + 1;
             enemyDefShredPct = outroEffect.enemyDebuff.value;
           }
-          if (!outgoingIsPlayer && outroEffect.newMechanicState && activeAllyCharacterId === "vesper") {
+          if (!outgoingIsPlayer && outroEffect.newMechanicState && outgoingCharacterId === "vesper") {
             const grantMark = (outroEffect.newMechanicState as any).grantMarkOnOutro === true;
             const charged = (outroEffect.newMechanicState as any).chargedMark === true;
             if (grantMark) {
-              allyMechanicState = { ...(allyMechanicState as VesperMechanicState), markPresent: true, chargedMark: charged };
+              outgoingBundle!.mechanicState = { ...(outgoingBundle!.mechanicState as VesperMechanicState), markPresent: true, chargedMark: charged };
             }
           }
-          if (outgoingIsPlayer && introEffect.newMechanicState && activeAllyCharacterId === "vesper") {
+          if (incomingIsPlayer && introEffect.newMechanicState && outgoingCharacterId === "vesper") {
             const energyGrant = (introEffect.newMechanicState as any).grantEnergyOnIntro as number | undefined;
             if (energyGrant) state.playerEnergy = Math.min(100, state.playerEnergy + energyGrant);
           }
           let riloShieldTransferBonus = 0;
-          if (!outgoingIsPlayer && outroEffect.newMechanicState && activeAllyCharacterId === "rilo") {
-            const rOutgoing = allyMechanicState as RiloMechanicState;
+          if (!outgoingIsPlayer && outroEffect.newMechanicState && outgoingCharacterId === "rilo") {
+            const rOutgoing = outgoingBundle!.mechanicState as RiloMechanicState;
             const transferFrac = (outroEffect.newMechanicState as any).grantShieldTransferOnOutro as number;
             riloShieldTransferBonus = Math.floor(rOutgoing.shield * transferFrac);
             if ((outroEffect.newMechanicState as any).grantDefBuffOnOutro) {
@@ -705,53 +780,33 @@ export async function handleEncounterFight(
               riloDefBuffPct = 0.15;
             }
           }
-          if (outgoingIsPlayer && introEffect.newMechanicState && activeAllyCharacterId === "rilo") {
+          if (!incomingIsPlayer && introEffect.newMechanicState && incomingCharacterId === "rilo") {
             const grant = (introEffect.newMechanicState as any).grantShieldOnIntro as number | undefined;
             if (grant) {
-              const rIncoming = allyMechanicState as RiloMechanicState;
-              allyMechanicState = { ...rIncoming, shield: Math.min(riloMaxShield(allyConstellation), rIncoming.shield + grant) };
+              const rIncoming = incomingBundle!.mechanicState as RiloMechanicState;
+              incomingBundle!.mechanicState = { ...rIncoming, shield: Math.min(riloMaxShield(incomingBundle!.constellation), rIncoming.shield + grant) };
             }
           }
 
-          // Solace's Outro also arms a guaranteed crit for whoever swaps in —
-          // no AllyAction primitive covers this, so it reuses the existing
-          // nextAttackCritArmed variable (already wired for the Echo Skill
-          // system elsewhere in this file) rather than inventing a new one.
           if (!outgoingIsPlayer) nextAttackCritArmed = true;
 
-          // Milestone 1 has no separate shield stat yet — shieldDelta is folded
-          // into a flat HP bonus, capped at max HP like a heal. Real shield state
-          // (absorbing damage before HP) is a later-milestone concern once a
-          // second real character exists to make the distinction matter.
           const totalBonus = outroResult.hpDelta + introResult.hpDelta + outroResult.shieldDelta + introResult.shieldDelta + riloShieldTransferBonus;
+          const after = Math.min(incomingHpMax, incomingHpBefore + totalBonus);
+          const actualGain = after - incomingHpBefore;
+          if (incomingIsPlayer) { state.playerHp = after; } else { incomingBundle!.hp = after; }
 
-          // Report what actually landed (post-clamp), not the raw theoretical
-          // amount — if the incoming unit was already at/near max HP, the real
-          // gain is smaller than totalBonus (or zero), and the message should
-          // say so rather than claiming a heal that got silently capped away.
-          let actualGain: number;
-          if (outgoingIsPlayer) {
-            const before = allyHp;
-            allyHp = Math.min(allyHpMax, allyHp + totalBonus);
-            actualGain = allyHp - before;
-          } else {
-            const before = state.playerHp;
-            state.playerHp = Math.min(state.playerHpMax, state.playerHp + totalBonus);
-            actualGain = state.playerHp - before;
-          }
-
-          // Combo consumes the bar, then Intro grants a partial head-start back
-          // rather than leaving the incoming character to build from zero.
           const CONCERTO_INTRO_HEADSTART = 20;
           concertoEnergy = addConcertoEnergy(0, CONCERTO_INTRO_HEADSTART);
 
-          activeUnit = outgoingIsPlayer ? "ally" : "player";
+          activeUnit = incomingPos;
+          syncActiveBundle();
           moveName = actualGain > 0
-            ? `🔄 **Concerto Combo!** Swapped to **${outgoingIsPlayer ? allyKit.label : displayName}** — Outro + Intro triggered, +${actualGain} HP.`
-            : `🔄 **Concerto Combo!** Swapped to **${outgoingIsPlayer ? allyKit.label : displayName}** — Outro + Intro triggered (already at full HP, no heal needed).`;
+            ? `🔄 **Concerto Combo!** Swapped to **${incomingLabel}** — Outro + Intro triggered, +${actualGain} HP.`
+            : `🔄 **Concerto Combo!** Swapped to **${incomingLabel}** — Outro + Intro triggered (already at full HP, no heal needed).`;
         } else {
-          activeUnit = outgoingIsPlayer ? "ally" : "player";
-          moveName = `🔄 Swapped to **${outgoingIsPlayer ? allyKit.label : displayName}** — Concerto Energy not full, no combo triggered.`;
+          activeUnit = incomingPos;
+          syncActiveBundle();
+          moveName = `🔄 Swapped to **${incomingLabel}** — Concerto Energy not full, no combo triggered.`;
         }
 
         state.lastMove = moveName;
@@ -774,7 +829,7 @@ export async function handleEncounterFight(
         // amplifier applies regardless of who's attacking, same scope as
         // Attunement's own bonus.
         const isSolaceAlly = isDevGuild && activeAllyCharacterId === "solace";
-        const wellspringAtkMult   = isSolaceAlly && activeUnit === "ally" && allySolaceStats?.hasWellspring ? getWellspringBaseAtkMult(allySolaceStats.wellspringRefinement!) : 1;
+        const wellspringAtkMult   = isSolaceAlly && !isPlayerActive() && allySolaceStats?.hasWellspring ? getWellspringBaseAtkMult(allySolaceStats.wellspringRefinement!) : 1;
         const wellspringAtkBonus  = isSolaceAlly && allySolaceStats?.hasWellspring ? getWellspringAtkBonus(attunement, allySolaceStats.wellspringRefinement!) : 0;
         const wellspringCritBonus = isSolaceAlly && allySolaceStats?.hasWellspring ? getWellspringCritRateBonus(attunement, allySolaceStats.wellspringRefinement!) : 0;
         const forteAtkBonus  = isSolaceAlly ? getSolaceForteAtkBonus(allyForteLevel, forteEmpoweredTurnsLeft > 0) : 0;
@@ -786,7 +841,7 @@ export async function handleEncounterFight(
         // Basic-track level scaling — only applies while they're actually
         // attacking, since this handler is shared with the player's own Basic
         // Attack and the ally's level shouldn't affect the player's damage.
-        const basicMoveMult = isDevGuild && activeUnit === "ally" && allyKit ? allyKit.basicDamageMult(allyBasicLevel) : 1.0;
+        const basicMoveMult = isDevGuild && !isPlayerActive() && allyKit ? allyKit.basicDamageMult(allyBasicLevel) : 1.0;
         const atkMult = getWeakenedMult(playerDebuffs) * (isSolaceAlly ? getAttunementAtkMult(attunement, attunementAtkBonus, attunementDoubleTurnsLeft > 0, allyConstellation >= 6) : 1) * wellspringAtkMult * (1 + wellspringAtkBonus) * (1 + forteAtkBonus);
         const r  = calcPlayerDamage(activeAtk * atkMult, defVal, forcedCritActive ? 1 : Math.min(1, cRate + (isSolaceAlly ? getAttunementCritRateBonus(attunement, attunementCritBonus, attunementDoubleTurnsLeft > 0, allyConstellation >= 6) : 0) + wellspringCritBonus + forteCritBonus), activeCritDmg, basicMoveMult, isWeak, state.isShattered);
         let base = Math.floor(r.damage * (1 + stats.elemDmgBonus));
@@ -800,19 +855,19 @@ export async function handleEncounterFight(
         if (ignite.tag) moveName += `  ✦${ignite.tag}`;
         state.playerEnergy = Math.min(100, state.playerEnergy + ENERGY_PER_TURN + elemDischargeEnergy(bonuses.elementPassive, r.isCrit));
 
-        if (isDevGuild && activeUnit === "ally" && activeAllyCharacterId === "kaelith") {
+        if (isDevGuild && !isPlayerActive() && activeAllyCharacterId === "kaelith") {
           const kState = allyMechanicState as KaelithMechanicState;
           const gain = kaelithBasicStackGain(allyConstellation);
           const cap = kaelithStackCap(allyConstellation);
           allyMechanicState = { ...kState, stacks: Math.min(cap, kState.stacks + gain) };
           moveName += `\n🌑 +${gain} stack${gain === 1 ? "" : "s"} (${(allyMechanicState as KaelithMechanicState).stacks}/${cap})`;
         }
-        if (isDevGuild && activeUnit === "ally" && activeAllyCharacterId === "vesper") {
+        if (isDevGuild && !isPlayerActive() && activeAllyCharacterId === "vesper") {
           const vState = allyMechanicState as VesperMechanicState;
           allyMechanicState = { ...vState, markPresent: true };
           moveName += `\n⚡ Static Mark applied!`;
         }
-        if (isDevGuild && activeUnit === "ally" && activeAllyCharacterId === "rilo") {
+        if (isDevGuild && !isPlayerActive() && activeAllyCharacterId === "rilo") {
           const rState = allyMechanicState as RiloMechanicState;
           const maxShield = riloMaxShield(allyConstellation);
           const critBonus = r.isCrit ? Math.floor(RILO_SHIELD_GAIN_PER_BASIC * (allyConstellation >= 1 ? 0.5 : 0)) : 0;
@@ -833,19 +888,19 @@ export async function handleEncounterFight(
           } else if (isHalf && !wasHalf) {
             moveName += `\n✨ Forte is **HALF CHARGED**.`;
           }
-        } else if (isDevGuild && activeUnit === "ally" && activeAllyCharacterId === "kaelith") {
+        } else if (isDevGuild && !isPlayerActive() && activeAllyCharacterId === "kaelith") {
           const forteBefore = solaceForte;
           solaceForte = addForteCharge(solaceForte, KAELITH_FORTE_CONFIG, KAELITH_FORTE_GAIN_PER_BASIC);
           if (isForteMaxed(solaceForte, KAELITH_FORTE_CONFIG) && !isForteMaxed(forteBefore, KAELITH_FORTE_CONFIG)) {
             moveName += `\n✨ Forte is **FULLY CHARGED** — next Umbral Cataclysm will keep your stacks!`;
           }
-        } else if (isDevGuild && activeUnit === "ally" && activeAllyCharacterId === "vesper") {
+        } else if (isDevGuild && !isPlayerActive() && activeAllyCharacterId === "vesper") {
           const forteBefore = solaceForte;
           solaceForte = addForteCharge(solaceForte, VESPER_FORTE_CONFIG, VESPER_FORTE_GAIN_PER_BASIC);
           if (isForteMaxed(solaceForte, VESPER_FORTE_CONFIG) && !isForteMaxed(forteBefore, VESPER_FORTE_CONFIG)) {
             moveName += `\n✨ Forte is **FULLY CHARGED** — next Discharge will be an Arc Discharge!`;
           }
-        } else if (isDevGuild && activeUnit === "ally" && activeAllyCharacterId === "rilo") {
+        } else if (isDevGuild && !isPlayerActive() && activeAllyCharacterId === "rilo") {
           const forteBefore = solaceForte;
           solaceForte = addForteCharge(solaceForte, RILO_FORTE_CONFIG, RILO_FORTE_GAIN_PER_BASIC);
           if (isForteMaxed(solaceForte, RILO_FORTE_CONFIG) && !isForteMaxed(forteBefore, RILO_FORTE_CONFIG)) {
@@ -854,7 +909,7 @@ export async function handleEncounterFight(
         }
       }
 
-      if (btn.customId === "enc_skill" && isDevGuild && activeUnit === "ally" && activeAllyCharacterId === "kaelith" && allyKit) {
+      if (btn.customId === "enc_skill" && isDevGuild && !isPlayerActive() && activeAllyCharacterId === "kaelith" && allyKit) {
         const kState = allyMechanicState as KaelithMechanicState;
         if (kState.stacks <= 0) {
           moveName = `🌑 Umbral Detonation — no stacks to consume! (0 DMG bonus)`;
@@ -874,7 +929,7 @@ export async function handleEncounterFight(
         state.skillCooldown = allyKit.skillCooldownTurns;
       }
 
-      if (btn.customId === "enc_skill" && isDevGuild && activeUnit === "ally" && activeAllyCharacterId === "vesper" && allyKit) {
+      if (btn.customId === "enc_skill" && isDevGuild && !isPlayerActive() && activeAllyCharacterId === "vesper" && allyKit) {
         const vState = allyMechanicState as VesperMechanicState;
         const crit = forcedCritActive || Math.random() < cRate;
         const forteEmpowered = isForteMaxed(solaceForte, VESPER_FORTE_CONFIG);
@@ -911,7 +966,7 @@ export async function handleEncounterFight(
         }
       }
 
-      if (btn.customId === "enc_skill" && isDevGuild && activeUnit === "ally" && activeAllyCharacterId === "rilo" && allyKit) {
+      if (btn.customId === "enc_skill" && isDevGuild && !isPlayerActive() && activeAllyCharacterId === "rilo" && allyKit) {
         const rState = allyMechanicState as RiloMechanicState;
         const crit = true;
         const forteEmpowered = isForteMaxed(solaceForte, RILO_FORTE_CONFIG);
@@ -942,7 +997,7 @@ export async function handleEncounterFight(
         }
       }
 
-      if (btn.customId === "enc_skill" && isDevGuild && activeUnit === "ally" && activeAllyCharacterId === "solace") {
+      if (btn.customId === "enc_skill" && isDevGuild && !isPlayerActive() && activeAllyCharacterId === "solace") {
         // Solace's Skill is Attunement — a mode cycle, not a damage move. No
         // cooldown (always available), no personal Energy interaction. Deals a
         // small hit so it's not purely administrative, using HER OWN resolved
@@ -975,7 +1030,7 @@ export async function handleEncounterFight(
       // silently refund ~35-47% of the bar it just spent.
       let convergenceUsedThisTurn = false;
 
-      if (btn.customId === "enc_ultimate" && !(isDevGuild && activeUnit === "ally")) {
+      if (btn.customId === "enc_ultimate" && !(isDevGuild && !isPlayerActive())) {
         // No base ATK boost here — this branch only ever runs for the
         // player's own Ultimate (Solace's Ultimate is the else-if branch
         // below, which deals no damage), and the base boost is Solace-only.
@@ -988,7 +1043,7 @@ export async function handleEncounterFight(
         moveType = "ULT"; vibFrac = 0.8;
         moveName  = `⚡ ULTIMATE — ${playerDmg} DMG`;
         state.playerEnergy = 0;
-      } else if (btn.customId === "enc_ultimate" && isDevGuild && activeUnit === "ally" && activeAllyCharacterId === "solace") {
+      } else if (btn.customId === "enc_ultimate" && isDevGuild && !isPlayerActive() && activeAllyCharacterId === "solace") {
         // Solace's Ultimate spends Concerto Energy, not personal Energy — team
         // heal (BOTH units — Milestone 2e fix; previously this only ever
         // healed state.playerHp regardless of who was active, contradicting
@@ -1038,7 +1093,7 @@ export async function handleEncounterFight(
           moveName = `⚡ **Convergence!** Team healed (${healSummary}), debuffs cleansed, ` +
             `**${attunement.mode ?? "no"} mode doubled for ${solaceUltimateDoubleTurns(allyConstellation)} turns!**`;
         }
-      } else if (btn.customId === "enc_ultimate" && isDevGuild && activeUnit === "ally" && activeAllyCharacterId === "kaelith" && allyKit) {
+      } else if (btn.customId === "enc_ultimate" && isDevGuild && !isPlayerActive() && activeAllyCharacterId === "kaelith" && allyKit) {
         const kState = allyMechanicState as KaelithMechanicState;
         const stacksConsumed = kState.stacks;
 
@@ -1063,7 +1118,7 @@ export async function handleEncounterFight(
           allyHp = Math.min(allyHpMax, allyHp + healResult.hpDelta);
         }
         if (result.resetsConcertoEnergy) { concertoEnergy = 0; convergenceUsedThisTurn = true; }
-      } else if (btn.customId === "enc_ultimate" && isDevGuild && activeUnit === "ally" && activeAllyCharacterId === "vesper" && allyKit) {
+      } else if (btn.customId === "enc_ultimate" && isDevGuild && !isPlayerActive() && activeAllyCharacterId === "vesper" && allyKit) {
         const vState = allyMechanicState as VesperMechanicState;
         const consumedMark = vState.markPresent;
         const energyPct = Math.min(100, state.playerEnergy) / 100;
@@ -1083,7 +1138,7 @@ export async function handleEncounterFight(
         playerDmg = r.damage; isCrit = true;
         moveType = "ULT"; vibFrac = 0.8;
         moveName = `⚡ ${result.moveLabel} — ${playerDmg} DMG`;
-      } else if (btn.customId === "enc_ultimate" && isDevGuild && activeUnit === "ally" && activeAllyCharacterId === "rilo" && allyKit) {
+      } else if (btn.customId === "enc_ultimate" && isDevGuild && !isPlayerActive() && activeAllyCharacterId === "rilo" && allyKit) {
         const rState = allyMechanicState as RiloMechanicState;
         const result = allyKit.onUltimate(
           { playerHp: state.playerHp, playerHpMax: state.playerHpMax, allyHp, allyHpMax, turn: state.turn, isShattered: state.isShattered, mechanicState: rState },
@@ -1175,7 +1230,7 @@ export async function handleEncounterFight(
         // Wellspring's Energy Regen passive — only while Solace is the one
         // acting (it's hardcoded onto her, not a shared account-level weapon,
         // so it shouldn't boost the player's own turns).
-        if (concertoGain > 0 && activeUnit === "ally" && allySolaceStats?.hasWellspring) concertoGain += getWellspringBaseEnergyBonus(allySolaceStats.wellspringRefinement);
+        if (concertoGain > 0 && !isPlayerActive() && allySolaceStats?.hasWellspring) concertoGain += getWellspringBaseEnergyBonus(allySolaceStats.wellspringRefinement);
         if (concertoGain > 0) concertoEnergy = addConcertoEnergy(concertoEnergy, concertoGain);
       }
 
@@ -1292,7 +1347,7 @@ export async function handleEncounterFight(
         // this test milestone, so the damage math (DEF, elemental procs)
         // still uses the player's stats — only WHICH HP pool actually takes
         // the hit changes.
-        const allyIsActive = isDevGuild && activeUnit === "ally";
+        const allyIsActive = isDevGuild && !isPlayerActive();
         if (allyIsActive && activeAllyCharacterId === "rilo") {
           const rState = allyMechanicState as RiloMechanicState;
           const hitResult = riloOnHitTaken(rState, bossDmg, allyHp, allyHpMax, allyConstellation);
@@ -1318,9 +1373,16 @@ export async function handleEncounterFight(
         // directly via the button row when she's active) — if she goes down,
         // auto-swap back to the player rather than ending the whole encounter
         // over her HP hitting 0.
-        if (allyIsActive && allyHp <= 0) {
-          activeUnit = "player";
-          state.lastMove += `\n◇ **${allyKit?.label ?? "Your ally"} was knocked out** — swapped back to ${displayName}.`;
+        commitActiveBundle();
+        if (isDevGuild && currentPositionHp(activeUnit) <= 0) {
+          const fallback = nextAliveFallback(roster, activeUnit, currentPositionHp);
+          if (fallback !== null) {
+            const koLabel = positionLabel(roster, activeUnit, displayName, (id) => CHARACTER_KITS[id]?.label ?? null);
+            activeUnit = fallback;
+            syncActiveBundle();
+            const fbLabel = positionLabel(roster, fallback, displayName, (id) => CHARACTER_KITS[id]?.label ?? null);
+            state.lastMove += `\n◇ **${koLabel} was knocked out** — swapped to ${fbLabel}.`;
+          }
         }
 
         // Milestone 1: exercises the debuff system inside a real fight.
@@ -1349,8 +1411,8 @@ export async function handleEncounterFight(
         state.lastMove += `\n✦ **UNDYING WILL** — you cling to life at 1 HP!`;
       }
 
-      // ── Lose ───────────────────────────────────────────────────────────────
-      if (state.playerHp <= 0) {
+      // ── Lose — every filled position knocked out ───────────────────────────
+      if (isTeamWiped(roster, currentPositionHp)) {
         removeEncounter(interaction.message.id);
         const loseEmbed = new EmbedBuilder()
           .setColor(0x4A4A5A)
