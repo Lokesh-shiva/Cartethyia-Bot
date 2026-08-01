@@ -706,7 +706,7 @@ function buildRecruitEmbed(raid: ActiveRaid, boss: RaidBossConfig): EmbedBuilder
 async function addParticipant(raid: ActiveRaid, userId: string, displayName: string): Promise<boolean> {
   const db = await prisma.user.findUnique({
     where:  { id: userId },
-    select: { baseHp: true, baseAtk: true, baseDef: true, baseSpeed: true, critRate: true, critDmg: true, element: true, isOnboarded: true, worldLevel: true, teamAllyCharacterId: true },
+    select: { baseHp: true, baseAtk: true, baseDef: true, baseSpeed: true, critRate: true, critDmg: true, element: true, isOnboarded: true, worldLevel: true, teamPosition1: true, teamPosition2: true, teamPosition3: true },
   });
   if (!db?.isOnboarded) return false;
 
@@ -717,10 +717,20 @@ async function addParticipant(raid: ActiveRaid, userId: string, displayName: str
   // to have picked Solace via /team.
   // CRITICAL: real read-only ownership lookup, NOT getOrCreateCharacterProgress
   // — that helper CREATES a row if missing, which would silently re-grant
-  // Solace ownership to anyone whose teamAllyCharacterId flag is "solace"
-  // but doesn't actually own her, bypassing the gacha entirely.
+  // ownership to anyone whose roster names a character they don't own,
+  // bypassing the gacha entirely.
+  //
+  // NOTE (3-position rosters): raid.ts still runs the original 2-unit model
+  // (player + one ally) per participant. It reads the new teamPosition1/2/3
+  // columns but only uses the FIRST filled non-"self" position — behavior is
+  // identical to the old teamAllyCharacterId model. Full any-to-any
+  // 3-position swapping is implemented in ascend/boss/field-boss/dungeon/
+  // encounter; duel + raid are a deliberate follow-up (their per-side and
+  // per-participant state shapes need their own adaptation).
+  const rawFirstAlly = [db.teamPosition1, db.teamPosition2, db.teamPosition3]
+    .find(x => x != null && x !== "self") ?? null;
   const activeAllyCharacterId: string | null =
-    db.teamAllyCharacterId && CHARACTER_KITS[db.teamAllyCharacterId] ? db.teamAllyCharacterId : null;
+    rawFirstAlly && CHARACTER_KITS[rawFirstAlly] ? rawFirstAlly : null;
   const solaceProgress = activeAllyCharacterId
     ? await prisma.characterProgress.findUnique({ where: { userId_characterId: { userId, characterId: activeAllyCharacterId } } })
     : null;

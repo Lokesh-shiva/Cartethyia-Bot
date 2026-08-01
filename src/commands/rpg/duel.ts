@@ -321,11 +321,11 @@ export async function execute(interaction: ChatInputCommandInteraction) {
   const [challengerDb, challengedDb] = await Promise.all([
     prisma.user.findUnique({
       where:  { id: interaction.user.id },
-      select: { baseHp: true, baseAtk: true, baseDef: true, baseSpeed: true, critRate: true, critDmg: true, element: true, level: true, dispatchStatus: true, dispatchEndsAt: true, teamAllyCharacterId: true },
+      select: { baseHp: true, baseAtk: true, baseDef: true, baseSpeed: true, critRate: true, critDmg: true, element: true, level: true, dispatchStatus: true, dispatchEndsAt: true, teamPosition1: true, teamPosition2: true, teamPosition3: true },
     }),
     prisma.user.findUnique({
       where:  { id: target.id },
-      select: { baseHp: true, baseAtk: true, baseDef: true, baseSpeed: true, critRate: true, critDmg: true, element: true, level: true, teamAllyCharacterId: true },
+      select: { baseHp: true, baseAtk: true, baseDef: true, baseSpeed: true, critRate: true, critDmg: true, element: true, level: true, teamPosition1: true, teamPosition2: true, teamPosition3: true },
     }),
   ]);
 
@@ -411,12 +411,22 @@ export async function execute(interaction: ChatInputCommandInteraction) {
     // after launch.
     // CRITICAL: real read-only ownership lookup, NOT getOrCreateCharacterProgress
     // — that helper CREATES a row if missing, which would silently re-grant
-    // Solace ownership to anyone whose teamAllyCharacterId flag is "solace"
-    // but doesn't actually own her, bypassing the gacha entirely.
-    const cActiveAllyCharacterId: string | null =
-      challengerDb.teamAllyCharacterId && CHARACTER_KITS[challengerDb.teamAllyCharacterId] ? challengerDb.teamAllyCharacterId : null;
-    const dActiveAllyCharacterId: string | null =
-      challengedDb.teamAllyCharacterId && CHARACTER_KITS[challengedDb.teamAllyCharacterId] ? challengedDb.teamAllyCharacterId : null;
+    // ownership to anyone whose roster names a character they don't own,
+    // bypassing the gacha entirely.
+    //
+    // NOTE (3-position rosters): duel.ts still runs the original 2-unit model
+    // (player + one ally). It reads the new teamPosition1/2/3 columns but only
+    // uses the FIRST filled non-"self" position as that side's ally — behavior
+    // is identical to the old teamAllyCharacterId model. Full any-to-any
+    // 3-position swapping is implemented in ascend/boss/field-boss/dungeon/
+    // encounter; duel + raid are a deliberate follow-up (their per-side and
+    // per-participant state shapes need their own adaptation).
+    const firstAllyOf = (u: { teamPosition1: string | null; teamPosition2: string | null; teamPosition3: string | null }): string | null => {
+      const v = [u.teamPosition1, u.teamPosition2, u.teamPosition3].find(x => x != null && x !== "self") ?? null;
+      return v && CHARACTER_KITS[v] ? v : null;
+    };
+    const cActiveAllyCharacterId: string | null = firstAllyOf(challengerDb);
+    const dActiveAllyCharacterId: string | null = firstAllyOf(challengedDb);
     const [cSolaceProgress, dSolaceProgress] = await Promise.all([
       cActiveAllyCharacterId
         ? prisma.characterProgress.findUnique({ where: { userId_characterId: { userId: interaction.user.id, characterId: cActiveAllyCharacterId } } })
