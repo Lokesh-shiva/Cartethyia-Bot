@@ -533,3 +533,13 @@ model BannerWindow {
 
   @@map("banner_windows")
 }
+
+// ─── Standard Banner Character Pool ───────────────────────────────────────────
+// Owner-controlled roster of characters eligible to drop as a 4★ standard-banner
+// pull (STANDARD_CHARACTER_CHANCE in wish.ts). Set via /owner-banner pool-*.
+model StandardBannerCharacter {
+  characterId String   @id
+  addedAt     DateTime @default(now())
+
+  @@map("standard_banner_characters")
+}

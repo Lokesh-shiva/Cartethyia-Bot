@@ -25,11 +25,16 @@ import "../../lib/kits";
 // character carrying one stays off the standard pool permanently). A 4★
 // pull rolls a real character instead of a weapon this often.
 //
-// LAUNCH GATE: Kaelith is built and tested but deliberately held back —
-// he's meant to launch alongside the next new 5★ character, not before.
-// Add "kaelith" back to this array (and redeploy) when that's ready to ship.
-const STANDARD_CHARACTER_POOL: string[] = [];
+// Owner-controlled via /owner-banner pool-add / pool-remove / pool-list
+// (StandardBannerCharacter table). Refreshed at the top of every /wish
+// invocation so changes apply without a redeploy.
+let STANDARD_CHARACTER_POOL: string[] = [];
 const STANDARD_CHARACTER_CHANCE = 0.30;
+
+export async function refreshStandardCharacterPool(): Promise<void> {
+  const rows = await prisma.standardBannerCharacter.findMany({ select: { characterId: true } });
+  STANDARD_CHARACTER_POOL = rows.map(r => r.characterId).filter(id => !!CHARACTER_KITS[id]);
+}
 
 function roll4StarOrCharacter(): { weapon: WishWeapon | null; character?: string } {
   if (STANDARD_CHARACTER_POOL.length > 0 && Math.random() < STANDARD_CHARACTER_CHANCE) {
@@ -1002,6 +1007,7 @@ const command: Command = {
 
   async execute(interaction: ChatInputCommandInteraction) {
     await interaction.deferReply();
+    await refreshStandardCharacterPool();
 
     const dbUser = await prisma.user.findUnique({
       where:  { id: interaction.user.id },

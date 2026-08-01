@@ -9,6 +9,8 @@ import {
 import { Command } from "../../types";
 import { isOwner } from "../../lib/owner";
 import prisma from "../../lib/prisma";
+import { CHARACTER_KITS } from "../../lib/characterKit";
+import "../../lib/kits";
 
 const BANNER_ID = "banner1";
 
@@ -24,6 +26,21 @@ builder.addSubcommand(s =>
 );
 builder.addSubcommand(s => s.setName("status").setDescription("Show the current banner window."));
 builder.addSubcommand(s => s.setName("end").setDescription("Immediately close the banner window."));
+const POOL_ELIGIBLE_CHARACTERS = Object.values(CHARACTER_KITS)
+  .filter(k => k.rarity === 4)
+  .map(k => ({ name: k.label, value: k.id }));
+
+builder.addSubcommand(s =>
+  s.setName("pool-add")
+    .setDescription("Add a character to the standard-banner 4★ pull pool.")
+    .addStringOption(o => o.setName("character").setDescription("Character to add").setRequired(true).addChoices(...POOL_ELIGIBLE_CHARACTERS))
+);
+builder.addSubcommand(s =>
+  s.setName("pool-remove")
+    .setDescription("Remove a character from the standard-banner 4★ pull pool.")
+    .addStringOption(o => o.setName("character").setDescription("Character to remove").setRequired(true).addChoices(...POOL_ELIGIBLE_CHARACTERS))
+);
+builder.addSubcommand(s => s.setName("pool-list").setDescription("List characters currently in the standard-banner 4★ pool."));
 
 export const data = builder as SlashCommandBuilder;
 
@@ -86,6 +103,35 @@ export async function execute(interaction: ChatInputCommandInteraction) {
     }
     await prisma.bannerWindow.update({ where: { id: BANNER_ID }, data: { endsAt: new Date() } });
     await interaction.editReply({ embeds: [new EmbedBuilder().setColor(0xFF4F6D).setDescription("◈ Banner window closed immediately.")] });
+    return;
+  }
+
+  if (sub === "pool-add") {
+    const characterId = interaction.options.getString("character", true);
+    const kit = CHARACTER_KITS[characterId];
+    await prisma.standardBannerCharacter.upsert({
+      where:  { characterId },
+      create: { characterId },
+      update: {},
+    });
+    await interaction.editReply({ embeds: [new EmbedBuilder().setColor(0xFCD34D).setDescription(`✦ **${kit.label}** added to the standard-banner 4★ pool.`)] });
+    return;
+  }
+
+  if (sub === "pool-remove") {
+    const characterId = interaction.options.getString("character", true);
+    const kit = CHARACTER_KITS[characterId];
+    await prisma.standardBannerCharacter.deleteMany({ where: { characterId } });
+    await interaction.editReply({ embeds: [new EmbedBuilder().setColor(0x4A4A5A).setDescription(`◇ **${kit.label}** removed from the standard-banner 4★ pool.`)] });
+    return;
+  }
+
+  if (sub === "pool-list") {
+    const rows = await prisma.standardBannerCharacter.findMany({ orderBy: { addedAt: "asc" } });
+    const desc = rows.length > 0
+      ? rows.map(r => `${CHARACTER_KITS[r.characterId]?.emoji ?? "•"}  **${CHARACTER_KITS[r.characterId]?.label ?? r.characterId}**`).join("\n")
+      : "*No characters are currently in the standard-banner 4★ pool.*";
+    await interaction.editReply({ embeds: [new EmbedBuilder().setColor(0x7C3AED).setTitle("◈  Standard Banner — 4★ Character Pool").setDescription(desc)] });
     return;
   }
 }
