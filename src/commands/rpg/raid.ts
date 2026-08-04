@@ -731,6 +731,10 @@ async function addParticipant(raid: ActiveRaid, userId: string, displayName: str
     .find(x => x != null && x !== "self") ?? null;
   const activeAllyCharacterId: string | null =
     rawFirstAlly && CHARACTER_KITS[rawFirstAlly] ? rawFirstAlly : null;
+  // Respect /team order: if Position 1 is the ally character (not "self"),
+  // the raid opens with that ally active instead of always defaulting to
+  // the player. Mid-fight swapping is still the existing 2-unit toggle.
+  const startsAsAlly = db.teamPosition1 !== "self" && db.teamPosition1 === activeAllyCharacterId;
   const solaceProgress = activeAllyCharacterId
     ? await prisma.characterProgress.findUnique({ where: { userId_characterId: { userId, characterId: activeAllyCharacterId } } })
     : null;
@@ -762,7 +766,7 @@ async function addParticipant(raid: ActiveRaid, userId: string, displayName: str
     solaceIntroLevel:    solaceProgress?.introLevel    ?? 1,
     solaceForteLevel:    solaceProgress?.forteLevel    ?? 1,
     solaceConstellation: solaceProgress?.constellation ?? 0,
-    activeUnit: "player",
+    activeUnit: startsAsAlly ? "ally" : "player",
     allyHp: allyKit ? allyKit.statsAtLevel(90).hpMax : 0, allyHpMax: allyKit ? allyKit.statsAtLevel(90).hpMax : 0,
     concertoEnergy: 0,
     playerDebuffs: [],

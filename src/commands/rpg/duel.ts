@@ -427,6 +427,12 @@ export async function execute(interaction: ChatInputCommandInteraction) {
     };
     const cActiveAllyCharacterId: string | null = firstAllyOf(challengerDb);
     const dActiveAllyCharacterId: string | null = firstAllyOf(challengedDb);
+    // Respect /team order: if Position 1 is the ally character (not "self"),
+    // the duel opens with that ally active instead of always defaulting to
+    // the player. Mid-fight swapping is still the existing 2-unit toggle —
+    // see the NOTE above on the deliberate 3-position scope reduction.
+    const cStartsAsAlly = challengerDb.teamPosition1 !== "self" && challengerDb.teamPosition1 === cActiveAllyCharacterId;
+    const dStartsAsAlly = challengedDb.teamPosition1 !== "self" && challengedDb.teamPosition1 === dActiveAllyCharacterId;
     const [cSolaceProgress, dSolaceProgress] = await Promise.all([
       cActiveAllyCharacterId
         ? prisma.characterProgress.findUnique({ where: { userId_characterId: { userId: interaction.user.id, characterId: cActiveAllyCharacterId } } })
@@ -469,7 +475,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
       cSolaceUltimateLevel: cSolaceProgress?.ultimateLevel ?? 1, cSolaceIntroLevel: cSolaceProgress?.introLevel ?? 1,
       cSolaceForteLevel: cSolaceProgress?.forteLevel ?? 1,
       cSolaceConstellation: cSolaceProgress?.constellation ?? 0,
-      cActiveUnit: "player", cAllyHp: cAllyKit ? cAllyKit.statsAtLevel(90).hpMax : 0, cAllyHpMax: cAllyKit ? cAllyKit.statsAtLevel(90).hpMax : 0,
+      cActiveUnit: cStartsAsAlly ? "ally" : "player", cAllyHp: cAllyKit ? cAllyKit.statsAtLevel(90).hpMax : 0, cAllyHpMax: cAllyKit ? cAllyKit.statsAtLevel(90).hpMax : 0,
       cConcertoEnergy: 0, cPlayerDebuffs: [],
       cAttunement: { mode: null }, cAttunementDoubleTurnsLeft: 0,
       cSolaceForte: { phase: 0, charge: 0 }, cForteEmpoweredTurnsLeft: 0,
@@ -492,7 +498,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
       dSolaceUltimateLevel: dSolaceProgress?.ultimateLevel ?? 1, dSolaceIntroLevel: dSolaceProgress?.introLevel ?? 1,
       dSolaceForteLevel: dSolaceProgress?.forteLevel ?? 1,
       dSolaceConstellation: dSolaceProgress?.constellation ?? 0,
-      dActiveUnit: "player", dAllyHp: dAllyKit ? dAllyKit.statsAtLevel(90).hpMax : 0, dAllyHpMax: dAllyKit ? dAllyKit.statsAtLevel(90).hpMax : 0,
+      dActiveUnit: dStartsAsAlly ? "ally" : "player", dAllyHp: dAllyKit ? dAllyKit.statsAtLevel(90).hpMax : 0, dAllyHpMax: dAllyKit ? dAllyKit.statsAtLevel(90).hpMax : 0,
       dConcertoEnergy: 0, dPlayerDebuffs: [],
       dAttunement: { mode: null }, dAttunementDoubleTurnsLeft: 0,
       dSolaceForte: { phase: 0, charge: 0 }, dForteEmpoweredTurnsLeft: 0,
