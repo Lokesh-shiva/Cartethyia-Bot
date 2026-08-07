@@ -484,6 +484,21 @@ export async function handleEncounterFight(
   function currentPositionHp(pos: PositionIndex): number {
     return posValue(pos) === "self" ? state.playerHp : (allyBundles[pos]?.hp ?? 0);
   }
+  // Battle card's main panel must show whichever unit is CURRENTLY active,
+  // not always the human player — previously the card looked frozen after a
+  // swap since only the small "Benched:" line updated.
+  function activeCardIdentity(): { playerName: string; playerHp: number; playerHpMax: number; playerElement: string } {
+    if (isPlayerActive()) {
+      return { playerName: displayName, playerHp: state.playerHp, playerHpMax: state.playerHpMax, playerElement: state.playerElement };
+    }
+    const b = allyBundles[activeUnit];
+    return {
+      playerName:    b?.kit.label ?? "Ally",
+      playerHp:      b?.hp ?? 0,
+      playerHpMax:   b?.hpMax ?? 0,
+      playerElement: b?.kit.element ?? state.playerElement,
+    };
+  }
   syncActiveBundle();
 
   let concertoEnergy: number = 0;
@@ -662,7 +677,7 @@ export async function handleEncounterFight(
 
   // Send the battle card as a new message
   let battleMsg = await (async () => {
-    const buf    = await generateBattleCard(state);
+    const buf    = await generateBattleCard({ ...state, ...activeCardIdentity() });
     const attach = new AttachmentBuilder(buf, { name: "encounter.webp" });
     const embed  = new EmbedBuilder()
       .setColor(ELEMENT_COLORS[enc.enemy.element])
@@ -1423,7 +1438,7 @@ export async function handleEncounterFight(
       }
 
       // ── Next turn: update battle card ──────────────────────────────────────
-      const buf    = await generateBattleCard(state);
+      const buf    = await generateBattleCard({ ...state, ...activeCardIdentity() });
       const attach = new AttachmentBuilder(buf, { name: "encounter.webp" });
       // The card image only ever shows state.lastMove's FIRST line (see
       // battleCard.ts's `.split("\n")[0]`, a hard 90-char single-line budget

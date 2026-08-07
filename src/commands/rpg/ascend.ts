@@ -510,6 +510,23 @@ const command: Command = {
       const kit = CHARACTER_KITS[characterId];
       return kit ? kit.label : null;
     }
+    // The battle card's main panel must show whichever unit is CURRENTLY
+    // ACTIVE — previously it always showed the human player's own name/HP/
+    // element even while an ally was fighting, which made the card look
+    // static/wrong after a swap (the only place the active ally's real HP
+    // appeared was buried in the small "Benched:" text line below it).
+    function activeCardIdentity(): { playerName: string; playerHp: number; playerHpMax: number; playerElement: string } {
+      if (isPlayerActive()) {
+        return { playerName: displayName, playerHp: state.playerHp, playerHpMax: state.playerHpMax, playerElement: user.element };
+      }
+      const bundle = allyBundles[activeUnit];
+      return {
+        playerName:    bundle?.kit.label ?? "Ally",
+        playerHp:      bundle?.hp ?? 0,
+        playerHpMax:   bundle?.hpMax ?? 0,
+        playerElement: bundle?.kit.element ?? user.element,
+      };
+    }
 
     // Render-time sync so buttons/status line at the TOP of a turn (before
     // the player has acted) reflect whichever position became active at the
@@ -562,7 +579,7 @@ const command: Command = {
         // Edit previous message — remove old buttons
         await battleMsg.edit({ components: [] }).catch(() => {});
       }
-      battleMsg = await sendBattleCard(thread as any, state, buttons, teamStatusLine());
+      battleMsg = await sendBattleCard(thread as any, { ...state, ...activeCardIdentity() }, buttons, teamStatusLine());
 
       const collector = battleMsg.createMessageComponentCollector({
         componentType: ComponentType.Button,
@@ -1341,7 +1358,7 @@ const command: Command = {
 
         // ── Win check ─────────────────────────────────────────────────────────
         if (state.bossHpNow <= 0) {
-          await sendBattleCard(thread as any, { ...state, lastMove: `${moveName} — **BOSS DEFEATED!**` }, buildButtons(state, bonuses.echoSkill ? { name: bonuses.echoSkill.name, cooldown: echoSkillCooldown } : null, teamButtonContext()), teamStatusLine());
+          await sendBattleCard(thread as any, { ...state, ...activeCardIdentity(), lastMove: `${moveName} — **BOSS DEFEATED!**` }, buildButtons(state, bonuses.echoSkill ? { name: bonuses.echoSkill.name, cooldown: echoSkillCooldown } : null, teamButtonContext()), teamStatusLine());
 
           const isFirstAscension = user.worldLevel === 0;
           const newWL            = user.worldLevel + 1;
@@ -1574,7 +1591,7 @@ const command: Command = {
         // ("self") in that case.
         if (isTeamWiped(roster, currentPositionHp)) {
           state.playerHp = 0;
-          await sendBattleCard(thread as any, { ...state, lastMove: state.lastMove + " — **YOU FELL.**" }, buildButtons(state, bonuses.echoSkill ? { name: bonuses.echoSkill.name, cooldown: echoSkillCooldown } : null, teamButtonContext()), teamStatusLine());
+          await sendBattleCard(thread as any, { ...state, ...activeCardIdentity(), lastMove: state.lastMove + " — **YOU FELL.**" }, buildButtons(state, bonuses.echoSkill ? { name: bonuses.echoSkill.name, cooldown: echoSkillCooldown } : null, teamButtonContext()), teamStatusLine());
           await thread.send({
             embeds: [
               new EmbedBuilder()

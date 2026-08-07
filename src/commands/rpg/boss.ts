@@ -447,6 +447,21 @@ const command: Command = {
       function currentPositionHp(pos: PositionIndex): number {
         return posValue(pos) === "self" ? state.playerHp : (allyBundles[pos]?.hp ?? 0);
       }
+      // Battle card's main panel must show whichever unit is CURRENTLY
+      // active, not always the human player — previously the card looked
+      // frozen after a swap since only the small "Benched:" line updated.
+      function activeCardIdentity(): { playerName: string; playerHp: number; playerHpMax: number; playerElement: string } {
+        if (isPlayerActive()) {
+          return { playerName: displayName, playerHp: state.playerHp, playerHpMax: state.playerHpMax, playerElement: user.element };
+        }
+        const b = allyBundles[activeUnit];
+        return {
+          playerName:    b?.kit.label ?? "Ally",
+          playerHp:      b?.hp ?? 0,
+          playerHpMax:   b?.hpMax ?? 0,
+          playerElement: b?.kit.element ?? user.element,
+        };
+      }
       syncActiveBundle();
 
       let concertoEnergy: number = 0;
@@ -579,7 +594,7 @@ const command: Command = {
       const runTurn = async () => {
         const buttons = buildButtons(state, bonuses.echoSkill ? { name: bonuses.echoSkill.name, cooldown: echoSkillCooldown } : null, teamButtonContext());
         if (battleMsg) await battleMsg.edit({ components: [] }).catch(() => {});
-        battleMsg = await sendBattleCard(thread as any, state, buttons, teamStatusLine());
+        battleMsg = await sendBattleCard(thread as any, { ...state, ...activeCardIdentity() }, buttons, teamStatusLine());
 
         const collector = battleMsg.createMessageComponentCollector({
           filter: (b: ButtonInteraction | StringSelectMenuInteraction) => b.user.id === interaction.user.id,
@@ -1282,7 +1297,7 @@ const command: Command = {
 
           // Win
           if (state.bossHpNow <= 0) {
-            await sendBattleCard(thread as any, { ...state, lastMove: `${moveName} — **BOSS DEFEATED!**` }, buildButtons(state, bonuses.echoSkill ? { name: bonuses.echoSkill.name, cooldown: echoSkillCooldown } : null, teamButtonContext()), teamStatusLine());
+            await sendBattleCard(thread as any, { ...state, ...activeCardIdentity(), lastMove: `${moveName} — **BOSS DEFEATED!**` }, buildButtons(state, bonuses.echoSkill ? { name: bonuses.echoSkill.name, cooldown: echoSkillCooldown } : null, teamButtonContext()), teamStatusLine());
             collector.stop();
             await cleanup(true);
             return;
@@ -1431,7 +1446,7 @@ const command: Command = {
 
           // Lose — every filled position has been knocked out.
           if (isTeamWiped(roster, currentPositionHp)) {
-            await sendBattleCard(thread as any, { ...state, lastMove: state.lastMove + " — **YOU FELL.**" }, buildButtons(state, bonuses.echoSkill ? { name: bonuses.echoSkill.name, cooldown: echoSkillCooldown } : null, teamButtonContext()), teamStatusLine());
+            await sendBattleCard(thread as any, { ...state, ...activeCardIdentity(), lastMove: state.lastMove + " — **YOU FELL.**" }, buildButtons(state, bonuses.echoSkill ? { name: bonuses.echoSkill.name, cooldown: echoSkillCooldown } : null, teamButtonContext()), teamStatusLine());
             await thread.send({
               embeds: [new EmbedBuilder().setColor(0x334155)
                 .setDescription(`◈ Defeated by **${boss.name}**.\nNo cooldown set — use **/boss** to try again.`)

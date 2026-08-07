@@ -699,9 +699,18 @@ async function runWave(
            `Concerto Energy: **${ws.concertoEnergy}/100**${debuffLine}`;
   }
 
+  // Field must show whichever unit is CURRENTLY active, not always the human
+  // player — previously it looked frozen after a swap since only the small
+  // "Benched:" status line updated.
+  function activeCardIdentity(): { name: string; element: string; hp: number; hpMax: number } {
+    if (isPlayerActive()) return { name: displayName, element: dbUser.element, hp: ws.playerHp, hpMax: ws.playerHpMax };
+    const b = ws.allyBundles[ws.activeUnit];
+    return { name: b?.kit.label ?? "Ally", element: b?.kit.element ?? dbUser.element, hp: b?.hp ?? 0, hpMax: b?.hpMax ?? 0 };
+  }
+
   function buildWaveEmbed(lastAction: string): EmbedBuilder {
     const ePct = Math.round((enemyHp / scaled.hp) * 100);
-    const pPct = Math.round((ws.playerHp / ws.playerHpMax) * 100);
+    const active = activeCardIdentity();
     return new EmbedBuilder()
       .setColor(dungeon.color)
       .setTitle(`${dungeon.emoji}  Wave ${waveIdx + 1} / ${dungeon.waves.length} — ${enemy.name}`)
@@ -714,8 +723,8 @@ async function runWave(
           inline: false,
         },
         {
-          name:   `${elementEmoji(dbUser.element)}  ${displayName}`,
-          value:  `${hpBar(ws.playerHp, ws.playerHpMax)}  ${ws.playerHp}/${ws.playerHpMax}\n` +
+          name:   `${elementEmoji(active.element)}  ${active.name}`,
+          value:  `${hpBar(active.hp, active.hpMax)}  ${active.hp}/${active.hpMax}\n` +
                   `Energy: ${energyBar(ws.playerEnergy)}  ${ws.playerEnergy}/100`,
           inline: false,
         },
