@@ -221,9 +221,9 @@ export function voidbornRemnantFrenzyActive(state: NamedSetState): boolean {
 // 5pc: at full HP, every Crit applies Radiant Fracture (enemy takes +10% DMG from all
 //      sources for 3 turns, refreshes on Crit). When HP drops below 50%, all fracture
 //      stacks burst-heal 6% HP each (consumed once per crossing).
-export function radiantConvergenceOnTurnHeal(state: NamedSetState, maxHp: number): { healAmount: number; dmgMult: number } {
+export function radiantConvergenceOnTurnHeal(state: NamedSetState, maxHp: number, healingBonus: number = 0): { healAmount: number; dmgMult: number } {
   state.spectroHealStacks = Math.min(5, state.spectroHealStacks + 1);
-  return { healAmount: Math.floor(maxHp * 0.03), dmgMult: 1 + state.spectroHealStacks * 0.03 };
+  return { healAmount: Math.floor(maxHp * 0.03 * (1 + healingBonus)), dmgMult: 1 + state.spectroHealStacks * 0.03 };
 }
 export function radiantConvergenceOnHitTaken(state: NamedSetState, dmgTaken: number, maxHp: number): void {
   if (dmgTaken > maxHp * 0.20) state.spectroHealStacks = 0;
@@ -234,10 +234,10 @@ export function radiantConvergenceOnCrit(state: NamedSetState, currentHp: number
   return true; // caller applies "+10% dmg taken" debuff to the enemy for 3 turns
 }
 export function radiantConvergenceCheckBurstHeal(
-  state: NamedSetState, currentHp: number, maxHp: number,
+  state: NamedSetState, currentHp: number, maxHp: number, healingBonus: number = 0,
 ): number {
   if (state.spectroFractureTurnsLeft <= 0 || currentHp / maxHp >= 0.50) return 0;
-  const healAmount = Math.floor(maxHp * 0.06 * state.spectroFractureTurnsLeft);
+  const healAmount = Math.floor(maxHp * 0.06 * state.spectroFractureTurnsLeft * (1 + healingBonus));
   state.spectroFractureTurnsLeft = 0;
   return healAmount;
 }

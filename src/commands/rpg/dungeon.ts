@@ -849,7 +849,7 @@ async function runWave(
 
         let radiantDmgMult = 1.0;
         if (bonuses.activeNamedSetId === "RADIANT_CONVERGENCE") {
-          const heal = radiantConvergenceOnTurnHeal(ws.namedState, ws.playerHpMax);
+          const heal = radiantConvergenceOnTurnHeal(ws.namedState, ws.playerHpMax, bonuses.healingBonus);
           ws.playerHp    = Math.min(ws.playerHpMax, ws.playerHp + heal.healAmount);
           radiantDmgMult = heal.dmgMult;
         }
@@ -1574,7 +1574,7 @@ async function runWave(
           }
           if (bonuses.activeNamedSetId === "RADIANT_CONVERGENCE") {
             radiantConvergenceOnHitTaken(ws.namedState, bossDmg, ws.playerHpMax);
-            const burst = radiantConvergenceCheckBurstHeal(ws.namedState, ws.playerHp, ws.playerHpMax);
+            const burst = radiantConvergenceCheckBurstHeal(ws.namedState, ws.playerHp, ws.playerHpMax, bonuses.healingBonus);
             if (burst > 0) {
               ws.playerHp = Math.min(ws.playerHpMax, ws.playerHp + burst);
               moveLine += `\n✨ **Radiant Convergence** — burst-heal +${burst} HP!`;

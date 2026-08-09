@@ -1156,7 +1156,7 @@ async function launchRaid(
 
       let radiantDmgMult = 1.0;
       if (mySetId === "RADIANT_CONVERGENCE") {
-        const heal = radiantConvergenceOnTurnHeal(current.namedState, current.hpMax);
+        const heal = radiantConvergenceOnTurnHeal(current.namedState, current.hpMax, current.bonuses.healingBonus);
         current.hp = Math.min(current.hpMax, current.hp + heal.healAmount);
         radiantDmgMult = heal.dmgMult;
       }
@@ -1860,7 +1860,7 @@ async function launchRaid(
           }
           if (pSetId === "RADIANT_CONVERGENCE" && p.hp > 0) {
             radiantConvergenceOnHitTaken(p.namedState, bossDmg, p.hpMax);
-            const burst = radiantConvergenceCheckBurstHeal(p.namedState, p.hp, p.hpMax);
+            const burst = radiantConvergenceCheckBurstHeal(p.namedState, p.hp, p.hpMax, p.bonuses.healingBonus);
             if (burst > 0) { p.hp = Math.min(p.hpMax, p.hp + burst); dmgLines.push(`${p.name} +${burst}✨Fracture`); }
           }
           if (pSetId === "FROSTVEIL_BASTION" && p.hp > 0) {

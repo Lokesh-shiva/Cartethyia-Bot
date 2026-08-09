@@ -796,7 +796,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
         const forcedCritActive = myNextCritArmed && btn.customId !== "duel_forfeit";
         let radiantDmgMult = 1.0;
         if (mySetId === "RADIANT_CONVERGENCE") {
-          const heal = radiantConvergenceOnTurnHeal(myNamedState, myHpMax);
+          const heal = radiantConvergenceOnTurnHeal(myNamedState, myHpMax, myBonus.healingBonus);
           if (isChallenger) state.cHp = Math.min(state.cHpMax, state.cHp + heal.healAmount);
           else              state.dHp = Math.min(state.dHpMax, state.dHp + heal.healAmount);
           radiantDmgMult = heal.dmgMult;
@@ -1569,7 +1569,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
           }
           if (oppSetId === "RADIANT_CONVERGENCE") {
             radiantConvergenceOnHitTaken(oppNamedState, damage, oppHpMaxNow);
-            const burst = radiantConvergenceCheckBurstHeal(oppNamedState, oppHpNow, oppHpMaxNow);
+            const burst = radiantConvergenceCheckBurstHeal(oppNamedState, oppHpNow, oppHpMaxNow, oppBonus.healingBonus);
             if (burst > 0) {
               if (isChallenger) state.dHp = Math.min(state.dHpMax, state.dHp + burst);
               else              state.cHp = Math.min(state.cHpMax, state.cHp + burst);

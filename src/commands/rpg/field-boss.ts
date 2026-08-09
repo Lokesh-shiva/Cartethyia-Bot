@@ -760,7 +760,7 @@ const command: Command = {
           state.hitBadge = undefined;
           let radiantDmgMult = 1.0;
           if (bonuses.activeNamedSetId === "RADIANT_CONVERGENCE" && btn.customId !== "fb_flee") {
-            const heal = radiantConvergenceOnTurnHeal(namedState, state.playerHpMax);
+            const heal = radiantConvergenceOnTurnHeal(namedState, state.playerHpMax, bonuses.healingBonus);
             state.playerHp  = Math.min(state.playerHpMax, state.playerHp + heal.healAmount);
             radiantDmgMult  = heal.dmgMult;
           }
@@ -1556,7 +1556,7 @@ const command: Command = {
             }
             if (bonuses.activeNamedSetId === "RADIANT_CONVERGENCE") {
               radiantConvergenceOnHitTaken(namedState, bossDmg, state.playerHpMax);
-              const burst = radiantConvergenceCheckBurstHeal(namedState, state.playerHp, state.playerHpMax);
+              const burst = radiantConvergenceCheckBurstHeal(namedState, state.playerHp, state.playerHpMax, bonuses.healingBonus);
               if (burst > 0) {
                 state.playerHp = Math.min(state.playerHpMax, state.playerHp + burst);
                 state.lastMove = (state.lastMove ?? "") + `\n✨ **Radiant Convergence** — burst-heal +${burst} HP!`;
