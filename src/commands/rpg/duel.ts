@@ -262,7 +262,8 @@ async function buildDuelSideRoster(
     });
     if (!progress) continue; // not actually owned — treat this position as unfilled
     const solaceStats = await kit.resolveStats(userId);
-    const hpMax = kit.statsAtLevel(90).hpMax;
+    // Use the ally's own gear/level-resolved HP, not the fixed level-90 base.
+    const hpMax = solaceStats.hp;
     bundles[pos] = {
       characterId: value, kit, hp: hpMax, hpMax, mechanicState: kit.createInitialMechanicState(),
       basicLevel: progress.basicLevel ?? 1, skillLevel: progress.skillLevel ?? 1, ultimateLevel: progress.ultimateLevel ?? 1,

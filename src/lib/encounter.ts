@@ -435,7 +435,8 @@ export async function handleEncounterFight(
     const progress = await prisma.characterProgress.findUnique({ where: { userId_characterId: { userId: interaction.user.id, characterId: val } } });
     if (!progress) continue;
     const solaceStats = await kit.resolveStats(interaction.user.id);
-    const hpMax = kit.statsAtLevel(90).hpMax;
+    // Use the ally's own gear/level-resolved HP, not the fixed level-90 base.
+    const hpMax = solaceStats.hp;
     allyBundles[pos] = {
       characterId: val, kit, hp: hpMax, hpMax, mechanicState: kit.createInitialMechanicState(),
       basicLevel: progress.basicLevel, skillLevel: progress.skillLevel, ultimateLevel: progress.ultimateLevel,

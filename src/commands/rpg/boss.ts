@@ -393,7 +393,11 @@ const command: Command = {
         const progress = await prisma.characterProgress.findUnique({ where: { userId_characterId: { userId: interaction.user.id, characterId: val } } });
         if (!progress) continue; // shouldn't happen if /team validated ownership, but guard anyway
         const solaceStats = await kit.resolveStats(interaction.user.id);
-        const hpMax = kit.statsAtLevel(90).hpMax;
+        // Use the ally's own gear/level-resolved HP, not the fixed level-90
+        // base (which ignored her actual level and every echo/weapon she has
+        // equipped) — that made every ally absurdly squishy vs. gear-scaled
+        // enemies (e.g. Solace's fixed base is only 1100 HP regardless of investment).
+        const hpMax = solaceStats.hp;
         allyBundles[pos] = {
           characterId: val, kit, hp: hpMax, hpMax, mechanicState: kit.createInitialMechanicState(),
           basicLevel: progress.basicLevel, skillLevel: progress.skillLevel, ultimateLevel: progress.ultimateLevel,

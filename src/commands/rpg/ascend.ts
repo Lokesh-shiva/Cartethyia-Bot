@@ -428,7 +428,13 @@ const command: Command = {
       });
       if (!progress) continue; // not actually owned — treat this position as unfilled
       const resolvedStats = await kit.resolveStats(interaction.user.id);
-      const hpMax = kit.statsAtLevel(90).hpMax;
+      // resolvedStats.hp is the ally's OWN gear/level-resolved HP — using the
+      // fixed level-90 base instead (kit.statsAtLevel(90).hpMax, ignoring the
+      // ally's actual level and every echo/weapon she has equipped) made
+      // every ally character absurdly squishy relative to gear-scaled
+      // enemies (e.g. Solace's fixed base is only 1100 HP, regardless of
+      // investment) — this was root-causing "the ally just instantly dies".
+      const hpMax = resolvedStats.hp;
       allyBundles[pos] = {
         characterId:   value,
         kit,

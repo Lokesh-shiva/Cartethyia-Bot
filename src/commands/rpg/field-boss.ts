@@ -455,7 +455,8 @@ const command: Command = {
         });
         if (!progress) continue; // not actually owned — treat this position as unfilled
         const resolvedStats = await kit.resolveStats(interaction.user.id);
-        const hpMax = kit.statsAtLevel(90).hpMax;
+        // Use the ally's own gear/level-resolved HP, not the fixed level-90 base.
+        const hpMax = resolvedStats.hp;
         allyBundles[pos] = {
           characterId:   value,
           kit,
