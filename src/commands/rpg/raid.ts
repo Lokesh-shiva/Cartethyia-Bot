@@ -375,13 +375,24 @@ function raidTeamStatusLine(raid: ActiveRaid): string {
   return `\n\n${lines.join("\n")}`;
 }
 
+// Resonators list must show whichever unit is CURRENTLY active for each
+// participant, not always their own literal HP — otherwise the boss's AoE
+// hitting an active ally's HP pool (and correctly falling back on KO) reads
+// as if it hit the player instead, even though the mechanics are correct.
+function raidActiveIdentity(p: RaidParticipant): { name: string; element: string; hp: number; hpMax: number } {
+  if (positionValue(p.roster, p.activePosition) === "self") return { name: p.name, element: p.element, hp: p.hp, hpMax: p.hpMax };
+  const b = p.allyBundles[p.activePosition];
+  return { name: b ? `${p.name}'s ${b.kit.label}` : p.name, element: b?.kit.element ?? p.element, hp: b?.hp ?? 0, hpMax: b?.hpMax ?? 0 };
+}
+
 function raidEmbed(raid: ActiveRaid, boss: RaidBossConfig, lastAction: string): EmbedBuilder {
   const alive = raid.participants.filter(p => !p.isDefeated);
   const current = raid.participants[raid.currentIdx];
 
   const participantLines = raid.participants.map(p => {
     const s = p.isDefeated ? "~~" : "";
-    return `${elementEmoji(p.element)} ${s}**${p.name}**${s}  ${hpBar(p.hp, p.hpMax, 12)}`;
+    const active = raidActiveIdentity(p);
+    return `${elementEmoji(active.element)} ${s}**${active.name}**${s}  ${hpBar(active.hp, active.hpMax, 12)}`;
   });
 
   return new EmbedBuilder()
