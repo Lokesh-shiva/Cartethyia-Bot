@@ -1719,7 +1719,21 @@ async function launchRaid(
         const echoEnGain = ENERGY_PER_TURN + Math.floor(current.bonuses.spdFlat / 20) + elemDischargeEnergy(current.bonuses.elementPassive, echoCrit) + result.bonusEnergy;
         current.echoSkillCd = (result.resetCdOnCrit && echoCrit) ? 0 : 4;
         current.energy = result.setEnergyFull ? 100 : Math.min(100, current.energy + echoEnGain);
-        if (result.healHp > 0) current.hp = Math.min(current.hpMax, current.hp + result.healHp);
+        if (result.healHp > 0) {
+          // Party-wide: every living participant's own currently-active unit
+          // gets healed, each scaled by THEIR OWN Healing Bonus — this is the
+          // one real "heal a teammate" path in the game today.
+          for (const p of raid.participants) {
+            if (p.isDefeated) continue;
+            const scaledHeal = Math.floor(result.healHp * (1 + p.bonuses.healingBonus));
+            if (positionValue(p.roster, p.activePosition) === "self") {
+              p.hp = Math.min(p.hpMax, p.hp + scaledHeal);
+            } else {
+              const b = p.allyBundles[p.activePosition];
+              if (b) b.hp = Math.min(b.hpMax, b.hp + scaledHeal);
+            }
+          }
+        }
         if (result.armsNextCrit) current.nextCritArmed = true;
         if (result.defShredTurns > 0) {
           raid.bossDefShredTurnsLeft = result.defShredTurns + 1;
