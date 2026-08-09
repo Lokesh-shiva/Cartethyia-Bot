@@ -72,7 +72,7 @@ export const NAMED_SET_DESCRIPTIONS: Record<NamedSetId, NamedSetDescription> = {
   },
   WINDSTRIDERS_LEGACY: {
     twoPc:  "+10% Aero DMG",
-    fourPc: "Each hit adds a Windstack (+5% DMG each, up to 6×). Stacks persist until Gale Explosion fires or you take a big hit.",
+    fourPc: "Each hit adds a Windstack (+5% DMG each, up to 6×). Stacks persist until Gale Explosion fires or a single hit deals more than 25% of your max HP.",
     fivePc: "At 6 Windstacks, the next attack is a guaranteed Crit dealing +120% bonus Aero DMG. Stacks reset after trigger.",
   },
   VOIDBORN_REMNANT: {
@@ -82,8 +82,8 @@ export const NAMED_SET_DESCRIPTIONS: Record<NamedSetId, NamedSetDescription> = {
   },
   RADIANT_CONVERGENCE: {
     twoPc:  "+12% HP · +8% Spectro DMG",
-    fourPc: "Heal 3% max HP each turn. Each heal adds +3% Spectro DMG, stacking up to 5×. Taking a big hit resets stacks.",
-    fivePc: "At full HP, every Crit applies Radiant Fracture to the enemy (+10% DMG taken from all sources, 3 turns, refreshes on Crit). Below 50% HP, active Fracture stacks burst-heal you.",
+    fourPc: "Heal 3% max HP each turn (scales with Healing Bonus). Each heal adds +3% Spectro DMG, stacking up to 5×. A single hit dealing more than 20% of your max HP resets stacks.",
+    fivePc: "At full HP, every Crit applies Radiant Fracture to the enemy (+10% DMG taken from all sources, 3 turns, refreshes on Crit). Below 50% HP, active Fracture stacks burst-heal you for 6% max HP per remaining Fracture turn (up to 18%, scales with Healing Bonus).",
   },
 };
 

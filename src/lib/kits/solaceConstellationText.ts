@@ -9,7 +9,7 @@
 // CHARACTER_KITS instead of CONSTELLATION_EFFECTS).
 export const CONSTELLATION_EFFECTS_SOLACE: string[] = [
   "Outro's guaranteed-crit buff also grants the incoming ally +15% ATK for their first action after the swap.",
-  "**(Kit change)** Ultimate's heal significantly increased; cleanses 2 debuffs instead of 1.",
+  "**(Kit change)** Ultimate's heal increased from 30-60% max HP to 45-75% max HP (scales with Ultimate level); cleanses 2 debuffs instead of 1.",
   "Switching Attunement Mode (Skill) also grants a team-wide Concerto Energy burst.",
   "**(Kit change)** Intro Skill's heal also grants a shield equal to 30% of the amount healed.",
   "Ultimate's doubled-mode-effect duration extends from 3 turns to 4.",
