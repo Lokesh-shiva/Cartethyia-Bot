@@ -531,6 +531,14 @@ model BannerWindow {
   startsAt DateTime
   endsAt   DateTime
 
+  // Owner-selected roster for THIS run of the limited character banner — set
+  // via /owner-banner start. Null featuredCharacterId defaults to "solace"
+  // (banner #1's original hardcoded featured character) for backward compat
+  // with rows created before this column existed.
+  featuredCharacterId String?
+  featured4StarA      String?
+  featured4StarB      String?
+
   @@map("banner_windows")
 }
 

@@ -19,10 +19,20 @@ const builder = new SlashCommandBuilder()
   .setDescription("Owner only — control the limited banner window.")
   .setDefaultMemberPermissions(0);
 
+const FIVE_STAR_CHOICES = Object.values(CHARACTER_KITS)
+  .filter(k => k.rarity === 5)
+  .map(k => ({ name: k.label, value: k.id }));
+const FOUR_STAR_CHOICES = Object.values(CHARACTER_KITS)
+  .filter(k => k.rarity === 4)
+  .map(k => ({ name: k.label, value: k.id }));
+
 builder.addSubcommand(s =>
   s.setName("start")
-    .setDescription("Start the limited banner window (Solace + Wellspring).")
+    .setDescription("Start the limited banner window.")
     .addIntegerOption(o => o.setName("days").setDescription("Duration in days (default 23)").setRequired(false).setMinValue(1))
+    .addStringOption(o => o.setName("character").setDescription("5★ featured on the character banner (default: Solace)").setRequired(false).addChoices(...FIVE_STAR_CHOICES))
+    .addStringOption(o => o.setName("four_star_a").setDescription("1st 4★ rate-up on the character banner").setRequired(false).addChoices(...FOUR_STAR_CHOICES))
+    .addStringOption(o => o.setName("four_star_b").setDescription("2nd 4★ rate-up on the character banner").setRequired(false).addChoices(...FOUR_STAR_CHOICES))
 );
 builder.addSubcommand(s => s.setName("status").setDescription("Show the current banner window."));
 builder.addSubcommand(s => s.setName("end").setDescription("Immediately close the banner window."));
@@ -57,18 +67,27 @@ export async function execute(interaction: ChatInputCommandInteraction) {
     const days = interaction.options.getInteger("days") ?? 23;
     const startsAt = new Date();
     const endsAt = new Date(startsAt.getTime() + days * 24 * 60 * 60 * 1000);
+    const featuredCharacterId = interaction.options.getString("character") ?? "solace";
+    const featured4StarA = interaction.options.getString("four_star_a");
+    const featured4StarB = interaction.options.getString("four_star_b");
 
     await prisma.bannerWindow.upsert({
       where:  { id: BANNER_ID },
-      create: { id: BANNER_ID, startsAt, endsAt },
-      update: { startsAt, endsAt },
+      create: { id: BANNER_ID, startsAt, endsAt, featuredCharacterId, featured4StarA, featured4StarB },
+      update: { startsAt, endsAt, featuredCharacterId, featured4StarA, featured4StarB },
     });
+
+    const kit = CHARACTER_KITS[featuredCharacterId];
+    const fourStarLine = [featured4StarA, featured4StarB].filter((x): x is string => !!x)
+      .map(id => CHARACTER_KITS[id]?.label ?? id).join(" + ");
 
     await interaction.editReply({
       embeds: [new EmbedBuilder().setColor(0xFCD34D)
         .setTitle("✦  Banner Window Started")
         .setDescription(
-          `**The Rising Overture** and **The Tempered Vow** are now live.\n\n` +
+          `Character banner now features **${kit?.label ?? featuredCharacterId}**` +
+          (fourStarLine ? ` — 4★ rate-up: **${fourStarLine}**` : "") +
+          `.\n**The Tempered Vow** (Wellspring) is also live.\n\n` +
           `Starts: <t:${Math.floor(startsAt.getTime() / 1000)}:F>\n` +
           `Ends: <t:${Math.floor(endsAt.getTime() / 1000)}:F> (**${days}** days)`
         )],

@@ -616,31 +616,56 @@ async function runStandardBanner(interaction: ChatInputCommandInteraction, dbUse
     });
 }
 
-// ── Character banner — "The Rising Overture", featuring Solace (Milestone 4b) ─
+// ── Character banner — owner-configurable roster (default: Solace) ────────────
 type CharacterDbUser = {
   element: string; radiantKeys: number; fractonite: number;
   limitedCharBannerPity: number; limitedCharBanner4Pity: number; limitedCharBannerGuaranteed: boolean;
 };
 
-const SOLACE_ART_PATH = path.join(process.cwd(), "assets", "Characters", "Solace.png");
-const SOLACE_REVEAL_GIF = path.join(process.cwd(), "assets", "Characters", "Solace_reveal.gif");
+interface CharBannerConfig {
+  featuredId: string;
+  fourStarIds: string[]; // 0-2 character ids on 4★ rate-up
+}
 
-// Banner #1 has no standard pool to lose a 50/50 into — every 5★ IS Solace.
-// limitedCharBannerGuaranteed is carried in the schema for forward-compat with a
-// real banner #2, but is functionally inert here (never flips true, never
-// changes the roll) since there's no coin flip to win or lose yet.
+function characterArtPath(characterId: string): string {
+  const kit = CHARACTER_KITS[characterId];
+  return path.join(process.cwd(), kit.portraitPath);
+}
+// Falls back to the character's static portrait when no dedicated reveal GIF
+// exists (only Solace has one today) — AttachmentBuilder doesn't care
+// whether the file is animated, so a static image still works fine here.
+function characterRevealMedia(characterId: string): string {
+  const kit = CHARACTER_KITS[characterId];
+  const gif = path.join(process.cwd(), "assets", "Characters", `${kit.label}_reveal.gif`);
+  return fs.existsSync(gif) ? gif : characterArtPath(characterId);
+}
+
+async function resolveCharBannerConfig(): Promise<CharBannerConfig> {
+  const window = await prisma.bannerWindow.findUnique({ where: { id: "banner1" } });
+  const featuredId = window?.featuredCharacterId && CHARACTER_KITS[window.featuredCharacterId] ? window.featuredCharacterId : "solace";
+  const fourStarIds = [window?.featured4StarA, window?.featured4StarB]
+    .filter((x): x is string => !!x && !!CHARACTER_KITS[x] && x !== featuredId);
+  return { featuredId, fourStarIds };
+}
+
+// Banner #1 (Solace, no 4★ rate-up configured) has no standard pool to lose a
+// 50/50 into — every 5★ IS the featured character. limitedCharBannerGuaranteed
+// is carried in the schema for forward-compat with a real coin-flip banner,
+// but is functionally inert here since there's still no 50/50 to lose.
 //
-// 4★ tier: same WISH_WEAPONS_4STAR pool Standard/Wellspring already roll
-// from via roll4Star() — a Solace-banner 4★ hit is a real, usable weapon
-// (goes into the arsenal via weaponCreateData, exactly like every other
-// 4★/5★ weapon drop), not a currency stand-in.
+// 4★ tier: if the banner has rate-up characters configured, a chance of the
+// 4★ hit being one of them (a real, ownable character) instead of a weapon
+// from the usual WISH_WEAPONS_4STAR pool — same mechanic as Standard's
+// STANDARD_CHARACTER_CHANCE, just banner-scoped to exactly these 2 ids.
+const CHAR_BANNER_4STAR_CHARACTER_CHANCE = 0.5;
 
 type SolacePullResult =
   | { tier: "5star"; newPity: number; new4Pity: number }
   | { tier: "4star"; weapon: WishWeapon; newPity: number; new4Pity: number }
+  | { tier: "4star-char"; character: string; newPity: number; new4Pity: number }
   | { tier: "3star"; mat: MaterialDrop; newPity: number; new4Pity: number };
 
-function doSingleSolacePull(pity: number, pity4: number): SolacePullResult {
+function doSingleSolacePull(pity: number, pity4: number, fourStarIds: string[]): SolacePullResult {
   const newPity  = pity + 1;
   const newPity4 = pity4 + 1;
   const rate5 = softPityRate(newPity);
@@ -650,12 +675,22 @@ function doSingleSolacePull(pity: number, pity4: number): SolacePullResult {
     return { tier: "5star", newPity: 0, new4Pity: 0 };
   }
   if (newPity4 >= HARD_PITY_4 || r < BASE_5_RATE + BASE_4_RATE) {
+    if (fourStarIds.length > 0 && Math.random() < CHAR_BANNER_4STAR_CHARACTER_CHANCE) {
+      const character = fourStarIds[Math.floor(Math.random() * fourStarIds.length)];
+      return { tier: "4star-char", character, newPity, new4Pity: 0 };
+    }
     return { tier: "4star", weapon: roll4Star(), newPity, new4Pity: 0 };
   }
   return { tier: "3star", mat: rollMaterials(), newPity, new4Pity: newPity4 };
 }
 
-function solaceCharacterBannerEmbed(pity: number, keys: number, fractonite: number, color: number, bannerEndsAt?: Date | null): EmbedBuilder {
+function solaceCharacterBannerEmbed(
+  config: CharBannerConfig, pity: number, keys: number, fractonite: number, color: number, bannerEndsAt?: Date | null,
+): EmbedBuilder {
+  const kit = CHARACTER_KITS[config.featuredId];
+  const fourStarLine = config.fourStarIds.length > 0
+    ? `\n4★ rate-up: ${config.fourStarIds.map(id => `${CHARACTER_KITS[id].emoji} **${CHARACTER_KITS[id].label}**`).join("  ·  ")}`
+    : "";
   const fields = [
     { name: "Your Pity",    value: `**${pity}** / ${HARD_PITY}`, inline: true },
     { name: "Radiant Keys", value: `${CE.rk ?? "🔑"} **${keys}**`, inline: true },
@@ -667,18 +702,21 @@ function solaceCharacterBannerEmbed(pity: number, keys: number, fractonite: numb
   }
   return new EmbedBuilder()
     .setColor(0xFCD34D)
-    .setAuthor({ name: "✦  The Rising Overture  ·  Character Banner" })
+    .setAuthor({ name: "✦  Limited Character Banner" })
     .setDescription(
-      `**Featuring: ✨ Solace**\n\nEvery 5★ pull on this banner is guaranteed Solace — there's no coin flip to lose yet. ` +
+      `**Featuring: ${kit.emoji} ${kit.label}**${fourStarLine}\n\nEvery 5★ pull on this banner is guaranteed **${kit.label}** — there's no coin flip to lose yet. ` +
       `A duplicate pull converts into a Constellation Token instead of a second copy.\n\n` +
       `-# Short on Radiant Keys? Pulling automatically converts Fractonite to cover the gap (${FRACTONITE_PER_RADIANT_KEY} Fractonite = 1 Key).`
     )
     .addFields(fields)
-    .setFooter({ text: "CARTETHYIA  ·  The Rising Overture" });
+    .setFooter({ text: `CARTETHYIA  ·  Featuring ${kit.label}` });
 }
 
 async function runCharacterBanner(interaction: ChatInputCommandInteraction, dbUser: CharacterDbUser) {
   const color = ELEMENT_HEX[dbUser.element] ?? ELEMENT_HEX.NONE;
+  const config = await resolveCharBannerConfig();
+  const featuredKit = CHARACTER_KITS[config.featuredId];
+  const artPath = characterArtPath(config.featuredId);
 
   const pullRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
     new ButtonBuilder().setCustomId("solace_x1").setLabel("◈  Pull  ×1  (1)").setStyle(ButtonStyle.Primary)
@@ -688,12 +726,12 @@ async function runCharacterBanner(interaction: ChatInputCommandInteraction, dbUs
   );
 
   const bannerWindow = await prisma.bannerWindow.findUnique({ where: { id: "banner1" } });
-  const hasOverviewArt = fs.existsSync(SOLACE_ART_PATH);
-  const overviewEmbed = solaceCharacterBannerEmbed(dbUser.limitedCharBannerPity, dbUser.radiantKeys, dbUser.fractonite, color, bannerWindow?.endsAt);
+  const hasOverviewArt = fs.existsSync(artPath);
+  const overviewEmbed = solaceCharacterBannerEmbed(config, dbUser.limitedCharBannerPity, dbUser.radiantKeys, dbUser.fractonite, color, bannerWindow?.endsAt);
   if (hasOverviewArt) overviewEmbed.setImage("attachment://solace_banner.png");
   const msg = await interaction.editReply({
     embeds: [overviewEmbed],
-    files: hasOverviewArt ? [new AttachmentBuilder(SOLACE_ART_PATH, { name: "solace_banner.png" })] : [],
+    files: hasOverviewArt ? [new AttachmentBuilder(artPath, { name: "solace_banner.png" })] : [],
     components: [pullRow],
   });
 
@@ -729,25 +767,35 @@ async function runCharacterBanner(interaction: ChatInputCommandInteraction, dbUs
       return;
     }
 
-    // Ownership check ONCE up front — can only flip not-owned -> owned mid-batch, never back.
-    const existingProgress = await prisma.characterProgress.findUnique({
-      where: { userId_characterId: { userId: interaction.user.id, characterId: "solace" } },
+    // Ownership check ONCE up front for every character this banner could
+    // possibly grant (featured 5★ + both 4★ rate-ups) — can only flip
+    // not-owned -> owned mid-batch, never back.
+    const trackedIds = [config.featuredId, ...config.fourStarIds];
+    const existingProgress = await prisma.characterProgress.findMany({
+      where: { userId: interaction.user.id, characterId: { in: trackedIds } },
     });
-    let owned = existingProgress !== null;
+    const ownedSet = new Set(existingProgress.map(p => p.characterId));
 
     let pity = fresh.limitedCharBannerPity, pity4 = fresh.limitedCharBanner4Pity;
-    const rolls: ({ tier: "5star"; isDuplicate: boolean } | { tier: "4star"; weapon: WishWeapon } | { tier: "3star"; mat: MaterialDrop })[] = [];
+    const rolls: ({ tier: "5star"; isDuplicate: boolean } | { tier: "4star"; weapon: WishWeapon } | { tier: "4star-char"; character: string; isDuplicate: boolean } | { tier: "3star"; mat: MaterialDrop })[] = [];
     let hits = 0, dupes = 0;
     const matTotals = { forgingOres: 0, tuningModules: 0, credits: 0 };
+    const fourStarCharGains = new Map<string, number>(); // characterId -> copies gained this batch
     for (let i = 0; i < amount; i++) {
-      const r = doSingleSolacePull(pity, pity4);
+      const r = doSingleSolacePull(pity, pity4, config.fourStarIds);
       pity = r.newPity; pity4 = r.new4Pity;
       if (r.tier === "5star") {
         hits++;
-        const isDuplicate = owned;
+        const isDuplicate = ownedSet.has(config.featuredId);
         if (isDuplicate) dupes++;
-        owned = true;
+        ownedSet.add(config.featuredId);
         rolls.push({ tier: "5star", isDuplicate });
+      } else if (r.tier === "4star-char") {
+        const isDuplicate = ownedSet.has(r.character);
+        if (isDuplicate) dupes++;
+        ownedSet.add(r.character);
+        fourStarCharGains.set(r.character, (fourStarCharGains.get(r.character) ?? 0) + 1);
+        rolls.push({ tier: "4star-char", character: r.character, isDuplicate });
       } else if (r.tier === "4star") {
         rolls.push({ tier: "4star", weapon: r.weapon });
       } else {
@@ -757,7 +805,7 @@ async function runCharacterBanner(interaction: ChatInputCommandInteraction, dbUs
     }
     // Same safety net as Wellspring's ×10: never let a full 10-pull whiff all
     // the way down to only small materials with nothing 4★-tier or better.
-    if (amount === 10 && !rolls.some(r => r.tier === "5star" || r.tier === "4star")) {
+    if (amount === 10 && !rolls.some(r => r.tier === "5star" || r.tier === "4star" || r.tier === "4star-char")) {
       const last = rolls[9] as { tier: "3star"; mat: MaterialDrop };
       matTotals.forgingOres -= last.mat.forgingOres; matTotals.tuningModules -= last.mat.tuningModules; matTotals.credits -= last.mat.credits;
       rolls[9] = { tier: "4star", weapon: roll4Star() };
@@ -772,27 +820,46 @@ async function runCharacterBanner(interaction: ChatInputCommandInteraction, dbUs
                 limitedCharBannerPity: pity, limitedCharBanner4Pity: pity4,
                 forgingOres: { increment: matTotals.forgingOres }, tuningModules: { increment: matTotals.tuningModules }, credits: { increment: matTotals.credits } },
       }),
-      ...(hits > 0 ? [prisma.characterProgress.upsert({
-        where:  { userId_characterId: { userId: interaction.user.id, characterId: "solace" } },
-        create: { userId: interaction.user.id, characterId: "solace" },
-        update: { constellationTokens: { increment: dupes } },
-      })] : []),
+      ...(hits > 0 ? [(() => {
+        const wasOwnedBeforeBatch = existingProgress.some(p => p.characterId === config.featuredId);
+        const dupeCountThisBatch = wasOwnedBeforeBatch ? hits : hits - 1; // first-ever copy grants ownership, not a token
+        return prisma.characterProgress.upsert({
+          where:  { userId_characterId: { userId: interaction.user.id, characterId: config.featuredId } },
+          create: { userId: interaction.user.id, characterId: config.featuredId, constellationTokens: dupeCountThisBatch },
+          update: { constellationTokens: { increment: dupeCountThisBatch } },
+        });
+      })()] : []),
+      ...[...fourStarCharGains.entries()].map(([characterId, count]) => {
+        const wasOwnedBeforeBatch = existingProgress.some(p => p.characterId === characterId);
+        const dupeCountThisBatch = wasOwnedBeforeBatch ? count : count - 1; // first-ever copy grants ownership, not a token
+        return prisma.characterProgress.upsert({
+          where:  { userId_characterId: { userId: interaction.user.id, characterId } },
+          create: { userId: interaction.user.id, characterId, constellationTokens: dupeCountThisBatch },
+          update: { constellationTokens: { increment: dupeCountThisBatch } },
+        });
+      }),
       ...weaponRolls.map(r => prisma.weapon.create({ data: weaponCreateData(interaction.user.id, r.weapon) })),
     ]);
-    auditSpend(interaction.user.id, { radiantKeys: spend.radiantKeysToSpend, fractonite: spend.fractoniteToSpend }, `wish:solace:${hits}hits:${dupes}dupes:${weaponRolls.length}weapons`);
+    auditSpend(interaction.user.id, { radiantKeys: spend.radiantKeysToSpend, fractonite: spend.fractoniteToSpend }, `wish:charbanner:${config.featuredId}:${hits}hits:${dupes}dupes:${weaponRolls.length}weapons`);
 
     if (hits > 0) {
-      await runSuspenseWithReveal(interaction, SUSPENSE_CHARACTER_5STAR, SOLACE_REVEAL_GIF);
+      await runSuspenseWithReveal(interaction, SUSPENSE_CHARACTER_5STAR, characterRevealMedia(config.featuredId));
+    } else if (rolls.some(r => r.tier === "4star-char")) {
+      await runSuspenseWithReveal(interaction, SUSPENSE_CHARACTER_5STAR, characterRevealMedia((rolls.find(r => r.tier === "4star-char") as any).character));
     } else {
       await runSuspense(interaction, 3);
     }
 
-    const hasArt = fs.existsSync(SOLACE_ART_PATH);
-    const files = hits > 0 && hasArt ? [new AttachmentBuilder(SOLACE_ART_PATH, { name: "solace.png" })] : [];
+    const highlightCharId = hits > 0 ? config.featuredId : (rolls.find(r => r.tier === "4star-char") as any)?.character ?? null;
+    const highlightArt = highlightCharId ? characterArtPath(highlightCharId) : null;
+    const hasArt = highlightArt ? fs.existsSync(highlightArt) : false;
+    const files = hasArt && highlightArt ? [new AttachmentBuilder(highlightArt, { name: "solace.png" })] : [];
 
     const lines: string[] = rolls.map(r =>
       r.tier === "5star"
-        ? `✦  **Solace**${r.isDuplicate ? "  *(duplicate — converted to a Constellation Token)*" : ""}`
+        ? `✦  **${featuredKit.label}**${r.isDuplicate ? "  *(duplicate — converted to a Constellation Token)*" : ""}`
+        : r.tier === "4star-char"
+        ? `◆  ${CHARACTER_KITS[r.character].emoji} **${CHARACTER_KITS[r.character].label}**  ★★★★${r.isDuplicate ? "  *(duplicate → token)*" : ""}`
         : r.tier === "4star"
         ? `◆  **${r.weapon.name}**  ★★★★  ·  ${r.weapon.type}`
         : `◇  *${r.mat.label}*`
@@ -800,10 +867,10 @@ async function runCharacterBanner(interaction: ChatInputCommandInteraction, dbUs
 
     const embed = new EmbedBuilder()
       .setColor(hits > 0 ? 0xFCD34D : 0x4A4A5A)
-      .setTitle(hits > 0 ? "✨  The Rising Overture" : "◇  The fracture stirs")
-      .setDescription(lines.join("\n") + (hits > 0 ? `\n\n*${dupes} of ${hits} were duplicates → ${dupes} Constellation Token(s).*` : ""))
+      .setTitle(hits > 0 ? `✨  ${featuredKit.label} Resonates` : "◇  The fracture stirs")
+      .setDescription(lines.join("\n") + (dupes > 0 ? `\n\n*${dupes} duplicate(s) → ${dupes} Constellation Token(s).*` : ""))
       .addFields({ name: "Pity", value: `${pity} / ${HARD_PITY}`, inline: true })
-      .setFooter({ text: "CARTETHYIA  ·  The Rising Overture" });
+      .setFooter({ text: `CARTETHYIA  ·  Featuring ${featuredKit.label}` });
     if (files.length) embed.setImage("attachment://solace.png");
 
     const remainingKeys = fresh.radiantKeys - spend.radiantKeysToSpend;
@@ -1022,25 +1089,28 @@ const command: Command = {
     const window = await prisma.bannerWindow.findUnique({ where: { id: "banner1" } });
     const now = Date.now();
     const windowActive = !!window && now >= window.startsAt.getTime() && now <= window.endsAt.getTime();
+    const featuredId = window?.featuredCharacterId && CHARACTER_KITS[window.featuredCharacterId] ? window.featuredCharacterId : "solace";
+    const featuredKit = CHARACTER_KITS[featuredId];
+    const pickerArtPath = characterArtPath(featuredId);
 
     const color = ELEMENT_HEX[dbUser.element] ?? ELEMENT_HEX.NONE;
     const pickerRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
       new ButtonBuilder().setCustomId("wish_pick_standard").setLabel("◈ Standard").setStyle(ButtonStyle.Primary),
       new ButtonBuilder().setCustomId("wish_pick_character")
-        .setLabel(windowActive ? "✦ Limited Character Banner — The Rising Overture" : "✦ Limited Character Banner — Banner ended")
+        .setLabel(windowActive ? `✦ Limited Character Banner — Featuring ${featuredKit.label}` : "✦ Limited Character Banner — Banner ended")
         .setStyle(ButtonStyle.Success).setDisabled(!windowActive),
       new ButtonBuilder().setCustomId("wish_pick_weapon")
         .setLabel(windowActive ? "⚔ Limited Weapon Banner — The Tempered Vow" : "⚔ Limited Weapon Banner — Banner ended")
         .setStyle(ButtonStyle.Danger).setDisabled(!windowActive),
     );
 
-    const pickerHasArt = windowActive && fs.existsSync(SOLACE_ART_PATH);
+    const pickerHasArt = windowActive && fs.existsSync(pickerArtPath);
     const pickerEmbed = new EmbedBuilder()
       .setColor(windowActive ? 0xFCD34D : color)
       .setTitle("◈  Choose a Banner")
       .setDescription(
         "**Standard** — the evergreen weapon pool, spends Fracture Keys.\n\n" +
-        "**Limited Character Banner** *(The Rising Overture)* — featuring Solace, spends Radiant Keys.\n\n" +
+        `**Limited Character Banner** — featuring ${featuredKit.label}, spends Radiant Keys.\n\n` +
         "**Limited Weapon Banner** *(The Tempered Vow)* — featuring Wellspring, spends Radiant Keys." +
         (windowActive && window ? `\n\n✦ **Banner ends** <t:${Math.floor(window.endsAt.getTime() / 1000)}:R> (<t:${Math.floor(window.endsAt.getTime() / 1000)}:f>)` : "")
       )
@@ -1049,7 +1119,7 @@ const command: Command = {
 
     const pickerMsg = await interaction.editReply({
       embeds: [pickerEmbed],
-      files: pickerHasArt ? [new AttachmentBuilder(SOLACE_ART_PATH, { name: "solace_picker.png" })] : [],
+      files: pickerHasArt ? [new AttachmentBuilder(pickerArtPath, { name: "solace_picker.png" })] : [],
       components: [pickerRow],
     });
 
