@@ -5,7 +5,7 @@ import {
 } from "discord.js";
 import { Command } from "../../types";
 import { getOrCreateUser } from "../../lib/economy";
-import { RARITY_STARS, WEAPON_TYPE_EMOJI } from "../../lib/weapons";
+import { RARITY_STARS, WEAPON_TYPE_EMOJI, describeWeaponPassiveForRow } from "../../lib/weapons";
 import { generateWeaponCard } from "../../lib/weaponCard";
 import { formatAwakenedPassive } from "../../lib/weaponAwakening";
 import { ALL_WISH_WEAPONS, calcWishSubStat } from "../../lib/wishWeapons";
@@ -85,7 +85,7 @@ const command: Command = {
         effectiveSub: w.subStatVal  != null ? effectiveSub(w.subStatVal, w.level) : null,
         passive:      w.awakened && w.awakenedPassive
           ? formatAwakenedPassive(w.awakenedPassive, interaction.user.id === "979379636586819746" ? 7 : 4)
-          : forgeDef?.passive ?? "",
+          : describeWeaponPassiveForRow(w) || forgeDef?.passive || "",
         element:      user.element,
         ownerName:    displayName,
         ownerAvatar:  avatarUrl,

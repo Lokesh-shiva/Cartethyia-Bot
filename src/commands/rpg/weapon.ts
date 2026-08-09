@@ -1,7 +1,7 @@
 import { SlashCommandBuilder, ChatInputCommandInteraction, EmbedBuilder, AttachmentBuilder } from "discord.js";
 import { Command } from "../../types";
 import { getOrCreateUser } from "../../lib/economy";
-import { WEAPON_TYPE_LABEL, FORGED_WEAPONS, describeWeaponPassive } from "../../lib/weapons";
+import { WEAPON_TYPE_LABEL, FORGED_WEAPONS, describeWeaponPassive, describeWeaponPassiveForRow } from "../../lib/weapons";
 import { generateWeaponCard } from "../../lib/weaponCard";
 import { formatAwakenedPassive } from "../../lib/weaponAwakening";
 import { ALL_WISH_WEAPONS, calcWishSubStat } from "../../lib/wishWeapons";
@@ -91,7 +91,7 @@ const command: Command = {
       effectiveSub: weapon.subStatVal  != null ? effectiveSub(weapon.subStatVal, weapon.level) : null,
       passive:      weapon.awakened && weapon.awakenedPassive
         ? formatAwakenedPassive(weapon.awakenedPassive, target.id === "979379636586819746" ? (interaction.user.id === target.id ? 7 : 0) : 4)
-        : weaponDef?.passive ?? WEAPON_TYPE_LABEL[weapon.weaponType as WeaponType] ?? "",
+        : describeWeaponPassiveForRow(weapon) || weaponDef?.passive || WEAPON_TYPE_LABEL[weapon.weaponType as WeaponType] || "",
       element:      user.element,
       ownerName:    displayName,
       ownerAvatar:  avatarUrl,

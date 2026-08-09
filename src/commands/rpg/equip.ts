@@ -6,7 +6,7 @@ import {
 } from "discord.js";
 import { Command } from "../../types";
 import { getOrCreateUser } from "../../lib/economy";
-import { RARITY_STARS, WEAPON_TYPE_EMOJI, FORGED_WEAPONS, describeWeaponPassive } from "../../lib/weapons";
+import { RARITY_STARS, WEAPON_TYPE_EMOJI, FORGED_WEAPONS, describeWeaponPassive, describeWeaponPassiveForRow } from "../../lib/weapons";
 import { generateWeaponCard } from "../../lib/weaponCard";
 import { formatAwakenedPassive } from "../../lib/weaponAwakening";
 import { ALL_WISH_WEAPONS, calcWishSubStat } from "../../lib/wishWeapons";
@@ -105,7 +105,7 @@ async function buildCard(w: any, element: string, ownerName: string, ownerAvatar
     effectiveSub: w.subStatVal != null ? effectiveSub(w.subStatVal, w.level) : null,
     passive:      w.awakened && w.awakenedPassive
       ? formatAwakenedPassive(w.awakenedPassive, maxEffects)
-      : forgeDef?.passive ?? "",
+      : describeWeaponPassiveForRow(w) || forgeDef?.passive || "",
     element,
     ownerName,
     ownerAvatar,

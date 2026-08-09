@@ -19,7 +19,7 @@ import { CHARACTER_KITS, PlayableCharacterKit } from "../../lib/characterKit";
 import "../../lib/kits";
 import { renderStatBarsCard, renderSlotGridCard, renderLoreCard } from "../../lib/characterCard";
 import { generateWeaponCard } from "../../lib/weaponCard";
-import { WEAPON_TYPE_LABEL, FORGED_WEAPONS, RARITY_STARS } from "../../lib/weapons";
+import { WEAPON_TYPE_LABEL, FORGED_WEAPONS, RARITY_STARS, describeWeaponPassiveForRow } from "../../lib/weapons";
 import { ALL_WISH_WEAPONS, calcWishSubStat } from "../../lib/wishWeapons";
 import { invalidateBonusCache } from "../../lib/setBonus";
 import { StringSelectMenuOptionBuilder } from "discord.js";
@@ -313,7 +313,7 @@ async function buildWeaponView(userId: string, characterId: string): Promise<Pag
     name: weapon.name, weaponType: weapon.weaponType, rarity: weapon.rarity, level: weapon.level,
     baseAtk: weapon.baseAtk, effectiveAtk,
     subStatType: weapon.subStatType ?? null, subStatVal: weapon.subStatVal ?? null, effectiveSub,
-    passive: weaponDef?.passive ?? WEAPON_TYPE_LABEL[weapon.weaponType as keyof typeof WEAPON_TYPE_LABEL] ?? "",
+    passive: describeWeaponPassiveForRow(weapon) || weaponDef?.passive || WEAPON_TYPE_LABEL[weapon.weaponType as keyof typeof WEAPON_TYPE_LABEL] || "",
     element: char.element, ownerName: char.label, ownerAvatar: char.portraitPath,
     hiddenSub1Type: weapon.hiddenSub1Type ?? null, hiddenSub1Val: h1Val,
     hiddenSub2Type: weapon.hiddenSub2Type ?? null, hiddenSub2Val: h2Val,
