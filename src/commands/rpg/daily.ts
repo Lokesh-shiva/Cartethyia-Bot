@@ -173,6 +173,13 @@ const command: Command = {
 
     const nudge = await mailNudge(interaction.user.id, (user as any).createdAt as Date);
 
+    // Cross-promote /vote — separate 12h cooldown from /daily's own 20h one,
+    // so don't nag if they've already voted recently.
+    const lastVoted = (user as any).lastVoted as Date | null;
+    const votedRecently = lastVoted && now - lastVoted.getTime() < 12 * 60 * 60 * 1000;
+    const voteLine = votedRecently ? "" :
+      `\n🗳️ Don't forget **/vote** — 1,000 Credits + 100 Fractonite (2,000 + 200 on weekends), on any of 3 platforms.`;
+
     const embed = new EmbedBuilder()
       .setColor(parseInt(elHex.slice(1), 16))
       .setAuthor({ name: `${displayName}  ·  Daily Rewards`, iconURL: avatarUrl })
@@ -182,6 +189,7 @@ const command: Command = {
         inSupportServer ? `\n🏠  **+15%** Support Server bonus active` : "",
         shieldLine,
         shields > 0 && !shieldUsed ? `\n🛡️ Shields remaining: **${shields}**` : "",
+        voteLine,
         nudge,
       ].filter(Boolean).join(""))
       .setImage("attachment://daily.webp")
