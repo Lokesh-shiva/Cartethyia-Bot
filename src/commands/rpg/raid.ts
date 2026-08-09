@@ -967,7 +967,12 @@ async function launchRaid(
       // Each participant gets a guaranteed 4-cost echo drop matching the boss,
       // mirroring solo /field-boss's guaranteed drop (also covers WL bosses,
       // which have their own BOSS_ECHO_DEFINITIONS entries by name).
-      const raidEchoDef = BOSS_ECHO_DEFINITIONS.find(e => e.name === boss.name);
+      // WL8's boss is "The Resonant Absolute" in bosses.ts but its echo def
+      // (and every art/display lookup keyed off it — character.ts, canvas.ts,
+      // echoCard.ts, gridCard.ts, echoSkills.ts) uses the bare "Resonant
+      // Absolute" — strip a leading "The " here rather than touching those
+      // other lookups, since this is the only WL boss with the mismatch.
+      const raidEchoDef = BOSS_ECHO_DEFINITIONS.find(e => e.name === boss.name.replace(/^The /, ""));
       const isFieldBossRaid = raid.bossChoice.startsWith("field:");
       let raidEchoLine = "";
       if (raidEchoDef) {
