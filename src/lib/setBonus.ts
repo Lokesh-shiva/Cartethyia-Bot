@@ -178,6 +178,7 @@ export interface PlayerBonuses {
   energyBonus:    number;
   lifesteal:      number;
   elemDmgBonus:   number;
+  healingBonus:   number; // from HEALING_PCT echo substat — scales echo-skill heals + RADIANT_CONVERGENCE's self-heals
 
   // Active set effects
   set4pc: FourPcEffect | null;
@@ -257,7 +258,7 @@ export async function resolvePlayerBonuses(userId: string, characterId: string =
     atkFlat: 0, hpFlat: 0, defFlat: 0, spdFlat: 0,
     atkMult: 1.0, hpMult: 1.0, defMult: 1.0,
     critRateBonus: 0, critDmgBonus: 0,
-    energyBonus: 0, lifesteal: 0, elemDmgBonus: 0,
+    energyBonus: 0, lifesteal: 0, elemDmgBonus: 0, healingBonus: 0,
     set4pc: null, set5pc: null,
     activeNamedSetId: null,
     elementPassive:  null,
@@ -325,7 +326,7 @@ export async function resolvePlayerBonuses(userId: string, characterId: string =
       case "CRIT_DMG":     bonuses.critDmgBonus  += v/100;       break;
       case "ELEM_DMG_PCT": bonuses.elemDmgBonus  += v/100;       break;
       case "ENERGY_REGEN": bonuses.energyBonus   += v/2;         break; // dampened
-      case "HEALING_PCT":  /* no in-combat healing yet */        break;
+      case "HEALING_PCT":  bonuses.healingBonus  += v/100;       break;
       case "SPEED":        bonuses.spdFlat       += v;          break;
       default:
         // Element-specific DMG main stat (e.g. Fusion DMG Bonus) — only if it matches you
