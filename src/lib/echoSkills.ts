@@ -21,6 +21,7 @@ export type EchoSkillDef =
   | { kind: "ARM_NEXT_CRIT";    name: string }                                 // next attack (any type) is guaranteed crit
   | { kind: "FLAT_LIFESTEAL";   name: string; pct: number }                    // extra flat lifesteal, on top of normal
   | { kind: "NAMED_SET_TRIGGER";name: string; setId: NamedSetId }              // instantly triggers that set's signature mechanic
+  | { kind: "PARTY_HEAL";       name: string; healPct: number }                // instant heal, reaches allies/party — see targeting rules in combat loops
   | { kind: "PLAIN";            name: string };                                // generic 1/3-cost fallback
 
 // ── 21 bespoke 4-cost (boss) echo skills, keyed by echo name ────────────────
@@ -60,11 +61,24 @@ const GENERIC_SKILL_NAME: Record<string, string> = {
   SPECTRO: "Radiant Spark",
 };
 
+// Broadly-accessible heal option — these are the cheapest, most common 1-cost
+// echoes in the game (one per element), obtainable from turn one regardless
+// of progression. Deliberately NOT a global genericEchoSkill() change, which
+// would remove the plain-attack option for every 1/3-cost echo in the game.
+export const GENERIC_HEAL_ECHO_SKILLS: Record<string, EchoSkillDef> = {
+  "Ember Wisp":     { kind: "PARTY_HEAL", name: "Ember Ward",   healPct: 0.12 },
+  "Frost Mote":     { kind: "PARTY_HEAL", name: "Frost Ward",   healPct: 0.12 },
+  "Static Spark":   { kind: "PARTY_HEAL", name: "Static Ward",  healPct: 0.12 },
+  "Zephyr Mite":    { kind: "PARTY_HEAL", name: "Zephyr Ward",  healPct: 0.12 },
+  "Shadow Flicker": { kind: "PARTY_HEAL", name: "Shadow Ward",  healPct: 0.12 },
+  "Lumen Speck":    { kind: "PARTY_HEAL", name: "Lumen Ward",   healPct: 0.12 },
+};
+
 /** Returns the EchoSkillDef for whichever echo occupies the Main slot, or null if empty/unrecognized. */
 export function getEchoSkillDef(mainEcho: { name: string; cost: number } | null): EchoSkillDef | null {
   if (!mainEcho) return null;
   if (mainEcho.cost === 4) return BOSS_ECHO_SKILLS[mainEcho.name] ?? { kind: "PLAIN", name: mainEcho.name };
-  return null; // 1/3-cost handled by genericEchoSkill(), which needs the element too
+  return GENERIC_HEAL_ECHO_SKILLS[mainEcho.name] ?? null; // null falls through to genericEchoSkill(element) at the call site
 }
 
 export function genericEchoSkill(element: string): EchoSkillDef {
@@ -89,6 +103,7 @@ export function describeEchoSkill(def: EchoSkillDef): string {
     case "ARM_NEXT_CRIT":    return `Your next attack (any move) is guaranteed to crit.`;
     case "FLAT_LIFESTEAL":   return `Heals ${Math.round(def.pct * 100)}% of the damage dealt, on top of your normal lifesteal.`;
     case "NAMED_SET_TRIGGER":return `Instantly triggers ${NAMED_SETS[def.setId]?.name ?? def.setId}'s signature 4pc/5pc effect — only works if you have that set actively equipped (2+ pieces), otherwise it's just a plain hit.`;
+    case "PARTY_HEAL":       return `Instantly heals ${Math.round(def.healPct * 100)}% of your max HP — in a raid, heals your whole living party instead of just you.`;
     case "PLAIN":            return `A simple bonus-damage strike.`;
   }
 }
@@ -138,6 +153,9 @@ export function applyEchoSkill(def: EchoSkillDef, ctx: EchoSkillCtx): EchoSkillR
       r.dmgMult = 1 + def.pct;
       break;
     case "SHIELD":
+      r.healHp = Math.floor(ctx.playerHpMax * def.healPct);
+      break;
+    case "PARTY_HEAL":
       r.healHp = Math.floor(ctx.playerHpMax * def.healPct);
       break;
     case "VIB_DRAIN":

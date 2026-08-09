@@ -282,9 +282,7 @@ export async function resolvePlayerBonuses(userId: string, characterId: string =
   // ── Echo Skill (Main slot only) ───────────────────────────────────────────
   const mainEcho = echoes.find(e => e.equippedSlot === 0) ?? null;
   if (mainEcho) {
-    bonuses.echoSkill = mainEcho.cost === 4
-      ? getEchoSkillDef(mainEcho)
-      : genericEchoSkill(mainEcho.element);
+    bonuses.echoSkill = getEchoSkillDef(mainEcho) ?? genericEchoSkill(mainEcho.element);
   }
 
   // ── Player element innate bonuses ────────────────────────────────────────
