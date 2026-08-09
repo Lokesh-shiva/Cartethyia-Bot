@@ -89,11 +89,11 @@ export function genericEchoSkill(element: string): EchoSkillDef {
 export function describeEchoSkill(def: EchoSkillDef): string {
   switch (def.kind) {
     case "EXECUTE_PCT":      return `Bonus damage equal to ${Math.round(def.pct * 100)}% of the enemy's current HP.`;
-    case "SHIELD":           return `Instantly heals ${Math.round(def.healPct * 100)}% of your max HP.`;
+    case "SHIELD":           return `Instantly heals ${Math.round(def.healPct * 100)}% of your max HP (scales with Healing Bonus) — also heals your benched ally if you have a team roster set, or your whole living party in a raid.`;
     case "VIB_DRAIN":        return `Drains extra vibration on top of the normal amount (${Math.round(def.vibPct * 100)}% of the bar) — no vib bar in duels, becomes bonus damage there instead.`;
     case "ENERGY_SCALE_DMG": return `Deals more damage the more Energy you currently have.`;
     case "TURN_SCALE_DMG":   return `Deals more damage the longer the fight goes on (up to +100% by turn 20).`;
-    case "HEAL_THEN_HIT":    return `Heals ${Math.round(def.healPct * 100)}% max HP, then deals bonus damage based on how much you healed.`;
+    case "HEAL_THEN_HIT":    return `Heals ${Math.round(def.healPct * 100)}% max HP (scales with Healing Bonus; also reaches your benched ally or, in a raid, your whole living party), then deals bonus damage based on that base heal amount.`;
     case "GUARANTEED_CRIT":  return `This attack always crits.`;
     case "DOUBLE_HIT":       return `Strikes twice in one action.`;
     case "RESET_CD_ON_CRIT": return `If this attack crits, its own cooldown resets instantly.`;
@@ -103,7 +103,7 @@ export function describeEchoSkill(def: EchoSkillDef): string {
     case "ARM_NEXT_CRIT":    return `Your next attack (any move) is guaranteed to crit.`;
     case "FLAT_LIFESTEAL":   return `Heals ${Math.round(def.pct * 100)}% of the damage dealt, on top of your normal lifesteal.`;
     case "NAMED_SET_TRIGGER":return `Instantly triggers ${NAMED_SETS[def.setId]?.name ?? def.setId}'s signature 4pc/5pc effect — only works if you have that set actively equipped (2+ pieces), otherwise it's just a plain hit.`;
-    case "PARTY_HEAL":       return `Instantly heals ${Math.round(def.healPct * 100)}% of your max HP — in a raid, heals your whole living party instead of just you.`;
+    case "PARTY_HEAL":       return `Instantly heals ${Math.round(def.healPct * 100)}% of your max HP (scales with Healing Bonus) — also heals your benched ally if you have a team roster set, or your whole living party in a raid.`;
     case "PLAIN":            return `A simple bonus-damage strike.`;
   }
 }
