@@ -1155,10 +1155,15 @@ async function launchRaid(
       const forcedCritActive = current.nextCritArmed && btn.customId !== "raid_retreat";
 
       let radiantDmgMult = 1.0;
+      // Captured now, appended after moveLine's branch-specific assignment
+      // (which OVERWRITES moveLine, not appends) — see the append right
+      // before the shared damage-tail block.
+      let radiantTurnHealAmount = 0;
       if (mySetId === "RADIANT_CONVERGENCE") {
         const heal = radiantConvergenceOnTurnHeal(current.namedState, current.hpMax, current.bonuses.healingBonus);
         current.hp = Math.min(current.hpMax, current.hp + heal.healAmount);
         radiantDmgMult = heal.dmgMult;
+        radiantTurnHealAmount = heal.healAmount;
       }
 
       let moveLine  = "";
@@ -1723,16 +1728,19 @@ async function launchRaid(
           // Party-wide: every living participant's own currently-active unit
           // gets healed, each scaled by THEIR OWN Healing Bonus — this is the
           // one real "heal a teammate" path in the game today.
+          const healLines: string[] = [];
           for (const p of raid.participants) {
             if (p.isDefeated) continue;
             const scaledHeal = Math.floor(result.healHp * (1 + p.bonuses.healingBonus));
             if (positionValue(p.roster, p.activePosition) === "self") {
               p.hp = Math.min(p.hpMax, p.hp + scaledHeal);
+              healLines.push(`${p.name} +${scaledHeal}`);
             } else {
               const b = p.allyBundles[p.activePosition];
-              if (b) b.hp = Math.min(b.hpMax, b.hp + scaledHeal);
+              if (b) { b.hp = Math.min(b.hpMax, b.hp + scaledHeal); healLines.push(`${p.name}'s ${b.kit.label} +${scaledHeal}`); }
             }
           }
+          if (healLines.length > 0) moveLine += `\n💚 Party heal: ${healLines.join("  ·  ")}`;
         }
         if (result.armsNextCrit) current.nextCritArmed = true;
         if (result.defShredTurns > 0) {
@@ -1745,6 +1753,7 @@ async function launchRaid(
       }
       const echoFlatLifesteal = (btn.customId === "raid_echoskill" && current.bonuses.echoSkill?.kind === "FLAT_LIFESTEAL")
         ? current.bonuses.echoSkill.pct : 0;
+      if (radiantTurnHealAmount > 0) moveLine += `\n✨ Radiant Convergence — turn-heal +${radiantTurnHealAmount} HP!`;
 
       // Apply ability effects and element hooks (attack moves only)
       if (btn.customId !== "raid_retreat") {

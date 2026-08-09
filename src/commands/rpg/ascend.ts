@@ -605,10 +605,15 @@ const command: Command = {
         let moveName  = "";
         state.hitBadge = undefined; // cleared every turn — only Vesper's multi-hit Discharge branch sets it, otherwise a stale badge from a prior turn would incorrectly persist
         let radiantDmgMult = 1.0;
+        // Captured now, appended after moveName's branch-specific assignment
+        // below (which OVERWRITES moveName, not appends) — see the append
+        // right before state.lastMove = moveName.
+        let radiantTurnHealAmount = 0;
         if (bonuses.activeNamedSetId === "RADIANT_CONVERGENCE" && btn.customId !== "battle_flee") {
           const heal = radiantConvergenceOnTurnHeal(namedState, state.playerHpMax, bonuses.healingBonus);
           state.playerHp  = Math.min(state.playerHpMax, state.playerHp + heal.healAmount);
           radiantDmgMult  = heal.dmgMult;
+          radiantTurnHealAmount = heal.healAmount;
         }
 
         const isWeak   = user.element === boss.weakness;
@@ -1292,6 +1297,9 @@ const command: Command = {
             if (benchPos) {
               const b = allyBundles[benchPos]!;
               b.hp = Math.min(b.hpMax, b.hp + scaledEchoHeal);
+              moveName += `\n💚 +${scaledEchoHeal} HP (also healed ${b.kit.label})`;
+            } else {
+              moveName += `\n💚 +${scaledEchoHeal} HP`;
             }
           }
 
@@ -1362,6 +1370,7 @@ const command: Command = {
           }
         }
 
+        if (radiantTurnHealAmount > 0) moveName += `\n✨ Radiant Convergence — turn-heal +${radiantTurnHealAmount} HP!`;
         state.lastMove = moveName;
 
         // ── Win check ─────────────────────────────────────────────────────────

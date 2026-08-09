@@ -848,10 +848,12 @@ async function runWave(
         }
 
         let radiantDmgMult = 1.0;
+        let radiantTurnHealAmount = 0;
         if (bonuses.activeNamedSetId === "RADIANT_CONVERGENCE") {
           const heal = radiantConvergenceOnTurnHeal(ws.namedState, ws.playerHpMax, bonuses.healingBonus);
           ws.playerHp    = Math.min(ws.playerHpMax, ws.playerHp + heal.healAmount);
           radiantDmgMult = heal.dmgMult;
+          radiantTurnHealAmount = heal.healAmount;
         }
 
         const havocFrenzyActive = bonuses.activeNamedSetId === "VOIDBORN_REMNANT" && voidbornRemnantFrenzyActive(ws.namedState);
@@ -1450,6 +1452,9 @@ async function runWave(
             if (benchPos) {
               const b = ws.allyBundles[benchPos]!;
               b.hp = Math.min(b.hpMax, b.hp + scaledEchoHeal);
+              moveLine += `\n💚 +${scaledEchoHeal} HP (also healed ${b.kit.label})`;
+            } else {
+              moveLine += `\n💚 +${scaledEchoHeal} HP`;
             }
           }
 
@@ -1517,6 +1522,8 @@ async function runWave(
             moveLine += `\n🌑 **Voidborn Rupture** — +${bonusDmg} bonus DMG, +${healAmt} HP!`;
           }
         }
+
+        if (radiantTurnHealAmount > 0) moveLine += `\n✨ Radiant Convergence — turn-heal +${radiantTurnHealAmount} HP!`;
 
         // Win
         if (enemyHp <= 0) {

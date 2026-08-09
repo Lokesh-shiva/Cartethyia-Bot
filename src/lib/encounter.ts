@@ -1223,6 +1223,9 @@ export async function handleEncounterFight(
           if (benchPos) {
             const b = allyBundles[benchPos]!;
             b.hp = Math.min(b.hpMax, b.hp + scaledEchoHeal);
+            moveName += `\n💚 +${scaledEchoHeal} HP (also healed ${b.kit.label})`;
+          } else {
+            moveName += `\n💚 +${scaledEchoHeal} HP`;
           }
         }
         if (result.armsNextCrit) nextAttackCritArmed = true;

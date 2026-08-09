@@ -795,11 +795,16 @@ export async function execute(interaction: ChatInputCommandInteraction) {
         const myNextCritArmed  = isChallenger ? state.cNextCritArmed : state.dNextCritArmed;
         const forcedCritActive = myNextCritArmed && btn.customId !== "duel_forfeit";
         let radiantDmgMult = 1.0;
+        // Captured now, appended after moveLine's branch-specific assignment
+        // (which OVERWRITES moveLine, not appends) — see the append near the
+        // shared damage-tail below.
+        let radiantTurnHealAmount = 0;
         if (mySetId === "RADIANT_CONVERGENCE") {
           const heal = radiantConvergenceOnTurnHeal(myNamedState, myHpMax, myBonus.healingBonus);
           if (isChallenger) state.cHp = Math.min(state.cHpMax, state.cHp + heal.healAmount);
           else              state.dHp = Math.min(state.dHpMax, state.dHp + heal.healAmount);
           radiantDmgMult = heal.dmgMult;
+          radiantTurnHealAmount = heal.healAmount;
           myHp = isChallenger ? state.cHp : state.dHp;
         }
 
@@ -1452,6 +1457,9 @@ export async function execute(interaction: ChatInputCommandInteraction) {
             if (benchPos) {
               const b = myAllyBundlesForHeal[benchPos]!;
               b.hp = Math.min(b.hpMax, b.hp + scaledEchoHeal);
+              moveLine += `\n💚 +${scaledEchoHeal} HP (also healed ${b.kit.label})`;
+            } else {
+              moveLine += `\n💚 +${scaledEchoHeal} HP`;
             }
           }
         }
@@ -1496,6 +1504,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
           moveLine += `\n⚡ **First Strike** — you got the jump on them! +${bonusDmg} bonus DMG!`;
         }
 
+        if (radiantTurnHealAmount > 0) moveLine += `\n✨ Radiant Convergence — turn-heal +${radiantTurnHealAmount} HP!`;
         if (ar.tag) moveLine += `  ✦${ar.tag}`;
         moveLine += ` — **${damage} DMG**`;
 
