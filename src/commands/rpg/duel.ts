@@ -151,6 +151,24 @@ const ELEMENT_DUEL_HEX: Record<string, number> = {
   AERO: 0x80CBC4, HAVOC: 0x9C27B0, SPECTRO: 0xFFD54F, NONE: 0x6366F1,
 };
 
+// Each side's field must show whichever unit is CURRENTLY active, not
+// always the literal player — otherwise a swapped-in ally's HP never
+// appears anywhere prominent (same bug already fixed in the battle-card
+// loops and raid.ts's Resonators list).
+function duelActiveIdentity(state: DuelState, isChallenger: boolean): { name: string; element: string; hp: number; hpMax: number } {
+  const activeUnit = isChallenger ? state.cActiveUnit : state.dActiveUnit;
+  if (activeUnit === "player") {
+    return isChallenger
+      ? { name: state.challengerName, element: state.cElement, hp: state.cHp, hpMax: state.cHpMax }
+      : { name: state.challengedName, element: state.dElement, hp: state.dHp, hpMax: state.dHpMax };
+  }
+  const kit = isChallenger ? state.cAllyKit : state.dAllyKit;
+  const hp = isChallenger ? state.cAllyHp : state.dAllyHp;
+  const hpMax = isChallenger ? state.cAllyHpMax : state.dAllyHpMax;
+  const ownerName = isChallenger ? state.challengerName : state.challengedName;
+  return { name: kit ? `${ownerName}'s ${kit.label}` : ownerName, element: kit?.element ?? (isChallenger ? state.cElement : state.dElement), hp, hpMax };
+}
+
 function duelEmbed(state: DuelState, lastMove: string, _color: number): EmbedBuilder {
   const turnName  = state.currentTurn === state.challengerId ? state.challengerName : state.challengedName;
   const turnElem  = state.currentTurn === state.challengerId ? state.cElement : state.dElement;
@@ -158,22 +176,24 @@ function duelEmbed(state: DuelState, lastMove: string, _color: number): EmbedBui
 
   const cTurn = state.currentTurn === state.challengerId ? "▸ " : "";
   const dTurn = state.currentTurn === state.challengedId ? "▸ " : "";
+  const cActive = duelActiveIdentity(state, true);
+  const dActive = duelActiveIdentity(state, false);
 
   return new EmbedBuilder()
     .setColor(themeColor)
     .setTitle(`⚔️  Duel  ·  Turn ${state.turn}`)
     .addFields(
       {
-        name:   `${cTurn}${elementEmoji(state.cElement)}  ${state.challengerName}`,
-        value:  `${hpBar(state.cHp, state.cHpMax)}\n` +
-                `\`HP ${state.cHp}/${state.cHpMax}\`\n` +
+        name:   `${cTurn}${elementEmoji(cActive.element)}  ${cActive.name}`,
+        value:  `${hpBar(cActive.hp, cActive.hpMax)}\n` +
+                `\`HP ${cActive.hp}/${cActive.hpMax}\`\n` +
                 `⚡ ${energyBar(state.cEnergy)} ${state.cEnergy}${state.cSkillCd > 0 ? `   ✦cd ${state.cSkillCd}` : ""}`,
         inline: true,
       },
       {
-        name:   `${dTurn}${elementEmoji(state.dElement)}  ${state.challengedName}`,
-        value:  `${hpBar(state.dHp, state.dHpMax)}\n` +
-                `\`HP ${state.dHp}/${state.dHpMax}\`\n` +
+        name:   `${dTurn}${elementEmoji(dActive.element)}  ${dActive.name}`,
+        value:  `${hpBar(dActive.hp, dActive.hpMax)}\n` +
+                `\`HP ${dActive.hp}/${dActive.hpMax}\`\n` +
                 `⚡ ${energyBar(state.dEnergy)} ${state.dEnergy}${state.dSkillCd > 0 ? `   ✦cd ${state.dSkillCd}` : ""}`,
         inline: true,
       },
