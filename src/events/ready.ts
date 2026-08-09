@@ -6,6 +6,7 @@ import { rescheduleOnReady } from "../lib/dailyReminder";
 import { loadAllPrefixes } from "../lib/prefixManager";
 import { setAuditClient, runBalanceSweep } from "../lib/antiCheat";
 import prisma from "../lib/prisma";
+import { refundAura } from "../lib/aura";
 
 export const name = Events.ClientReady;
 export const once = true;
@@ -38,6 +39,15 @@ export async function execute(client: Client) {
   if (staleFights.length > 0) {
     console.log(`[Ready] Found ${staleFights.length} stale fight(s) — sending recovery messages...`);
     for (const fight of staleFights) {
+      // Refund FIRST, independent of whether the recovery message can even
+      // be delivered — the fight itself lives only in server memory, so any
+      // Aura spent entering it (Dungeon/Boss/Field Boss) is unrecoverable
+      // otherwise. Ascension/Duel/Raid cost no Aura, so auraCost is 0 there
+      // and this is a no-op.
+      if (fight.auraCost > 0) {
+        await refundAura(fight.userId, fight.auraCost).catch(() => {});
+      }
+
       try {
         const guild  = await client.guilds.fetch(fight.guildId).catch(() => null);
         const thread = guild
@@ -45,13 +55,16 @@ export async function execute(client: Client) {
           : null;
 
         if (thread && thread.isTextBased() && "send" in thread) {
+          const resourceLine = fight.auraCost > 0
+            ? `Your progress has been lost, but your **${fight.auraCost} ◈ Resonance Aura** has been refunded.`
+            : `Your progress has been lost but no resources were deducted.`;
           await (thread as any).send({
             embeds: [new EmbedBuilder()
               .setColor(0x334155)
               .setTitle("◈  Resonance Field Disrupted")
               .setDescription(
                 `The **${fight.command}** was interrupted by a system restart.\n\n` +
-                `Your progress has been lost but no resources were deducted.\n` +
+                `${resourceLine}\n` +
                 `You may start a new fight anytime.`
               )
               .setFooter({ text: "CARTETHYIA  ·  Auto-recovery" })],

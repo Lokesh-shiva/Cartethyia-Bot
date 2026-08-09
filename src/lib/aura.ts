@@ -62,6 +62,30 @@ export async function consumeAura(userId: string, cost: number): Promise<number 
   return newAura;
 }
 
+/**
+ * Refund `amount` aura charges (e.g. a fight interrupted by a bot restart
+ * that never got to finish). Computes current aura first (accounting for
+ * elapsed regen) so the refund adds on top of whatever's already regenerated,
+ * capped at max — never lets a refund push someone above their real cap.
+ */
+export async function refundAura(userId: string, amount: number): Promise<number | null> {
+  if (amount <= 0) return null;
+  const user = await prisma.user.findUnique({
+    where:  { id: userId },
+    select: { resonanceAura: true, auraUpdatedAt: true, patronTier: true },
+  });
+  if (!user) return null;
+
+  const maxAura     = getMaxAura(user.patronTier);
+  const { current } = computeAura(user.resonanceAura, user.auraUpdatedAt, maxAura);
+  const newAura = Math.min(maxAura, current + amount);
+  await prisma.user.update({
+    where: { id: userId },
+    data:  { resonanceAura: newAura, auraUpdatedAt: new Date() },
+  });
+  return newAura;
+}
+
 /** Read current aura for a user (no write). */
 export async function getAura(userId: string): Promise<AuraState | null> {
   const user = await prisma.user.findUnique({

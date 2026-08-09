@@ -25,7 +25,7 @@ import { rollRarity, rollMainStat, rollSubstats, rollSubstatValue, calcMainStatV
 import { awardUser, isDispatchBlocked, replyNotStarted } from "../../lib/economy";
 import { auditAward } from "../../lib/antiCheat";
 import { acquireLock, releaseLock, alreadyInCombatMsg } from "../../lib/combatLock";
-import { registerFight, clearFight } from "../../lib/fightTracker";
+import { registerFight, clearFight, addFightAuraCost } from "../../lib/fightTracker";
 import { checkLevelUp } from "../../lib/progression";
 import { computeAura, consumeAura, auraBar, fmtAuraRegen, getMaxAura } from "../../lib/aura";
 import { CE, echoEmoji } from "../../lib/emojiManager";
@@ -361,7 +361,7 @@ async function runDungeon(
   }
 
   await interaction.editReply({ content: `${dungeon.emoji} Dungeon entered! <#${thread.id}>`, embeds: [], components: [] });
-  await registerFight(interaction.user.id, thread.id, interaction.guildId!, "Dungeon");
+  await registerFight(interaction.user.id, thread.id, interaction.guildId!, "Dungeon", dungeon.auraCost);
 
   let currentDbUser = dbUser;
   let runNumber     = 1;
@@ -557,6 +557,7 @@ async function runDungeon(
     }
 
     await consumeAura(interaction.user.id, dungeon.auraCost);
+    await addFightAuraCost(interaction.user.id, dungeon.auraCost);
     currentDbUser = freshUser;
     runNumber++;
   }

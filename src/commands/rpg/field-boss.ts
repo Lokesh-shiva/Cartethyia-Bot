@@ -375,7 +375,7 @@ const command: Command = {
 
       await sel.editReply({ content: `◈ A field boss emerges. <#${thread.id}>`, components: [], embeds: [] });
       await consumeAura(interaction.user.id, 1);
-      await registerFight(interaction.user.id, thread.id, interaction.guildId!, "Field Boss");
+      await registerFight(interaction.user.id, thread.id, interaction.guildId!, "Field Boss", 1);
       // lock already held
 
       // Scale to player

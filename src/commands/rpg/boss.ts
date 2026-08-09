@@ -335,7 +335,7 @@ const command: Command = {
 
       await sel.editReply({ content: `◈ The challenge begins. <#${thread.id}>`, components: [], embeds: [] });
       await consumeAura(interaction.user.id, 1);
-      await registerFight(interaction.user.id, thread.id, interaction.guildId!, "Boss Challenge");
+      await registerFight(interaction.user.id, thread.id, interaction.guildId!, "Boss Challenge", 1);
       // lock already held
 
       // ── Scale boss ───────────────────────────────────────────────────────────

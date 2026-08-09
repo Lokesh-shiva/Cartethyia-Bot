@@ -382,6 +382,11 @@ model ActiveFight {
   guildId   String
   command   String   // "Ascension Trial" | "Boss Challenge" | "Dungeon" | "Field Boss"
   startedAt DateTime @default(now())
+  // Resonance Aura already spent entering this fight (0 for Ascension/Duel/
+  // Raid, which don't cost Aura) — refunded by the restart-recovery routine
+  // in ready.ts if the bot goes down mid-fight, since the fight itself lives
+  // only in server memory and is unrecoverable.
+  auraCost  Int      @default(0)
 
   @@map("active_fights")
 }
