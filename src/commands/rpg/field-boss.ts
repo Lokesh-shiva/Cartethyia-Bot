@@ -1393,7 +1393,15 @@ const command: Command = {
 
             let echoLifesteal = bonuses.lifesteal + havocLifesteal + (ar_e.lifesteal ?? 0);
             if (def.kind === "FLAT_LIFESTEAL") echoLifesteal += def.pct;
-            state.playerHp = Math.min(state.playerHpMax, applyLifesteal(echoLifesteal, playerDmg, state.playerHp, state.playerHpMax) + ar_e.healHp + result.healHp);
+            const scaledEchoHeal = Math.floor(result.healHp * (1 + bonuses.healingBonus));
+            state.playerHp = Math.min(state.playerHpMax, applyLifesteal(echoLifesteal, playerDmg, state.playerHp, state.playerHpMax) + ar_e.healHp + scaledEchoHeal);
+            if (scaledEchoHeal > 0) {
+              const benchPos = ([1, 2, 3] as PositionIndex[]).find(pos => pos !== activeUnit && allyBundles[pos] && allyBundles[pos]!.hp > 0);
+              if (benchPos) {
+                const b = allyBundles[benchPos]!;
+                b.hp = Math.min(b.hpMax, b.hp + scaledEchoHeal);
+              }
+            }
 
             if (result.armsNextCrit) nextAttackCritArmed = true;
             if (result.defShredTurns > 0) {

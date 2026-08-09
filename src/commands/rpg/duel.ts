@@ -1442,8 +1442,17 @@ export async function execute(interaction: ChatInputCommandInteraction) {
             else              { state.cDefShredTurnsLeft = echoResult.defShredTurns + 1; state.cDefShredPct = echoResult.defShredPct; }
           }
           if (echoResult.healHp > 0) {
-            if (isChallenger) state.cHp = Math.min(state.cHpMax, state.cHp + echoResult.healHp);
-            else              state.dHp = Math.min(state.dHpMax, state.dHp + echoResult.healHp);
+            const scaledEchoHeal = Math.floor(echoResult.healHp * (1 + myBonus.healingBonus));
+            if (isChallenger) state.cHp = Math.min(state.cHpMax, state.cHp + scaledEchoHeal);
+            else              state.dHp = Math.min(state.dHpMax, state.dHp + scaledEchoHeal);
+            const myRoster = isChallenger ? state.cRoster : state.dRoster;
+            const myActivePos = isChallenger ? state.cActivePosition : state.dActivePosition;
+            const myAllyBundlesForHeal = isChallenger ? state.cAllyBundles : state.dAllyBundles;
+            const benchPos = ([1, 2, 3] as PositionIndex[]).find(pos => pos !== myActivePos && myAllyBundlesForHeal[pos] && myAllyBundlesForHeal[pos]!.hp > 0);
+            if (benchPos) {
+              const b = myAllyBundlesForHeal[benchPos]!;
+              b.hp = Math.min(b.hpMax, b.hp + scaledEchoHeal);
+            }
           }
         }
 

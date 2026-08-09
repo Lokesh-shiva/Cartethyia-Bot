@@ -1216,7 +1216,15 @@ export async function handleEncounterFight(
 
         echoSkillCooldown = (result.resetCdOnCrit && echoCrit) ? 0 : ECHO_SKILL_COOLDOWN;
         state.playerEnergy = result.setEnergyFull ? 100 : Math.min(100, state.playerEnergy + ENERGY_PER_TURN + elemDischargeEnergy(bonuses.elementPassive, echoCrit) + result.bonusEnergy);
-        if (result.healHp > 0) state.playerHp = Math.min(state.playerHpMax, state.playerHp + result.healHp);
+        if (result.healHp > 0) {
+          const scaledEchoHeal = Math.floor(result.healHp * (1 + bonuses.healingBonus));
+          state.playerHp = Math.min(state.playerHpMax, state.playerHp + scaledEchoHeal);
+          const benchPos = ([1, 2, 3] as PositionIndex[]).find(pos => pos !== activeUnit && allyBundles[pos] && allyBundles[pos]!.hp > 0);
+          if (benchPos) {
+            const b = allyBundles[benchPos]!;
+            b.hp = Math.min(b.hpMax, b.hp + scaledEchoHeal);
+          }
+        }
         if (result.armsNextCrit) nextAttackCritArmed = true;
         if (result.defShredTurns > 0) {
           enemyDefShredTurnsLeft = result.defShredTurns + 1;

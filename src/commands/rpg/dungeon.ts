@@ -1443,7 +1443,15 @@ async function runWave(
 
           const energyGain = Math.floor(stats.energyPerTurn) + elemDischargeEnergy(bonuses.elementPassive, crit) + result.bonusEnergy;
           ws.playerEnergy = result.setEnergyFull ? 100 : Math.min(100, ws.playerEnergy + energyGain);
-          ws.playerHp     = Math.min(ws.playerHpMax, ws.playerHp + ar_e.healHp + result.healHp);
+          const scaledEchoHeal = Math.floor(result.healHp * (1 + bonuses.healingBonus));
+          ws.playerHp = Math.min(ws.playerHpMax, ws.playerHp + ar_e.healHp + scaledEchoHeal);
+          if (scaledEchoHeal > 0) {
+            const benchPos = ([1, 2, 3] as PositionIndex[]).find(pos => pos !== ws.activeUnit && ws.allyBundles[pos] && ws.allyBundles[pos]!.hp > 0);
+            if (benchPos) {
+              const b = ws.allyBundles[benchPos]!;
+              b.hp = Math.min(b.hpMax, b.hp + scaledEchoHeal);
+            }
+          }
 
           let echoLifesteal = bonuses.lifesteal + havocLifesteal + (ar_e.lifesteal ?? 0);
           if (def.kind === "FLAT_LIFESTEAL") echoLifesteal += def.pct;

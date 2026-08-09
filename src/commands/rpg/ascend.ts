@@ -1285,7 +1285,15 @@ const command: Command = {
 
           const energyGain = ENERGY_PER_TURN_ASCEND + elemDischargeEnergy(bonuses.elementPassive, crit) + result.bonusEnergy;
           state.playerEnergy = result.setEnergyFull ? 100 : Math.min(100, state.playerEnergy + energyGain);
-          state.playerHp     = Math.min(state.playerHpMax, state.playerHp + ar_e.healHp + result.healHp);
+          const scaledEchoHeal = Math.floor(result.healHp * (1 + bonuses.healingBonus));
+          state.playerHp = Math.min(state.playerHpMax, state.playerHp + ar_e.healHp + scaledEchoHeal);
+          if (scaledEchoHeal > 0) {
+            const benchPos = ([1, 2, 3] as PositionIndex[]).find(pos => pos !== activeUnit && allyBundles[pos] && allyBundles[pos]!.hp > 0);
+            if (benchPos) {
+              const b = allyBundles[benchPos]!;
+              b.hp = Math.min(b.hpMax, b.hp + scaledEchoHeal);
+            }
+          }
 
           let echoLifesteal = bonuses.lifesteal + havocLifesteal + (ar_e.lifesteal ?? 0);
           if (def.kind === "FLAT_LIFESTEAL") echoLifesteal += def.pct;
