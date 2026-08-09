@@ -104,8 +104,13 @@ const command: Command = {
       }));
 
     // ── Equipped weapon ─────────────────────────────────────────────────────
+    // Weapons are equipped per-character (Weapon.characterId — "self" for
+    // the player's own loadout, a character id like "solace" for a signature
+    // weapon like Wellspring). Without this filter, findFirst could just as
+    // easily return another character's equipped weapon instead of the
+    // player's own.
     const rawWeapon = await prisma.weapon.findFirst({
-      where:  { userId: user.id, isEquipped: true },
+      where:  { userId: user.id, characterId: "self", isEquipped: true },
       select: { name: true, weaponType: true, rarity: true, baseAtk: true, level: true, awakened: true, awakenedName: true, weaponBond: true },
     });
 
@@ -132,9 +137,15 @@ const command: Command = {
     // first non-"self" position on their roster (order 1→2→3). Which one it
     // picks isn't load-bearing — it's just a sensible default until they
     // choose one via the /profile picker.
+    // NOTE: profileDisplayCharacterId being NULL is ambiguous between "never
+    // chosen yet" (should fall back to the roster) and "explicitly cleared
+    // via the 'None — no badge' picker option" (should show nothing) — both
+    // states stored the same way. The "None" option now writes the literal
+    // string "none" instead of null so the two are distinguishable.
     const rosterFallback = [prefRow?.teamPosition1, prefRow?.teamPosition2, prefRow?.teamPosition3]
       .find(v => v != null && v !== "self") ?? null;
-    const rawDisplayId = prefRow?.profileDisplayCharacterId ?? rosterFallback;
+    const explicitlyCleared = prefRow?.profileDisplayCharacterId === "none";
+    const rawDisplayId = explicitlyCleared ? null : (prefRow?.profileDisplayCharacterId ?? rosterFallback);
     const displayCharacterId = rawDisplayId && CHARACTER_KITS[rawDisplayId] ? rawDisplayId : null;
     const displayProgress = displayCharacterId
       ? await prisma.characterProgress.findUnique({
@@ -248,10 +259,12 @@ const command: Command = {
       collector.on("collect", async (sel: StringSelectMenuInteraction) => {
         await sel.deferUpdate();
         const choice = sel.values[0];
-        const newDisplayId = choice === "none" ? null : (ownedIds.includes(choice) ? choice : null);
+        // "none" is stored literally (not null) so it's distinguishable from
+        // "never chosen yet" — see the read-side NOTE above on rawDisplayId.
+        const newDisplayId = choice === "none" ? "none" : (ownedIds.includes(choice) ? choice : "none");
         await prisma.user.update({ where: { id: interaction.user.id }, data: { profileDisplayCharacterId: newDisplayId } });
         await sel.followUp({
-          content: newDisplayId
+          content: newDisplayId !== "none"
             ? `◈ **${CHARACTER_KITS[newDisplayId].label}** will now show on your profile. Run \`/profile\` again to see it.`
             : `◈ Profile badge cleared. Run \`/profile\` again to see it.`,
           flags: 64,
