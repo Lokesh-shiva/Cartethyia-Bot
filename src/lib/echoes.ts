@@ -546,7 +546,7 @@ export const SUBSTAT_LABELS: Record<string, string> = {
 };
 
 export const MAIN_STAT_POOL: Record<EchoCost, string[]> = {
-  4: ["CRIT_RATE", "CRIT_DMG", "HP_PCT", "ATK_PCT", "ELEM_DMG_PCT", "DEF_PCT"],
+  4: ["CRIT_RATE", "CRIT_DMG", "HP_PCT", "ATK_PCT", "ELEM_DMG_PCT", "DEF_PCT", "HEALING_PCT"],
   3: ["HP_PCT", "ATK_PCT", "DEF_PCT", "FUSION_DMG", "GLACIO_DMG", "ELECTRO_DMG", "AERO_DMG", "HAVOC_DMG", "SPECTRO_DMG", "HEALING_PCT"],
   1: ["HP_FLAT", "HP_PCT", "ATK_FLAT", "ATK_PCT", "DEF_FLAT", "DEF_PCT"],
 };
