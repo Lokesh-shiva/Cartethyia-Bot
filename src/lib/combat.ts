@@ -50,7 +50,7 @@ export function calcPlayerDamage(
 ): DamageResult {
   const isCrit   = Math.random() < critRate;
   const weakMult = weakBonus ? 1.5 : 1.0;
-  const reduction = shattered ? 0 : Math.min(0.75, def / (def + 1500));
+  const reduction = shattered ? 0 : Math.min(0.75, def / (def + 600));
   const damage   = Math.max(1, Math.floor(
     baseAtk * mult * (1 - reduction) * (isCrit ? critDmg : 1) * weakMult
   ));
@@ -60,7 +60,7 @@ export function calcPlayerDamage(
 // DEF uses a divisor model (WuWa/Genshin-style): diminishing returns, never immune.
 // reduction = DEF / (DEF + 600), clamped to 75% max so squishies always take some damage.
 export function calcEnemyDamage(enemyAtk: number, playerDef: number, moveMult: number): number {
-  const reduction = Math.min(0.75, playerDef / (playerDef + 1500));
+  const reduction = Math.min(0.75, playerDef / (playerDef + 600));
   return Math.max(1, Math.floor(enemyAtk * moveMult * (1 - reduction)));
 }
 

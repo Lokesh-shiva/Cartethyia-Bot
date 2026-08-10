@@ -862,7 +862,7 @@ async function runWave(
         const defShredActive = ws.enemyDefShredTurnsLeft > 0;
         const effectiveDef = (havocFrenzyActive ? scaled.def_ * (1 - ws.havocFrenzyDefIgnore) : scaled.def_) * (defShredActive ? (1 - ws.enemyDefShredPct) : 1);
         const defVal       = isShattered ? 0 : effectiveDef;
-        const defReduction = Math.min(0.75, defVal / (defVal + 1500));
+        const defReduction = Math.min(0.75, defVal / (defVal + 600));
         const havocAtkMult   = havocFrenzyActive ? ws.havocFrenzyAtkMult : 1.0;
         const havocLifesteal = havocFrenzyActive ? ws.havocFrenzyLifesteal : 0;
         const radCrit = elemRadianceCrit(bonuses.elementPassive, ws.playerHp, ws.playerHpMax);
