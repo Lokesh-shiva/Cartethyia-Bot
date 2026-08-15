@@ -403,104 +403,16 @@ export const data = new SlashCommandBuilder()
       .setRequired(false)
   );
 
-export async function execute(interaction: ChatInputCommandInteraction) {
-  await interaction.deferReply();
-
-  const target    = interaction.options.getUser("target", true);
-  const isPublic  = (interaction.options.getString("visibility") ?? "private") === "public";
-
-  if (target.id === interaction.user.id) {
-    await interaction.editReply({ content: "You can't duel yourself." }); return;
-  }
-  if (target.bot) {
-    await interaction.editReply({ content: "Bots don't duel." }); return;
-  }
-  if (!acquireLock(interaction.user.id, "Duel")) {
-    await interaction.editReply({ content: alreadyInCombatMsg(interaction.user.id) }); return;
-  }
-  if (!acquireLock(target.id, "Duel")) {
-    releaseLock(interaction.user.id);
-    await interaction.editReply({ content: `◈ **${target.displayName}** is already in combat and can't duel right now.` }); return;
-  }
-  const [challengerDb, challengedDb] = await Promise.all([
-    prisma.user.findUnique({
-      where:  { id: interaction.user.id },
-      select: { baseHp: true, baseAtk: true, baseDef: true, baseSpeed: true, critRate: true, critDmg: true, element: true, level: true, dispatchStatus: true, dispatchEndsAt: true, teamPosition1: true, teamPosition2: true, teamPosition3: true },
-    }),
-    prisma.user.findUnique({
-      where:  { id: target.id },
-      select: { baseHp: true, baseAtk: true, baseDef: true, baseSpeed: true, critRate: true, critDmg: true, element: true, level: true, teamPosition1: true, teamPosition2: true, teamPosition3: true },
-    }),
-  ]);
-
-  if (!challengerDb) { await replyNotStarted(interaction); return; }
-  if (!challengedDb) { await interaction.editReply({ content: `${target.displayName} hasn't started yet.` }); return; }
-  if (isDispatchBlocked(challengerDb)) {
-    await interaction.editReply({ content: "◈ You are on an expedition. Use **/dispatch claim** first before duelling." });
-    return;
-  }
-
-  // Resolve full combat stats (echoes + weapon + set bonuses + unique ability) for both
-  const [cBonuses, dBonuses] = await Promise.all([
-    resolvePlayerBonuses(interaction.user.id),
-    resolvePlayerBonuses(target.id),
-  ]);
-  const cStats = applyBonuses(challengerDb, cBonuses);
-  const dStats = applyBonuses(challengedDb, dBonuses);
-
-  const cName = interaction.guild?.members.cache.get(interaction.user.id)?.displayName ?? interaction.user.displayName;
-  const dName = interaction.guild?.members.cache.get(target.id)?.displayName ?? target.displayName;
-  const cAvatar = interaction.user.displayAvatarURL({ size: 256, extension: "png" });
-  const dAvatar = target.displayAvatarURL({ size: 256, extension: "png" });
-
-  // ── Challenge embed ───────────────────────────────────────────────────────
-  const acceptRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
-    new ButtonBuilder().setCustomId("duel_accept").setLabel("⚔️  Accept").setStyle(ButtonStyle.Success),
-    new ButtonBuilder().setCustomId("duel_decline").setLabel("✖  Decline").setStyle(ButtonStyle.Danger),
-  );
-
-  await interaction.editReply({
-    content: `<@${target.id}>`,
-    embeds: [new EmbedBuilder()
-      .setColor(0x6366F1)
-      .setTitle("⚔️  Duel Challenge")
-      .setDescription(
-        `**${cName}** challenges **${dName}** to a duel!\n\n` +
-        `${elementEmoji(challengerDb.element)} ${cName}  ·  Lv ${challengerDb.level}  ·  ${cStats.hp.toLocaleString()} HP  ·  ${cStats.atk} ATK\n` +
-        `${elementEmoji(challengedDb.element)} ${dName}  ·  Lv ${challengedDb.level}  ·  ${dStats.hp.toLocaleString()} HP  ·  ${dStats.atk} ATK\n\n` +
-        `Winner gets **${WIN_CREDITS} Credits** + **${WIN_EXP} EXP**.\n` +
-        `${isPublic ? "👁️ **Public duel** — anyone can spectate in the thread." : "🔒 **Private duel** — only participants can see the thread."}\n\n` +
-        `*${dName} has 60 seconds to accept.*`
-      )
-      .setFooter({ text: "CARTETHYIA  ·  Duel" })],
-    components: [acceptRow],
-  });
-
-  const challengeMsg = await interaction.fetchReply();
-
-  const challengeCollector = interaction.channel?.createMessageComponentCollector({
-    componentType: ComponentType.Button,
-    filter: b => b.user.id === target.id && (b.customId === "duel_accept" || b.customId === "duel_decline"),
-    time:   60_000,
-    max:    1,
-  });
-
-  challengeCollector?.on("collect", async (btn: ButtonInteraction) => {
-    if (btn.customId === "duel_decline") {
-      releaseLock(interaction.user.id);
-      releaseLock(target.id);
-      await btn.update({
-        embeds: [new EmbedBuilder().setColor(0x4A4A5A)
-          .setDescription(`**${dName}** declined the duel.`)
-          .setFooter({ text: "CARTETHYIA  ·  Duel" })],
-        components: [],
-      });
-      return;
-    }
-
-    // Accept — start duel
-    await btn.deferUpdate();
-    await interaction.editReply({ components: [] });
+export async function startDuelMatch(
+  challengerId: string, challengedId: string, isPublic: boolean,
+  challengerDb: any, challengedDb: any,
+  cBonuses: PlayerBonuses, dBonuses: PlayerBonuses,
+  cStats: ResolvedStats, dStats: ResolvedStats,
+  cName: string, dName: string, cAvatar: string, dAvatar: string,
+  guildId: string, channel: TextChannel,
+  postStatus: (payload: any) => Promise<any>,
+): Promise<void> {
+    await postStatus({ components: [] });
 
     // locks already held for both players
 
@@ -524,8 +436,8 @@ export async function execute(interaction: ChatInputCommandInteraction) {
     // /team only lets you pick owned characters, so if Position 1 names a
     // character, its bundle is guaranteed to exist).
     const [cSide, dSide] = await Promise.all([
-      buildDuelSideRoster(interaction.user.id, challengerDb),
-      buildDuelSideRoster(target.id, challengedDb),
+      buildDuelSideRoster(challengerId, challengerDb),
+      buildDuelSideRoster(challengedId, challengedDb),
     ]);
     const isDevGuild = cSide.hasSolace || dSide.hasSolace;
     const cActivePosition: PositionIndex = 1;
@@ -542,7 +454,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
     const dAllySolaceStats = dInitialBundle?.solaceStats as (ResolvedStats & { hasWellspring?: boolean; wellspringRefinement?: number }) | null;
 
     const state: DuelState = {
-      challengerId: interaction.user.id, challengedId: target.id,
+      challengerId: challengerId, challengedId: challengedId,
       challengerName: cName, challengedName: dName,
       cHp: cStats.hp, cHpMax: cStats.hp, cEnergy: 0, cSkillCd: 0,
       cAtk: cStats.atk, cDef: cStats.def, cSpd: cStats.spd,
@@ -593,30 +505,30 @@ export async function execute(interaction: ChatInputCommandInteraction) {
       dSolaceForte: { phase: 0, charge: 0 }, dForteEmpoweredTurnsLeft: 0,
       dActiveAllyCharacterId, dAllyKit, dAllyMechanicState: dInitialBundle?.mechanicState ?? null,
       // Higher SPD acts first; ties keep the challenger-first default
-      currentTurn: dStats.spd > cStats.spd ? target.id : interaction.user.id,
+      currentTurn: dStats.spd > cStats.spd ? challengedId : challengerId,
       turn: 1,
     };
 
     // Create thread (public or private based on user choice)
     let thread;
     try {
-      thread = await (interaction.channel as TextChannel).threads.create({
+      thread = await (channel as TextChannel).threads.create({
         name:                `⚔️ ${cName} vs ${dName}`,
         autoArchiveDuration: 60,
         type:                isPublic ? ChannelType.PublicThread : ChannelType.PrivateThread,
       });
-      await thread.members.add(interaction.user.id);
-      await thread.members.add(target.id);
-      await registerFight(interaction.user.id, thread.id, interaction.guildId!, "Duel");
-      await registerFight(target.id, thread.id, interaction.guildId!, "Duel");
+      await thread.members.add(challengerId);
+      await thread.members.add(challengedId);
+      await registerFight(challengerId, thread.id, guildId, "Duel");
+      await registerFight(challengedId, thread.id, guildId, "Duel");
     } catch {
-      releaseLock(interaction.user.id);
-      releaseLock(target.id);
-      await interaction.editReply({ content: "I need **Create Threads** + **Send Messages in Threads** permissions here to run the duel. Ask an admin, or try another channel.", embeds: [], components: [] }).catch(() => {});
+      releaseLock(challengerId);
+      releaseLock(challengedId);
+      await postStatus({ content: "I need **Create Threads** + **Send Messages in Threads** permissions here to run the duel. Ask an admin, or try another channel.", embeds: [], components: [] }).catch(() => {});
       return;
     }
 
-    await interaction.editReply({
+    await postStatus({
       content: `${isPublic ? "👁️" : "🔒"} Duel started! <#${thread.id}>${isPublic ? "  ·  *Anyone can spectate.*" : ""}`,
     });
 
@@ -629,7 +541,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
       { subtitle: "The duel begins — challenger strikes first" },
     );
     await thread.send({
-      content: `<@${interaction.user.id}> <@${target.id}>`,
+      content: `<@${challengerId}> <@${challengedId}>`,
       files: [new AttachmentBuilder(introCard, { name: "duel-intro.webp" })],
     });
 
@@ -642,19 +554,19 @@ export async function execute(interaction: ChatInputCommandInteraction) {
       won: boolean, winnerId: string | null,
       outcomeDesc: string,
     ) => {
-      releaseLock(interaction.user.id);
-      releaseLock(target.id);
-      await clearFight(interaction.user.id);
-      await clearFight(target.id);
+      releaseLock(challengerId);
+      releaseLock(challengedId);
+      await clearFight(challengerId);
+      await clearFight(challengedId);
       if (won && winnerId) {
-        const loserId = winnerId === interaction.user.id ? target.id : interaction.user.id;
+        const loserId = winnerId === challengerId ? challengedId : challengerId;
         await awardUser(winnerId, { credits: WIN_CREDITS, resonanceExp: WIN_EXP }, "duel");
         await prisma.user.update({ where: { id: winnerId }, data: { duelWins:   { increment: 1 } } }).catch(() => {});
         await prisma.user.update({ where: { id: loserId },  data: { duelLosses: { increment: 1 } } }).catch(() => {});
         await incrementWeaponBond(winnerId).catch(() => null);
       }
       // Post outcome back to the original channel
-      await interaction.editReply({
+      await postStatus({
         content: "",
         embeds: [new EmbedBuilder()
           .setColor(won ? 0x4CAF50 : 0x4A4A5A)
@@ -1779,6 +1691,112 @@ export async function execute(interaction: ChatInputCommandInteraction) {
     };
 
     runDuelTurn();
+}
+
+export async function execute(interaction: ChatInputCommandInteraction) {
+  await interaction.deferReply();
+
+  const target    = interaction.options.getUser("target", true);
+  const isPublic  = (interaction.options.getString("visibility") ?? "private") === "public";
+
+  if (target.id === interaction.user.id) {
+    await interaction.editReply({ content: "You can't duel yourself." }); return;
+  }
+  if (target.bot) {
+    await interaction.editReply({ content: "Bots don't duel." }); return;
+  }
+  if (!acquireLock(interaction.user.id, "Duel")) {
+    await interaction.editReply({ content: alreadyInCombatMsg(interaction.user.id) }); return;
+  }
+  if (!acquireLock(target.id, "Duel")) {
+    releaseLock(interaction.user.id);
+    await interaction.editReply({ content: `◈ **${target.displayName}** is already in combat and can't duel right now.` }); return;
+  }
+  const [challengerDb, challengedDb] = await Promise.all([
+    prisma.user.findUnique({
+      where:  { id: interaction.user.id },
+      select: { baseHp: true, baseAtk: true, baseDef: true, baseSpeed: true, critRate: true, critDmg: true, element: true, level: true, dispatchStatus: true, dispatchEndsAt: true, teamPosition1: true, teamPosition2: true, teamPosition3: true },
+    }),
+    prisma.user.findUnique({
+      where:  { id: target.id },
+      select: { baseHp: true, baseAtk: true, baseDef: true, baseSpeed: true, critRate: true, critDmg: true, element: true, level: true, teamPosition1: true, teamPosition2: true, teamPosition3: true },
+    }),
+  ]);
+
+  if (!challengerDb) { await replyNotStarted(interaction); return; }
+  if (!challengedDb) { await interaction.editReply({ content: `${target.displayName} hasn't started yet.` }); return; }
+  if (isDispatchBlocked(challengerDb)) {
+    await interaction.editReply({ content: "◈ You are on an expedition. Use **/dispatch claim** first before duelling." });
+    return;
+  }
+
+  // Resolve full combat stats (echoes + weapon + set bonuses + unique ability) for both
+  const [cBonuses, dBonuses] = await Promise.all([
+    resolvePlayerBonuses(interaction.user.id),
+    resolvePlayerBonuses(target.id),
+  ]);
+  const cStats = applyBonuses(challengerDb, cBonuses);
+  const dStats = applyBonuses(challengedDb, dBonuses);
+
+  const cName = interaction.guild?.members.cache.get(interaction.user.id)?.displayName ?? interaction.user.displayName;
+  const dName = interaction.guild?.members.cache.get(target.id)?.displayName ?? target.displayName;
+  const cAvatar = interaction.user.displayAvatarURL({ size: 256, extension: "png" });
+  const dAvatar = target.displayAvatarURL({ size: 256, extension: "png" });
+
+  // ── Challenge embed ───────────────────────────────────────────────────────
+  const acceptRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
+    new ButtonBuilder().setCustomId("duel_accept").setLabel("⚔️  Accept").setStyle(ButtonStyle.Success),
+    new ButtonBuilder().setCustomId("duel_decline").setLabel("✖  Decline").setStyle(ButtonStyle.Danger),
+  );
+
+  await interaction.editReply({
+    content: `<@${target.id}>`,
+    embeds: [new EmbedBuilder()
+      .setColor(0x6366F1)
+      .setTitle("⚔️  Duel Challenge")
+      .setDescription(
+        `**${cName}** challenges **${dName}** to a duel!\n\n` +
+        `${elementEmoji(challengerDb.element)} ${cName}  ·  Lv ${challengerDb.level}  ·  ${cStats.hp.toLocaleString()} HP  ·  ${cStats.atk} ATK\n` +
+        `${elementEmoji(challengedDb.element)} ${dName}  ·  Lv ${challengedDb.level}  ·  ${dStats.hp.toLocaleString()} HP  ·  ${dStats.atk} ATK\n\n` +
+        `Winner gets **${WIN_CREDITS} Credits** + **${WIN_EXP} EXP**.\n` +
+        `${isPublic ? "👁️ **Public duel** — anyone can spectate in the thread." : "🔒 **Private duel** — only participants can see the thread."}\n\n` +
+        `*${dName} has 60 seconds to accept.*`
+      )
+      .setFooter({ text: "CARTETHYIA  ·  Duel" })],
+    components: [acceptRow],
+  });
+
+  const challengeMsg = await interaction.fetchReply();
+
+  const challengeCollector = interaction.channel?.createMessageComponentCollector({
+    componentType: ComponentType.Button,
+    filter: b => b.user.id === target.id && (b.customId === "duel_accept" || b.customId === "duel_decline"),
+    time:   60_000,
+    max:    1,
+  });
+
+  challengeCollector?.on("collect", async (btn: ButtonInteraction) => {
+    if (btn.customId === "duel_decline") {
+      releaseLock(interaction.user.id);
+      releaseLock(target.id);
+      await btn.update({
+        embeds: [new EmbedBuilder().setColor(0x4A4A5A)
+          .setDescription(`**${dName}** declined the duel.`)
+          .setFooter({ text: "CARTETHYIA  ·  Duel" })],
+        components: [],
+      });
+      return;
+    }
+
+    // Accept — start duel
+    await btn.deferUpdate();
+    await startDuelMatch(
+      interaction.user.id, target.id, isPublic,
+      challengerDb, challengedDb, cBonuses, dBonuses, cStats, dStats,
+      cName, dName, cAvatar, dAvatar,
+      interaction.guildId!, interaction.channel as TextChannel,
+      (payload: any) => interaction.editReply(payload),
+    );
   });
 
   challengeCollector?.on("end", async (col) => {
