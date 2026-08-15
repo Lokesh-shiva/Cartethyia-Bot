@@ -20,7 +20,7 @@ export type EchoSkillDef =
   | { kind: "FULL_ENERGY";      name: string }                                 // no damage — energy set to 100
   | { kind: "ARM_NEXT_CRIT";    name: string }                                 // next attack (any type) is guaranteed crit
   | { kind: "FLAT_LIFESTEAL";   name: string; pct: number }                    // extra flat lifesteal, on top of normal
-  | { kind: "NAMED_SET_TRIGGER";name: string; setId: NamedSetId }              // instantly triggers that set's signature mechanic
+  | { kind: "NAMED_SET_TRIGGER";name: string; setId: NamedSetId; healPct?: number } // instantly triggers that set's signature mechanic; optional bundled heal (see Lumenwrought Seraph)
   | { kind: "PARTY_HEAL";       name: string; healPct: number }                // instant heal, reaches allies/party — see targeting rules in combat loops
   | { kind: "PLAIN";            name: string };                                // generic 1/3-cost fallback
 
@@ -49,7 +49,7 @@ export const BOSS_ECHO_SKILLS: Record<string, EchoSkillDef> = {
   "Thundercrown Herald":   { kind: "NAMED_SET_TRIGGER",name: "Heraldic Surge",      setId: "STORMCALLERS_OATH" },
   "Galebound Sovereign":   { kind: "NAMED_SET_TRIGGER",name: "Sovereign's Wind",    setId: "WINDSTRIDERS_LEGACY" },
   "Voidmaw Devourer":      { kind: "NAMED_SET_TRIGGER",name: "Devourer's Hunger",   setId: "VOIDBORN_REMNANT" },
-  "Lumenwrought Seraph":   { kind: "NAMED_SET_TRIGGER",name: "Seraphic Grace",      setId: "RADIANT_CONVERGENCE" },
+  "Lumenwrought Seraph":   { kind: "NAMED_SET_TRIGGER",name: "Seraphic Grace",      setId: "RADIANT_CONVERGENCE", healPct: 0.15 },
 };
 
 const GENERIC_SKILL_NAME: Record<string, string> = {
@@ -102,7 +102,8 @@ export function describeEchoSkill(def: EchoSkillDef): string {
     case "FULL_ENERGY":      return `Deals no damage, but instantly fills your Energy to 100.`;
     case "ARM_NEXT_CRIT":    return `Your next attack (any move) is guaranteed to crit.`;
     case "FLAT_LIFESTEAL":   return `Heals ${Math.round(def.pct * 100)}% of the damage dealt, on top of your normal lifesteal.`;
-    case "NAMED_SET_TRIGGER":return `Instantly triggers ${NAMED_SETS[def.setId]?.name ?? def.setId}'s signature 4pc/5pc effect — only works if you have that set actively equipped (2+ pieces), otherwise it's just a plain hit.`;
+    case "NAMED_SET_TRIGGER":return `Instantly triggers ${NAMED_SETS[def.setId]?.name ?? def.setId}'s signature 4pc/5pc effect — only works if you have that set actively equipped (2+ pieces), otherwise it's just a plain hit.` +
+      (def.healPct ? ` Also instantly heals ${Math.round(def.healPct * 100)}% of your max HP (scales with Healing Bonus) — also heals your benched ally if you have a team roster set, or your whole living party in a raid.` : "");
     case "PARTY_HEAL":       return `Instantly heals ${Math.round(def.healPct * 100)}% of your max HP (scales with Healing Bonus) — also heals your benched ally if you have a team roster set, or your whole living party in a raid.`;
     case "PLAIN":            return `A simple bonus-damage strike.`;
   }
@@ -203,6 +204,7 @@ export function applyEchoSkill(def: EchoSkillDef, ctx: EchoSkillCtx): EchoSkillR
       break;
     case "NAMED_SET_TRIGGER":
       // caller handles the actual set-mechanic trigger — this def just carries the setId
+      if (def.healPct) r.healHp = Math.floor(ctx.playerHpMax * def.healPct);
       break;
     case "PLAIN":
       r.dmgMult = 1;
