@@ -7,6 +7,7 @@ import { loadAllPrefixes } from "../lib/prefixManager";
 import { setAuditClient, runBalanceSweep } from "../lib/antiCheat";
 import prisma from "../lib/prisma";
 import { refundAura } from "../lib/aura";
+import { startTournamentSweep } from "../lib/tournamentSweep";
 
 export const name = Events.ClientReady;
 export const once = true;
@@ -76,6 +77,35 @@ export async function execute(client: Client) {
     await prisma.activeFight.deleteMany();
     console.log(`[Ready] Stale fights cleared.`);
   }
+
+  // ── Tournament match recovery: re-queue interrupted matches instead of
+  // treating the downtime as forfeit time — a crash should never eliminate
+  // someone from a tournament they were actively winning.
+  const staleMatches = await prisma.tournamentMatch.findMany({
+    where: { status: "IN_PROGRESS", winnerId: null },
+  });
+  if (staleMatches.length > 0) {
+    console.log(`[Ready] Found ${staleMatches.length} stale tournament match(es) — requeueing...`);
+    for (const match of staleMatches) {
+      const tournament = await prisma.tournament.findUnique({ where: { id: match.tournamentId } });
+      if (!tournament) continue;
+      // Fresh full round-hours window starting now, so the downtime itself
+      // never eats into the players' time to play the match.
+      await prisma.tournamentMatch.update({
+        where: { id: match.id },
+        data: {
+          status: "PENDING",
+          threadId: null,
+          deadlineAt: new Date(Date.now() + tournament.roundHours * 60 * 60 * 1000),
+        },
+      });
+    }
+    console.log(`[Ready] Stale tournament matches requeued.`);
+  }
+
+  // Weekly duel tournament: signup close, match auto-start, deadline
+  // forfeits, round advance, reward distribution — all driven from here.
+  startTournamentSweep(client);
 
   client.user?.setPresence({
     activities: [

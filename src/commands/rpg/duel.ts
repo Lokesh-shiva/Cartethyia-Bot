@@ -411,6 +411,8 @@ export async function startDuelMatch(
   cName: string, dName: string, cAvatar: string, dAvatar: string,
   guildId: string, channel: TextChannel,
   postStatus: (payload: any) => Promise<any>,
+  onComplete?: (winnerId: string | null, threadId: string) => void,
+  onThreadCreated?: (threadId: string) => void,
 ): Promise<void> {
     await postStatus({ components: [] });
 
@@ -521,6 +523,7 @@ export async function startDuelMatch(
       await thread.members.add(challengedId);
       await registerFight(challengerId, thread.id, guildId, "Duel");
       await registerFight(challengedId, thread.id, guildId, "Duel");
+      onThreadCreated?.(thread.id);
     } catch {
       releaseLock(challengerId);
       releaseLock(challengedId);
@@ -582,6 +585,7 @@ export async function startDuelMatch(
       }).catch(() => {});
       await thread.setArchived(true).catch(() => {});
       setTimeout(() => thread.delete().catch(() => {}), 5 * 60 * 1000);
+      onComplete?.(won ? winnerId : null, thread.id);
     };
 
     const runDuelTurn = () => {

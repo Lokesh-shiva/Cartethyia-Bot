@@ -207,6 +207,7 @@ const command: Command = {
     const PATRON_TIER_NAMES: Record<number, string> = { 1: "Attuned", 2: "Ascendant", 3: "Calamity" };
     const patronTitle = (user as any).patronTier ? `  ·  ✦ ${PATRON_TIER_NAMES[(user as any).patronTier]} Patron` : "";
     const solaceBadge = displayCharacter ? `  ·  ${displayKit?.emoji ?? "◈"} ${displayCharacter.label} (Lv${displayCharacter.level})` : "";
+    const tournamentTitleLine = user.tournamentTitle ? `  ·  🏆 ${user.tournamentTitle}` : "";
 
     // Only nudge for own profile (not when viewing others)
     const nudge = target.id === interaction.user.id
@@ -220,7 +221,7 @@ const command: Command = {
         nudge
       )
       .setImage("attachment://profile.webp")
-      .setFooter({ text: `CARTETHYIA  ·  ${displayName}'s Profile${patronTitle}${solaceBadge}${extraBonds}`, iconURL: avatarUrl });
+      .setFooter({ text: `CARTETHYIA  ·  ${displayName}'s Profile${patronTitle}${tournamentTitleLine}${solaceBadge}${extraBonds}`, iconURL: avatarUrl });
 
     // Own-profile view gets a picker to change which owned character's badge
     // shows — independent of /team's combat-ally selection.
