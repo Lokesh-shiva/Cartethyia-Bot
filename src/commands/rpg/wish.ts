@@ -1089,6 +1089,7 @@ const command: Command = {
     const window = await prisma.bannerWindow.findUnique({ where: { id: "banner1" } });
     const now = Date.now();
     const windowActive = !!window && now >= window.startsAt.getTime() && now <= window.endsAt.getTime();
+    const weaponWindowActive = windowActive && (window?.weaponBannerEnabled ?? true);
     const featuredId = window?.featuredCharacterId && CHARACTER_KITS[window.featuredCharacterId] ? window.featuredCharacterId : "solace";
     const featuredKit = CHARACTER_KITS[featuredId];
     const pickerArtPath = characterArtPath(featuredId);
@@ -1100,8 +1101,8 @@ const command: Command = {
         .setLabel(windowActive ? `✦ Limited Character Banner — Featuring ${featuredKit.label}` : "✦ Limited Character Banner — Banner ended")
         .setStyle(ButtonStyle.Success).setDisabled(!windowActive),
       new ButtonBuilder().setCustomId("wish_pick_weapon")
-        .setLabel(windowActive ? "⚔ Limited Weapon Banner — The Tempered Vow" : "⚔ Limited Weapon Banner — Banner ended")
-        .setStyle(ButtonStyle.Danger).setDisabled(!windowActive),
+        .setLabel(weaponWindowActive ? "⚔ Limited Weapon Banner — The Tempered Vow" : "⚔ Limited Weapon Banner — Banner ended")
+        .setStyle(ButtonStyle.Danger).setDisabled(!weaponWindowActive),
     );
 
     const pickerHasArt = windowActive && fs.existsSync(pickerArtPath);
@@ -1111,7 +1112,9 @@ const command: Command = {
       .setDescription(
         "**Standard** — the evergreen weapon pool, spends Fracture Keys.\n\n" +
         `**Limited Character Banner** — featuring ${featuredKit.label}, spends Radiant Keys.\n\n` +
-        "**Limited Weapon Banner** *(The Tempered Vow)* — featuring Wellspring, spends Radiant Keys." +
+        (weaponWindowActive
+          ? "**Limited Weapon Banner** *(The Tempered Vow)* — featuring Wellspring, spends Radiant Keys."
+          : "") +
         (windowActive && window ? `\n\n✦ **Banner ends** <t:${Math.floor(window.endsAt.getTime() / 1000)}:R> (<t:${Math.floor(window.endsAt.getTime() / 1000)}:f>)` : "")
       )
       .setFooter({ text: "CARTETHYIA  ·  Wish" });

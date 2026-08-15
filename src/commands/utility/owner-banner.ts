@@ -33,6 +33,7 @@ builder.addSubcommand(s =>
     .addStringOption(o => o.setName("character").setDescription("5★ featured on the character banner (default: Solace)").setRequired(false).addChoices(...FIVE_STAR_CHOICES))
     .addStringOption(o => o.setName("four_star_a").setDescription("1st 4★ rate-up on the character banner").setRequired(false).addChoices(...FOUR_STAR_CHOICES))
     .addStringOption(o => o.setName("four_star_b").setDescription("2nd 4★ rate-up on the character banner").setRequired(false).addChoices(...FOUR_STAR_CHOICES))
+    .addBooleanOption(o => o.setName("include_weapon").setDescription("Also run the Wellspring weapon banner alongside it (default: true)").setRequired(false))
 );
 builder.addSubcommand(s => s.setName("status").setDescription("Show the current banner window."));
 builder.addSubcommand(s => s.setName("end").setDescription("Immediately close the banner window."));
@@ -70,11 +71,12 @@ export async function execute(interaction: ChatInputCommandInteraction) {
     const featuredCharacterId = interaction.options.getString("character") ?? "solace";
     const featured4StarA = interaction.options.getString("four_star_a");
     const featured4StarB = interaction.options.getString("four_star_b");
+    const weaponBannerEnabled = interaction.options.getBoolean("include_weapon") ?? true;
 
     await prisma.bannerWindow.upsert({
       where:  { id: BANNER_ID },
-      create: { id: BANNER_ID, startsAt, endsAt, featuredCharacterId, featured4StarA, featured4StarB },
-      update: { startsAt, endsAt, featuredCharacterId, featured4StarA, featured4StarB },
+      create: { id: BANNER_ID, startsAt, endsAt, featuredCharacterId, featured4StarA, featured4StarB, weaponBannerEnabled },
+      update: { startsAt, endsAt, featuredCharacterId, featured4StarA, featured4StarB, weaponBannerEnabled },
     });
 
     const kit = CHARACTER_KITS[featuredCharacterId];
@@ -87,7 +89,8 @@ export async function execute(interaction: ChatInputCommandInteraction) {
         .setDescription(
           `Character banner now features **${kit?.label ?? featuredCharacterId}**` +
           (fourStarLine ? ` — 4★ rate-up: **${fourStarLine}**` : "") +
-          `.\n**The Tempered Vow** (Wellspring) is also live.\n\n` +
+          `.\n` +
+          (weaponBannerEnabled ? `**The Tempered Vow** (Wellspring) is also live.\n\n` : `**The Tempered Vow** (Wellspring) is *not* running this time.\n\n`) +
           `Starts: <t:${Math.floor(startsAt.getTime() / 1000)}:F>\n` +
           `Ends: <t:${Math.floor(endsAt.getTime() / 1000)}:F> (**${days}** days)`
         )],
@@ -108,7 +111,8 @@ export async function execute(interaction: ChatInputCommandInteraction) {
         .setTitle(active ? "✦ Banner Active" : "◇ Banner Not Active")
         .setDescription(
           `Starts: <t:${Math.floor(window.startsAt.getTime() / 1000)}:F>\n` +
-          `Ends: <t:${Math.floor(window.endsAt.getTime() / 1000)}:F>`
+          `Ends: <t:${Math.floor(window.endsAt.getTime() / 1000)}:F>\n` +
+          `Weapon banner (Wellspring): ${window.weaponBannerEnabled ? "included" : "not included"}`
         )],
     });
     return;

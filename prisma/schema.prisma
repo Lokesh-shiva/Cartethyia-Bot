@@ -593,6 +593,12 @@ model BannerWindow {
   featured4StarA      String?
   featured4StarB      String?
 
+  // Character and weapon banners share one window's start/end by default
+  // ("companion banners"), but the owner can run a character banner without
+  // the weapon banner riding along — e.g. Solace's Wellspring shouldn't
+  // relaunch every time a different character is featured.
+  weaponBannerEnabled Boolean @default(true)
+
   @@map("banner_windows")
 }
 
