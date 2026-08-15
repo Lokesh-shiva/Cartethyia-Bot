@@ -55,6 +55,7 @@ model User {
   teamPosition2 String? // "self" | a characterId | null ("None" — unfilled)
   teamPosition3 String? // "self" | a characterId | null ("None" — unfilled)
   profileDisplayCharacterId String? // which owned character's badge shows on /profile — independent of teamPosition1/2/3 so it survives roster changes without needing to be untangled from combat-ally selection.
+  tournamentTitle           String? // "Tournament Champion" | "Tournament Finalist" | null — shown in /profile footer
 
   // Milestone 4a — Banner #1 (The Rising Overture / The Tempered Vow)
   radiantKeys Int @default(0) // spends on the limited character/weapon banners only, never on /wish Standard
@@ -389,6 +390,54 @@ model ActiveFight {
   auraCost  Int      @default(0)
 
   @@map("active_fights")
+}
+
+// ─── Weekly Duel Tournament ────────────────────────────────────────────────
+model Tournament {
+  id            String   @id @default(cuid())
+  guildId       String
+  channelId     String
+  phase         String   // "SIGNUP" | "IN_PROGRESS" | "COMPLETED" | "CANCELLED"
+  maxPlayers    Int
+  signupEndsAt  DateTime
+  roundHours    Int      // deadline per round, in hours
+  currentRound  Int      @default(0) // 0 = signup, 1+ = which round is live
+  createdAt     DateTime @default(now())
+
+  participants  TournamentParticipant[]
+  matches       TournamentMatch[]
+
+  @@index([guildId, phase])
+  @@map("tournaments")
+}
+
+model TournamentParticipant {
+  id              String     @id @default(cuid())
+  tournamentId    String
+  tournament      Tournament @relation(fields: [tournamentId], references: [id])
+  userId          String
+  seed            Int        // bracket position, assigned at signup close
+  eliminated      Boolean    @default(false)
+  eliminatedRound Int?       // which round they were knocked out in, null = still in or champion
+  joinedAt        DateTime   @default(now())
+
+  @@unique([tournamentId, userId])
+  @@map("tournament_participants")
+}
+
+model TournamentMatch {
+  id           String     @id @default(cuid())
+  tournamentId String
+  tournament   Tournament @relation(fields: [tournamentId], references: [id])
+  round        Int
+  playerAId    String
+  playerBId    String?    // null = playerA has a bye this round
+  winnerId     String?    // null = not yet resolved
+  threadId     String?    // the /duel thread this match ran in, once started
+  status       String     // "PENDING" | "IN_PROGRESS" | "COMPLETE" | "FORFEIT"
+  deadlineAt   DateTime
+
+  @@map("tournament_matches")
 }
 
 // ─── Active Encounter ────────────────────────────────────────────────────────
