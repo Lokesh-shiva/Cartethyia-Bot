@@ -1539,6 +1539,15 @@ export async function startDuelMatch(
           const bundles         = defenderIsChallenger ? state.cAllyBundles : state.dAllyBundles;
           const defenderName      = defenderIsChallenger ? state.challengerName : state.challengedName;
           const koLabel             = (defenderIsChallenger ? state.cAllyKit : state.dAllyKit)?.label ?? "Their ally";
+          // The outgoing unit's live HP (state.cAllyHp/dAllyHp, or state.cHp/dHp
+          // for a self-KO) is never mirrored into its bundle slot except on a
+          // voluntary swap — without this, a dead position's bundle.hp stays
+          // frozen at whatever it was before it became active, so
+          // duelPositionHp/isTeamWiped see it as still alive forever and the
+          // duel can never end via team-wipe once anyone's died and fallen back.
+          if (positionValue(roster, activePos) !== "self" && bundles[activePos]) {
+            bundles[activePos]!.hp = 0;
+          }
           const fallback = nextAliveFallback(roster, activePos, pos => duelPositionHp(state, defenderIsChallenger, pos));
           if (fallback === null) return; // team wiped — loss handled below
           const bundle = positionValue(roster, fallback) === "self" ? null : (bundles[fallback] ?? null);
@@ -1596,6 +1605,20 @@ export async function startDuelMatch(
           if (state.cHp <= 0 && compositeHasSecondWind(state.cBonuses.abilityEffects) && !state.cSecondWindUsed) {
             state.cSecondWindUsed = true; state.cHp = 1;
             moveLine += `\n✦ ${state.challengerName}'s **Undying Will** — survives at 1 HP!`;
+          }
+        }
+
+        // Player-self KO -> auto-fallback, mirroring the ally-KO block above.
+        // That block only ever checked ActiveUnit === "ally" — when the
+        // active unit was the player's own "self" position, nothing here
+        // ever advanced the team, so a team with position1="self" simply
+        // hung at 0 HP instead of falling back to position2/3. Placed after
+        // Second Wind so a real revive-at-1-HP always gets first chance.
+        if (isDevGuild) {
+          if (isChallenger && state.dActiveUnit === "player" && state.dHp <= 0) {
+            applyDuelKoFallback(false);
+          } else if (!isChallenger && state.cActiveUnit === "player" && state.cHp <= 0) {
+            applyDuelKoFallback(true);
           }
         }
 
