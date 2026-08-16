@@ -281,6 +281,47 @@ function duelPositionHp(state: DuelState, isChallenger: boolean, pos: PositionIn
   return positionValue(roster, pos) === "self" ? selfHp : (bundles[pos]?.hp ?? 0);
 }
 
+// A bunch of passive/reactive effects (named-set turn-heals, element-passive
+// regen, panic shields, echo-skill self-heals) were written before the
+// 3-position ally system existed and unconditionally read/wrote state.cHp/
+// dHp — the player's own literal HP — even while an ally is the one actually
+// fighting. That let a dead-and-benched player quietly heal back up every
+// turn via passive regen while their ally tanked hits, since nothing was
+// reading the ally's HP pool at all. These helpers route to whichever pool
+// (state.cHp/dHp for "player", state.cAllyHp/dAllyHp for "ally") is actually
+// active for that side right now.
+function activeHp(state: DuelState, isChallenger: boolean): number {
+  const unit = isChallenger ? state.cActiveUnit : state.dActiveUnit;
+  return unit === "ally" ? (isChallenger ? state.cAllyHp : state.dAllyHp) : (isChallenger ? state.cHp : state.dHp);
+}
+function activeHpMax(state: DuelState, isChallenger: boolean): number {
+  const unit = isChallenger ? state.cActiveUnit : state.dActiveUnit;
+  return unit === "ally" ? (isChallenger ? state.cAllyHpMax : state.dAllyHpMax) : (isChallenger ? state.cHpMax : state.dHpMax);
+}
+function healActiveUnit(state: DuelState, isChallenger: boolean, amount: number): void {
+  if (amount <= 0) return;
+  const unit = isChallenger ? state.cActiveUnit : state.dActiveUnit;
+  const max  = activeHpMax(state, isChallenger);
+  if (unit === "ally") {
+    if (isChallenger) state.cAllyHp = Math.min(max, state.cAllyHp + amount);
+    else              state.dAllyHp = Math.min(max, state.dAllyHp + amount);
+  } else {
+    if (isChallenger) state.cHp = Math.min(max, state.cHp + amount);
+    else              state.dHp = Math.min(max, state.dHp + amount);
+  }
+}
+function damageActiveUnit(state: DuelState, isChallenger: boolean, amount: number): void {
+  if (amount <= 0) return;
+  const unit = isChallenger ? state.cActiveUnit : state.dActiveUnit;
+  if (unit === "ally") {
+    if (isChallenger) state.cAllyHp = Math.max(0, state.cAllyHp - amount);
+    else              state.dAllyHp = Math.max(0, state.dAllyHp - amount);
+  } else {
+    if (isChallenger) state.cHp = Math.max(0, state.cHp - amount);
+    else              state.dHp = Math.max(0, state.dHp - amount);
+  }
+}
+
 function buildDuelButtons(state: DuelState, forUserId: string, isDevGuild: boolean): (ActionRowBuilder<ButtonBuilder> | ActionRowBuilder<StringSelectMenuBuilder>)[] {
   const isChallenger  = forUserId === state.challengerId;
   const myEnergy       = isChallenger ? state.cEnergy  : state.dEnergy;
@@ -717,9 +758,8 @@ export async function startDuelMatch(
         // shared damage-tail below.
         let radiantTurnHealAmount = 0;
         if (mySetId === "RADIANT_CONVERGENCE") {
-          const heal = radiantConvergenceOnTurnHeal(myNamedState, myHpMax, myBonus.healingBonus);
-          if (isChallenger) state.cHp = Math.min(state.cHpMax, state.cHp + heal.healAmount);
-          else              state.dHp = Math.min(state.dHpMax, state.dHp + heal.healAmount);
+          const heal = radiantConvergenceOnTurnHeal(myNamedState, activeHpMax(state, isChallenger), myBonus.healingBonus);
+          healActiveUnit(state, isChallenger, heal.healAmount);
           radiantDmgMult = heal.dmgMult;
           radiantTurnHealAmount = heal.healAmount;
           myHp = isChallenger ? state.cHp : state.dHp;
@@ -1319,9 +1359,10 @@ export async function startDuelMatch(
               case "FROSTVEIL_BASTION":
                 if (!myNamedState.glacioShieldUsed) {
                   myNamedState.glacioShieldUsed = true;
-                  const shieldAmt = Math.floor(myHpMax * 0.28);
-                  if (isChallenger) { state.cHp = Math.min(state.cHpMax, state.cHp + shieldAmt); state.cGlacioShieldTurnsLeft = 5; state.cGlacioShieldElemBonus = 0.22; }
-                  else              { state.dHp = Math.min(state.dHpMax, state.dHp + shieldAmt); state.dGlacioShieldTurnsLeft = 5; state.dGlacioShieldElemBonus = 0.22; }
+                  const shieldAmt = Math.floor(activeHpMax(state, isChallenger) * 0.28);
+                  healActiveUnit(state, isChallenger, shieldAmt);
+                  if (isChallenger) { state.cGlacioShieldTurnsLeft = 5; state.cGlacioShieldElemBonus = 0.22; }
+                  else              { state.dGlacioShieldTurnsLeft = 5; state.dGlacioShieldElemBonus = 0.22; }
                   echoNamedTriggerTag = `+${shieldAmt} HP shield!`;
                 }
                 break;
@@ -1365,8 +1406,7 @@ export async function startDuelMatch(
           }
           if (echoResult.healHp > 0) {
             const scaledEchoHeal = Math.floor(echoResult.healHp * (1 + myBonus.healingBonus));
-            if (isChallenger) state.cHp = Math.min(state.cHpMax, state.cHp + scaledEchoHeal);
-            else              state.dHp = Math.min(state.dHpMax, state.dHp + scaledEchoHeal);
+            healActiveUnit(state, isChallenger, scaledEchoHeal);
             const myRoster = isChallenger ? state.cRoster : state.dRoster;
             const myActivePos = isChallenger ? state.cActivePosition : state.dActivePosition;
             const myAllyBundlesForHeal = isChallenger ? state.cAllyBundles : state.dAllyBundles;
@@ -1433,15 +1473,17 @@ export async function startDuelMatch(
           moveLine += ` *(Frost Shield!)*`;
         }
 
-        // Self heal (lifesteal + heal-on-crit), energy
+        // Self heal (lifesteal + heal-on-crit), energy — targets whichever
+        // unit is actually dealing the hit (self or ally), not always the
+        // literal player, same reasoning as healActiveUnit's other callers.
         const echoLifestealPct = echoResult && myBonus.echoSkill?.kind === "FLAT_LIFESTEAL" ? myBonus.echoSkill.pct : 0;
-        const healed = applyLifesteal(myLife + myHavocLifesteal + echoLifestealPct, damage, myHp, myHpMax) - myHp + ar.healHp;
+        const activeHpForHeal = activeHp(state, isChallenger);
+        const healed = applyLifesteal(myLife + myHavocLifesteal + echoLifestealPct, damage, activeHpForHeal, activeHpMax(state, isChallenger)) - activeHpForHeal + ar.healHp;
+        healActiveUnit(state, isChallenger, Math.max(0, healed));
         if (isChallenger) {
-          state.cHp = Math.min(state.cHpMax, state.cHp + Math.max(0, healed));
           state.cEnergy = Math.min(100, state.cEnergy + ar.bonusEnergy);
           if (!isSwapAction) state.cFirstAction = false;
         } else {
-          state.dHp = Math.min(state.dHpMax, state.dHp + Math.max(0, healed));
           state.dEnergy = Math.min(100, state.dEnergy + ar.bonusEnergy);
           if (!isSwapAction) state.dFirstAction = false;
         }
@@ -1490,8 +1532,8 @@ export async function startDuelMatch(
         if (!isSwapAction) {
           const oppNamedState = isChallenger ? state.dNamedState : state.cNamedState;
           const oppSetId       = oppBonus.activeNamedSetId;
-          const oppHpNow       = isChallenger ? state.dHp    : state.cHp;
-          const oppHpMaxNow    = isChallenger ? state.dHpMax : state.cHpMax;
+          const oppHpNow       = activeHp(state, !isChallenger);
+          const oppHpMaxNow    = activeHpMax(state, !isChallenger);
           if (oppSetId === "SMOLDERING_SOVEREIGN") smolderingSovereignOnDamageTaken(oppNamedState);
           if (oppSetId === "WINDSTRIDERS_LEGACY") windstridersLegacyOnBigHitTaken(oppNamedState, damage, oppHpMaxNow);
           if (oppSetId === "VOIDBORN_REMNANT") {
@@ -1506,8 +1548,7 @@ export async function startDuelMatch(
             radiantConvergenceOnHitTaken(oppNamedState, damage, oppHpMaxNow);
             const burst = radiantConvergenceCheckBurstHeal(oppNamedState, oppHpNow, oppHpMaxNow, oppBonus.healingBonus);
             if (burst > 0) {
-              if (isChallenger) state.dHp = Math.min(state.dHpMax, state.dHp + burst);
-              else              state.cHp = Math.min(state.cHpMax, state.cHp + burst);
+              healActiveUnit(state, !isChallenger, burst);
               moveLine += `\n✨ **Radiant Convergence** — burst-heal +${burst} HP!`;
             }
           }
@@ -1515,14 +1556,14 @@ export async function startDuelMatch(
             const counter = frostveilBastionOnHitTaken(oppNamedState);
             if (counter.counterProc) {
               const counterDmg = Math.floor(myHpMax * counter.vibDrain * 0.35);
-              if (isChallenger) state.cHp = Math.max(0, state.cHp - counterDmg);
-              else              state.dHp = Math.max(0, state.dHp - counterDmg);
+              damageActiveUnit(state, isChallenger, counterDmg);
               moveLine += `\n❄️ **Counter-Frost** — ${isChallenger ? state.challengedName : state.challengerName} strikes back for ${counterDmg} DMG!`;
             }
             const panic = frostveilBastionCheckPanicShield(oppNamedState, oppHpNow, oppHpMaxNow);
             if (panic.triggered) {
-              if (isChallenger) { state.dHp = Math.min(state.dHpMax, state.dHp + panic.shieldAmount); state.dGlacioShieldTurnsLeft = panic.turnsLeft + 1; state.dGlacioShieldElemBonus = panic.elemDmgBonus; }
-              else              { state.cHp = Math.min(state.cHpMax, state.cHp + panic.shieldAmount); state.cGlacioShieldTurnsLeft = panic.turnsLeft + 1; state.cGlacioShieldElemBonus = panic.elemDmgBonus; }
+              healActiveUnit(state, !isChallenger, panic.shieldAmount);
+              if (isChallenger) { state.dGlacioShieldTurnsLeft = panic.turnsLeft + 1; state.dGlacioShieldElemBonus = panic.elemDmgBonus; }
+              else              { state.cGlacioShieldTurnsLeft = panic.turnsLeft + 1; state.cGlacioShieldElemBonus = panic.elemDmgBonus; }
               moveLine += `\n❄️ **Frostveil Shield** — ${isChallenger ? state.challengedName : state.challengerName} gains +${panic.shieldAmount} HP, +${Math.floor(panic.elemDmgBonus * 100)}% Glacio DMG for ${panic.turnsLeft} turns!`;
             }
           }
@@ -1622,11 +1663,14 @@ export async function startDuelMatch(
           }
         }
 
-        // Spectro Radiance regen — both players heal if they have RADIANCE
-        const cRegen = elemRadianceRegen(state.cBonuses.elementPassive, state.cHpMax);
-        const dRegen = elemRadianceRegen(state.dBonuses.elementPassive, state.dHpMax);
-        if (cRegen > 0) state.cHp = Math.min(state.cHpMax, state.cHp + cRegen);
-        if (dRegen > 0) state.dHp = Math.min(state.dHpMax, state.dHp + dRegen);
+        // Spectro Radiance regen — both sides heal if they have RADIANCE.
+        // Targets whichever unit is actually active, not always the literal
+        // player — otherwise a dead, benched player would passively heal
+        // back up every turn via their own RADIANCE while their ally fights.
+        const cRegen = elemRadianceRegen(state.cBonuses.elementPassive, activeHpMax(state, true));
+        const dRegen = elemRadianceRegen(state.dBonuses.elementPassive, activeHpMax(state, false));
+        healActiveUnit(state, true, cRegen);
+        healActiveUnit(state, false, dRegen);
 
         // Cooldown tick
         if (isChallenger && state.cSkillCd > 0) state.cSkillCd--;
