@@ -39,6 +39,31 @@ export function auraBar(current: number, max = MAX_AURA): string {
 }
 
 /**
+ * After a stored/updatedAt pair changes (a consume or refund), figure out
+ * what auraUpdatedAt should become. Naively stamping `new Date()` on every
+ * write restarts the full REGEN_INTERVAL_MS countdown from scratch — so a
+ * player who used 1 charge, waited 1h, then used their remaining 4 would see
+ * "3h to next" instead of "2h", because the 1h of progress already made
+ * toward that tick got silently discarded on the second write.
+ *
+ * Preserve that partial progress by backdating the new updatedAt by however
+ * far into the current regen window we already were — UNLESS regen was
+ * capped by maxAura before using the full elapsed time (sitting at/above cap
+ * for a while), in which case there's no fractional progress to preserve;
+ * the countdown genuinely restarts from now.
+ */
+function nextUpdatedAt(
+  now: number, msPassed: number, maxAura: number,
+  storedBefore: number, auraAfter: number,
+): Date {
+  const rawTicks   = Math.floor(msPassed / REGEN_INTERVAL_MS);
+  const regenCount = Math.min(maxAura - storedBefore, rawTicks);
+  const wasCapped  = regenCount < rawTicks || storedBefore + regenCount >= maxAura;
+  const msInto     = (auraAfter >= maxAura || wasCapped) ? 0 : msPassed % REGEN_INTERVAL_MS;
+  return new Date(now - msInto);
+}
+
+/**
  * Attempt to consume `cost` aura charges.
  * Returns the new aura value on success, or null if not enough.
  * Writes the updated value to the DB.
@@ -50,14 +75,16 @@ export async function consumeAura(userId: string, cost: number): Promise<number 
   });
   if (!user) return null;
 
-  const maxAura     = getMaxAura(user.patronTier);
+  const maxAura   = getMaxAura(user.patronTier);
+  const now       = Date.now();
+  const msPassed  = now - user.auraUpdatedAt.getTime();
   const { current } = computeAura(user.resonanceAura, user.auraUpdatedAt, maxAura);
   if (current < cost) return null;
 
   const newAura = current - cost;
   await prisma.user.update({
     where: { id: userId },
-    data:  { resonanceAura: newAura, auraUpdatedAt: new Date() },
+    data:  { resonanceAura: newAura, auraUpdatedAt: nextUpdatedAt(now, msPassed, maxAura, user.resonanceAura, newAura) },
   });
   return newAura;
 }
@@ -76,12 +103,14 @@ export async function refundAura(userId: string, amount: number): Promise<number
   });
   if (!user) return null;
 
-  const maxAura     = getMaxAura(user.patronTier);
+  const maxAura   = getMaxAura(user.patronTier);
+  const now       = Date.now();
+  const msPassed  = now - user.auraUpdatedAt.getTime();
   const { current } = computeAura(user.resonanceAura, user.auraUpdatedAt, maxAura);
   const newAura = Math.min(maxAura, current + amount);
   await prisma.user.update({
     where: { id: userId },
-    data:  { resonanceAura: newAura, auraUpdatedAt: new Date() },
+    data:  { resonanceAura: newAura, auraUpdatedAt: nextUpdatedAt(now, msPassed, maxAura, user.resonanceAura, newAura) },
   });
   return newAura;
 }

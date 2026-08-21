@@ -98,8 +98,9 @@ export async function execute(interaction: ChatInputCommandInteraction) {
   const bonuses = await resolvePlayerBonuses(target.id, filterCharacterId);
 
   // Render the Resonance Grid card
+  const gridCharacterLabel = CHARACTER_LABEL[filterCharacterId] ?? CHARACTER_KITS[filterCharacterId]?.label ?? filterCharacterId;
   const gridBuf = await generateGridCard({
-    displayName,
+    displayName: filterCharacterId === "self" ? displayName : `${displayName}'s ${gridCharacterLabel}`,
     element:    dbUser.element,
     slots:      equipped.filter(e => e.equippedSlot !== null).map(e => ({
       slot: e.equippedSlot!, name: e.name, element: e.element,
