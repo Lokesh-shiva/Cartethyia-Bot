@@ -76,6 +76,7 @@ interface DuelAllyBundle {
   characterId: string; kit: PlayableCharacterKit; hp: number; hpMax: number;
   mechanicState: unknown; basicLevel: number; skillLevel: number; ultimateLevel: number;
   introLevel: number; forteLevel: number; constellation: number; solaceStats: any;
+  bonuses: PlayerBonuses;
 }
 
 // ── In-memory active duels ────────────────────────────────────────────────────
@@ -100,6 +101,7 @@ interface DuelState {
   // Milestone 3e: challenger team state (dev guild only)
   cHasSolace: boolean;
   cAllySolaceStats: (ResolvedStats & { hasWellspring?: boolean; wellspringRefinement?: number }) | null; // each side's own resolved stats
+  cAllyBonuses: PlayerBonuses | null; // the currently-active ally's own full bonus set (elemDmgBonus/lifesteal/echoSkill/named-set/etc.)
   cSolaceBasicLevel: number; cSolaceSkillLevel: number; cSolaceUltimateLevel: number;
   cSolaceIntroLevel: number; cSolaceForteLevel: number; cSolaceConstellation: number;
   // Legacy "player"|"ally" flag — kept exactly as before so the ~900 lines of
@@ -126,6 +128,7 @@ interface DuelState {
   // Milestone 3e: challenged team state (dev guild only)
   dHasSolace: boolean;
   dAllySolaceStats: (ResolvedStats & { hasWellspring?: boolean; wellspringRefinement?: number }) | null; // each side's own resolved stats
+  dAllyBonuses: PlayerBonuses | null;
   dSolaceBasicLevel: number; dSolaceSkillLevel: number; dSolaceUltimateLevel: number;
   dSolaceIntroLevel: number; dSolaceForteLevel: number; dSolaceConstellation: number;
   dActiveUnit: "player" | "ally"; dAllyHp: number; dAllyHpMax: number;
@@ -262,13 +265,18 @@ async function buildDuelSideRoster(
     });
     if (!progress) continue; // not actually owned — treat this position as unfilled
     const solaceStats = await kit.resolveStats(userId);
+    // Ally's own equipped grid's full bonus set — elemDmgBonus/lifesteal/
+    // elementPassive/echoSkill/named-set mechanics, NOT the player's. Cheap:
+    // resolvePlayerBonuses caches per (userId, characterId) for 30s and
+    // kit.resolveStats() already calls it internally for the stat numbers.
+    const bonuses = await resolvePlayerBonuses(userId, value);
     // Use the ally's own gear/level-resolved HP, not the fixed level-90 base.
     const hpMax = solaceStats.hp;
     bundles[pos] = {
       characterId: value, kit, hp: hpMax, hpMax, mechanicState: kit.createInitialMechanicState(),
       basicLevel: progress.basicLevel ?? 1, skillLevel: progress.skillLevel ?? 1, ultimateLevel: progress.ultimateLevel ?? 1,
       introLevel: progress.introLevel ?? 1, forteLevel: progress.forteLevel ?? 1, constellation: progress.constellation ?? 0,
-      solaceStats,
+      solaceStats, bonuses,
     };
   }
   return { roster, bundles, hasSolace: Object.keys(bundles).length > 0 };
@@ -326,10 +334,13 @@ function buildDuelButtons(state: DuelState, forUserId: string, isDevGuild: boole
   const isChallenger  = forUserId === state.challengerId;
   const myEnergy       = isChallenger ? state.cEnergy  : state.dEnergy;
   const mySkillCd       = isChallenger ? state.cSkillCd : state.dSkillCd;
-  const myBonus         = isChallenger ? state.cBonuses : state.dBonuses;
   const myEchoCd         = isChallenger ? state.cEchoSkillCd : state.dEchoSkillCd;
   const myHasSolace       = isChallenger ? state.cHasSolace : state.dHasSolace;
   const myActiveUnit       = isChallenger ? state.cActiveUnit : state.dActiveUnit;
+  // Whichever unit is active gets its own bonus set (Echo Skill etc.), not
+  // always the player's own — mirrors the same fix in the main turn handler.
+  const myActiveAllyBonuses = isChallenger ? state.cAllyBonuses : state.dAllyBonuses;
+  const myBonus = (myActiveUnit === "ally" && myActiveAllyBonuses) ? myActiveAllyBonuses : (isChallenger ? state.cBonuses : state.dBonuses);
   const myConcertoEnergy    = isChallenger ? state.cConcertoEnergy : state.dConcertoEnergy;
   const myAttunement          = isChallenger ? state.cAttunement : state.dAttunement;
   const myName                 = isChallenger ? state.challengerName : state.challengedName;
@@ -495,6 +506,8 @@ export async function startDuelMatch(
     const dAllyKit: PlayableCharacterKit | null = dInitialBundle?.kit ?? null;
     const cAllySolaceStats = cInitialBundle?.solaceStats as (ResolvedStats & { hasWellspring?: boolean; wellspringRefinement?: number }) | null;
     const dAllySolaceStats = dInitialBundle?.solaceStats as (ResolvedStats & { hasWellspring?: boolean; wellspringRefinement?: number }) | null;
+    const cAllyBonuses = cInitialBundle?.bonuses ?? null;
+    const dAllyBonuses = dInitialBundle?.bonuses ?? null;
 
     const state: DuelState = {
       challengerId: challengerId, challengedId: challengedId,
@@ -512,7 +525,7 @@ export async function startDuelMatch(
       cHavocFrenzyAtkMult: 1.0, cHavocFrenzyLifesteal: 0, cHavocFrenzyDefIgnore: 0,
       cEchoSkillCd: 0, cDefShredTurnsLeft: 0, cDefShredPct: 0, cNextCritArmed: false,
       cHasSolace: cHasSolaceGate,
-      cAllySolaceStats,
+      cAllySolaceStats, cAllyBonuses,
       cSolaceBasicLevel: cInitialBundle?.basicLevel ?? 1, cSolaceSkillLevel: cInitialBundle?.skillLevel ?? 1,
       cSolaceUltimateLevel: cInitialBundle?.ultimateLevel ?? 1, cSolaceIntroLevel: cInitialBundle?.introLevel ?? 1,
       cSolaceForteLevel: cInitialBundle?.forteLevel ?? 1,
@@ -536,7 +549,7 @@ export async function startDuelMatch(
       dHavocFrenzyAtkMult: 1.0, dHavocFrenzyLifesteal: 0, dHavocFrenzyDefIgnore: 0,
       dEchoSkillCd: 0, dDefShredTurnsLeft: 0, dDefShredPct: 0, dNextCritArmed: false,
       dHasSolace: dHasSolaceGate,
-      dAllySolaceStats,
+      dAllySolaceStats, dAllyBonuses,
       dSolaceBasicLevel: dInitialBundle?.basicLevel ?? 1, dSolaceSkillLevel: dInitialBundle?.skillLevel ?? 1,
       dSolaceUltimateLevel: dInitialBundle?.ultimateLevel ?? 1, dSolaceIntroLevel: dInitialBundle?.introLevel ?? 1,
       dSolaceForteLevel: dInitialBundle?.forteLevel ?? 1,
@@ -664,7 +677,6 @@ export async function startDuelMatch(
         const myElem   = isChallenger ? state.cElement  : state.dElement;
         const oppElem  = isChallenger ? state.dElement  : state.cElement;
         const myName   = isChallenger ? state.challengerName : state.challengedName;
-        const myBonus  = isChallenger ? state.cBonuses  : state.dBonuses;
         let   myHp     = isChallenger ? state.cHp       : state.dHp;
         const myHpMax  = isChallenger ? state.cHpMax    : state.dHpMax;
         const oppHp    = isChallenger ? state.dHp       : state.cHp;
@@ -696,6 +708,26 @@ export async function startDuelMatch(
         const myAllyMechanicState     = isChallenger ? state.cAllyMechanicState : state.dAllyMechanicState;
         const isMySolaceAlly = myHasSolace && myActiveAllyCharacterId === "solace";
         let convergenceUsedThisTurn = false;
+
+        // Milestone 3.5b: whichever unit is currently acting/defending on
+        // EACH side uses ITS OWN resolved stats — my own ATK/Crit for my
+        // outgoing hit, the opponent's own DEF for what I'm hitting into.
+        // Same rule now applies to the whole bonus set (elemDmgBonus/
+        // lifesteal/elementPassive/echoSkill/named-set/etc. — everything
+        // read via myBonus below) via myAllyBonuses, not just the raw stats.
+        const myAllySolaceStats  = isChallenger ? state.cAllySolaceStats : state.dAllySolaceStats;
+        const oppAllySolaceStats = isChallenger ? state.dAllySolaceStats : state.cAllySolaceStats;
+        const myIsAllyActing     = myActiveUnit === "ally" && myAllySolaceStats !== null;
+        const oppIsAllyDefending = (isChallenger ? state.dActiveUnit : state.cActiveUnit) === "ally" && oppAllySolaceStats !== null;
+        const myAllyBonuses = isChallenger ? state.cAllyBonuses : state.dAllyBonuses;
+        const myBonus = myIsAllyActing ? myAllyBonuses! : (isChallenger ? state.cBonuses : state.dBonuses);
+        const activeAtk       = myIsAllyActing ? myAllySolaceStats!.atk      : myAtk;
+        const activeCritDmg   = myIsAllyActing ? myAllySolaceStats!.critDmg  : myCritDmg;
+        const activeCritBase  = myIsAllyActing ? myAllySolaceStats!.critRate : myCrit;
+        const oppActiveDef    = oppIsAllyDefending ? oppAllySolaceStats!.def : oppDef;
+        // myBonus is already active-unit-aware, so these just read through it.
+        const myElemDmg = myBonus.elemDmgBonus;
+        const myLife    = myBonus.lifesteal;
 
         const myNamedState  = isChallenger ? state.cNamedState : state.dNamedState;
         const mySetId       = myBonus.activeNamedSetId;
@@ -729,26 +761,6 @@ export async function startDuelMatch(
         const oppAttunementDefBonus  = solaceAttunementDefBonus(oppSolaceSkillLevel);
         const oppAttunementDefMult   = (isOppSolaceAlly ? getAttunementDefMult(oppAttunement, oppAttunementDefBonus, oppAttunementDblTurns > 0, oppSolaceConstellation >= 6) : 1)
           * (1 + oppWellspringDefBonus) * (1 + oppForteDefBonus);
-
-        // Milestone 3.5b: whichever unit is currently acting/defending on
-        // EACH side uses ITS OWN resolved stats — my own ATK/Crit for my
-        // outgoing hit, the opponent's own DEF for what I'm hitting into.
-        const myAllySolaceStats  = isChallenger ? state.cAllySolaceStats : state.dAllySolaceStats;
-        const oppAllySolaceStats = isChallenger ? state.dAllySolaceStats : state.cAllySolaceStats;
-        const myIsAllyActing     = myActiveUnit === "ally" && myAllySolaceStats !== null;
-        const oppIsAllyDefending = (isChallenger ? state.dActiveUnit : state.cActiveUnit) === "ally" && oppAllySolaceStats !== null;
-        const activeAtk       = myIsAllyActing ? myAllySolaceStats!.atk      : myAtk;
-        const activeCritDmg   = myIsAllyActing ? myAllySolaceStats!.critDmg  : myCritDmg;
-        const activeCritBase  = myIsAllyActing ? myAllySolaceStats!.critRate : myCrit;
-        const oppActiveDef    = oppIsAllyDefending ? oppAllySolaceStats!.def : oppDef;
-        // Same "whichever unit is active uses its OWN stats" rule, applied to
-        // elemDmgBonus/lifesteal — these previously always read the PLAYER's
-        // own equipped grid (state.cElemDmg/cLifesteal) even while an ally
-        // was the one actually dealing/taking the hit, so an ally's own
-        // elemental-DMG% and Lifesteal% substats/set bonuses never applied to
-        // their own attacks.
-        const myElemDmg = myIsAllyActing ? myAllySolaceStats!.elemDmgBonus : (isChallenger ? state.cElemDmg   : state.dElemDmg);
-        const myLife    = myIsAllyActing ? myAllySolaceStats!.lifesteal    : (isChallenger ? state.cLifesteal : state.dLifesteal);
 
         const oppRiloDefBuffTurns = isChallenger ? state.dRiloDefBuffTurnsLeft : state.cRiloDefBuffTurnsLeft;
         const oppRiloDefBuffPct   = isChallenger ? state.dRiloDefBuffPct : state.cRiloDefBuffPct;
@@ -918,6 +930,7 @@ export async function startDuelMatch(
             state.cSolaceForteLevel = finalBundle?.forteLevel ?? 1;
             state.cSolaceConstellation = finalBundle?.constellation ?? 0;
             state.cAllySolaceStats = finalBundle?.solaceStats ?? null;
+            state.cAllyBonuses = finalBundle?.bonuses ?? null;
           } else {
             state.dActivePosition = swapTargetPos;
             state.dActiveUnit = incomingIsPlayer ? "player" : "ally";
@@ -933,6 +946,7 @@ export async function startDuelMatch(
             state.dSolaceForteLevel = finalBundle?.forteLevel ?? 1;
             state.dSolaceConstellation = finalBundle?.constellation ?? 0;
             state.dAllySolaceStats = finalBundle?.solaceStats ?? null;
+            state.dAllyBonuses = finalBundle?.bonuses ?? null;
           }
           damage = 0;
         }
@@ -1613,6 +1627,7 @@ export async function startDuelMatch(
             SolaceForteLevel: bundle?.forteLevel ?? 1,
             SolaceConstellation: bundle?.constellation ?? 0,
             AllySolaceStats: bundle?.solaceStats ?? null,
+            AllyBonuses: bundle?.bonuses ?? null,
           };
           if (defenderIsChallenger) {
             state.cActivePosition = fields.ActivePosition; state.cActiveUnit = fields.ActiveUnit;
@@ -1621,7 +1636,7 @@ export async function startDuelMatch(
             state.cSolaceBasicLevel = fields.SolaceBasicLevel; state.cSolaceSkillLevel = fields.SolaceSkillLevel;
             state.cSolaceUltimateLevel = fields.SolaceUltimateLevel; state.cSolaceIntroLevel = fields.SolaceIntroLevel;
             state.cSolaceForteLevel = fields.SolaceForteLevel; state.cSolaceConstellation = fields.SolaceConstellation;
-            state.cAllySolaceStats = fields.AllySolaceStats;
+            state.cAllySolaceStats = fields.AllySolaceStats; state.cAllyBonuses = fields.AllyBonuses;
           } else {
             state.dActivePosition = fields.ActivePosition; state.dActiveUnit = fields.ActiveUnit;
             state.dActiveAllyCharacterId = fields.ActiveAllyCharacterId; state.dAllyKit = fields.AllyKit;
@@ -1629,7 +1644,7 @@ export async function startDuelMatch(
             state.dSolaceBasicLevel = fields.SolaceBasicLevel; state.dSolaceSkillLevel = fields.SolaceSkillLevel;
             state.dSolaceUltimateLevel = fields.SolaceUltimateLevel; state.dSolaceIntroLevel = fields.SolaceIntroLevel;
             state.dSolaceForteLevel = fields.SolaceForteLevel; state.dSolaceConstellation = fields.SolaceConstellation;
-            state.dAllySolaceStats = fields.AllySolaceStats;
+            state.dAllySolaceStats = fields.AllySolaceStats; state.dAllyBonuses = fields.AllyBonuses;
           }
           const fallbackLabel = bundle ? bundle.kit.label : defenderName;
           moveLine += `\n◇ **${koLabel} was knocked out** — ${defenderName}'s team falls back to **${fallbackLabel}**.`;
