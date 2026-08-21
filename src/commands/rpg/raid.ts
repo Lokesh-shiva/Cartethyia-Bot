@@ -82,6 +82,7 @@ interface RaidAllyBundle {
   characterId: string; kit: PlayableCharacterKit; hp: number; hpMax: number;
   mechanicState: unknown; basicLevel: number; skillLevel: number; ultimateLevel: number;
   introLevel: number; forteLevel: number; constellation: number; solaceStats: any;
+  bonuses: PlayerBonuses;
 }
 
 // ── Unified boss handle (works for both World bosses and Field bosses) ─────────
@@ -275,6 +276,7 @@ interface RaidParticipant {
   // ── Milestone 3d: per-participant team state (dev guild only) ────────────────
   hasSolace:      boolean;
   allySolaceStats: (ResolvedStats & { hasWellspring?: boolean; wellspringRefinement?: number }) | null; // each participant's own resolved stats
+  allyBonuses: PlayerBonuses | null; // the currently-active ally's own full bonus set (elemDmgBonus/lifesteal/echoSkill/named-set/etc.)
   solaceBasicLevel: number;
   solaceSkillLevel: number;
   solaceUltimateLevel: number;
@@ -477,11 +479,12 @@ function buildRaidButtons(p: RaidParticipant, isDevGuild: boolean): (ActionRowBu
       new ButtonBuilder().setCustomId("raid_ultimate")
         .setLabel("⚡  Ultimate").setStyle(ButtonStyle.Success).setDisabled(p.energy < 100),
     );
-    if (p.bonuses.echoSkill) {
+    const pRenderBonuses = (p.activeUnit === "ally" && p.allyBonuses) ? p.allyBonuses : p.bonuses;
+    if (pRenderBonuses.echoSkill) {
       const echoReady = p.echoSkillCd === 0;
       row.addComponents(
         new ButtonBuilder().setCustomId("raid_echoskill")
-          .setLabel(echoReady ? `🌀  ${p.bonuses.echoSkill.name}` : `🌀  ${p.bonuses.echoSkill.name} (${p.echoSkillCd}🔄)`)
+          .setLabel(echoReady ? `🌀  ${pRenderBonuses.echoSkill.name}` : `🌀  ${pRenderBonuses.echoSkill.name} (${p.echoSkillCd}🔄)`)
           .setStyle(ButtonStyle.Secondary).setDisabled(!echoReady),
       );
     }
@@ -776,13 +779,18 @@ async function addParticipant(raid: ActiveRaid, userId: string, displayName: str
     });
     if (!progress) continue; // not actually owned — treat this position as unfilled
     const solaceStats = await kit.resolveStats(userId);
+    // Ally's own equipped grid's full bonus set — elemDmgBonus/lifesteal/
+    // elementPassive/echoSkill/named-set mechanics, NOT the player's. Cheap:
+    // resolvePlayerBonuses caches per (userId, characterId) for 30s and
+    // kit.resolveStats() already calls it internally for the stat numbers.
+    const allyBonuses = await resolvePlayerBonuses(userId, value);
     // Use the ally's own gear/level-resolved HP, not the fixed level-90 base.
     const hpMax = solaceStats.hp;
     allyBundles[pos] = {
       characterId: value, kit, hp: hpMax, hpMax, mechanicState: kit.createInitialMechanicState(),
       basicLevel: progress.basicLevel ?? 1, skillLevel: progress.skillLevel ?? 1, ultimateLevel: progress.ultimateLevel ?? 1,
       introLevel: progress.introLevel ?? 1, forteLevel: progress.forteLevel ?? 1, constellation: progress.constellation ?? 0,
-      solaceStats,
+      solaceStats, bonuses: allyBonuses,
     };
   }
   const hasSolaceGate = Object.keys(allyBundles).length > 0;
@@ -791,6 +799,7 @@ async function addParticipant(raid: ActiveRaid, userId: string, displayName: str
   const activeAllyCharacterId = initialBundle?.characterId ?? null;
   const allyKit: PlayableCharacterKit | null = initialBundle?.kit ?? null;
   const allySolaceStats = initialBundle?.solaceStats as (ResolvedStats & { hasWellspring?: boolean; wellspringRefinement?: number }) | null;
+  const allyBonuses = initialBundle?.bonuses ?? null;
 
   raid.participants.push({
     userId, name: displayName, element: db.element, worldLevel: db.worldLevel,
@@ -807,7 +816,7 @@ async function addParticipant(raid: ActiveRaid, userId: string, displayName: str
     havocFrenzyAtkMult: 1.0, havocFrenzyLifesteal: 0, havocFrenzyDefIgnore: 0,
     echoSkillCd: 0, nextCritArmed: false,
     hasSolace: hasSolaceGate,
-    allySolaceStats,
+    allySolaceStats, allyBonuses,
     solaceBasicLevel:    initialBundle?.basicLevel    ?? 1,
     solaceSkillLevel:    initialBundle?.skillLevel    ?? 1,
     solaceUltimateLevel: initialBundle?.ultimateLevel ?? 1,
@@ -1131,8 +1140,15 @@ async function launchRaid(
         ? (Number(btn.customId.replace("raid_swap_", "")) as PositionIndex)
         : null;
 
+      // Milestone 3.5b: whichever unit is currently acting uses ITS OWN full
+      // bonus set (elemDmgBonus/lifesteal/elementPassive/echoSkill/named-set/
+      // etc.), not always the player's own equipped grid. `let` since a swap
+      // action reassigns current.activeUnit mid-handler and this needs to
+      // reflect that for the rest of the turn.
+      let activeBonuses = (current.activeUnit === "ally" && current.allyBonuses) ? current.allyBonuses : current.bonuses;
+
       const isWeak    = current.element === boss.weakness;
-      const mySetId   = current.bonuses.activeNamedSetId;
+      const mySetId   = activeBonuses.activeNamedSetId;
       const havocFrenzyActive = mySetId === "VOIDBORN_REMNANT" && voidbornRemnantFrenzyActive(current.namedState);
       const havocAtkMult   = havocFrenzyActive ? current.havocFrenzyAtkMult : 1.0;
       const havocLifesteal = havocFrenzyActive ? current.havocFrenzyLifesteal : 0;
@@ -1141,7 +1157,7 @@ async function launchRaid(
       const defShredActive = raid.bossDefShredTurnsLeft > 0;
       const defVal    = raid.isShattered ? 0 : raid.bossDef * (1 - havocDefIgnore) * (defShredActive ? (1 - raid.bossDefShredPct) : 1);
       const extraElemBonus = current.glacioShieldTurnsLeft > 0 ? current.glacioShieldElemBonus : 0;
-      const radCrit   = elemRadianceCrit(current.bonuses.elementPassive, current.hp, current.hpMax);
+      const radCrit   = elemRadianceCrit(activeBonuses.elementPassive, current.hp, current.hpMax);
       const stormCritBuff = current.stormBuffTurnsLeft > 0 ? current.stormBuffCritBonus : 0;
       // Milestone 3.5b: while this participant's Solace is active, use HER
       // OWN resolved stats for offense — safe unconditionally since
@@ -1161,7 +1177,7 @@ async function launchRaid(
       // before the shared damage-tail block.
       let radiantTurnHealAmount = 0;
       if (mySetId === "RADIANT_CONVERGENCE") {
-        const heal = radiantConvergenceOnTurnHeal(current.namedState, current.hpMax, current.bonuses.healingBonus);
+        const heal = radiantConvergenceOnTurnHeal(current.namedState, current.hpMax, activeBonuses.healingBonus);
         current.hp = Math.min(current.hpMax, current.hp + heal.healAmount);
         radiantDmgMult = heal.dmgMult;
         radiantTurnHealAmount = heal.healAmount;
@@ -1299,6 +1315,8 @@ async function launchRaid(
         current.solaceForteLevel = finalBundle?.forteLevel ?? 1;
         current.solaceConstellation = finalBundle?.constellation ?? 0;
         current.allySolaceStats = finalBundle?.solaceStats ?? null;
+        current.allyBonuses = finalBundle?.bonuses ?? null;
+        activeBonuses = (current.activeUnit === "ally" && current.allyBonuses) ? current.allyBonuses : current.bonuses;
       }
 
       if (btn.customId === "raid_retreat") {
@@ -1376,8 +1394,8 @@ async function launchRaid(
             forteAnnounce += `\n✨ Forte is **FULLY CHARGED** — next Guard Break will be Braced!`;
           }
         }
-        let base   = Math.floor(r.damage * (1 + current.elemDmg + extraElemBonus) * radiantDmgMult);
-        base       = Math.floor(base * elemWindstrideMult(current.bonuses.elementPassive, raid.turn, "BASIC"));
+        let base   = Math.floor(r.damage * (1 + activeBonuses.elemDmgBonus + extraElemBonus) * radiantDmgMult);
+        base       = Math.floor(base * elemWindstrideMult(activeBonuses.elementPassive, raid.turn, "BASIC"));
         if (mySetId === "WINDSTRIDERS_LEGACY") {
           base = windExplosion.proc
             ? Math.floor(base * (1 + windExplosion.bonusMult))
@@ -1388,11 +1406,11 @@ async function launchRaid(
           const tb = stormcallersOathOnBasic(current.namedState);
           if (tb.proc) { base += Math.floor(current.atk * tb.bonusMult); thunderboltEnergy = tb.bonusEnergy; }
         }
-        const ign  = elemIgniteProc(current.bonuses.elementPassive, current.atk);
+        const ign  = elemIgniteProc(activeBonuses.elementPassive, current.atk);
         if (mySetId === "RADIANT_CONVERGENCE" && r.isCrit) radiantConvergenceOnCrit(current.namedState, current.hp, current.hpMax);
         damage = base + ign.dmg; isCrit = r.isCrit; vibFrac = 0.3;
         moveLine = `${current.name} — ${isSolaceActing ? "✦ Chime Strike" : "Basic Attack"}${r.isCrit ? " **(CRIT)**" : ""}${isWeak ? " **(WEAK)**" : ""}${ign.tag ? `  ✦${ign.tag}` : ""}${forteAnnounce}`;
-        current.energy = Math.min(100, current.energy + ENERGY_PER_TURN + Math.floor(current.bonuses.spdFlat / 20) + elemDischargeEnergy(current.bonuses.elementPassive, r.isCrit) + thunderboltEnergy);
+        current.energy = Math.min(100, current.energy + ENERGY_PER_TURN + Math.floor(activeBonuses.spdFlat / 20) + elemDischargeEnergy(activeBonuses.elementPassive, r.isCrit) + thunderboltEnergy);
         if (mySetId === "STORMCALLERS_OATH") stormcallersOathCheckThunderbolt(current.namedState, current.energy);
 
       } else if (raid.isDevGuild && current.activeUnit === "ally" && current.activeAllyCharacterId === "solace" && btn.customId === "raid_skill") {
@@ -1405,7 +1423,7 @@ async function launchRaid(
         // the player, not on Solace, and this is her own Attunement-cycle hit.
         const crit = forcedCritActive || Math.random() < aCrit;
         const r = calcPlayerDamage(activeAtk * havocAtkMult, defVal, crit ? 1 : 0, activeCritDmg, 0.6, isWeak, raid.isShattered);
-        const base = Math.floor(r.damage * (1 + current.elemDmg + extraElemBonus) * radiantDmgMult);
+        const base = Math.floor(r.damage * (1 + activeBonuses.elemDmgBonus + extraElemBonus) * radiantDmgMult);
         damage = base; isCrit = r.isCrit; vibFrac = 0.3;
         moveLine = `${current.name} — ✦ Attunement — now in **${current.attunement.mode}** mode!`;
 
@@ -1423,7 +1441,7 @@ async function launchRaid(
           );
           current.allyMechanicState = result.newMechanicState;
           const r = calcPlayerDamage(activeAtk * havocAtkMult, defVal, crit ? 1 : 0, activeCritDmg, result.damageMult, isWeak, raid.isShattered);
-          const base = Math.floor(r.damage * (1 + current.elemDmg + extraElemBonus) * radiantDmgMult);
+          const base = Math.floor(r.damage * (1 + activeBonuses.elemDmgBonus + extraElemBonus) * radiantDmgMult);
           damage = base; isCrit = r.isCrit; vibFrac = result.vibFrac;
           moveLine = `${current.name} — 🌑 ${result.moveLabel}${crit ? " **(CRIT)**" : ""}`;
         }
@@ -1443,7 +1461,7 @@ async function launchRaid(
 
         const effectiveDefVal = defVal * (1 - result.defIgnorePct);
         const perHit = calcPlayerDamage(activeAtk * havocAtkMult, effectiveDefVal, crit ? 1 : 0, activeCritDmg, result.damageMult / result.hits, isWeak, raid.isShattered);
-        const perHitDmg = Math.floor(perHit.damage * (1 + current.elemDmg + extraElemBonus) * radiantDmgMult);
+        const perHitDmg = Math.floor(perHit.damage * (1 + activeBonuses.elemDmgBonus + extraElemBonus) * radiantDmgMult);
 
         if (result.hits > 1) {
           const hitLines = Array.from({ length: result.hits }, (_, i) => `Hit ${i + 1}: ${perHitDmg} dmg`).join("\n");
@@ -1477,7 +1495,7 @@ async function launchRaid(
         if (forteEmpowered) current.solaceForte = resetForte();
 
         const r = calcPlayerDamage(activeAtk, defVal, 1.0, activeCritDmg, result.damageMult, isWeak, raid.isShattered);
-        damage = Math.floor(r.damage * (1 + current.elemDmg + extraElemBonus) * radiantDmgMult);
+        damage = Math.floor(r.damage * (1 + activeBonuses.elemDmgBonus + extraElemBonus) * radiantDmgMult);
         moveLine = `${current.name} — 🛡️ ${result.moveLabel} **(CRIT)** (consumed ${result.shieldConsumed} Shield)`;
         if (result.defShredApplied) {
           raid.bossDefShredTurnsLeft = 2 + 1;
@@ -1501,19 +1519,19 @@ async function launchRaid(
         const weakenedMult = raid.isDevGuild ? getWeakenedMult(current.playerDebuffs) : 1;
         const teamMult = weakenedMult * party.atkMult;
         const r    = calcPlayerDamage(current.atk * smolderMult * havocAtkMult * teamMult, defVal, forcedCritActive ? 1 : Math.min(1, aCrit + 0.1 + party.critBonus), current.critDmg, 1.8, isWeak, raid.isShattered);
-        let base   = Math.floor(r.damage * (1 + current.elemDmg + extraElemBonus) * radiantDmgMult);
-        base       = Math.floor(base * elemWindstrideMult(current.bonuses.elementPassive, raid.turn, "SKILL"));
+        let base   = Math.floor(r.damage * (1 + activeBonuses.elemDmgBonus + extraElemBonus) * radiantDmgMult);
+        base       = Math.floor(base * elemWindstrideMult(activeBonuses.elementPassive, raid.turn, "SKILL"));
         if (mySetId === "WINDSTRIDERS_LEGACY") base = Math.floor(base * windstridersLegacyOnHit(current.namedState));
         if (mySetId === "SMOLDERING_SOVEREIGN") {
           const sov = smolderingSovereignOnSkill(current.namedState);
           if (sov.doubleHit) base = Math.floor(base * sov.bonusMult * 2);
         }
-        const ign  = elemIgniteProc(current.bonuses.elementPassive, current.atk);
+        const ign  = elemIgniteProc(activeBonuses.elementPassive, current.atk);
         if (mySetId === "RADIANT_CONVERGENCE" && r.isCrit) radiantConvergenceOnCrit(current.namedState, current.hp, current.hpMax);
         damage = base + ign.dmg; isCrit = r.isCrit; moveType = "SKILL"; vibFrac = 0.6;
         moveLine = `${current.name} — Resonance Skill${r.isCrit ? " **(CRIT)**" : ""}${isWeak ? " **(WEAK)**" : ""}${ign.tag ? `  ✦${ign.tag}` : ""}`;
         current.skillCd = effectiveSkillCooldown(current.bonuses, SKILL_CD);
-        current.energy  = Math.min(100, current.energy + ENERGY_PER_TURN + Math.floor(current.bonuses.spdFlat / 20) + elemDischargeEnergy(current.bonuses.elementPassive, r.isCrit));
+        current.energy  = Math.min(100, current.energy + ENERGY_PER_TURN + Math.floor(activeBonuses.spdFlat / 20) + elemDischargeEnergy(activeBonuses.elementPassive, r.isCrit));
 
       } else if (btn.customId === "raid_ultimate" && !(raid.isDevGuild && current.activeUnit === "ally")) {
         const smolderMult = mySetId === "SMOLDERING_SOVEREIGN" ? smolderingSovereignOnAction(current.namedState) : 1;
@@ -1521,7 +1539,7 @@ async function launchRaid(
         const weakenedMult = raid.isDevGuild ? getWeakenedMult(current.playerDebuffs) : 1;
         const teamMult = weakenedMult * party.atkMult;
         const r  = calcPlayerDamage(current.atk * smolderMult * havocAtkMult * teamMult, defVal, 1.0, current.critDmg, 3.5, isWeak, raid.isShattered);
-        let base = Math.floor(r.damage * (1 + current.elemDmg + extraElemBonus) * radiantDmgMult);
+        let base = Math.floor(r.damage * (1 + activeBonuses.elemDmgBonus + extraElemBonus) * radiantDmgMult);
         if (mySetId === "WINDSTRIDERS_LEGACY") base = Math.floor(base * windstridersLegacyOnHit(current.namedState));
         if (mySetId === "RADIANT_CONVERGENCE") radiantConvergenceOnCrit(current.namedState, current.hp, current.hpMax);
         damage = base; isCrit = true; moveType = "ULT"; vibFrac = 0.8;
@@ -1597,7 +1615,7 @@ async function launchRaid(
         current.allyMechanicState = result.newMechanicState;
 
         const r = calcPlayerDamage(activeAtk * havocAtkMult * ultDamageMult, defVal, 1.0, activeCritDmg, 1.0, isWeak, raid.isShattered);
-        const base = Math.floor(r.damage * (1 + current.elemDmg + extraElemBonus) * radiantDmgMult);
+        const base = Math.floor(r.damage * (1 + activeBonuses.elemDmgBonus + extraElemBonus) * radiantDmgMult);
         damage = base; isCrit = true; moveType = "ULT"; vibFrac = 0.8;
         moveLine = `${current.name} — 🌑 ${result.moveLabel}`;
 
@@ -1623,7 +1641,7 @@ async function launchRaid(
         current.allyMechanicState = result.newMechanicState;
 
         const r = calcPlayerDamage(activeAtk * havocAtkMult * ultDamageMult, defVal, 1.0, activeCritDmg, 1.0, isWeak, raid.isShattered);
-        const base = Math.floor(r.damage * (1 + current.elemDmg + extraElemBonus) * radiantDmgMult);
+        const base = Math.floor(r.damage * (1 + activeBonuses.elemDmgBonus + extraElemBonus) * radiantDmgMult);
         damage = base; isCrit = true; moveType = "ULT"; vibFrac = 0.8;
         moveLine = `${current.name} — ⚡ ${result.moveLabel}`;
       } else if (raid.isDevGuild && current.activeUnit === "ally" && current.activeAllyCharacterId === "rilo" && current.allyKit && btn.customId === "raid_ultimate") {
@@ -1638,7 +1656,7 @@ async function launchRaid(
         const hits = c6DoubleHit ? 2 : 1;
 
         const perHit = calcPlayerDamage(activeAtk, defVal, 1.0, activeCritDmg, riloUltimateBaseMult(current.solaceUltimateLevel) / hits, isWeak, raid.isShattered);
-        const perHitDmg = Math.floor(perHit.damage * (1 + current.elemDmg + extraElemBonus) * radiantDmgMult);
+        const perHitDmg = Math.floor(perHit.damage * (1 + activeBonuses.elemDmgBonus + extraElemBonus) * radiantDmgMult);
         const totalDmg = perHitDmg * hits;
 
         const c4Bonus = riloUltimateShieldFromDamage(totalDmg, current.solaceConstellation);
@@ -1660,13 +1678,13 @@ async function launchRaid(
         if (result.healResult.actions.length > 0) {
           current.playerDebuffs = cleanseDebuffs(current.playerDebuffs, 1);
         }
-      } else if (btn.customId === "raid_echoskill" && current.bonuses.echoSkill) {
-        const def = current.bonuses.echoSkill;
+      } else if (btn.customId === "raid_echoskill" && activeBonuses.echoSkill) {
+        const def = activeBonuses.echoSkill;
         const echoCrit = forcedCritActive || def.kind === "GUARANTEED_CRIT" || Math.random() < aCrit;
         isCrit = echoCrit; moveType = "SKILL"; vibFrac = 0.5;
         const smolderMult = mySetId === "SMOLDERING_SOVEREIGN" ? smolderingSovereignOnAction(current.namedState) : 1;
         const r = calcPlayerDamage(current.atk * smolderMult * havocAtkMult, defVal, echoCrit ? 1 : 0, current.critDmg, echoSkillBaseMult(), isWeak, raid.isShattered);
-        let base = Math.floor(r.damage * (1 + current.elemDmg + extraElemBonus) * radiantDmgMult);
+        let base = Math.floor(r.damage * (1 + activeBonuses.elemDmgBonus + extraElemBonus) * radiantDmgMult);
 
         const result = applyEchoSkill(def, {
           atk: current.atk, enemyHp: raid.bossHp, enemyHpMax: raid.bossHpMax,
@@ -1716,13 +1734,13 @@ async function launchRaid(
           }
         }
 
-        const ign = result.noDamage ? { dmg: 0, tag: "" } : elemIgniteProc(current.bonuses.elementPassive, current.atk);
+        const ign = result.noDamage ? { dmg: 0, tag: "" } : elemIgniteProc(activeBonuses.elementPassive, current.atk);
         damage = base + ign.dmg;
         moveLine = `${current.name} — 🌀 ${def.name}${echoCrit ? " **(CRIT)**" : ""}${isWeak ? " **(WEAK)**" : ""}`;
         if (namedTriggerTag) moveLine += `\n✦ ${namedTriggerTag}`;
         if (ign.tag) moveLine += `  ✦${ign.tag}`;
 
-        const echoEnGain = ENERGY_PER_TURN + Math.floor(current.bonuses.spdFlat / 20) + elemDischargeEnergy(current.bonuses.elementPassive, echoCrit) + result.bonusEnergy;
+        const echoEnGain = ENERGY_PER_TURN + Math.floor(activeBonuses.spdFlat / 20) + elemDischargeEnergy(activeBonuses.elementPassive, echoCrit) + result.bonusEnergy;
         current.echoSkillCd = (result.resetCdOnCrit && echoCrit) ? 0 : 4;
         current.energy = result.setEnergyFull ? 100 : Math.min(100, current.energy + echoEnGain);
         if (result.healHp > 0) {
@@ -1732,7 +1750,8 @@ async function launchRaid(
           const healLines: string[] = [];
           for (const p of raid.participants) {
             if (p.isDefeated) continue;
-            const scaledHeal = Math.floor(result.healHp * (1 + p.bonuses.healingBonus));
+            const pHealBonuses = (p.activeUnit === "ally" && p.allyBonuses) ? p.allyBonuses : p.bonuses;
+            const scaledHeal = Math.floor(result.healHp * (1 + pHealBonuses.healingBonus));
             if (positionValue(p.roster, p.activePosition) === "self") {
               p.hp = Math.min(p.hpMax, p.hp + scaledHeal);
               healLines.push(`${p.name} +${scaledHeal}`);
@@ -1752,8 +1771,8 @@ async function launchRaid(
           raid.bossVib = Math.max(0, raid.bossVib - result.extraVibDrain); // vibFrac-based drain applied below by the shared block
         }
       }
-      const echoFlatLifesteal = (btn.customId === "raid_echoskill" && current.bonuses.echoSkill?.kind === "FLAT_LIFESTEAL")
-        ? current.bonuses.echoSkill.pct : 0;
+      const echoFlatLifesteal = (btn.customId === "raid_echoskill" && activeBonuses.echoSkill?.kind === "FLAT_LIFESTEAL")
+        ? activeBonuses.echoSkill.pct : 0;
       if (radiantTurnHealAmount > 0) moveLine += `\n✨ Radiant Convergence — turn-heal +${radiantTurnHealAmount} HP!`;
 
       // Apply ability effects and element hooks (attack moves only)
@@ -1765,7 +1784,7 @@ async function launchRaid(
         damage = ar.dmg;
         if (ar.tag) moveLine += `  ✦${ar.tag}`;
         moveLine += ` — **${damage.toLocaleString()} DMG**`;
-        current.hp        = Math.min(current.hpMax, applyLifesteal(current.lifesteal + havocLifesteal + echoFlatLifesteal, damage, current.hp, current.hpMax) + ar.healHp);
+        current.hp        = Math.min(current.hpMax, applyLifesteal(activeBonuses.lifesteal + havocLifesteal + echoFlatLifesteal, damage, current.hp, current.hpMax) + ar.healHp);
         current.energy    = Math.min(100, current.energy + ar.bonusEnergy);
         current.firstAction = false;
         raid.bossVib       = Math.max(0, raid.bossVib - Math.floor(damage * vibFrac * vibMult));
@@ -1774,7 +1793,7 @@ async function launchRaid(
           raid.isShattered  = true;
           raid.shatterLeft  = 2;
           moveLine += "\n✦ **SHATTER!** Boss stunned — next 2 attacks guaranteed CRIT!";
-          const voidHeal = elemVoidSurgeHeal(current.bonuses.elementPassive, current.hpMax);
+          const voidHeal = elemVoidSurgeHeal(activeBonuses.elementPassive, current.hpMax);
           if (voidHeal > 0) {
             current.hp = Math.min(current.hpMax, current.hp + voidHeal);
             moveLine  += `\n✦ **${current.name}'s Void Surge** — +${voidHeal} HP!`;
@@ -1847,11 +1866,12 @@ async function launchRaid(
           // damage reduction uses HER OWN DEF, not the player's own.
           const pDefendingWithAlly = raid.isDevGuild && p.activeUnit === "ally" && p.allySolaceStats !== null;
           const pActiveDef = pDefendingWithAlly ? p.allySolaceStats!.def : p.def;
+          const pActiveBonuses = (p.activeUnit === "ally" && p.allyBonuses) ? p.allyBonuses : p.bonuses;
           const pRiloDefBuffMult = p.riloDefBuffTurnsLeft > 0 ? (1 + p.riloDefBuffPct) : 1;
           let bossDmg    = calcEnemyDamage(aoeBase, pActiveDef * party.defMult * pRiloDefBuffMult, 1.0);
-          const shield   = elemFrostShield(p.bonuses.elementPassive, bossDmg);
+          const shield   = elemFrostShield(pActiveBonuses.elementPassive, bossDmg);
           bossDmg        = shield.dmg;
-          const radRegen = elemRadianceRegen(p.bonuses.elementPassive, p.hpMax);
+          const radRegen = elemRadianceRegen(pActiveBonuses.elementPassive, p.hpMax);
 
           // Milestone 3d: while a participant's own Solace is active, AoE
           // damage routes into her ally HP pool instead of the participant's
@@ -1872,7 +1892,7 @@ async function launchRaid(
             if (radRegen > 0) p.hp = Math.min(p.hpMax, p.hp + radRegen);
           }
 
-          const pSetId = p.bonuses.activeNamedSetId;
+          const pSetId = pActiveBonuses.activeNamedSetId;
           if (pSetId === "SMOLDERING_SOVEREIGN") smolderingSovereignOnDamageTaken(p.namedState);
           if (pSetId === "WINDSTRIDERS_LEGACY") windstridersLegacyOnBigHitTaken(p.namedState, bossDmg, p.hpMax);
           if (pSetId === "VOIDBORN_REMNANT" && p.hp > 0) {
@@ -1884,7 +1904,7 @@ async function launchRaid(
           }
           if (pSetId === "RADIANT_CONVERGENCE" && p.hp > 0) {
             radiantConvergenceOnHitTaken(p.namedState, bossDmg, p.hpMax);
-            const burst = radiantConvergenceCheckBurstHeal(p.namedState, p.hp, p.hpMax, p.bonuses.healingBonus);
+            const burst = radiantConvergenceCheckBurstHeal(p.namedState, p.hp, p.hpMax, pActiveBonuses.healingBonus);
             if (burst > 0) { p.hp = Math.min(p.hpMax, p.hp + burst); dmgLines.push(`${p.name} +${burst}✨Fracture`); }
           }
           if (pSetId === "FROSTVEIL_BASTION" && p.hp > 0) {
@@ -1933,6 +1953,7 @@ async function launchRaid(
                 p.solaceForteLevel = bundle?.forteLevel ?? 1;
                 p.solaceConstellation = bundle?.constellation ?? 0;
                 p.allySolaceStats = bundle?.solaceStats ?? null;
+                p.allyBonuses = bundle?.bonuses ?? null;
                 const fallbackLabel = bundle ? bundle.kit.label : p.name;
                 dmgLines.push(`${p.name}'s ${koLabel} -${bossDmg} — falls back to **${fallbackLabel}**!`);
               }
