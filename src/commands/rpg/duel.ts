@@ -664,8 +664,6 @@ export async function startDuelMatch(
         const myElem   = isChallenger ? state.cElement  : state.dElement;
         const oppElem  = isChallenger ? state.dElement  : state.cElement;
         const myName   = isChallenger ? state.challengerName : state.challengedName;
-        const myElemDmg= isChallenger ? state.cElemDmg  : state.dElemDmg;
-        const myLife   = isChallenger ? state.cLifesteal: state.dLifesteal;
         const myBonus  = isChallenger ? state.cBonuses  : state.dBonuses;
         let   myHp     = isChallenger ? state.cHp       : state.dHp;
         const myHpMax  = isChallenger ? state.cHpMax    : state.dHpMax;
@@ -743,6 +741,14 @@ export async function startDuelMatch(
         const activeCritDmg   = myIsAllyActing ? myAllySolaceStats!.critDmg  : myCritDmg;
         const activeCritBase  = myIsAllyActing ? myAllySolaceStats!.critRate : myCrit;
         const oppActiveDef    = oppIsAllyDefending ? oppAllySolaceStats!.def : oppDef;
+        // Same "whichever unit is active uses its OWN stats" rule, applied to
+        // elemDmgBonus/lifesteal — these previously always read the PLAYER's
+        // own equipped grid (state.cElemDmg/cLifesteal) even while an ally
+        // was the one actually dealing/taking the hit, so an ally's own
+        // elemental-DMG% and Lifesteal% substats/set bonuses never applied to
+        // their own attacks.
+        const myElemDmg = myIsAllyActing ? myAllySolaceStats!.elemDmgBonus : (isChallenger ? state.cElemDmg   : state.dElemDmg);
+        const myLife    = myIsAllyActing ? myAllySolaceStats!.lifesteal    : (isChallenger ? state.cLifesteal : state.dLifesteal);
 
         const oppRiloDefBuffTurns = isChallenger ? state.dRiloDefBuffTurnsLeft : state.cRiloDefBuffTurnsLeft;
         const oppRiloDefBuffPct   = isChallenger ? state.dRiloDefBuffPct : state.cRiloDefBuffPct;
