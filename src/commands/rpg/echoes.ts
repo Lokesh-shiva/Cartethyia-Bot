@@ -48,11 +48,30 @@ export async function execute(interaction: ChatInputCommandInteraction) {
     return;
   }
 
-  const filterCharacterId = interaction.options.getString("character"); // null = show everything, no narrowing
-  const echoes = await prisma.echo.findMany({
-    where:   { userId: target.id, ...(filterCharacterId ? { characterId: filterCharacterId } : {}) },
-    orderBy: [{ isEquipped: "desc" }, { rarity: "desc" }, { createdAt: "desc" }],
-  });
+  // Equipped grids are always per-character (each unit has its own separate
+  // 12-point budget, tracked by Echo.characterId) — there's no coherent
+  // notion of "the equipped grid" without picking exactly one, so default to
+  // "self" rather than leaving it unfiltered. Leaving it unfiltered used to
+  // pull every character's equipped echoes into one merged list, double
+  // (or more) counting grid points and showing whichever character's icons
+  // happened to win each slot's collision in the display.
+  const filterCharacterId = interaction.options.getString("character") ?? "self";
+  const CHARACTER_LABEL: Record<string, string> = { self: "Yourself", solace: "Solace" };
+
+  const [equipped, unequipped] = await Promise.all([
+    prisma.echo.findMany({
+      where:   { userId: target.id, isEquipped: true, characterId: filterCharacterId },
+      orderBy: [{ equippedSlot: "asc" }],
+    }),
+    // Unequipped echoes aren't tied to any character's grid until equipped
+    // (they default to characterId "self" until then), so the inventory
+    // list stays unfiltered regardless of which grid is being viewed.
+    prisma.echo.findMany({
+      where:   { userId: target.id, isEquipped: false },
+      orderBy: [{ rarity: "desc" }, { createdAt: "desc" }],
+    }),
+  ]);
+  const echoes = [...equipped, ...unequipped];
 
   const element  = dbUser.element as Element;
   const color    = ELEMENT_COLORS[element];
@@ -68,13 +87,11 @@ export async function execute(interaction: ChatInputCommandInteraction) {
     return;
   }
 
-  // Split equipped vs unequipped
-  const equipped   = echoes.filter(e => e.isEquipped).sort((a, b) => (a.equippedSlot ?? 0) - (b.equippedSlot ?? 0));
-  const unequipped = echoes.filter(e => !e.isEquipped);
   const gridPoints = equipped.reduce((sum, e) => sum + e.cost, 0);
 
-  // Resolve bonuses for the grid card panel
-  const bonuses = await resolvePlayerBonuses(target.id);
+  // Resolve bonuses for the grid card panel — scoped to whichever
+  // character's grid is being viewed, not always the player's own.
+  const bonuses = await resolvePlayerBonuses(target.id, filterCharacterId);
 
   // Render the Resonance Grid card
   const gridBuf = await generateGridCard({
@@ -130,6 +147,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
 
   const embed = new EmbedBuilder()
     .setColor(color)
+    .setTitle(`${ELEMENT_EMOJI[element]}  ${displayName}'s Echoes  ·  ${CHARACTER_LABEL[filterCharacterId] ?? filterCharacterId}'s Grid`)
     .setImage("attachment://grid.webp")
     .addFields(
       {
