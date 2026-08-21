@@ -1,5 +1,5 @@
 import {
-  SlashCommandBuilder, ChatInputCommandInteraction,
+  SlashCommandBuilder, ChatInputCommandInteraction, AutocompleteInteraction,
   EmbedBuilder, AttachmentBuilder,
 } from "discord.js";
 import prisma from "../../lib/prisma";
@@ -14,6 +14,9 @@ import { generateGridCard } from "../../lib/gridCard";
 import { Element } from "@prisma/client";
 import { NAMED_SETS, NamedSetId } from "../../lib/namedSets";
 import { getEchoSkillDef, genericEchoSkill } from "../../lib/echoSkills";
+import { handleCharacterAutocomplete } from "../../lib/characterChoices";
+import { CHARACTER_KITS } from "../../lib/characterKit";
+import "../../lib/kits";
 
 export const data = new SlashCommandBuilder()
   .setName("echoes")
@@ -23,13 +26,14 @@ export const data = new SlashCommandBuilder()
   )
   .addStringOption(o =>
     o.setName("character")
-      .setDescription("Narrow to one unit's echoes (default: show everything)")
+      .setDescription("Which unit's grid to view (default: yourself)")
       .setRequired(false)
-      .addChoices(
-        { name: "Yourself", value: "self"   },
-        { name: "Solace",   value: "solace" },
-      )
+      .setAutocomplete(true)
   );
+
+export async function autocomplete(interaction: AutocompleteInteraction) {
+  await handleCharacterAutocomplete(interaction);
+}
 
 export async function execute(interaction: ChatInputCommandInteraction) {
   await interaction.deferReply();
@@ -56,7 +60,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
   // (or more) counting grid points and showing whichever character's icons
   // happened to win each slot's collision in the display.
   const filterCharacterId = interaction.options.getString("character") ?? "self";
-  const CHARACTER_LABEL: Record<string, string> = { self: "Yourself", solace: "Solace" };
+  const CHARACTER_LABEL: Record<string, string> = { self: "Yourself" };
 
   const [equipped, unequipped] = await Promise.all([
     prisma.echo.findMany({
@@ -147,7 +151,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
 
   const embed = new EmbedBuilder()
     .setColor(color)
-    .setTitle(`${ELEMENT_EMOJI[element]}  ${displayName}'s Echoes  ·  ${CHARACTER_LABEL[filterCharacterId] ?? filterCharacterId}'s Grid`)
+    .setTitle(`${ELEMENT_EMOJI[element]}  ${displayName}'s Echoes  ·  ${CHARACTER_LABEL[filterCharacterId] ?? CHARACTER_KITS[filterCharacterId]?.label ?? filterCharacterId}'s Grid`)
     .setImage("attachment://grid.webp")
     .addFields(
       {

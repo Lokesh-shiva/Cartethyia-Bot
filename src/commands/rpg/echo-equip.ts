@@ -1,5 +1,5 @@
 import {
-  SlashCommandBuilder, ChatInputCommandInteraction,
+  SlashCommandBuilder, ChatInputCommandInteraction, AutocompleteInteraction,
   EmbedBuilder, ActionRowBuilder, StringSelectMenuBuilder,
   StringSelectMenuInteraction, ButtonBuilder, ButtonStyle,
   ComponentType,
@@ -14,6 +14,9 @@ import { Element } from "@prisma/client";
 import { invalidateBonusCache } from "../../lib/setBonus";
 import { NAMED_SETS, NamedSetId } from "../../lib/namedSets";
 import { echoEmoji, echoEmojiResolvable } from "../../lib/emojiManager";
+import { handleCharacterAutocomplete } from "../../lib/characterChoices";
+import { CHARACTER_KITS } from "../../lib/characterKit";
+import "../../lib/kits";
 
 export const data = new SlashCommandBuilder()
   .setName("echo-equip")
@@ -57,18 +60,19 @@ export const data = new SlashCommandBuilder()
     o.setName("character")
       .setDescription("Which unit's grid to edit (default: yourself)")
       .setRequired(false)
-      .addChoices(
-        { name: "Yourself",     value: "self"   },
-        { name: "Solace",       value: "solace" },
-      )
+      .setAutocomplete(true)
   );
+
+export async function autocomplete(interaction: AutocompleteInteraction) {
+  await handleCharacterAutocomplete(interaction);
+}
 
 const MAX_GRID_POINTS = 12;
 const CLEAR_VALUE     = "__clear__";
 
-const CHARACTER_LABEL: Record<string, string> = { self: "Yourself", solace: "Solace" };
+const CHARACTER_LABEL: Record<string, string> = { self: "Yourself" };
 function gridTitle(characterId: string): string {
-  return characterId === "self" ? "Resonance Grid" : `Resonance Grid — ${CHARACTER_LABEL[characterId] ?? characterId}`;
+  return characterId === "self" ? "Resonance Grid" : `Resonance Grid — ${CHARACTER_LABEL[characterId] ?? CHARACTER_KITS[characterId]?.label ?? characterId}`;
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -401,7 +405,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
         await btn.editReply({
           embeds: [new EmbedBuilder()
             .setColor(incomingColor)
-            .setTitle(`${ELEMENT_EMOJI[incoming.element as Element]}  Echo Equipped${characterId !== "self" ? ` — ${CHARACTER_LABEL[characterId] ?? characterId}` : ""}`)
+            .setTitle(`${ELEMENT_EMOJI[incoming.element as Element]}  Echo Equipped${characterId !== "self" ? ` — ${CHARACTER_LABEL[characterId] ?? CHARACTER_KITS[characterId]?.label ?? characterId}` : ""}`)
             .setDescription([
               `**${incoming.name}**  ${RARITY_STARS[incoming.rarity]}`,
               `› Slotted into **${slotName}**`,

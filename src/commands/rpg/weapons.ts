@@ -1,5 +1,5 @@
 import {
-  SlashCommandBuilder, ChatInputCommandInteraction,
+  SlashCommandBuilder, ChatInputCommandInteraction, AutocompleteInteraction,
   EmbedBuilder, AttachmentBuilder, StringSelectMenuBuilder,
   StringSelectMenuOptionBuilder, ActionRowBuilder, ComponentType,
 } from "discord.js";
@@ -12,6 +12,13 @@ import { ALL_WISH_WEAPONS, calcWishSubStat } from "../../lib/wishWeapons";
 import { FORGED_WEAPONS } from "../../lib/weapons";
 import { WeaponType } from "@prisma/client";
 import prisma from "../../lib/prisma";
+import { handleCharacterAutocomplete } from "../../lib/characterChoices";
+import { CHARACTER_KITS } from "../../lib/characterKit";
+import "../../lib/kits";
+
+function ownerLabel(characterId: string): string {
+  return CHARACTER_KITS[characterId]?.label ?? characterId;
+}
 
 const ELEMENT_HEX: Record<string, number> = {
   FUSION: 0xFF6B35, GLACIO: 0x38BDF8, ELECTRO: 0xA855F7,
@@ -34,11 +41,12 @@ const command: Command = {
       o.setName("character")
         .setDescription("Narrow to one unit's weapons (default: show everything)")
         .setRequired(false)
-        .addChoices(
-          { name: "Yourself", value: "self"   },
-          { name: "Solace",   value: "solace" },
-        )
+        .setAutocomplete(true)
     ) as SlashCommandBuilder,
+
+  async autocomplete(interaction: AutocompleteInteraction) {
+    await handleCharacterAutocomplete(interaction);
+  },
 
   async execute(interaction: ChatInputCommandInteraction) {
     await interaction.deferReply({ flags: 64 });
@@ -107,7 +115,7 @@ const command: Command = {
         .setColor(w.awakened ? 0xFCD34D : color)
         .setAuthor({ name: `${displayName}  ·  Arsenal (${weapons.length} weapons)`, iconURL: avatarUrl })
         .setDescription(
-          (w.isEquipped ? `**Currently equipped**${w.characterId !== "self" ? ` (by ${w.characterId})` : ""}` : `◇ Not equipped  ·  use \`/equip\` to switch`) +
+          (w.isEquipped ? `**Currently equipped**${w.characterId !== "self" ? ` (by ${ownerLabel(w.characterId)})` : ""}` : `◇ Not equipped  ·  use \`/equip\` to switch`) +
           (weapons.length > 25 ? `\n\n-# Showing top 25 of ${weapons.length} weapons (sorted by equipped, rarity, level).` : "")
         )
         .setImage("attachment://weapon.png")
@@ -123,7 +131,7 @@ const command: Command = {
       .setPlaceholder("Browse your arsenal…")
       .addOptions(selectableWeapons.map(w =>
         new StringSelectMenuOptionBuilder()
-          .setLabel(`${(w.awakened && w.awakenedName) ? w.awakenedName : w.name}  ${RARITY_STARS[w.rarity]}${w.isEquipped ? `  ← equipped${w.characterId !== "self" ? ` (${w.characterId})` : ""}` : ""}`)
+          .setLabel(`${(w.awakened && w.awakenedName) ? w.awakenedName : w.name}  ${RARITY_STARS[w.rarity]}${w.isEquipped ? `  ← equipped${w.characterId !== "self" ? ` (${ownerLabel(w.characterId)})` : ""}` : ""}`)
           .setDescription(`Lv${w.level}  ·  ATK ${w.baseAtk}  ·  ${w.weaponType}${w.awakened ? "  ·  ✦ AWAKENED" : ""}`)
           .setValue(w.id)
           .setEmoji(WEAPON_TYPE_EMOJI[w.weaponType as WeaponType])

@@ -1,11 +1,12 @@
 import {
-  SlashCommandBuilder, ChatInputCommandInteraction, EmbedBuilder,
+  SlashCommandBuilder, ChatInputCommandInteraction, AutocompleteInteraction, EmbedBuilder,
 } from "discord.js";
 import prisma from "../../lib/prisma";
 import { replyNotStarted } from "../../lib/economy";
 import { ELEMENT_COLORS, RARITY_STARS } from "../../lib/echoes";
 import { Element } from "@prisma/client";
 import { invalidateBonusCache } from "../../lib/setBonus";
+import { handleCharacterAutocomplete } from "../../lib/characterChoices";
 
 const MAX_PRESETS = 10;
 
@@ -22,7 +23,7 @@ export const data = new SlashCommandBuilder()
       )
       .addStringOption(o =>
         o.setName("character").setDescription("Which unit's loadout (default: yourself)").setRequired(false)
-          .addChoices({ name: "Yourself", value: "self" }, { name: "Solace", value: "solace" })
+          .setAutocomplete(true)
       )
   )
   .addSubcommand(sub =>
@@ -33,7 +34,7 @@ export const data = new SlashCommandBuilder()
       )
       .addStringOption(o =>
         o.setName("character").setDescription("Which unit's loadout (default: yourself)").setRequired(false)
-          .addChoices({ name: "Yourself", value: "self" }, { name: "Solace", value: "solace" })
+          .setAutocomplete(true)
       )
   )
   .addSubcommand(sub =>
@@ -41,7 +42,7 @@ export const data = new SlashCommandBuilder()
       .setDescription("List all your saved presets.")
       .addStringOption(o =>
         o.setName("character").setDescription("Which unit's presets (default: yourself)").setRequired(false)
-          .addChoices({ name: "Yourself", value: "self" }, { name: "Solace", value: "solace" })
+          .setAutocomplete(true)
       )
   )
   .addSubcommand(sub =>
@@ -52,9 +53,13 @@ export const data = new SlashCommandBuilder()
       )
       .addStringOption(o =>
         o.setName("character").setDescription("Which unit's loadout (default: yourself)").setRequired(false)
-          .addChoices({ name: "Yourself", value: "self" }, { name: "Solace", value: "solace" })
+          .setAutocomplete(true)
       )
   );
+
+export async function autocomplete(interaction: AutocompleteInteraction) {
+  await handleCharacterAutocomplete(interaction);
+}
 
 export async function execute(interaction: ChatInputCommandInteraction) {
   await interaction.deferReply({ flags: 64 });

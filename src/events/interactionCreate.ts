@@ -111,6 +111,15 @@ export async function execute(interaction: Interaction) {
     return;
   }
 
+  if (interaction.isAutocomplete()) {
+    const client  = interaction.client as ExtendedClient;
+    const command = client.commands.get(interaction.commandName);
+    if (command?.autocomplete) {
+      await command.autocomplete(interaction).catch(() => {});
+    }
+    return;
+  }
+
   if (!interaction.isChatInputCommand()) return;
 
   const client  = interaction.client as ExtendedClient;

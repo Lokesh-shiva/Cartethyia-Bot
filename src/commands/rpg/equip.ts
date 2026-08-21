@@ -1,5 +1,5 @@
 import {
-  SlashCommandBuilder, ChatInputCommandInteraction,
+  SlashCommandBuilder, ChatInputCommandInteraction, AutocompleteInteraction,
   EmbedBuilder, AttachmentBuilder, StringSelectMenuBuilder,
   StringSelectMenuOptionBuilder, ActionRowBuilder, ButtonBuilder,
   ButtonStyle, ComponentType, ButtonInteraction, StringSelectMenuInteraction,
@@ -14,6 +14,9 @@ import { WeaponType } from "@prisma/client";
 import prisma from "../../lib/prisma";
 import { invalidateBonusCache } from "../../lib/setBonus";
 import { pageSlice, pageCount, buildPageNavRow } from "../../lib/pagination";
+import { handleCharacterAutocomplete } from "../../lib/characterChoices";
+import { CHARACTER_KITS } from "../../lib/characterKit";
+import "../../lib/kits";
 
 const ELEMENT_HEX: Record<string, number> = {
   FUSION: 0xFF6B35, GLACIO: 0x38BDF8, ELECTRO: 0xA855F7,
@@ -29,9 +32,9 @@ const MAX_MULT: Record<number, number> = { 1: 2.5, 2: 3.0, 3: 3.5, 4: 4.2, 5: 5.
 // but every option/confirmation must say whose it currently is — silently
 // reassigning a weapon the player didn't realize was equipped elsewhere is
 // exactly the bug this labeling fixes.
-const CHARACTER_OWNER_LABEL: Record<string, string> = { self: "Yourself", solace: "Solace" };
+const CHARACTER_OWNER_LABEL: Record<string, string> = { self: "Yourself" };
 function ownerLabel(characterId: string): string {
-  return CHARACTER_OWNER_LABEL[characterId] ?? characterId;
+  return CHARACTER_OWNER_LABEL[characterId] ?? CHARACTER_KITS[characterId]?.label ?? characterId;
 }
 
 function effectiveAtk(baseAtk: number, rarity: number, level: number): number {
@@ -127,11 +130,12 @@ const command: Command = {
       o.setName("character")
         .setDescription("Which unit's weapon slot to edit (default: yourself)")
         .setRequired(false)
-        .addChoices(
-          { name: "Yourself", value: "self"   },
-          { name: "Solace",   value: "solace" },
-        )
+        .setAutocomplete(true)
     ) as SlashCommandBuilder,
+
+  async autocomplete(interaction: AutocompleteInteraction) {
+    await handleCharacterAutocomplete(interaction);
+  },
 
   async execute(interaction: ChatInputCommandInteraction) {
     await interaction.deferReply({ flags: 64 });

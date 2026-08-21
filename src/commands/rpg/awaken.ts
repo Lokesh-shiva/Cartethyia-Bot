@@ -1,5 +1,5 @@
 import {
-  SlashCommandBuilder, ChatInputCommandInteraction,
+  SlashCommandBuilder, ChatInputCommandInteraction, AutocompleteInteraction,
   EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle,
   ComponentType, ButtonInteraction,
 } from "discord.js";
@@ -16,6 +16,9 @@ import {
 } from "../../lib/weaponAwakening";
 import { grantReferralMilestone } from "../../lib/referral";
 import { WeaponType } from "@prisma/client";
+import { handleCharacterAutocomplete } from "../../lib/characterChoices";
+import { CHARACTER_KITS } from "../../lib/characterKit";
+import "../../lib/kits";
 
 const EGO_GOLD = 0xFCD34D;
 
@@ -24,7 +27,10 @@ const ELEMENT_HEX: Record<string, number> = {
   AERO:   0x10B981, HAVOC:  0xEC4899, SPECTRO: 0xEAB308, NONE: 0x6366F1,
 };
 
-const CHARACTER_OWNER_LABEL: Record<string, string> = { self: "Yourself", solace: "Solace" };
+const CHARACTER_OWNER_LABEL: Record<string, string> = { self: "Yourself" };
+function ownerLabelFor(characterId: string): string {
+  return CHARACTER_OWNER_LABEL[characterId] ?? CHARACTER_KITS[characterId]?.label ?? characterId;
+}
 
 const command: Command = {
   data: new SlashCommandBuilder()
@@ -34,17 +40,18 @@ const command: Command = {
       o.setName("character")
         .setDescription("Which unit's equipped weapon to awaken (default: yourself)")
         .setRequired(false)
-        .addChoices(
-          { name: "Yourself", value: "self"   },
-          { name: "Solace",   value: "solace" },
-        )
+        .setAutocomplete(true)
     ) as SlashCommandBuilder,
+
+  async autocomplete(interaction: AutocompleteInteraction) {
+    await handleCharacterAutocomplete(interaction);
+  },
 
   async execute(interaction: ChatInputCommandInteraction) {
     await interaction.deferReply();
 
     const characterId = interaction.options.getString("character") ?? "self";
-    const ownerLabel   = CHARACTER_OWNER_LABEL[characterId] ?? characterId;
+    const ownerLabel   = ownerLabelFor(characterId);
 
     if (characterId !== "self") {
       const owned = await prisma.characterProgress.findUnique({
