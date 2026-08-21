@@ -486,61 +486,66 @@ export async function resolvePlayerBonuses(userId: string, characterId: string =
   }
 
   // ── Unique ability (composite) ────────────────────────────────────────────
-  bonuses.abilityVersion = user.abilityVersion ?? 1;
+  // Self-only: an ally's own equipped grid should never inherit the human
+  // player's account-level Unique Ability — that system belongs to the
+  // player, not to Solace/Kaelith/Rilo/Vesper.
+  if (characterId === "self") {
+    bonuses.abilityVersion = user.abilityVersion ?? 1;
 
-  if (bonuses.abilityVersion === 2) {
-    // V2 — composable trigger→effect language.
-    // Weapon effects are already in bonuses.abilityEffects — fold their passives
-    // first so CRIT_DMG / LIFESTEAL / EXECUTE from awakened weapons still apply.
-    if (bonuses.abilityEffects.length > 0) {
-      const wp = compositePassives(bonuses.abilityEffects);
-      bonuses.atkMult       *= wp.atkMult;
-      bonuses.hpMult        *= wp.hpMult;
-      bonuses.defMult       *= wp.defMult;
-      bonuses.critRateBonus += wp.critRateBonus;
-      bonuses.critDmgBonus  += wp.critDmgBonus;
-      bonuses.lifesteal     += wp.lifesteal;
-      bonuses.energyBonus   += wp.energyBonus;
-      bonuses.elemDmgBonus  += wp.elemDmgBonus;
-    }
-    const v2 = sanitizeV2Effects(user.uniqueAbilityEffects, user.abilityEvolved, 7);
-    if (v2.length > 0) {
-      bonuses.v2Effects = v2;
-      const p = v2CompositePassives(v2);
-      bonuses.atkMult       *= p.atkMult;
-      bonuses.hpMult        *= p.hpMult;
-      bonuses.defMult       *= p.defMult;
-      bonuses.critRateBonus += p.critRateBonus;
-      bonuses.critDmgBonus  += p.critDmgBonus;
-      bonuses.lifesteal     += p.lifesteal;
-      bonuses.energyBonus   += p.energyBonus;
-      bonuses.elemDmgBonus  += p.elemDmgBonus;
-      bonuses.activeLabels.push(`✦ Unique${user.uniqueAbilityName ? ` — ${user.uniqueAbilityName}` : ""}:\n${formatV2Effects(v2).split("\n").map(l => "  › " + l).join("\n")}`);
-    }
-  } else {
-    // V1 — source priority: stored composite → migrate legacy single-type → none
-    let effects: AbilityEffect[] = sanitizeEffects(user.uniqueAbilityEffects, user.abilityEvolved);
+    if (bonuses.abilityVersion === 2) {
+      // V2 — composable trigger→effect language.
+      // Weapon effects are already in bonuses.abilityEffects — fold their passives
+      // first so CRIT_DMG / LIFESTEAL / EXECUTE from awakened weapons still apply.
+      if (bonuses.abilityEffects.length > 0) {
+        const wp = compositePassives(bonuses.abilityEffects);
+        bonuses.atkMult       *= wp.atkMult;
+        bonuses.hpMult        *= wp.hpMult;
+        bonuses.defMult       *= wp.defMult;
+        bonuses.critRateBonus += wp.critRateBonus;
+        bonuses.critDmgBonus  += wp.critDmgBonus;
+        bonuses.lifesteal     += wp.lifesteal;
+        bonuses.energyBonus   += wp.energyBonus;
+        bonuses.elemDmgBonus  += wp.elemDmgBonus;
+      }
+      const v2 = sanitizeV2Effects(user.uniqueAbilityEffects, user.abilityEvolved, 7);
+      if (v2.length > 0) {
+        bonuses.v2Effects = v2;
+        const p = v2CompositePassives(v2);
+        bonuses.atkMult       *= p.atkMult;
+        bonuses.hpMult        *= p.hpMult;
+        bonuses.defMult       *= p.defMult;
+        bonuses.critRateBonus += p.critRateBonus;
+        bonuses.critDmgBonus  += p.critDmgBonus;
+        bonuses.lifesteal     += p.lifesteal;
+        bonuses.energyBonus   += p.energyBonus;
+        bonuses.elemDmgBonus  += p.elemDmgBonus;
+        bonuses.activeLabels.push(`✦ Unique${user.uniqueAbilityName ? ` — ${user.uniqueAbilityName}` : ""}:\n${formatV2Effects(v2).split("\n").map(l => "  › " + l).join("\n")}`);
+      }
+    } else {
+      // V1 — source priority: stored composite → migrate legacy single-type → none
+      let effects: AbilityEffect[] = sanitizeEffects(user.uniqueAbilityEffects, user.abilityEvolved);
 
-    if (effects.length === 0 && user.uniqueAbilityType) {
-      effects = legacyToComposite(user.uniqueAbilityType, user.uniqueAbilityValue, playerElem, userId);
-      prisma.user.update({
-        where: { id: userId },
-        data:  { uniqueAbilityEffects: effects as any },
-      }).catch(() => {});
-    }
+      if (effects.length === 0 && user.uniqueAbilityType) {
+        effects = legacyToComposite(user.uniqueAbilityType, user.uniqueAbilityValue, playerElem, userId);
+        prisma.user.update({
+          where: { id: userId },
+          data:  { uniqueAbilityEffects: effects as any },
+        }).catch(() => {});
+      }
 
-    if (effects.length > 0) {
-      bonuses.abilityEffects = [...bonuses.abilityEffects, ...effects];
-      const p = compositePassives(bonuses.abilityEffects);
-      bonuses.atkMult       *= p.atkMult;
-      bonuses.hpMult        *= p.hpMult;
-      bonuses.defMult       *= p.defMult;
-      bonuses.critRateBonus += p.critRateBonus;
-      bonuses.critDmgBonus  += p.critDmgBonus;
-      bonuses.lifesteal     += p.lifesteal;
-      bonuses.energyBonus   += p.energyBonus;
-      bonuses.elemDmgBonus  += p.elemDmgBonus;
-      bonuses.activeLabels.push(`✦ Unique${user.uniqueAbilityName ? ` — ${user.uniqueAbilityName}` : ""}:\n${formatEffects(effects).split("\n").map(l => "  › " + l).join("\n")}`);
+      if (effects.length > 0) {
+        bonuses.abilityEffects = [...bonuses.abilityEffects, ...effects];
+        const p = compositePassives(bonuses.abilityEffects);
+        bonuses.atkMult       *= p.atkMult;
+        bonuses.hpMult        *= p.hpMult;
+        bonuses.defMult       *= p.defMult;
+        bonuses.critRateBonus += p.critRateBonus;
+        bonuses.critDmgBonus  += p.critDmgBonus;
+        bonuses.lifesteal     += p.lifesteal;
+        bonuses.energyBonus   += p.energyBonus;
+        bonuses.elemDmgBonus  += p.elemDmgBonus;
+        bonuses.activeLabels.push(`✦ Unique${user.uniqueAbilityName ? ` — ${user.uniqueAbilityName}` : ""}:\n${formatEffects(effects).split("\n").map(l => "  › " + l).join("\n")}`);
+      }
     }
   }
 
