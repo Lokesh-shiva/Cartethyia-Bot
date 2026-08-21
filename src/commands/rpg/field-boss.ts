@@ -22,7 +22,7 @@ import { voteNudge, supportNudge } from "../../lib/voteNudge";
 import { mailNudge } from "../../lib/mailNudge";
 import { generateBattleCard, BattleCardState } from "../../lib/battleCard";
 import {
-  resolvePlayerBonuses, applyBonuses,
+  resolvePlayerBonuses, applyBonuses, PlayerBonuses,
   apply4pcSkillBonus, apply4pcUltBonus, roll4pcDoubleHit, roll4pcBlock,
   apply5pcLowHpCrit, apply5pcFirstHit, apply5pcFullHpDmg,
   get5pcVibDrainMult, get5pcHpRegen, applyLifesteal,
@@ -437,6 +437,7 @@ const command: Command = {
         forteLevel: number;
         constellation: number;
         solaceStats: any;
+        bonuses: PlayerBonuses;
       }
 
       // CRITICAL: this does a real read-only ownership lookup, NOT
@@ -455,6 +456,11 @@ const command: Command = {
         });
         if (!progress) continue; // not actually owned — treat this position as unfilled
         const resolvedStats = await kit.resolveStats(interaction.user.id);
+        // Ally's own equipped grid's full bonus set — elemDmgBonus/lifesteal/
+        // elementPassive/echoSkill/named-set mechanics, NOT the player's. Cheap:
+        // resolvePlayerBonuses caches per (userId, characterId) for 30s and
+        // kit.resolveStats() already calls it internally for the stat numbers.
+        const allyBonuses = await resolvePlayerBonuses(interaction.user.id, value);
         // Use the ally's own gear/level-resolved HP, not the fixed level-90 base.
         const hpMax = resolvedStats.hp;
         allyBundles[pos] = {
@@ -470,6 +476,7 @@ const command: Command = {
           forteLevel:    progress.forteLevel    ?? 1,
           constellation: progress.constellation ?? 0,
           solaceStats:   resolvedStats,
+          bonuses:       allyBonuses,
         };
       }
 
@@ -503,6 +510,7 @@ const command: Command = {
       let allyForteLevel = 1;
       let allyConstellation = 0;
       let allySolaceStats: any = null;
+      let allyBonuses: PlayerBonuses | null = null;
 
       function positionValueOf(pos: PositionIndex): string | null {
         return pos === 1 ? roster.position1 : pos === 2 ? roster.position2 : roster.position3;
@@ -528,6 +536,7 @@ const command: Command = {
         allyForteLevel        = bundle?.forteLevel ?? 1;
         allyConstellation     = bundle?.constellation ?? 0;
         allySolaceStats       = bundle?.solaceStats ?? null;
+        allyBonuses           = bundle?.bonuses ?? null;
         return bundle;
       }
       function currentPositionHp(pos: PositionIndex): number {
@@ -726,7 +735,8 @@ const command: Command = {
         // (may have changed via swap/KO-fallback at the end of the previous
         // turn) before rendering this turn's buttons/status line.
         syncActiveBundle();
-        const buttons = buildButtons(state, bonuses.echoSkill ? { name: bonuses.echoSkill.name, cooldown: echoSkillCooldown } : null, teamButtonContext());
+        const renderBonuses = (!isPlayerActive() && allyBonuses) ? allyBonuses : bonuses;
+        const buttons = buildButtons(state, renderBonuses.echoSkill ? { name: renderBonuses.echoSkill.name, cooldown: echoSkillCooldown } : null, teamButtonContext());
         if (battleMsg) await battleMsg.edit({ components: [] }).catch(() => {});
         battleMsg = await sendBattleCard(thread as any, { ...state, ...activeCardIdentity() }, buttons, teamStatusLine());
 
@@ -751,6 +761,12 @@ const command: Command = {
           // thing to call syncActiveBundle — cheap enough to just redo it).
           let activeBundle = syncActiveBundle();
           let isPlayerActiveNow = isPlayerActive();
+          // Milestone 3.5b: whichever unit is currently acting/defending uses
+          // ITS OWN full bonus set (elemDmgBonus/lifesteal/elementPassive/
+          // echoSkill/named-set/etc.), not always the player's own equipped
+          // grid — computed early since the RC turn-heal below already needs it.
+          let isAllyActingOrDefending = !isPlayerActiveNow && allyBonuses !== null;
+          let activeBonuses = isAllyActingOrDefending ? allyBonuses! : bonuses;
           // Both the single-button and dropdown swap variants consume the
           // turn as a non-attack action — anywhere the old code checked
           // `!== "fb_swap"` needs to exclude both customIds now.
@@ -761,33 +777,33 @@ const command: Command = {
           state.hitBadge = undefined;
           let radiantDmgMult = 1.0;
           let radiantTurnHealAmount = 0;
-          if (bonuses.activeNamedSetId === "RADIANT_CONVERGENCE" && btn.customId !== "fb_flee") {
-            const heal = radiantConvergenceOnTurnHeal(namedState, state.playerHpMax, bonuses.healingBonus);
+          if (activeBonuses.activeNamedSetId === "RADIANT_CONVERGENCE" && btn.customId !== "fb_flee") {
+            const heal = radiantConvergenceOnTurnHeal(namedState, state.playerHpMax, activeBonuses.healingBonus);
             state.playerHp  = Math.min(state.playerHpMax, state.playerHp + heal.healAmount);
             radiantDmgMult  = heal.dmgMult;
             radiantTurnHealAmount = heal.healAmount;
           }
 
           const isWeak        = user.element === fb.weakness;
-          const havocFrenzyActive = bonuses.activeNamedSetId === "VOIDBORN_REMNANT" && voidbornRemnantFrenzyActive(namedState);
+          const havocFrenzyActive = activeBonuses.activeNamedSetId === "VOIDBORN_REMNANT" && voidbornRemnantFrenzyActive(namedState);
           const defShredActive = enemyDefShredTurnsLeft > 0;
           const effectiveDef  = (havocFrenzyActive ? scaled.def * (1 - havocFrenzyDefIgnore) : scaled.def) * (defShredActive ? (1 - enemyDefShredPct) : 1);
           const defVal        = state.isShattered ? 0 : effectiveDef;
           const defReduction  = Math.min(0.75, defVal / (defVal + 600));
           const havocAtkMult  = havocFrenzyActive ? havocFrenzyAtkMult : 1.0;
           const havocLifesteal = havocFrenzyActive ? havocFrenzyLifesteal : 0;
-          const vibMult       = get5pcVibDrainMult(bonuses);
-          const radCrit       = elemRadianceCrit(bonuses.elementPassive, state.playerHp, state.playerHpMax);
+          const vibMult       = get5pcVibDrainMult(activeBonuses);
+          const radCrit       = elemRadianceCrit(activeBonuses.elementPassive, state.playerHp, state.playerHpMax);
           const stormCritBuff  = stormBuffTurnsLeft > 0 ? stormBuffCritBonus : 0;
-          // Milestone 3.5b: whichever unit is currently acting/defending uses
-          // ITS OWN resolved stats.
-          const isAllyActingOrDefending = !isPlayerActiveNow && allySolaceStats !== null;
+          // Solace's own ATK/DEF/Crit from her own echoes when active, the
+          // player's own otherwise (isAllyActingOrDefending/activeBonuses
+          // already computed above, right after syncActiveBundle()).
           const activeAtk     = isAllyActingOrDefending ? allySolaceStats!.atk     : stats.atk;
           const activeDef     = isAllyActingOrDefending ? allySolaceStats!.def     : stats.def;
           const activeCritDmg = isAllyActingOrDefending ? allySolaceStats!.critDmg : stats.critDmg;
-          const activeCritRate = apply5pcLowHpCrit(bonuses, Math.min(1, (isAllyActingOrDefending ? allySolaceStats!.critRate : stats.critRate) + radCrit + stormCritBuff), state.playerHp, state.playerHpMax);
+          const activeCritRate = apply5pcLowHpCrit(activeBonuses, Math.min(1, (isAllyActingOrDefending ? allySolaceStats!.critRate : stats.critRate) + radCrit + stormCritBuff), state.playerHp, state.playerHpMax);
           const forcedCritActive = nextAttackCritArmed && btn.customId !== "fb_flee";
-          const totalVibMult  = vibMult * compositeVibMult(bonuses.abilityEffects);
+          const totalVibMult  = vibMult * compositeVibMult(activeBonuses.abilityEffects);
           const abilCtxBase   = {
             currentHp: state.playerHp, maxHp: state.playerHpMax,
             enemyHpPct: state.bossHpNow / state.bossHpMax,
@@ -914,6 +930,8 @@ const command: Command = {
             activeUnit = incomingPos;
             isPlayerActiveNow = incomingIsPlayer;
             activeBundle = syncActiveBundle();
+            isAllyActingOrDefending = !isPlayerActiveNow && allyBonuses !== null;
+            activeBonuses = isAllyActingOrDefending ? allyBonuses! : bonuses;
             playerDmg = 0;
           }
 
@@ -929,7 +947,7 @@ const command: Command = {
           }
 
           if (btn.customId === "fb_basic") {
-            const windExplosion = bonuses.activeNamedSetId === "WINDSTRIDERS_LEGACY"
+            const windExplosion = activeBonuses.activeNamedSetId === "WINDSTRIDERS_LEGACY"
               ? windstridersLegacyCheckExplosion(namedState) : { proc: false, guaranteedCrit: false, bonusMult: 1.0 };
             const isSolaceAlly = isDevGuild && activeAllyCharacterId === "solace";
             const teamAtkMult  = isSolaceAlly ? getAttunementAtkMult(attunement, solaceAttunementAtkCritBonus(allySkillLevel), attunementDoubleTurnsLeft > 0, allyConstellation >= 6) : 1;
@@ -942,18 +960,18 @@ const command: Command = {
             const teamMult = getWeakenedMult(playerDebuffs) * teamAtkMult * wellspringAtkMult * (1 + wellspringAtkBonus) * (1 + forteAtkBonus);
             const basicMoveMult = isDevGuild && !isPlayerActiveNow && allyKit ? allyKit.basicDamageMult(allyBasicLevel) : 1.0;
             const crit = forcedCritActive || windExplosion.guaranteedCrit || Math.random() < Math.min(1, activeCritRate + teamCritBonus + wellspringCritBonus + forteCritBonus); abilCrit = crit;
-            const smolderMult = bonuses.activeNamedSetId === "SMOLDERING_SOVEREIGN"
+            const smolderMult = activeBonuses.activeNamedSetId === "SMOLDERING_SOVEREIGN"
               ? smolderingSovereignOnAction(namedState) : 1;
             const base = Math.max(1, Math.floor(activeAtk * teamMult * basicMoveMult * smolderMult * havocAtkMult * radiantDmgMult * (1 - defReduction)));
             const extraElemBonus = glacioShieldTurnsLeft > 0 ? glacioShieldElemBonus : 0;
-            let dmg    = Math.floor(base * (crit ? activeCritDmg : 1) * (isWeak ? 1.5 : 1) * (1 + bonuses.elemDmgBonus + extraElemBonus));
-            if (bonuses.activeNamedSetId === "WINDSTRIDERS_LEGACY") {
+            let dmg    = Math.floor(base * (crit ? activeCritDmg : 1) * (isWeak ? 1.5 : 1) * (1 + activeBonuses.elemDmgBonus + extraElemBonus));
+            if (activeBonuses.activeNamedSetId === "WINDSTRIDERS_LEGACY") {
               dmg = windExplosion.proc
                 ? Math.floor(dmg * (1 + windExplosion.bonusMult))
                 : Math.floor(dmg * windstridersLegacyOnHit(namedState));
             }
             let thunderboltEnergy = 0;
-            if (bonuses.activeNamedSetId === "STORMCALLERS_OATH") {
+            if (activeBonuses.activeNamedSetId === "STORMCALLERS_OATH") {
               const tb = stormcallersOathOnBasic(namedState);
               if (tb.proc) {
                 dmg += Math.floor(stats.atk * tb.bonusMult); // intentionally flat/unscaled, matching elemIgniteProc's pattern below (raw-ATK elemental proc, not crit/weakness-scaled)
@@ -963,20 +981,20 @@ const command: Command = {
             dmg        = apply5pcFirstHit(bonuses, dmg, state.turn === 1);
             dmg        = apply5pcFullHpDmg(bonuses, dmg, state.playerHp, state.playerHpMax);
             if (roll4pcDoubleHit(bonuses)) dmg *= 2;
-            dmg        = Math.floor(dmg * elemWindstrideMult(bonuses.elementPassive, state.turn, "BASIC"));
+            dmg        = Math.floor(dmg * elemWindstrideMult(activeBonuses.elementPassive, state.turn, "BASIC"));
             const ar_b = applyAbilityAttack(bonuses, dmg, crit, { ...abilCtxBase, moveType: "BASIC" });
             dmg        = ar_b.dmg;
             if (ar_b.newStacks !== undefined) v2Stacks = ar_b.newStacks;
-            const ign  = elemIgniteProc(bonuses.elementPassive, stats.atk);
-            if (bonuses.activeNamedSetId === "RADIANT_CONVERGENCE" && namedState.spectroFractureTurnsLeft > 0) dmg = Math.floor(dmg * 1.10);
-            if (bonuses.activeNamedSetId === "RADIANT_CONVERGENCE" && crit) radiantConvergenceOnCrit(namedState, state.playerHp, state.playerHpMax);
+            const ign  = elemIgniteProc(activeBonuses.elementPassive, stats.atk);
+            if (activeBonuses.activeNamedSetId === "RADIANT_CONVERGENCE" && namedState.spectroFractureTurnsLeft > 0) dmg = Math.floor(dmg * 1.10);
+            if (activeBonuses.activeNamedSetId === "RADIANT_CONVERGENCE" && crit) radiantConvergenceOnCrit(namedState, state.playerHp, state.playerHpMax);
             playerDmg  = dmg + ign.dmg;
             moveName   = crit ? `Basic Attack — **CRITICAL** (${playerDmg} DMG)` : `Basic Attack — ${playerDmg} DMG`;
             if (ign.tag) moveName += `  ✦${ign.tag}`;
             state.bossVibNow   = Math.max(0, state.bossVibNow - Math.floor(playerDmg * 0.3 * totalVibMult));
-            state.playerEnergy = Math.min(100, state.playerEnergy + ENERGY_PER_TURN + elemDischargeEnergy(bonuses.elementPassive, crit) + ar_b.bonusEnergy + thunderboltEnergy);
-            state.playerHp     = Math.min(state.playerHpMax, applyLifesteal(bonuses.lifesteal + havocLifesteal + (ar_b.lifesteal ?? 0), playerDmg, state.playerHp, state.playerHpMax) + ar_b.healHp);
-            if (bonuses.activeNamedSetId === "STORMCALLERS_OATH") stormcallersOathCheckThunderbolt(namedState, state.playerEnergy);
+            state.playerEnergy = Math.min(100, state.playerEnergy + ENERGY_PER_TURN + elemDischargeEnergy(activeBonuses.elementPassive, crit) + ar_b.bonusEnergy + thunderboltEnergy);
+            state.playerHp     = Math.min(state.playerHpMax, applyLifesteal(activeBonuses.lifesteal + havocLifesteal + (ar_b.lifesteal ?? 0), playerDmg, state.playerHp, state.playerHpMax) + ar_b.healHp);
+            if (activeBonuses.activeNamedSetId === "STORMCALLERS_OATH") stormcallersOathCheckThunderbolt(namedState, state.playerEnergy);
 
             if (isDevGuild && !isPlayerActiveNow && activeAllyCharacterId === "kaelith") {
               const kState = allyMechanicState as KaelithMechanicState;
@@ -1038,7 +1056,7 @@ const command: Command = {
             attunement.mode = cycleAttunementMode(attunement.mode);
             if (allyConstellation >= 3) concertoEnergy = addConcertoEnergy(concertoEnergy, 25);
             const crit = Math.random() < activeCritRate; abilCrit = crit;
-            const dmg  = Math.max(1, Math.floor(activeAtk * 0.6 * (1 - defReduction) * (crit ? activeCritDmg : 1) * (isWeak ? 1.5 : 1) * (1 + bonuses.elemDmgBonus)));
+            const dmg  = Math.max(1, Math.floor(activeAtk * 0.6 * (1 - defReduction) * (crit ? activeCritDmg : 1) * (isWeak ? 1.5 : 1) * (1 + activeBonuses.elemDmgBonus)));
             playerDmg  = dmg;
             moveName   = `✦ Attunement — now in **${attunement.mode}** mode! ${playerDmg} DMG${crit ? " **(CRIT)**" : ""}`;
             state.bossVibNow = Math.max(0, state.bossVibNow - Math.floor(playerDmg * 0.3 * totalVibMult));
@@ -1056,7 +1074,7 @@ const command: Command = {
               );
               allyMechanicState = result.newMechanicState;
               const base = Math.max(1, Math.floor(activeAtk * result.damageMult * (1 - defReduction)));
-              const dmg  = Math.floor(base * (crit ? activeCritDmg : 1) * (isWeak ? 1.5 : 1) * (1 + bonuses.elemDmgBonus));
+              const dmg  = Math.floor(base * (crit ? activeCritDmg : 1) * (isWeak ? 1.5 : 1) * (1 + activeBonuses.elemDmgBonus));
               playerDmg  = dmg;
               moveName   = `🌑 ${result.moveLabel} — ${playerDmg} DMG${crit ? " **(CRIT)**" : ""}`;
               state.bossVibNow = Math.max(0, state.bossVibNow - Math.floor(playerDmg * result.vibFrac * totalVibMult));
@@ -1076,7 +1094,7 @@ const command: Command = {
 
             const effectiveDefReduction = 1 - (1 - defReduction) * (1 - result.defIgnorePct);
             const perHitBase = Math.max(1, Math.floor(activeAtk * (result.damageMult / result.hits) * (1 - effectiveDefReduction)));
-            const perHitDmg  = Math.floor(perHitBase * (crit ? activeCritDmg : 1) * (isWeak ? 1.5 : 1) * (1 + bonuses.elemDmgBonus));
+            const perHitDmg  = Math.floor(perHitBase * (crit ? activeCritDmg : 1) * (isWeak ? 1.5 : 1) * (1 + activeBonuses.elemDmgBonus));
 
             if (result.hits > 1) {
               const hitLines = Array.from({ length: result.hits }, (_, i) => `Hit ${i + 1}: ${perHitDmg} dmg`).join("\n");
@@ -1110,7 +1128,7 @@ const command: Command = {
             if (forteEmpowered) solaceForte = resetForte();
 
             const base = Math.max(1, Math.floor(activeAtk * result.damageMult * (1 - defReduction)));
-            const dmg  = Math.floor(base * activeCritDmg * (isWeak ? 1.5 : 1) * (1 + bonuses.elemDmgBonus));
+            const dmg  = Math.floor(base * activeCritDmg * (isWeak ? 1.5 : 1) * (1 + activeBonuses.elemDmgBonus));
             playerDmg  = dmg;
             moveName   = `🛡️ ${result.moveLabel} — ${playerDmg} DMG **(CRIT)** (consumed ${result.shieldConsumed} Shield)`;
             if (result.defShredApplied) {
@@ -1128,32 +1146,32 @@ const command: Command = {
             const forteCritBonus = isSolaceAllySkill ? getSolaceForteCritRateBonus(allyForteLevel, forteEmpoweredTurnsLeft > 0) : 0;
             const teamMult = getWeakenedMult(playerDebuffs) * teamAtkMult * (1 + wellspringAtkBonus) * (1 + forteAtkBonus);
             const crit = forcedCritActive || Math.random() < Math.min(1, activeCritRate + 0.1 + teamCritBonus + wellspringCritBonus + forteCritBonus); abilCrit = crit;
-            const smolderMult = bonuses.activeNamedSetId === "SMOLDERING_SOVEREIGN"
+            const smolderMult = activeBonuses.activeNamedSetId === "SMOLDERING_SOVEREIGN"
               ? smolderingSovereignOnAction(namedState) : 1;
             const base = Math.max(1, Math.floor(stats.atk * teamMult * smolderMult * havocAtkMult * radiantDmgMult * 1.8 * (1 - defReduction)));
             const extraElemBonusSkill = glacioShieldTurnsLeft > 0 ? glacioShieldElemBonus : 0;
-            let dmg    = Math.floor(base * (crit ? stats.critDmg : 1) * (isWeak ? 1.5 : 1) * (1 + bonuses.elemDmgBonus + extraElemBonusSkill));
+            let dmg    = Math.floor(base * (crit ? stats.critDmg : 1) * (isWeak ? 1.5 : 1) * (1 + activeBonuses.elemDmgBonus + extraElemBonusSkill));
             dmg        = apply4pcSkillBonus(bonuses, dmg, state.skillCooldown === 0);
-            if (bonuses.activeNamedSetId === "WINDSTRIDERS_LEGACY") dmg = Math.floor(dmg * windstridersLegacyOnHit(namedState));
-            dmg        = Math.floor(dmg * elemWindstrideMult(bonuses.elementPassive, state.turn, "SKILL"));
-            if (bonuses.activeNamedSetId === "SMOLDERING_SOVEREIGN") {
+            if (activeBonuses.activeNamedSetId === "WINDSTRIDERS_LEGACY") dmg = Math.floor(dmg * windstridersLegacyOnHit(namedState));
+            dmg        = Math.floor(dmg * elemWindstrideMult(activeBonuses.elementPassive, state.turn, "SKILL"));
+            if (activeBonuses.activeNamedSetId === "SMOLDERING_SOVEREIGN") {
               const sov = smolderingSovereignOnSkill(namedState);
               if (sov.doubleHit) dmg = Math.floor(dmg * sov.bonusMult * 2);
             }
             const ar_s = applyAbilityAttack(bonuses, dmg, crit, { ...abilCtxBase, moveType: "SKILL" });
             dmg        = ar_s.dmg;
             if (ar_s.newStacks !== undefined) v2Stacks = ar_s.newStacks;
-            const ign  = elemIgniteProc(bonuses.elementPassive, stats.atk);
-            if (bonuses.activeNamedSetId === "RADIANT_CONVERGENCE" && namedState.spectroFractureTurnsLeft > 0) dmg = Math.floor(dmg * 1.10);
-            if (bonuses.activeNamedSetId === "RADIANT_CONVERGENCE" && crit) radiantConvergenceOnCrit(namedState, state.playerHp, state.playerHpMax);
+            const ign  = elemIgniteProc(activeBonuses.elementPassive, stats.atk);
+            if (activeBonuses.activeNamedSetId === "RADIANT_CONVERGENCE" && namedState.spectroFractureTurnsLeft > 0) dmg = Math.floor(dmg * 1.10);
+            if (activeBonuses.activeNamedSetId === "RADIANT_CONVERGENCE" && crit) radiantConvergenceOnCrit(namedState, state.playerHp, state.playerHpMax);
             playerDmg  = dmg + ign.dmg;
             moveName   = `Resonance Skill — ${playerDmg} DMG${crit ? " **(CRIT)**" : ""}`;
             if (ign.tag) moveName += `  ✦${ign.tag}`;
             state.bossVibNow    = Math.max(0, state.bossVibNow - Math.floor(playerDmg * 0.6 * totalVibMult));
             state.skillCooldown = effectiveSkillCooldown(bonuses, SKILL_COOLDOWN);
-            state.playerEnergy  = Math.min(100, state.playerEnergy + ENERGY_PER_TURN + elemDischargeEnergy(bonuses.elementPassive, crit) + ar_s.bonusEnergy);
-            state.playerHp      = Math.min(state.playerHpMax, applyLifesteal(bonuses.lifesteal + havocLifesteal + (ar_s.lifesteal ?? 0), playerDmg, state.playerHp, state.playerHpMax) + ar_s.healHp);
-            if (bonuses.set5pc?.type === "POST_ULT_SKILL") state.skillCooldown = 0;
+            state.playerEnergy  = Math.min(100, state.playerEnergy + ENERGY_PER_TURN + elemDischargeEnergy(activeBonuses.elementPassive, crit) + ar_s.bonusEnergy);
+            state.playerHp      = Math.min(state.playerHpMax, applyLifesteal(activeBonuses.lifesteal + havocLifesteal + (ar_s.lifesteal ?? 0), playerDmg, state.playerHp, state.playerHpMax) + ar_s.healHp);
+            if (activeBonuses.set5pc?.type === "POST_ULT_SKILL") state.skillCooldown = 0;
           }
 
           // Set inside Solace's Convergence branch below — Convergence resets
@@ -1170,25 +1188,25 @@ const command: Command = {
             const wellspringAtkBonus = isSolaceAllySkill && allySolaceStats?.hasWellspring ? getWellspringAtkBonus(attunement, allySolaceStats.wellspringRefinement!) : 0;
             const forteAtkBonus = isSolaceAllySkill ? getSolaceForteAtkBonus(allyForteLevel, forteEmpoweredTurnsLeft > 0) : 0;
             const teamMult = getWeakenedMult(playerDebuffs) * teamAtkMult * (1 + wellspringAtkBonus) * (1 + forteAtkBonus);
-            const smolderMult = bonuses.activeNamedSetId === "SMOLDERING_SOVEREIGN"
+            const smolderMult = activeBonuses.activeNamedSetId === "SMOLDERING_SOVEREIGN"
               ? smolderingSovereignOnAction(namedState) : 1;
             const base = Math.max(1, Math.floor(stats.atk * teamMult * smolderMult * havocAtkMult * radiantDmgMult * 3.5 * stats.critDmg * (1 - defReduction)));
             const extraElemBonusUlt = glacioShieldTurnsLeft > 0 ? glacioShieldElemBonus : 0;
-            let dmg    = Math.floor(base * (isWeak ? 1.5 : 1) * (1 + bonuses.elemDmgBonus + extraElemBonusUlt));
+            let dmg    = Math.floor(base * (isWeak ? 1.5 : 1) * (1 + activeBonuses.elemDmgBonus + extraElemBonusUlt));
             dmg        = apply4pcUltBonus(bonuses, dmg);
-            if (bonuses.activeNamedSetId === "WINDSTRIDERS_LEGACY") dmg = Math.floor(dmg * windstridersLegacyOnHit(namedState));
+            if (activeBonuses.activeNamedSetId === "WINDSTRIDERS_LEGACY") dmg = Math.floor(dmg * windstridersLegacyOnHit(namedState));
             const ar_u = applyAbilityAttack(bonuses, dmg, true, { ...abilCtxBase, moveType: "ULT" });
             dmg        = ar_u.dmg;
             if (ar_u.newStacks !== undefined) v2Stacks = ar_u.newStacks;
-            if (bonuses.activeNamedSetId === "RADIANT_CONVERGENCE" && namedState.spectroFractureTurnsLeft > 0) dmg = Math.floor(dmg * 1.10);
-            if (bonuses.activeNamedSetId === "RADIANT_CONVERGENCE") radiantConvergenceOnCrit(namedState, state.playerHp, state.playerHpMax);
+            if (activeBonuses.activeNamedSetId === "RADIANT_CONVERGENCE" && namedState.spectroFractureTurnsLeft > 0) dmg = Math.floor(dmg * 1.10);
+            if (activeBonuses.activeNamedSetId === "RADIANT_CONVERGENCE") radiantConvergenceOnCrit(namedState, state.playerHp, state.playerHpMax);
             playerDmg  = dmg;
             moveName   = `⚡ ULTIMATE — ${playerDmg} DMG`;
             state.bossVibNow   = Math.max(0, state.bossVibNow - Math.floor(playerDmg * 0.8 * totalVibMult));
             state.playerEnergy = Math.min(100, ar_u.bonusEnergy);
-            state.playerHp     = Math.min(state.playerHpMax, applyLifesteal(bonuses.lifesteal + havocLifesteal + (ar_u.lifesteal ?? 0), playerDmg, state.playerHp, state.playerHpMax) + ar_u.healHp);
-            if (bonuses.set5pc?.type === "POST_ULT_SKILL") state.skillCooldown = 0;
-            if (bonuses.activeNamedSetId === "STORMCALLERS_OATH") {
+            state.playerHp     = Math.min(state.playerHpMax, applyLifesteal(activeBonuses.lifesteal + havocLifesteal + (ar_u.lifesteal ?? 0), playerDmg, state.playerHp, state.playerHpMax) + ar_u.healHp);
+            if (activeBonuses.set5pc?.type === "POST_ULT_SKILL") state.skillCooldown = 0;
+            if (activeBonuses.activeNamedSetId === "STORMCALLERS_OATH") {
               const surge = stormcallersOathOnUltimate();
               state.playerEnergy = Math.min(100, state.playerEnergy + surge.bonusEnergy);
               stormBuffTurnsLeft = surge.turnsLeft + 1; // +1 compensates for the same-round decrement that fires immediately after this triggers (same pattern/reason as Frostveil Bastion's shield fix)
@@ -1249,7 +1267,7 @@ const command: Command = {
             allyMechanicState = result.newMechanicState;
 
             const base = Math.max(1, Math.floor(activeAtk * ultDamageMult * (1 - defReduction)));
-            const dmg  = Math.floor(base * (isWeak ? 1.5 : 1) * (1 + bonuses.elemDmgBonus));
+            const dmg  = Math.floor(base * (isWeak ? 1.5 : 1) * (1 + activeBonuses.elemDmgBonus));
             playerDmg = dmg;
             moveName  = `🌑 ${result.moveLabel} — ${playerDmg} DMG`;
             state.bossVibNow = Math.max(0, state.bossVibNow - Math.floor(playerDmg * 0.8 * totalVibMult));
@@ -1276,7 +1294,7 @@ const command: Command = {
             allyMechanicState = result.newMechanicState;
 
             const base = Math.max(1, Math.floor(activeAtk * ultDamageMult * (1 - defReduction)));
-            const dmg  = Math.floor(base * (isWeak ? 1.5 : 1) * (1 + bonuses.elemDmgBonus));
+            const dmg  = Math.floor(base * (isWeak ? 1.5 : 1) * (1 + activeBonuses.elemDmgBonus));
             playerDmg = dmg;
             moveName  = `⚡ ${result.moveLabel} — ${playerDmg} DMG`;
             state.bossVibNow = Math.max(0, state.bossVibNow - Math.floor(playerDmg * 0.8 * totalVibMult));
@@ -1292,7 +1310,7 @@ const command: Command = {
             const hits = c6DoubleHit ? 2 : 1;
 
             const perHitBase = Math.max(1, Math.floor(activeAtk * (riloUltimateBaseMult(allyUltimateLevel) / hits) * (1 - defReduction)));
-            const perHitDmg  = Math.floor(perHitBase * activeCritDmg * (isWeak ? 1.5 : 1) * (1 + bonuses.elemDmgBonus));
+            const perHitDmg  = Math.floor(perHitBase * activeCritDmg * (isWeak ? 1.5 : 1) * (1 + activeBonuses.elemDmgBonus));
             const totalDmg   = perHitDmg * hits;
 
             const c4Bonus = riloUltimateShieldFromDamage(totalDmg, allyConstellation);
@@ -1318,15 +1336,15 @@ const command: Command = {
             }
           }
 
-          if (btn.customId === "fb_echoskill" && bonuses.echoSkill) {
-            const def = bonuses.echoSkill;
+          if (btn.customId === "fb_echoskill" && activeBonuses.echoSkill) {
+            const def = activeBonuses.echoSkill;
             const crit = forcedCritActive || def.kind === "GUARANTEED_CRIT" || Math.random() < activeCritRate;
             abilCrit = crit;
-            const smolderMult = bonuses.activeNamedSetId === "SMOLDERING_SOVEREIGN"
+            const smolderMult = activeBonuses.activeNamedSetId === "SMOLDERING_SOVEREIGN"
               ? smolderingSovereignOnAction(namedState) : 1;
             const base = Math.max(1, Math.floor(stats.atk * smolderMult * havocAtkMult * echoSkillBaseMult() * (1 - defReduction)));
             const extraElemBonusEcho = glacioShieldTurnsLeft > 0 ? glacioShieldElemBonus : 0;
-            let dmg = Math.floor(base * (crit ? stats.critDmg : 1) * (isWeak ? 1.5 : 1) * (1 + bonuses.elemDmgBonus + extraElemBonusEcho) * radiantDmgMult);
+            let dmg = Math.floor(base * (crit ? stats.critDmg : 1) * (isWeak ? 1.5 : 1) * (1 + activeBonuses.elemDmgBonus + extraElemBonusEcho) * radiantDmgMult);
 
             const result = applyEchoSkill(def, {
               atk: stats.atk, enemyHp: state.bossHpNow, enemyHpMax: state.bossHpMax,
@@ -1338,7 +1356,7 @@ const command: Command = {
             if (result.noDamage) dmg = 0;
 
             let namedTriggerTag = "";
-            if (def.kind === "NAMED_SET_TRIGGER" && bonuses.activeNamedSetId === def.setId) {
+            if (def.kind === "NAMED_SET_TRIGGER" && activeBonuses.activeNamedSetId === def.setId) {
               switch (def.setId) {
                 case "SMOLDERING_SOVEREIGN":
                   namedState.fusionAtkStacks = 4; namedState.fusionSkillDoubleArmed = true;
@@ -1379,7 +1397,7 @@ const command: Command = {
             const ar_e = applyAbilityAttack(bonuses, dmg, crit, { ...abilCtxBase, moveType: "SKILL" });
             dmg = ar_e.dmg;
             if (ar_e.newStacks !== undefined) v2Stacks = ar_e.newStacks;
-            const ignite = result.noDamage ? { dmg: 0, tag: "" } : elemIgniteProc(bonuses.elementPassive, stats.atk);
+            const ignite = result.noDamage ? { dmg: 0, tag: "" } : elemIgniteProc(activeBonuses.elementPassive, stats.atk);
             playerDmg = dmg + ignite.dmg;
             moveName  = result.noDamage ? `🌀 ${def.name}` : `🌀 ${def.name}${crit ? " **(CRIT)**" : ""} — ${playerDmg} DMG`;
             if (namedTriggerTag) moveName += `\n✦ ${namedTriggerTag}`;
@@ -1391,12 +1409,12 @@ const command: Command = {
             }
             echoSkillCooldown = (result.resetCdOnCrit && crit) ? 0 : ECHO_SKILL_COOLDOWN;
 
-            const energyGain = ENERGY_PER_TURN + elemDischargeEnergy(bonuses.elementPassive, crit) + result.bonusEnergy;
+            const energyGain = ENERGY_PER_TURN + elemDischargeEnergy(activeBonuses.elementPassive, crit) + result.bonusEnergy;
             state.playerEnergy = result.setEnergyFull ? 100 : Math.min(100, state.playerEnergy + energyGain);
 
-            let echoLifesteal = bonuses.lifesteal + havocLifesteal + (ar_e.lifesteal ?? 0);
+            let echoLifesteal = activeBonuses.lifesteal + havocLifesteal + (ar_e.lifesteal ?? 0);
             if (def.kind === "FLAT_LIFESTEAL") echoLifesteal += def.pct;
-            const scaledEchoHeal = Math.floor(result.healHp * (1 + bonuses.healingBonus));
+            const scaledEchoHeal = Math.floor(result.healHp * (1 + activeBonuses.healingBonus));
             state.playerHp = Math.min(state.playerHpMax, applyLifesteal(echoLifesteal, playerDmg, state.playerHp, state.playerHpMax) + ar_e.healHp + scaledEchoHeal);
             if (scaledEchoHeal > 0) {
               const benchPos = ([1, 2, 3] as PositionIndex[]).find(pos => pos !== activeUnit && allyBundles[pos] && allyBundles[pos]!.hp > 0);
@@ -1442,12 +1460,12 @@ const command: Command = {
             state.isShattered = true;
             shatterTurnsLeft  = 1;
             moveName += "\n✦ **SHATTER!** Boss stunned 1 turn — all attacks critical!";
-            const voidHeal = elemVoidSurgeHeal(bonuses.elementPassive, state.playerHpMax);
+            const voidHeal = elemVoidSurgeHeal(activeBonuses.elementPassive, state.playerHpMax);
             if (voidHeal > 0) {
               state.playerHp = Math.min(state.playerHpMax, state.playerHp + voidHeal);
               moveName += `\n✦ **Void Surge** — +${voidHeal} HP!`;
             }
-            if (bonuses.activeNamedSetId === "VOIDBORN_REMNANT") {
+            if (activeBonuses.activeNamedSetId === "VOIDBORN_REMNANT") {
               const remnant = voidbornRemnantOnShatter();
               const bonusDmg = Math.floor(stats.atk * remnant.bonusMult);
               state.bossHpNow = Math.max(0, state.bossHpNow - bonusDmg);
@@ -1461,7 +1479,7 @@ const command: Command = {
           state.lastMove = moveName;
 
           if (state.bossHpNow <= 0) {
-            await sendBattleCard(thread as any, { ...state, ...activeCardIdentity(), lastMove: `${moveName} — **DEFEATED!**` }, buildButtons(state, bonuses.echoSkill ? { name: bonuses.echoSkill.name, cooldown: echoSkillCooldown } : null, teamButtonContext()), teamStatusLine());
+            await sendBattleCard(thread as any, { ...state, ...activeCardIdentity(), lastMove: `${moveName} — **DEFEATED!**` }, buildButtons(state, activeBonuses.echoSkill ? { name: activeBonuses.echoSkill.name, cooldown: echoSkillCooldown } : null, teamButtonContext()), teamStatusLine());
             collector.stop();
             await cleanup(true);
             return;
@@ -1535,7 +1553,7 @@ const command: Command = {
               }
             }
             bossDmg       = roll4pcBlock(bonuses, bossDmg);
-            const shield  = elemFrostShield(bonuses.elementPassive, bossDmg);
+            const shield  = elemFrostShield(activeBonuses.elementPassive, bossDmg);
             bossDmg       = shield.dmg;
             if (fb.mechanicId === "LIFESTEAL_FRENZY") {
               const frenzy = lifestealFrenzyOnBossTurn(bossMechState, bossDmg, state.bossHpNow, scaled.hp);
@@ -1558,9 +1576,9 @@ const command: Command = {
             } else {
               state.playerHp = Math.max(0, state.playerHp - bossDmg);
             }
-            if (bonuses.activeNamedSetId === "SMOLDERING_SOVEREIGN") smolderingSovereignOnDamageTaken(namedState);
-            if (bonuses.activeNamedSetId === "WINDSTRIDERS_LEGACY") windstridersLegacyOnBigHitTaken(namedState, bossDmg, state.playerHpMax);
-            if (bonuses.activeNamedSetId === "VOIDBORN_REMNANT") {
+            if (activeBonuses.activeNamedSetId === "SMOLDERING_SOVEREIGN") smolderingSovereignOnDamageTaken(namedState);
+            if (activeBonuses.activeNamedSetId === "WINDSTRIDERS_LEGACY") windstridersLegacyOnBigHitTaken(namedState, bossDmg, state.playerHpMax);
+            if (activeBonuses.activeNamedSetId === "VOIDBORN_REMNANT") {
               const frenzy = voidbornRemnantCheckFrenzy(namedState, state.playerHp, state.playerHpMax);
               if (frenzy.triggered) {
                 havocFrenzyAtkMult   = frenzy.atkMult;
@@ -1569,15 +1587,15 @@ const command: Command = {
                 state.lastMove = (state.lastMove ?? "") + `\n🌑 **Void Frenzy** — ATK +${Math.floor((frenzy.atkMult - 1) * 100)}%, Lifesteal +${Math.floor(frenzy.lifesteal * 100)}%, ignoring ${Math.floor(frenzy.defIgnorePct * 100)}% enemy DEF!`;
               }
             }
-            if (bonuses.activeNamedSetId === "RADIANT_CONVERGENCE") {
+            if (activeBonuses.activeNamedSetId === "RADIANT_CONVERGENCE") {
               radiantConvergenceOnHitTaken(namedState, bossDmg, state.playerHpMax);
-              const burst = radiantConvergenceCheckBurstHeal(namedState, state.playerHp, state.playerHpMax, bonuses.healingBonus);
+              const burst = radiantConvergenceCheckBurstHeal(namedState, state.playerHp, state.playerHpMax, activeBonuses.healingBonus);
               if (burst > 0) {
                 state.playerHp = Math.min(state.playerHpMax, state.playerHp + burst);
                 state.lastMove = (state.lastMove ?? "") + `\n✨ **Radiant Convergence** — burst-heal +${burst} HP!`;
               }
             }
-            if (bonuses.activeNamedSetId === "FROSTVEIL_BASTION") {
+            if (activeBonuses.activeNamedSetId === "FROSTVEIL_BASTION") {
               const counter = frostveilBastionOnHitTaken(namedState);
               if (counter.counterProc) {
                 state.bossVibNow = Math.max(0, state.bossVibNow - Math.floor(fb.vibBar * counter.vibDrain));
@@ -1592,9 +1610,9 @@ const command: Command = {
               }
             }
             const hpRegen  = get5pcHpRegen(bonuses, state.playerHpMax);
-            if (hpRegen > 0 && typeof bonuses.set5pc?.value === "number" && bonuses.set5pc.value < 1)
+            if (hpRegen > 0 && typeof activeBonuses.set5pc?.value === "number" && activeBonuses.set5pc.value < 1)
               state.playerHp = Math.min(state.playerHpMax, state.playerHp + hpRegen);
-            const radRegen = elemRadianceRegen(bonuses.elementPassive, state.playerHpMax);
+            const radRegen = elemRadianceRegen(activeBonuses.elementPassive, state.playerHpMax);
             if (radRegen > 0) state.playerHp = Math.min(state.playerHpMax, state.playerHp + radRegen);
             state.lastMove += `\n◇ ${fb.name} ${move.effect} — **${bossDmg} DMG**${shield.blocked ? " *(Frost Shield!)*" : ""}${radRegen > 0 ? ` *(+${radRegen} Radiance)*` : ""}`;
             state.playerEnergy = Math.min(100, state.playerEnergy + 15);
@@ -1664,7 +1682,7 @@ const command: Command = {
           // ("self") in that case.
           if (isTeamWiped(roster, currentPositionHp)) {
             state.playerHp = 0;
-            await sendBattleCard(thread as any, { ...state, ...activeCardIdentity(), lastMove: state.lastMove + " — **YOU FELL.**" }, buildButtons(state, bonuses.echoSkill ? { name: bonuses.echoSkill.name, cooldown: echoSkillCooldown } : null, teamButtonContext()), teamStatusLine());
+            await sendBattleCard(thread as any, { ...state, ...activeCardIdentity(), lastMove: state.lastMove + " — **YOU FELL.**" }, buildButtons(state, activeBonuses.echoSkill ? { name: activeBonuses.echoSkill.name, cooldown: echoSkillCooldown } : null, teamButtonContext()), teamStatusLine());
             await thread.send({
               embeds: [new EmbedBuilder().setColor(0x334155)
                 .setDescription(`◈ Defeated by **${fb.name}**. Use **/field-boss** to try again.`)
