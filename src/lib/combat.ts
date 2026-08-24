@@ -50,7 +50,7 @@ export function calcPlayerDamage(
 ): DamageResult {
   const isCrit   = Math.random() < critRate;
   const weakMult = weakBonus ? 1.5 : 1.0;
-  const reduction = shattered ? 0 : Math.min(0.75, def / (def + 600));
+  const reduction = shattered ? 0 : Math.min(0.90, def / (def + 600));
   const damage   = Math.max(1, Math.floor(
     baseAtk * mult * (1 - reduction) * (isCrit ? critDmg : 1) * weakMult
   ));
@@ -58,9 +58,13 @@ export function calcPlayerDamage(
 }
 
 // DEF uses a divisor model (WuWa/Genshin-style): diminishing returns, never immune.
-// reduction = DEF / (DEF + 600), clamped to 75% max so squishies always take some damage.
+// reduction = DEF / (DEF + 600), clamped to 90% max (2026-08-24 raise from 75% —
+// the earlier 1500->600 divisor buff pushed well-built DEF stats past the 1800
+// threshold where 75% capped out, making further DEF investment do nothing and
+// causing very differently-built characters to take identical damage) so
+// squishies always take some damage.
 export function calcEnemyDamage(enemyAtk: number, playerDef: number, moveMult: number): number {
-  const reduction = Math.min(0.75, playerDef / (playerDef + 600));
+  const reduction = Math.min(0.90, playerDef / (playerDef + 600));
   return Math.max(1, Math.floor(enemyAtk * moveMult * (1 - reduction)));
 }
 
