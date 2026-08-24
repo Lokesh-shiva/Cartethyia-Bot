@@ -96,13 +96,66 @@ async function closeExpiredSignups(client: Client): Promise<void> {
           `Signups closed with **${participants.length}** players.\n` +
           `**${matches}** match${matches === 1 ? "" : "es"} this round` +
           (byes > 0 ? `, **${byes}** bye${byes === 1 ? "" : "s"} advancing automatically.` : ".") +
-          `\n\nMatches will auto-start shortly — check \`/tournament status\`.`
+          `\n\nMatches open automatically within a few minutes — or use \`/tournament start-match\` to open yours right away. ` +
+          `Once it opens it plays like a normal \`/duel\`: **10 minutes per turn**, so be ready to play it out.`
         )],
     }).catch(() => {});
   }
 }
 
 // ── 2. Auto-start any pending, non-bye match that hasn't opened a thread ────
+// Exported so a player can trigger their own match immediately via
+// /tournament start-match instead of waiting on the next sweep tick (up to
+// 5 minutes) — same logic either way, just who/when calls it differs.
+export async function attemptStartMatch(
+  client: Client,
+  tournament: { id: string; guildId: string; channelId: string; currentRound: number },
+  match: { id: string; playerAId: string; playerBId: string | null },
+): Promise<{ ok: true } | { ok: false; reason: string }> {
+  const playerAId = match.playerAId;
+  const playerBId = match.playerBId;
+  if (!playerBId) return { ok: false, reason: "This is a bye — nothing to start." };
+
+  if (!acquireLock(playerAId, "Tournament")) return { ok: false, reason: "One of you is already in another fight — try again in a bit." };
+  if (!acquireLock(playerBId, "Tournament")) { releaseLock(playerAId); return { ok: false, reason: "One of you is already in another fight — try again in a bit." }; }
+
+  const [a, b] = await Promise.all([resolveFighter(playerAId), resolveFighter(playerBId)]);
+  if (!a || !b) {
+    releaseLock(playerAId); releaseLock(playerBId);
+    return { ok: false, reason: "One side hasn't started their CARTETHYIA journey yet (`/start`)." };
+  }
+
+  const channel = await fetchChannel(client, tournament.channelId);
+  if (!channel) return { ok: false, reason: "Couldn't reach the tournament's channel." };
+
+  await channel.send({ content: `<@${playerAId}> <@${playerBId}> your tournament match is starting!` }).catch(() => {});
+
+  startDuelMatch(
+    playerAId, playerBId, true,
+    a.db, b.db, a.bonuses, b.bonuses, a.stats, b.stats,
+    a.name, b.name, a.avatar, b.avatar,
+    tournament.guildId, channel,
+    async (payload: any) => channel.send(payload).catch(() => {}),
+    async (winnerId, threadId) => {
+      if (!winnerId) return; // shouldn't happen — deadline forfeit sweep is the fallback net
+      const loserId = winnerId === playerAId ? playerBId : playerAId;
+      await prisma.tournamentMatch.update({
+        where: { id: match.id },
+        data: { status: "COMPLETE", winnerId, threadId },
+      }).catch(() => {});
+      await prisma.tournamentParticipant.updateMany({
+        where: { tournamentId: tournament.id, userId: loserId },
+        data: { eliminated: true, eliminatedRound: tournament.currentRound },
+      }).catch(() => {});
+    },
+    (threadId) => {
+      prisma.tournamentMatch.update({ where: { id: match.id }, data: { status: "IN_PROGRESS", threadId } }).catch(() => {});
+    },
+  ).catch(err => console.error("[Tournament] startDuelMatch error:", err));
+
+  return { ok: true };
+}
+
 async function startPendingMatches(client: Client): Promise<void> {
   const tournaments = await prisma.tournament.findMany({ where: { phase: "IN_PROGRESS" } });
 
@@ -115,45 +168,7 @@ async function startPendingMatches(client: Client): Promise<void> {
     });
 
     for (const match of pending) {
-      const playerAId = match.playerAId;
-      const playerBId = match.playerBId as string;
-
-      if (!acquireLock(playerAId, "Tournament")) continue;
-      if (!acquireLock(playerBId, "Tournament")) { releaseLock(playerAId); continue; }
-
-      const [a, b] = await Promise.all([resolveFighter(playerAId), resolveFighter(playerBId)]);
-      if (!a || !b) {
-        releaseLock(playerAId); releaseLock(playerBId);
-        continue; // one side never started the bot — retry next sweep, deadline forfeit eventually catches it
-      }
-
-      const channel = await fetchChannel(client, tournament.channelId);
-      if (!channel) { releaseLock(playerAId); releaseLock(playerBId); continue; }
-
-      await channel.send({ content: `<@${playerAId}> <@${playerBId}> your tournament match is starting!` }).catch(() => {});
-
-      startDuelMatch(
-        playerAId, playerBId, true,
-        a.db, b.db, a.bonuses, b.bonuses, a.stats, b.stats,
-        a.name, b.name, a.avatar, b.avatar,
-        tournament.guildId, channel,
-        async (payload: any) => channel.send(payload).catch(() => {}),
-        async (winnerId, threadId) => {
-          if (!winnerId) return; // shouldn't happen — deadline forfeit sweep is the fallback net
-          const loserId = winnerId === playerAId ? playerBId : playerAId;
-          await prisma.tournamentMatch.update({
-            where: { id: match.id },
-            data: { status: "COMPLETE", winnerId, threadId },
-          }).catch(() => {});
-          await prisma.tournamentParticipant.updateMany({
-            where: { tournamentId: tournament.id, userId: loserId },
-            data: { eliminated: true, eliminatedRound: tournament.currentRound },
-          }).catch(() => {});
-        },
-        (threadId) => {
-          prisma.tournamentMatch.update({ where: { id: match.id }, data: { status: "IN_PROGRESS", threadId } }).catch(() => {});
-        },
-      ).catch(err => console.error("[Tournament] startDuelMatch error:", err));
+      await attemptStartMatch(client, tournament, match);
     }
   }
 }
@@ -239,7 +254,7 @@ async function advanceCompletedRounds(client: Client): Promise<void> {
     await channel?.send({
       embeds: [new EmbedBuilder().setColor(0x6366F1)
         .setTitle(`🏆  Tournament — Round ${nextRound}`)
-        .setDescription(`${orderedWinnerIds.length} players remain. Matches auto-start shortly — check \`/tournament status\`.`)],
+        .setDescription(`${orderedWinnerIds.length} players remain. Matches open automatically within a few minutes — or use \`/tournament start-match\` to open yours right away. Once it opens it's a normal \`/duel\`: 10 minutes per turn.`)],
     }).catch(() => {});
   }
 }

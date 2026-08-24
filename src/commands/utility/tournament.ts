@@ -12,24 +12,30 @@ import {
 import { Command } from "../../types";
 import { isOwner } from "../../lib/owner";
 import prisma from "../../lib/prisma";
+import { attemptStartMatch } from "../../lib/tournamentSweep";
 
 const MAX_PLAYERS_CEILING = 128;
 
+// start/cancel are owner-only (checked per-subcommand below); status and
+// start-match are open to everyone — a regular player needs to be able to
+// check the bracket and open their own match without needing the owner
+// around, so this can't be locked at the Discord permission level (that
+// would hide the whole command, including status, from every player).
 const builder = new SlashCommandBuilder()
   .setName("tournament")
-  .setDescription("Owner only — run a weekly duel tournament.")
-  .setDefaultMemberPermissions(0);
+  .setDescription("Run or join a weekly duel tournament.");
 
 builder.addSubcommand(s =>
   s.setName("start")
-    .setDescription("Start a new tournament's signup window.")
+    .setDescription("Owner only — start a new tournament's signup window.")
     .addIntegerOption(o => o.setName("signup_hours").setDescription("Signup window length in hours (default 24)").setRequired(false).setMinValue(1))
     .addIntegerOption(o => o.setName("round_hours").setDescription("Deadline per round in hours (default 48)").setRequired(false).setMinValue(1))
     .addIntegerOption(o => o.setName("max_players").setDescription("Max signups (default 32)").setRequired(false).setMinValue(2).setMaxValue(MAX_PLAYERS_CEILING))
     .addIntegerOption(o => o.setName("signup_minutes").setDescription("Testing only — overrides signup_hours with a window in minutes").setRequired(false).setMinValue(1))
 );
 builder.addSubcommand(s => s.setName("status").setDescription("Show the current tournament's phase and bracket."));
-builder.addSubcommand(s => s.setName("cancel").setDescription("Cancel the current tournament. No rewards distributed."));
+builder.addSubcommand(s => s.setName("cancel").setDescription("Owner only — cancel the current tournament. No rewards distributed."));
+builder.addSubcommand(s => s.setName("start-match").setDescription("Open your own pending tournament match right now instead of waiting on the auto-start."));
 
 export const data = builder as SlashCommandBuilder;
 
@@ -38,17 +44,19 @@ function fmtTime(d: Date): string {
 }
 
 export async function execute(interaction: ChatInputCommandInteraction) {
-  if (!isOwner(interaction.user.id)) {
-    await interaction.reply({ content: "Owner only.", flags: 64 });
-    return;
-  }
   if (!interaction.guildId) {
     await interaction.reply({ content: "Tournaments can only be run in a server.", flags: 64 });
     return;
   }
-  await interaction.deferReply();
 
   const sub = interaction.options.getSubcommand();
+  if ((sub === "start" || sub === "cancel") && !isOwner(interaction.user.id)) {
+    await interaction.reply({ content: "Owner only.", flags: 64 });
+    return;
+  }
+
+  await interaction.deferReply();
+
   const guildId = interaction.guildId;
 
   if (sub === "start") {
@@ -88,8 +96,10 @@ export async function execute(interaction: ChatInputCommandInteraction) {
       .setDescription(
         `Single-elimination bracket. Real interactive \`/duel\` matches, round by round.\n\n` +
         `**Players:** ${count}/${maxPlayers}\n` +
-        `**Signup closes:** ${fmtTime(signupEndsAt)}\n` +
-        `**Round deadline:** ${roundHours}h per round, no-shows forfeit automatically\n\n` +
+        `**Signup closes:** ${fmtTime(signupEndsAt)}\n\n` +
+        `Once signup closes, matches open automatically within a few minutes (or use \`/tournament start-match\` to open yours immediately). ` +
+        `Each match then plays out like a normal \`/duel\` — **10 minutes per turn**, so be ready to actually play once it opens, not just show up sometime in the next ${roundHours}h. ` +
+        `That ${roundHours}h window is a safety net for stuck/failed starts, not free time.\n\n` +
         `**Rewards:** Champion, Runner-up, Semifinalists, and Participation tiers — ` +
         `Credits, Fractonite, Radiant Keys, Paradox Cores, Stasis Locks, Aura Prisms, and a permanent profile title for the top two.\n\n` +
         `Click below to join!`
@@ -167,10 +177,17 @@ export async function execute(interaction: ChatInputCommandInteraction) {
           : "⏳ pending";
         return `${vs} — ${statusLabel} (deadline ${fmtTime(m.deadlineAt)})`;
       });
+      const myPendingMatch = matches.find(m =>
+        m.status === "PENDING" && !m.threadId &&
+        (m.playerAId === interaction.user.id || m.playerBId === interaction.user.id),
+      );
+      const hint = myPendingMatch
+        ? `\n\n▶ Your match hasn't opened yet — run \`/tournament start-match\` to start it now instead of waiting.`
+        : "";
       await interaction.editReply({
         embeds: [new EmbedBuilder().setColor(0x6366F1)
           .setTitle(`🏆  Tournament — Round ${tournament.currentRound}`)
-          .setDescription(`**Players remaining:** ${remaining}\n\n${lines.join("\n") || "*No matches this round.*"}`)],
+          .setDescription(`**Players remaining:** ${remaining}\n\n${lines.join("\n") || "*No matches this round.*"}${hint}`)],
       });
       return;
     }
@@ -194,6 +211,34 @@ export async function execute(interaction: ChatInputCommandInteraction) {
     }
 
     await interaction.editReply({ embeds: [new EmbedBuilder().setColor(0x4A4A5A).setDescription("The last tournament was cancelled.")] });
+    return;
+  }
+
+  if (sub === "start-match") {
+    const tournament = await prisma.tournament.findFirst({
+      where: { guildId, phase: "IN_PROGRESS" },
+    });
+    if (!tournament) {
+      await interaction.editReply({ embeds: [new EmbedBuilder().setColor(0x4A4A5A).setDescription("No tournament round is currently in progress here.")] });
+      return;
+    }
+    const match = await prisma.tournamentMatch.findFirst({
+      where: {
+        tournamentId: tournament.id, round: tournament.currentRound,
+        status: "PENDING", threadId: null,
+        OR: [{ playerAId: interaction.user.id }, { playerBId: interaction.user.id }],
+      },
+    });
+    if (!match) {
+      await interaction.editReply({ embeds: [new EmbedBuilder().setColor(0x4A4A5A).setDescription("You don't have a pending tournament match waiting to start right now.")] });
+      return;
+    }
+    const result = await attemptStartMatch(interaction.client, tournament, match);
+    if (!result.ok) {
+      await interaction.editReply({ embeds: [new EmbedBuilder().setColor(0xFF4F6D).setDescription(`◈ Couldn't start it: ${result.reason}`)] });
+      return;
+    }
+    await interaction.editReply({ embeds: [new EmbedBuilder().setColor(0x4CAF50).setDescription("⚔️ Your match is opening now — check the thread that just appeared.")] });
     return;
   }
 
