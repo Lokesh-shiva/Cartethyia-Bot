@@ -26,6 +26,7 @@ builder.addSubcommand(s =>
     .addIntegerOption(o => o.setName("signup_hours").setDescription("Signup window length in hours (default 24)").setRequired(false).setMinValue(1))
     .addIntegerOption(o => o.setName("round_hours").setDescription("Deadline per round in hours (default 48)").setRequired(false).setMinValue(1))
     .addIntegerOption(o => o.setName("max_players").setDescription("Max signups (default 32)").setRequired(false).setMinValue(2).setMaxValue(MAX_PLAYERS_CEILING))
+    .addIntegerOption(o => o.setName("signup_minutes").setDescription("Testing only — overrides signup_hours with a window in minutes").setRequired(false).setMinValue(1))
 );
 builder.addSubcommand(s => s.setName("status").setDescription("Show the current tournament's phase and bracket."));
 builder.addSubcommand(s => s.setName("cancel").setDescription("Cancel the current tournament. No rewards distributed."));
@@ -62,10 +63,13 @@ export async function execute(interaction: ChatInputCommandInteraction) {
       return;
     }
 
-    const signupHours = interaction.options.getInteger("signup_hours") ?? 24;
-    const roundHours   = interaction.options.getInteger("round_hours")  ?? 48;
-    const maxPlayers   = interaction.options.getInteger("max_players")  ?? 32;
-    const signupEndsAt = new Date(Date.now() + signupHours * 60 * 60 * 1000);
+    const signupHours   = interaction.options.getInteger("signup_hours")   ?? 24;
+    const signupMinutes = interaction.options.getInteger("signup_minutes");
+    const roundHours    = interaction.options.getInteger("round_hours")   ?? 48;
+    const maxPlayers    = interaction.options.getInteger("max_players")   ?? 32;
+    const signupEndsAt  = signupMinutes
+      ? new Date(Date.now() + signupMinutes * 60 * 1000)
+      : new Date(Date.now() + signupHours * 60 * 60 * 1000);
 
     const tournament = await prisma.tournament.create({
       data: {
