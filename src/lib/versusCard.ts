@@ -1,5 +1,6 @@
 import { createCanvas, loadImage, GlobalFonts, SKRSContext2D } from "@napi-rs/canvas";
 import { loadCachedImage } from "./canvas";
+import { loadAvatarImage } from "./canvasUtil";
 import path from "path";
 
 try {
@@ -53,7 +54,7 @@ async function drawFighter(
   ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.clip();
   if (f.avatarUrl) {
     try {
-      const img = await loadImage(f.avatarUrl + "?size=256");
+      const img = await loadAvatarImage(f.avatarUrl, 256);
       ctx.drawImage(img, cx - r, cy - r, r * 2, r * 2);
     } catch { ctx.fillStyle = rgba(color, 0.3); ctx.fillRect(cx - r, cy - r, r * 2, r * 2); }
   } else { ctx.fillStyle = rgba(color, 0.3); ctx.fillRect(cx - r, cy - r, r * 2, r * 2); }

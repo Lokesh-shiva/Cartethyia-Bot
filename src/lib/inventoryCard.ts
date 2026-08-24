@@ -1,5 +1,6 @@
 import { createCanvas, loadImage, GlobalFonts, SKRSContext2D } from "@napi-rs/canvas";
 import { loadCachedImage } from "./canvas";
+import { loadAvatarImage } from "./canvasUtil";
 import path from "path";
 import { User } from "@prisma/client";
 
@@ -101,7 +102,7 @@ export async function generateInventoryCard(user: User, displayName: string, ava
   ctx.beginPath(); ctx.arc(avCX, avCY, avR, 0, Math.PI * 2); ctx.clip();
   if (avatarUrl) {
     try {
-      const img = await loadImage(avatarUrl + "?size=128");
+      const img = await loadAvatarImage(avatarUrl, 128);
       ctx.drawImage(img, avCX - avR, avCY - avR, avR * 2, avR * 2);
     } catch { ctx.fillStyle = rgba(P, 0.3); ctx.fillRect(avCX - avR, avCY - avR, avR * 2, avR * 2); }
   }

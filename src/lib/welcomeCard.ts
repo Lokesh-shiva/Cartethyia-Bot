@@ -1,4 +1,5 @@
 import { createCanvas, loadImage, GlobalFonts, SKRSContext2D } from "@napi-rs/canvas";
+import { loadAvatarImage } from "./canvasUtil";
 import path from "path";
 import fs   from "fs";
 
@@ -91,7 +92,7 @@ export async function generateWelcomeCard(
   ctx.save();
   ctx.beginPath(); ctx.arc(avCX, avCY, avR, 0, Math.PI * 2); ctx.clip();
   if (avatarUrl) {
-    try { const img = await loadImage(avatarUrl + "?size=256"); ctx.drawImage(img, avCX - avR, avCY - avR, avR * 2, avR * 2); }
+    try { const img = await loadAvatarImage(avatarUrl, 256); ctx.drawImage(img, avCX - avR, avCY - avR, avR * 2, avR * 2); }
     catch { ctx.fillStyle = "rgba(139,127,245,0.3)"; ctx.fillRect(avCX - avR, avCY - avR, avR * 2, avR * 2); }
   } else { ctx.fillStyle = "rgba(139,127,245,0.3)"; ctx.fillRect(avCX - avR, avCY - avR, avR * 2, avR * 2); }
   ctx.restore();

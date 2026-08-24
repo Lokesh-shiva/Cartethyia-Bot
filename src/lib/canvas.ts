@@ -2,6 +2,7 @@ import { createCanvas, loadImage, GlobalFonts, SKRSContext2D, Image } from "@nap
 import path from "path";
 import fs   from "fs";
 import { isOwner } from "./owner";
+import { loadAvatarImage } from "./canvasUtil";
 
 // Cache static images (backgrounds, boss art, icons) by absolute path.
 // Each file is read from disk once per process lifetime.
@@ -326,7 +327,7 @@ export async function generateProfileCard(input: ProfileCardInput): Promise<Buff
   ctx.beginPath(); ctx.arc(avCX, avCY, avR, 0, Math.PI * 2); ctx.clip();
   if (input.avatarUrl) {
     try {
-      const img = await loadImage(input.avatarUrl + "?size=256");
+      const img = await loadAvatarImage(input.avatarUrl, 256);
       ctx.drawImage(img, avCX - avR, avCY - avR, avR * 2, avR * 2);
     } catch { ctx.fillStyle = rgba(t.primary, 0.3); ctx.fillRect(avCX - avR, avCY - avR, avR * 2, avR * 2); }
   } else {
@@ -796,7 +797,7 @@ export async function generateProfileCard(input: ProfileCardInput): Promise<Buff
       ctx.save();
       ctx.beginPath(); ctx.arc(bx + br, by + br, br, 0, Math.PI * 2); ctx.clip();
       if (bp.avatarUrl) {
-        try { ctx.drawImage(await loadImage(bp.avatarUrl + "?size=64"), bx, by, br * 2, br * 2); }
+        try { ctx.drawImage(await loadAvatarImage(bp.avatarUrl, 64), bx, by, br * 2, br * 2); }
         catch { ctx.fillStyle = rgba(t.primary, 0.3); ctx.fillRect(bx, by, br * 2, br * 2); }
       } else {
         ctx.fillStyle = rgba(t.primary, 0.3); ctx.fillRect(bx, by, br * 2, br * 2);

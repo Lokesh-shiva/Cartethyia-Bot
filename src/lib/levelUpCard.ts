@@ -1,4 +1,5 @@
 import { createCanvas, loadImage, GlobalFonts, SKRSContext2D } from "@napi-rs/canvas";
+import { loadAvatarImage } from "./canvasUtil";
 import path from "path";
 
 try { try { (GlobalFonts as any).loadSystemFonts(); } catch {}
@@ -164,7 +165,7 @@ export async function generateLevelUpCard(opts: LevelUpCardOptions): Promise<Buf
   ctx.clip();
   if (opts.avatarUrl) {
     try {
-      const img = await loadImage(opts.avatarUrl + "?size=256");
+      const img = await loadAvatarImage(opts.avatarUrl, 256);
       ctx.drawImage(img, avCX - avR, avCY - avR, avR * 2, avR * 2);
     } catch {
       ctx.fillStyle = rgba(P, 0.3);

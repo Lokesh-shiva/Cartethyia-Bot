@@ -1,4 +1,5 @@
 import { createCanvas, loadImage, GlobalFonts, SKRSContext2D } from "@napi-rs/canvas";
+import { loadAvatarImage } from "./canvasUtil";
 import path from "path";
 
 try {
@@ -146,7 +147,7 @@ export async function generateAbilityCard(d: AbilityCardData): Promise<Buffer> {
   if (d.avatarUrl) {
     try {
       ctx.save(); ctx.beginPath(); ctx.arc(avX + avR, avY, avR, 0, Math.PI * 2); ctx.clip();
-      const img = await loadImage(d.avatarUrl + "?size=64");
+      const img = await loadAvatarImage(d.avatarUrl, 64);
       ctx.drawImage(img, avX, avY - avR, avR * 2, avR * 2); ctx.restore();
       ctx.strokeStyle = rgba(ec, 0.7); ctx.lineWidth = 1.5;
       ctx.beginPath(); ctx.arc(avX + avR, avY, avR, 0, Math.PI * 2); ctx.stroke();
