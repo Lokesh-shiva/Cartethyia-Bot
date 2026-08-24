@@ -1199,31 +1199,55 @@ const command: Command = {
                   namedState.fusionAtkStacks = 4; namedState.fusionSkillDoubleArmed = true;
                   namedTriggerTag = "ATK stacks maxed!";
                   break;
-                case "FROSTVEIL_BASTION":
+                case "FROSTVEIL_BASTION": {
+                  // 4pc, instant: no real "incoming hit" to counter here, so this
+                  // drains the boss's vib bar directly (bypasses the 30% proc
+                  // chance and the "on being hit" requirement).
+                  const instantVibDrain = Math.floor(boss.vibBar * 0.20);
+                  state.bossVibNow = Math.max(0, state.bossVibNow - instantVibDrain);
+                  let tag = `Counter-Frost! -${instantVibDrain} vib`;
                   if (!namedState.glacioShieldUsed) {
                     namedState.glacioShieldUsed = true;
                     const shieldAmt = Math.floor(state.playerHpMax * 0.28);
                     state.playerHp = Math.min(state.playerHpMax, state.playerHp + shieldAmt);
                     glacioShieldTurnsLeft = 5; glacioShieldElemBonus = 0.22;
-                    namedTriggerTag = `+${shieldAmt} HP shield!`;
+                    tag += ` · +${shieldAmt} HP shield!`;
                   }
+                  namedTriggerTag = tag;
                   break;
-                case "STORMCALLERS_OATH":
+                }
+                case "STORMCALLERS_OATH": {
+                  // 4pc, instant: same bonus as the natural after-Ultimate proc.
+                  const surge = stormcallersOathOnUltimate();
+                  state.playerEnergy = Math.min(100, state.playerEnergy + surge.bonusEnergy);
+                  stormBuffTurnsLeft = surge.turnsLeft + 1;
+                  stormBuffCritBonus = surge.critRateBonus;
                   namedState.electroThunderboltArmed = true;
-                  namedTriggerTag = "Thunderbolt armed!";
+                  namedTriggerTag = `+${surge.bonusEnergy} Energy, +${Math.round(surge.critRateBonus * 100)}% Crit Rate! Thunderbolt armed!`;
                   break;
+                }
                 case "WINDSTRIDERS_LEGACY":
                   namedState.aeroWindstacks = 6;
                   namedTriggerTag = "Windstacks maxed!";
                   break;
-                case "VOIDBORN_REMNANT":
+                case "VOIDBORN_REMNANT": {
+                  // 4pc, instant: this hit itself deals the Shatter bonus DMG/heal,
+                  // as if it had just Shattered the enemy.
+                  const remnant   = voidbornRemnantOnShatter();
+                  const bonusDmg  = Math.floor(stats.atk * remnant.bonusMult);
+                  state.bossHpNow = Math.max(0, state.bossHpNow - bonusDmg);
+                  const healAmt   = Math.floor(state.playerHpMax * remnant.healPct);
+                  state.playerHp  = Math.min(state.playerHpMax, state.playerHp + healAmt);
+                  let tag = `+${bonusDmg} Shatter DMG! +${healAmt} HP`;
                   if (!namedState.havocFrenzyUsed) {
                     namedState.havocFrenzyUsed = true;
                     namedState.havocFrenzyTurnsLeft = 4;
                     havocFrenzyAtkMult = 1.25; havocFrenzyLifesteal = 0.15; havocFrenzyDefIgnore = 0.20;
-                    namedTriggerTag = "Frenzy triggered!";
+                    tag += " · Frenzy triggered!";
                   }
+                  namedTriggerTag = tag;
                   break;
+                }
                 case "RADIANT_CONVERGENCE":
                   namedState.spectroHealStacks = 5;
                   namedTriggerTag = "Heal-stacks maxed!";

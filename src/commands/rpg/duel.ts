@@ -24,7 +24,7 @@ import {
   frostveilBastionOnHitTaken, frostveilBastionCheckPanicShield,
   stormcallersOathOnUltimate, stormcallersOathCheckThunderbolt, stormcallersOathOnBasic,
   windstridersLegacyOnHit, windstridersLegacyOnBigHitTaken, windstridersLegacyCheckExplosion,
-  voidbornRemnantCheckFrenzy, voidbornRemnantFrenzyActive,
+  voidbornRemnantCheckFrenzy, voidbornRemnantFrenzyActive, voidbornRemnantOnShatter,
   radiantConvergenceOnTurnHeal, radiantConvergenceOnHitTaken, radiantConvergenceOnCrit, radiantConvergenceCheckBurstHeal,
 } from "../../lib/namedSets";
 import { echoSkillBaseMult, applyEchoSkill } from "../../lib/echoSkills";
@@ -1376,33 +1376,61 @@ export async function startDuelMatch(
                 myNamedState.fusionAtkStacks = 4; myNamedState.fusionSkillDoubleArmed = true;
                 echoNamedTriggerTag = "ATK stacks maxed!";
                 break;
-              case "FROSTVEIL_BASTION":
+              case "FROSTVEIL_BASTION": {
+                // 4pc, instant: no real "incoming hit" to counter here, so this
+                // applies Counter-Frost's vib-drain directly (bypasses the 30%
+                // proc chance and the "on being hit" requirement). No vib bar in
+                // duels — same oppHpMax*0.1 fake-bar conversion VIB_DRAIN uses.
+                const instantVibDrain = Math.floor(oppHpMax * 0.1 * 0.20);
+                base += instantVibDrain;
+                let tag = `Counter-Frost! +${instantVibDrain} bonus DMG`;
                 if (!myNamedState.glacioShieldUsed) {
                   myNamedState.glacioShieldUsed = true;
                   const shieldAmt = Math.floor(activeHpMax(state, isChallenger) * 0.28);
                   healActiveUnit(state, isChallenger, shieldAmt);
                   if (isChallenger) { state.cGlacioShieldTurnsLeft = 5; state.cGlacioShieldElemBonus = 0.22; }
                   else              { state.dGlacioShieldTurnsLeft = 5; state.dGlacioShieldElemBonus = 0.22; }
-                  echoNamedTriggerTag = `+${shieldAmt} HP shield!`;
+                  tag += ` · +${shieldAmt} HP shield!`;
                 }
+                echoNamedTriggerTag = tag;
                 break;
-              case "STORMCALLERS_OATH":
+              }
+              case "STORMCALLERS_OATH": {
+                // 4pc, instant: same bonus as the natural after-Ultimate proc.
+                const surge = stormcallersOathOnUltimate();
+                if (isChallenger) {
+                  state.cEnergy = Math.min(100, state.cEnergy + surge.bonusEnergy);
+                  state.cStormBuffTurnsLeft = surge.turnsLeft + 1; state.cStormBuffCritBonus = surge.critRateBonus;
+                } else {
+                  state.dEnergy = Math.min(100, state.dEnergy + surge.bonusEnergy);
+                  state.dStormBuffTurnsLeft = surge.turnsLeft + 1; state.dStormBuffCritBonus = surge.critRateBonus;
+                }
                 myNamedState.electroThunderboltArmed = true;
-                echoNamedTriggerTag = "Thunderbolt armed!";
+                echoNamedTriggerTag = `+${surge.bonusEnergy} Energy, +${Math.round(surge.critRateBonus * 100)}% Crit Rate! Thunderbolt armed!`;
                 break;
+              }
               case "WINDSTRIDERS_LEGACY":
                 myNamedState.aeroWindstacks = 6;
                 echoNamedTriggerTag = "Windstacks maxed!";
                 break;
-              case "VOIDBORN_REMNANT":
+              case "VOIDBORN_REMNANT": {
+                // 4pc, instant: this hit itself deals the Shatter bonus DMG/heal,
+                // as if it had just Shattered the enemy.
+                const shatter = voidbornRemnantOnShatter();
+                base = Math.floor(base * (1 + shatter.bonusMult));
+                const shatterHeal = Math.floor(activeHpMax(state, isChallenger) * shatter.healPct);
+                healActiveUnit(state, isChallenger, shatterHeal);
+                let tag = `Shatter DMG! +${shatterHeal} HP`;
                 if (!myNamedState.havocFrenzyUsed) {
                   myNamedState.havocFrenzyUsed = true;
                   myNamedState.havocFrenzyTurnsLeft = 4;
                   if (isChallenger) { state.cHavocFrenzyAtkMult = 1.25; state.cHavocFrenzyLifesteal = 0.15; state.cHavocFrenzyDefIgnore = 0.20; }
                   else              { state.dHavocFrenzyAtkMult = 1.25; state.dHavocFrenzyLifesteal = 0.15; state.dHavocFrenzyDefIgnore = 0.20; }
-                  echoNamedTriggerTag = "Frenzy triggered!";
+                  tag += " · Frenzy triggered!";
                 }
+                echoNamedTriggerTag = tag;
                 break;
+              }
               case "RADIANT_CONVERGENCE":
                 myNamedState.spectroHealStacks = 5;
                 echoNamedTriggerTag = "Heal-stacks maxed!";
