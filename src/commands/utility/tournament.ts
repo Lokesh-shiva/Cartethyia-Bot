@@ -12,7 +12,7 @@ import {
 import { Command } from "../../types";
 import { isOwner } from "../../lib/owner";
 import prisma from "../../lib/prisma";
-import { attemptStartMatch } from "../../lib/tournamentSweep";
+import { attemptStartMatch, unpinBracketMessage } from "../../lib/tournamentSweep";
 
 const MAX_PLAYERS_CEILING = 128;
 
@@ -251,6 +251,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
       return;
     }
     await prisma.tournament.update({ where: { id: tournament.id }, data: { phase: "CANCELLED" } });
+    await unpinBracketMessage(interaction.client, tournament.id);
     await interaction.editReply({ embeds: [new EmbedBuilder().setColor(0xFF4F6D).setDescription("◈ Tournament cancelled. No rewards distributed.")] });
     return;
   }

@@ -5,13 +5,14 @@
 // Deliberately NOT per-tournament setTimeout chains — those don't survive a
 // bot restart, a DB-driven sweep does.
 
-import { Client, TextChannel, EmbedBuilder } from "discord.js";
+import { Client, TextChannel, EmbedBuilder, AttachmentBuilder } from "discord.js";
 import prisma from "./prisma";
 import { seedParticipants, generateFirstRoundPairings, generateNextRoundPairings } from "./tournament";
 import { startDuelMatch } from "../commands/rpg/duel";
 import { resolvePlayerBonuses, applyBonuses } from "./setBonus";
 import { acquireLock, releaseLock } from "./combatLock";
 import { awardUser } from "./economy";
+import { generateTournamentBracketCard, BracketRound, BracketMatch } from "./tournamentBracketCard";
 
 const SWEEP_INTERVAL_MS = 5 * 60 * 1000; // deadlines are hour-scale, 5 min polling is plenty
 
@@ -36,10 +37,91 @@ async function resolveFighter(userId: string) {
   };
 }
 
+// ── Bracket visual: render + post/edit the single pinned bracket message ───
+export async function updateBracketMessage(client: Client, tournamentId: string): Promise<void> {
+  const tournament = await prisma.tournament.findUnique({ where: { id: tournamentId } });
+  if (!tournament) return;
+
+  const matches = await prisma.tournamentMatch.findMany({
+    where: { tournamentId, round: { lte: tournament.currentRound } },
+    orderBy: [{ round: "asc" }, { id: "asc" }],
+  });
+  if (matches.length === 0) return;
+
+  const userIds = Array.from(new Set(matches.flatMap(m => [m.playerAId, m.playerBId]).filter((id): id is string => !!id)));
+  const users = await prisma.user.findMany({ where: { id: { in: userIds } } });
+  const elementById = new Map(users.map(u => [u.id, u.element as string]));
+
+  const guild = await client.guilds.fetch(tournament.guildId).catch(() => null);
+  const nameById = new Map<string, string>();
+  if (guild) {
+    const members = await guild.members.fetch({ user: userIds }).catch(() => null);
+    if (members) for (const [id, member] of members) nameById.set(id, member.displayName);
+  }
+  const displayName = (id: string) => nameById.get(id) ?? users.find(u => u.id === id)?.username ?? "Unknown";
+
+  const maxRound = Math.max(...matches.map(m => m.round));
+  const rounds: BracketRound[] = [];
+  for (let r = 1; r <= maxRound; r++) {
+    const roundMatches = matches.filter(m => m.round === r).sort((x, y) => x.playerAId.localeCompare(y.playerAId) || 0);
+    const bracketMatches: BracketMatch[] = roundMatches.map(m => {
+      const aName = displayName(m.playerAId);
+      const aElement = elementById.get(m.playerAId) ?? null;
+      if (!m.playerBId) {
+        return { a: { name: aName, element: aElement, isWinner: true }, b: null, resolved: true };
+      }
+      const bName = displayName(m.playerBId);
+      const bElement = elementById.get(m.playerBId) ?? null;
+      const resolved = m.status === "COMPLETE" || m.status === "FORFEIT";
+      return {
+        a: { name: aName, element: aElement, isWinner: resolved ? m.winnerId === m.playerAId : true },
+        b: { name: bName, element: bElement, isWinner: resolved ? m.winnerId === m.playerBId : true },
+        resolved,
+      };
+    });
+    rounds.push({ matches: bracketMatches });
+  }
+
+  let champion: { name: string; element: string } | null = null;
+  if (tournament.phase === "COMPLETED") {
+    const lastRound = rounds[rounds.length - 1];
+    const lastMatch = lastRound?.matches[0];
+    const winner = lastMatch ? (lastMatch.a.isWinner ? lastMatch.a : lastMatch.b) : null;
+    if (winner?.name) champion = { name: winner.name, element: winner.element ?? "NONE" };
+  }
+
+  const buffer = await generateTournamentBracketCard(rounds, champion);
+  const attachment = new AttachmentBuilder(buffer, { name: "bracket.webp" });
+
+  const channel = await fetchChannel(client, tournament.channelId);
+  if (!channel) return;
+
+  if (tournament.bracketMessageId) {
+    const existing = await channel.messages.fetch(tournament.bracketMessageId).catch(() => null);
+    if (existing) {
+      await existing.edit({ files: [attachment] }).catch(() => {});
+      return;
+    }
+  }
+
+  const posted = await channel.send({ content: "🏆 **Tournament Bracket**", files: [attachment] }).catch(() => null);
+  if (!posted) return;
+  await prisma.tournament.update({ where: { id: tournamentId }, data: { bracketMessageId: posted.id } }).catch(() => {});
+  await posted.pin().catch(() => {});
+}
+
+export async function unpinBracketMessage(client: Client, tournamentId: string): Promise<void> {
+  const tournament = await prisma.tournament.findUnique({ where: { id: tournamentId } });
+  if (!tournament?.bracketMessageId) return;
+  const channel = await fetchChannel(client, tournament.channelId);
+  const msg = await channel?.messages.fetch(tournament.bracketMessageId).catch(() => null);
+  await msg?.unpin().catch(() => {});
+}
+
 async function runSweep(client: Client): Promise<void> {
   await closeExpiredSignups(client);
   await startPendingMatches(client);
-  await resolveDeadlineForfeits();
+  await resolveDeadlineForfeits(client);
   await advanceCompletedRounds(client);
 }
 
@@ -86,6 +168,7 @@ async function closeExpiredSignups(client: Client): Promise<void> {
     }
 
     await prisma.tournament.update({ where: { id: tournament.id }, data: { phase: "IN_PROGRESS", currentRound: 1 } });
+    await updateBracketMessage(client, tournament.id);
 
     const byes = pairings.filter(p => p.playerBId === null).length;
     const matches = pairings.length - byes;
@@ -147,6 +230,7 @@ export async function attemptStartMatch(
         where: { tournamentId: tournament.id, userId: loserId },
         data: { eliminated: true, eliminatedRound: tournament.currentRound },
       }).catch(() => {});
+      await updateBracketMessage(client, tournament.id);
     },
     (threadId) => {
       prisma.tournamentMatch.update({ where: { id: match.id }, data: { status: "IN_PROGRESS", threadId } }).catch(() => {});
@@ -174,7 +258,7 @@ async function startPendingMatches(client: Client): Promise<void> {
 }
 
 // ── 3. Resolve matches whose round deadline has passed unresolved ──────────
-async function resolveDeadlineForfeits(): Promise<void> {
+async function resolveDeadlineForfeits(client: Client): Promise<void> {
   const overdue = await prisma.tournamentMatch.findMany({
     where: { status: { in: ["PENDING", "IN_PROGRESS"] }, deadlineAt: { lte: new Date() } },
   });
@@ -198,6 +282,7 @@ async function resolveDeadlineForfeits(): Promise<void> {
       where: { tournamentId: match.tournamentId, userId: loserId },
       data: { eliminated: true, eliminatedRound: match.round },
     });
+    await updateBracketMessage(client, match.tournamentId);
   }
 }
 
@@ -225,6 +310,8 @@ async function advanceCompletedRounds(client: Client): Promise<void> {
     if (orderedWinnerIds.length <= 1) {
       await prisma.tournament.update({ where: { id: tournament.id }, data: { phase: "COMPLETED" } });
       await distributeRewards(tournament.id, orderedWinnerIds[0] ?? null, tournament.currentRound);
+      await updateBracketMessage(client, tournament.id);
+      await unpinBracketMessage(client, tournament.id);
       await channel?.send({
         embeds: [new EmbedBuilder().setColor(0xFCD34D)
           .setTitle("🏆  Tournament Complete!")
@@ -251,6 +338,7 @@ async function advanceCompletedRounds(client: Client): Promise<void> {
       });
     }
     await prisma.tournament.update({ where: { id: tournament.id }, data: { currentRound: nextRound } });
+    await updateBracketMessage(client, tournament.id);
     await channel?.send({
       embeds: [new EmbedBuilder().setColor(0x6366F1)
         .setTitle(`🏆  Tournament — Round ${nextRound}`)
