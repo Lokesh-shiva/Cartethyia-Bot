@@ -403,6 +403,7 @@ model Tournament {
   roundHours    Int      // deadline per round, in hours
   currentRound  Int      @default(0) // 0 = signup, 1+ = which round is live
   createdAt     DateTime @default(now())
+  bracketMessageId String?  // the one message we keep editing with the bracket image, once posted
 
   participants  TournamentParticipant[]
   matches       TournamentMatch[]
