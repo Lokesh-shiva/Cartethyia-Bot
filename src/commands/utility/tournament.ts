@@ -1,40 +1,44 @@
 // src/commands/utility/tournament.ts
-// Owner-only weekly duel tournament: signup, single-elimination bracket,
-// tiered rewards. State lives entirely in the Tournament/TournamentParticipant/
-// TournamentMatch tables (see prisma/schema.prisma) since a tournament spans
-// days — round transitions, match auto-start, and deadline forfeits are all
-// driven by src/lib/tournamentSweep.ts's periodic sweep, not by this file.
+// Weekly duel tournament: signup, single-elimination bracket, tiered rewards.
+// start/cancel are gated by isGuildManager() (bot owner, server owner,
+// Administrator, ManageGuild, or a configured /setup manager role — same
+// rule /setup itself uses), not just the bot owner. State lives entirely in
+// the Tournament/TournamentParticipant/TournamentMatch tables (see
+// prisma/schema.prisma) since a tournament spans days — round transitions,
+// match auto-start, and deadline forfeits are all driven by
+// src/lib/tournamentSweep.ts's periodic sweep, not by this file.
 
 import {
   SlashCommandBuilder, ChatInputCommandInteraction, EmbedBuilder,
   ActionRowBuilder, ButtonBuilder, ButtonStyle, ButtonInteraction, TextChannel,
 } from "discord.js";
 import { Command } from "../../types";
-import { isOwner } from "../../lib/owner";
+import { isGuildManager } from "../../lib/guildManagers";
 import prisma from "../../lib/prisma";
 import { attemptStartMatch, unpinBracketMessage } from "../../lib/tournamentSweep";
 
 const MAX_PLAYERS_CEILING = 128;
 
-// start/cancel are owner-only (checked per-subcommand below); status and
-// start-match are open to everyone — a regular player needs to be able to
-// check the bracket and open their own match without needing the owner
-// around, so this can't be locked at the Discord permission level (that
-// would hide the whole command, including status, from every player).
+// start/cancel are manager-gated (checked per-subcommand below via
+// isGuildManager); status and start-match are open to everyone — a regular
+// player needs to be able to check the bracket and open their own match
+// without needing a manager around, so this can't be locked at the Discord
+// permission level (that would hide the whole command, including status,
+// from every player).
 const builder = new SlashCommandBuilder()
   .setName("tournament")
   .setDescription("Run or join a weekly duel tournament.");
 
 builder.addSubcommand(s =>
   s.setName("start")
-    .setDescription("Owner only — start a new tournament's signup window.")
+    .setDescription("Manager only — start a new tournament's signup window.")
     .addIntegerOption(o => o.setName("signup_hours").setDescription("Signup window length in hours (default 24)").setRequired(false).setMinValue(1))
     .addIntegerOption(o => o.setName("round_hours").setDescription("Deadline per round in hours (default 48)").setRequired(false).setMinValue(1))
     .addIntegerOption(o => o.setName("max_players").setDescription("Max signups (default 32)").setRequired(false).setMinValue(2).setMaxValue(MAX_PLAYERS_CEILING))
     .addIntegerOption(o => o.setName("signup_minutes").setDescription("Testing only — overrides signup_hours with a window in minutes").setRequired(false).setMinValue(1))
 );
 builder.addSubcommand(s => s.setName("status").setDescription("Show the current tournament's phase and bracket."));
-builder.addSubcommand(s => s.setName("cancel").setDescription("Owner only — cancel the current tournament. No rewards distributed."));
+builder.addSubcommand(s => s.setName("cancel").setDescription("Manager only — cancel the current tournament. No rewards distributed."));
 builder.addSubcommand(s => s.setName("start-match").setDescription("Open your own pending tournament match right now instead of waiting on the auto-start."));
 
 export const data = builder as SlashCommandBuilder;
@@ -50,8 +54,8 @@ export async function execute(interaction: ChatInputCommandInteraction) {
   }
 
   const sub = interaction.options.getSubcommand();
-  if ((sub === "start" || sub === "cancel") && !isOwner(interaction.user.id)) {
-    await interaction.reply({ content: "Owner only.", flags: 64 });
+  if ((sub === "start" || sub === "cancel") && !(await isGuildManager(interaction))) {
+    await interaction.reply({ content: "◈ You need **Manage Server** permission or a setup manager role to use this.", flags: 64 });
     return;
   }
 
