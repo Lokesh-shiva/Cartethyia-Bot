@@ -123,6 +123,11 @@ function buildEmbed(
 // ── Command definition ────────────────────────────────────────────────────────
 const ALL_CHOICES = [...PHYSICAL_CHOICES, ...EXPRESSIVE_CHOICES, ...EMOTIONAL_CHOICES];
 
+// In-memory per-user cooldown — people were spamming /vibe back-to-back.
+// Doesn't need to survive a restart, so a plain Map beats a DB round-trip here.
+const VIBE_COOLDOWN_MS = 4000;
+const lastVibeAt = new Map<string, number>();
+
 const command: Command = {
   data: new SlashCommandBuilder()
     .setName("vibe")
@@ -137,6 +142,15 @@ const command: Command = {
 
   // ── Execute ────────────────────────────────────────────────────────────────
   async execute(interaction: ChatInputCommandInteraction) {
+    const now = Date.now();
+    const last = lastVibeAt.get(interaction.user.id) ?? 0;
+    if (now - last < VIBE_COOLDOWN_MS) {
+      const remaining = ((VIBE_COOLDOWN_MS - (now - last)) / 1000).toFixed(1);
+      await interaction.reply({ content: `⏳ Slow down — try again in ${remaining}s.`, flags: 64 });
+      return;
+    }
+    lastVibeAt.set(interaction.user.id, now);
+
     await interaction.deferReply();
 
     const action     = interaction.options.getString("action", true) as ActionType;
