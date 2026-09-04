@@ -125,7 +125,7 @@ const ALL_CHOICES = [...PHYSICAL_CHOICES, ...EXPRESSIVE_CHOICES, ...EMOTIONAL_CH
 
 // In-memory per-user cooldown — people were spamming /vibe back-to-back.
 // Doesn't need to survive a restart, so a plain Map beats a DB round-trip here.
-const VIBE_COOLDOWN_MS = 4000;
+const VIBE_COOLDOWN_MS = 10000;
 const lastVibeAt = new Map<string, number>();
 
 const command: Command = {
