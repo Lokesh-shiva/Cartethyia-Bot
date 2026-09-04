@@ -16,6 +16,34 @@ import { generateTournamentBracketCard, BracketRound, BracketMatch } from "./tou
 
 const SWEEP_INTERVAL_MS = 5 * 60 * 1000; // deadlines are hour-scale, 5 min polling is plenty
 
+function fmtTime(d: Date): string {
+  return `<t:${Math.floor(d.getTime() / 1000)}:R>`;
+}
+
+// Shared with interactionCreate.ts's global tournament_join_<id> handler —
+// the signup embed used to be rebuilt inline by a message-scoped button
+// collector in tournament.ts, which died on every bot restart/deploy
+// (mid-signup joins would silently stop working). Routing the button
+// through the global interaction handler instead needs this embed builder
+// to be callable from outside the /tournament command's own execute().
+export function buildTournamentSignupEmbed(maxPlayers: number, signupEndsAt: Date, roundHours: number, count: number) {
+  return new EmbedBuilder()
+    .setColor(0x6366F1)
+    .setTitle("🏆  Weekly Duel Tournament — Signups Open")
+    .setDescription(
+      `Single-elimination bracket. Real interactive \`/duel\` matches, round by round.\n\n` +
+      `**Players:** ${count}/${maxPlayers}\n` +
+      `**Signup closes:** ${fmtTime(signupEndsAt)}\n\n` +
+      `Once signup closes, matches open automatically within a few minutes (or use \`/tournament start-match\` to open yours immediately). ` +
+      `Each match then plays out like a normal \`/duel\` — **10 minutes per turn**, so be ready to actually play once it opens, not just show up sometime in the next ${roundHours}h. ` +
+      `That ${roundHours}h window is a safety net for stuck/failed starts, not free time.\n\n` +
+      `**Rewards:** Champion, Runner-up, Semifinalists, and Participation tiers — ` +
+      `Credits, Fractonite, Radiant Keys, Paradox Cores, Stasis Locks, Aura Prisms, and a permanent profile title for the top two.\n\n` +
+      `Click below to join!`
+    )
+    .setFooter({ text: "CARTETHYIA  ·  Tournament" });
+}
+
 export function startTournamentSweep(client: Client): void {
   setInterval(() => runSweep(client).catch(err => console.error("[Tournament] sweep error:", err)), SWEEP_INTERVAL_MS);
 }

@@ -4,6 +4,8 @@ import { handleEncounterFight, getBotChannelIds } from "../lib/encounter";
 import { runFirstExpedition } from "../lib/firstExpedition";
 import { logError } from "../lib/logger";
 import { grantDrifterRole } from "../lib/supportServer";
+import { buildTournamentSignupEmbed } from "../lib/tournamentSweep";
+import prisma from "../lib/prisma";
 
 export const name = Events.InteractionCreate;
 export const once = false;
@@ -104,6 +106,39 @@ export async function execute(interaction: Interaction) {
       if (!member || !interaction.channel?.isTextBased()) return;
 
       runFirstExpedition(member, interaction.channel as TextChannel).catch(console.error);
+      return;
+    }
+
+    if (customId.startsWith("tournament_join_")) {
+      const tournamentId = customId.replace("tournament_join_", "");
+      const tournament = await prisma.tournament.findUnique({ where: { id: tournamentId } });
+      if (!tournament || tournament.phase !== "SIGNUP") {
+        await interaction.reply({ content: "Signups are closed.", flags: 64 });
+        return;
+      }
+      const count = await prisma.tournamentParticipant.count({ where: { tournamentId } });
+      const already = await prisma.tournamentParticipant.findUnique({
+        where: { tournamentId_userId: { tournamentId, userId: interaction.user.id } },
+      });
+      if (already) {
+        await interaction.reply({ content: "You're already signed up.", flags: 64 });
+        return;
+      }
+      if (count >= tournament.maxPlayers) {
+        await interaction.reply({ content: "Tournament is full.", flags: 64 });
+        return;
+      }
+      await prisma.tournamentParticipant.create({
+        data: { tournamentId, userId: interaction.user.id, seed: count + 1 },
+      }).catch(() => null); // unique-constraint race: a double-click loses the race harmlessly
+      const newCount = await prisma.tournamentParticipant.count({ where: { tournamentId } });
+      const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
+        new ButtonBuilder().setCustomId(customId).setLabel("⚔️  Join Tournament").setStyle(ButtonStyle.Success),
+      );
+      await interaction.update({
+        embeds: [buildTournamentSignupEmbed(tournament.maxPlayers, tournament.signupEndsAt, tournament.roundHours, newCount)],
+        components: [row],
+      }).catch(() => {});
       return;
     }
 

@@ -10,12 +10,12 @@
 
 import {
   SlashCommandBuilder, ChatInputCommandInteraction, EmbedBuilder,
-  ActionRowBuilder, ButtonBuilder, ButtonStyle, ButtonInteraction, TextChannel,
+  ActionRowBuilder, ButtonBuilder, ButtonStyle,
 } from "discord.js";
 import { Command } from "../../types";
 import { isGuildManager } from "../../lib/guildManagers";
 import prisma from "../../lib/prisma";
-import { attemptStartMatch, unpinBracketMessage } from "../../lib/tournamentSweep";
+import { attemptStartMatch, unpinBracketMessage, buildTournamentSignupEmbed } from "../../lib/tournamentSweep";
 
 const MAX_PLAYERS_CEILING = 128;
 
@@ -90,58 +90,17 @@ export async function execute(interaction: ChatInputCommandInteraction) {
       },
     });
 
+    // customId carries the tournament's own id (not a bare "tournament_join")
+    // so the button is handled by the global interactionCreate.ts router
+    // instead of a message-scoped collector — collectors live only in this
+    // process's memory and die on every restart/deploy, silently breaking
+    // Join mid-signup. Routing through the global handler makes it durable
+    // for as long as the DB says signups are still open.
     const joinRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
-      new ButtonBuilder().setCustomId("tournament_join").setLabel("⚔️  Join Tournament").setStyle(ButtonStyle.Success),
+      new ButtonBuilder().setCustomId(`tournament_join_${tournament.id}`).setLabel("⚔️  Join Tournament").setStyle(ButtonStyle.Success),
     );
 
-    const buildSignupEmbed = (count: number) => new EmbedBuilder()
-      .setColor(0x6366F1)
-      .setTitle("🏆  Weekly Duel Tournament — Signups Open")
-      .setDescription(
-        `Single-elimination bracket. Real interactive \`/duel\` matches, round by round.\n\n` +
-        `**Players:** ${count}/${maxPlayers}\n` +
-        `**Signup closes:** ${fmtTime(signupEndsAt)}\n\n` +
-        `Once signup closes, matches open automatically within a few minutes (or use \`/tournament start-match\` to open yours immediately). ` +
-        `Each match then plays out like a normal \`/duel\` — **10 minutes per turn**, so be ready to actually play once it opens, not just show up sometime in the next ${roundHours}h. ` +
-        `That ${roundHours}h window is a safety net for stuck/failed starts, not free time.\n\n` +
-        `**Rewards:** Champion, Runner-up, Semifinalists, and Participation tiers — ` +
-        `Credits, Fractonite, Radiant Keys, Paradox Cores, Stasis Locks, Aura Prisms, and a permanent profile title for the top two.\n\n` +
-        `Click below to join!`
-      )
-      .setFooter({ text: "CARTETHYIA  ·  Tournament" });
-
-    const signupMsg = await interaction.editReply({ embeds: [buildSignupEmbed(0)], components: [joinRow] });
-
-    const joinCollector = (interaction.channel as TextChannel).createMessageComponentCollector({
-      filter: b => b.customId === "tournament_join" && b.message.id === signupMsg.id,
-      time: signupHours * 60 * 60 * 1000,
-    });
-
-    joinCollector.on("collect", async (btn: ButtonInteraction) => {
-      const current = await prisma.tournament.findUnique({ where: { id: tournament.id } });
-      if (!current || current.phase !== "SIGNUP") {
-        await btn.reply({ content: "Signups are closed.", flags: 64 });
-        return;
-      }
-      const count = await prisma.tournamentParticipant.count({ where: { tournamentId: tournament.id } });
-      const already = await prisma.tournamentParticipant.findUnique({
-        where: { tournamentId_userId: { tournamentId: tournament.id, userId: btn.user.id } },
-      });
-      if (already) {
-        await btn.reply({ content: "You're already signed up.", flags: 64 });
-        return;
-      }
-      if (count >= maxPlayers) {
-        await btn.reply({ content: "Tournament is full.", flags: 64 });
-        return;
-      }
-      await prisma.tournamentParticipant.create({
-        data: { tournamentId: tournament.id, userId: btn.user.id, seed: count + 1 },
-      }).catch(() => null); // unique-constraint race: a double-click loses the race harmlessly
-      const newCount = await prisma.tournamentParticipant.count({ where: { tournamentId: tournament.id } });
-      await btn.update({ embeds: [buildSignupEmbed(newCount)], components: [joinRow] }).catch(() => {});
-    });
-
+    await interaction.editReply({ embeds: [buildTournamentSignupEmbed(maxPlayers, signupEndsAt, roundHours, 0)], components: [joinRow] });
     return;
   }
 
