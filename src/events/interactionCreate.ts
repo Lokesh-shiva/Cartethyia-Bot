@@ -109,16 +109,21 @@ export async function execute(interaction: Interaction) {
       return;
     }
 
-    if (customId.startsWith("tournament_join_")) {
-      const tournamentId = customId.replace("tournament_join_", "");
-      const tournament = await prisma.tournament.findUnique({ where: { id: tournamentId } });
+    if (customId === "tournament_join" || customId.startsWith("tournament_join_")) {
+      // Bare "tournament_join" (no id suffix) is a pre-fix signup message still
+      // live in some channel — fall back to that guild's active SIGNUP
+      // tournament instead of parsing an id out of the customId.
+      const tournamentId = customId === "tournament_join" ? null : customId.replace("tournament_join_", "");
+      const tournament = tournamentId
+        ? await prisma.tournament.findUnique({ where: { id: tournamentId } })
+        : await prisma.tournament.findFirst({ where: { guildId: interaction.guildId ?? undefined, phase: "SIGNUP" } });
       if (!tournament || tournament.phase !== "SIGNUP") {
         await interaction.reply({ content: "Signups are closed.", flags: 64 });
         return;
       }
-      const count = await prisma.tournamentParticipant.count({ where: { tournamentId } });
+      const count = await prisma.tournamentParticipant.count({ where: { tournamentId: tournament.id } });
       const already = await prisma.tournamentParticipant.findUnique({
-        where: { tournamentId_userId: { tournamentId, userId: interaction.user.id } },
+        where: { tournamentId_userId: { tournamentId: tournament.id, userId: interaction.user.id } },
       });
       if (already) {
         await interaction.reply({ content: "You're already signed up.", flags: 64 });
@@ -129,11 +134,13 @@ export async function execute(interaction: Interaction) {
         return;
       }
       await prisma.tournamentParticipant.create({
-        data: { tournamentId, userId: interaction.user.id, seed: count + 1 },
+        data: { tournamentId: tournament.id, userId: interaction.user.id, seed: count + 1 },
       }).catch(() => null); // unique-constraint race: a double-click loses the race harmlessly
-      const newCount = await prisma.tournamentParticipant.count({ where: { tournamentId } });
+      const newCount = await prisma.tournamentParticipant.count({ where: { tournamentId: tournament.id } });
+      // Upgrade a legacy bare-id button to the id-suffixed form on first use,
+      // so it's durable going forward even though it started out stale.
       const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
-        new ButtonBuilder().setCustomId(customId).setLabel("⚔️  Join Tournament").setStyle(ButtonStyle.Success),
+        new ButtonBuilder().setCustomId(`tournament_join_${tournament.id}`).setLabel("⚔️  Join Tournament").setStyle(ButtonStyle.Success),
       );
       await interaction.update({
         embeds: [buildTournamentSignupEmbed(tournament.maxPlayers, tournament.signupEndsAt, tournament.roundHours, newCount)],
