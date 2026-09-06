@@ -62,20 +62,20 @@ export const FORGED_WEAPONS: WeaponDefinition[] = [
   // ── Pistols ─────────────────────────────────────────────────────────────────
   {
     id: "rusted_shot", name: "Rusted Shot", type: "PISTOLS", rarity: 1,
-    baseAtk: 28, subStatType: "CRIT_RATE", subStatVal: 6,
-    passive: "Basic Attack hits 3 times. Each hit is weaker individually.",
+    baseAtk: 44, subStatType: "CRIT_RATE", subStatVal: 6,
+    passive: "A worn-down revolver. Light, quick to draw.",
     forgeCost: 2, isForged: true,
   },
   {
     id: "static_barrel", name: "Static Barrel", type: "PISTOLS", rarity: 2,
-    baseAtk: 44, subStatType: "CRIT_RATE", subStatVal: 10,
-    passive: "Basic Attack hits 3 times. +10% damage per consecutive hit.",
+    baseAtk: 68, subStatType: "CRIT_RATE", subStatVal: 10,
+    passive: "Charges between shots. +10 Energy per turn.",
     forgeCost: 5, isForged: true,
   },
   {
     id: "twin_sparks", name: "Twin Sparks", type: "PISTOLS", rarity: 3,
-    baseAtk: 58, subStatType: "CRIT_RATE", subStatVal: 14,
-    passive: "Basic Attack hits 4 times. Each hit independently rolls Crit.",
+    baseAtk: 100, subStatType: "CRIT_RATE", subStatVal: 14,
+    passive: "Built for speed over stopping power. +40 SPD.",
     forgeCost: 12, isForged: true,
   },
 
@@ -111,7 +111,7 @@ export const RARITY_STARS: Record<number, string> = {
 export const WEAPON_TYPE_LABEL: Record<WeaponType, string> = {
   BROADBLADE: "Broadblade  ·  Slow, massive damage",
   SWORD:      "Sword  ·  Balanced, medium speed",
-  PISTOLS:    "Pistols  ·  Multi-hit, Crit builds",
+  PISTOLS:    "Pistols  ·  Speed, Energy, Crit builds",
   RECTIFIER:  "Rectifier  ·  Converts attacks to elemental damage",
 };
 
@@ -169,9 +169,15 @@ export function weaponDismantleValue(rarity: number, level: number): number {
 
 // Passive effects injected into combat at equip-time.
 // elemDmg = flat addition to elemDmgBonus (e.g. 0.20 = +20%).
+// energyFlat = flat addition to bonuses.energyBonus (energy per turn).
+// spdFlat = flat addition to bonuses.spdFlat (same pool echo SPEED substats
+//   feed — drives turn order, +1 energy/turn per 20, and skill-CD compression
+//   at 40+, see setBonus.ts).
 // effects = AbilityEffect entries merged into the player's abilityEffects list.
 export interface WeaponPassive {
-  elemDmg?: number;
+  elemDmg?:   number;
+  energyFlat?: number;
+  spdFlat?:   number;
   effects?: { type: string; value: number }[];
 }
 
@@ -182,6 +188,9 @@ export const WEAPON_PASSIVES: Record<string, WeaponPassive> = {
   // Sword
   "Resonant Edge":     { effects: [{ type: "SKILL_POWER",  value: 0.20 }] },
   "Fractured Fang":    { effects: [{ type: "CRIT_MOMENTUM", value: 8   }] },
+  // Pistols — the fast, energy-efficient gunslinger archetype
+  "Static Barrel":     { energyFlat: 10 },
+  "Twin Sparks":       { spdFlat: 40 },
   // Rectifier
   "Resonance Prism":   { elemDmg: 0.20 },
   "Hollow Focus":      { elemDmg: 0.28, effects: [{ type: "SKILL_POWER", value: 0.10 }] },
@@ -221,6 +230,8 @@ export function describeWeaponPassive(weaponName: string): string {
   if (!p) return "";
   const lines: string[] = [];
   if (p.elemDmg) lines.push(`Elemental DMG: +${Math.round(p.elemDmg * 100)}%`);
+  if (p.energyFlat) lines.push(`Energy: +${p.energyFlat} per turn`);
+  if (p.spdFlat) lines.push(`SPD: +${p.spdFlat}`);
   const effectsText = formatEffects(p.effects ?? []);
   if (effectsText) lines.push(effectsText);
   return lines.join("\n");

@@ -104,9 +104,11 @@ function resolveNewHidden(preferred: string, avoid: Set<string>): string {
 const PASSIVE_AMP = 1.25;
 
 export interface AwakenedPassive {
-  desc:     string;             // display text for the awakened passive
-  elemDmg?: number;
-  effects:  AbilityEffect[];
+  desc:        string;             // display text for the awakened passive
+  elemDmg?:    number;
+  energyFlat?: number;
+  spdFlat?:    number;
+  effects:     AbilityEffect[];
 }
 
 // ── Deterministic fallbacks per element ───────────────────────────────────────
@@ -165,7 +167,9 @@ export function buildAwakenedPassive(
   if (!effects.some(e => e.type === newEffect.type)) effects.push(newEffect);
   return {
     desc,
-    ...(base.elemDmg ? { elemDmg: +(base.elemDmg * PASSIVE_AMP).toFixed(3) } : {}),
+    ...(base.elemDmg    ? { elemDmg:    +(base.elemDmg * PASSIVE_AMP).toFixed(3) } : {}),
+    ...(base.energyFlat ? { energyFlat: Math.round(base.energyFlat * PASSIVE_AMP) } : {}),
+    ...(base.spdFlat    ? { spdFlat:    Math.round(base.spdFlat * PASSIVE_AMP) } : {}),
     effects,
   };
 }
@@ -341,7 +345,7 @@ export async function generateAwakening(userId: string, characterId: string = "s
 
   const userPrompt = [
     `WEAPON: "${weapon.name}" — ${weapon.weaponType}, ${weapon.rarity}★, Lv${weapon.level}, substat ${weapon.subStatType ?? "none"}${weapon.hiddenSub1Type ? `, hidden: ${weapon.hiddenSub1Type}${weapon.hiddenSub2Type ? " + " + weapon.hiddenSub2Type : ""}` : ""}.`,
-    `Current weapon passive: ${basePassive?.effects ? formatEffects(basePassive.effects as AbilityEffect[]).replace(/\n/g, " | ") : basePassive?.elemDmg ? `+${Math.round(basePassive.elemDmg * 100)}% Elemental DMG` : "none (this awakening grants its first)"}.`,
+    `Current weapon passive: ${basePassive?.effects ? formatEffects(basePassive.effects as AbilityEffect[]).replace(/\n/g, " | ") : basePassive?.elemDmg ? `+${Math.round(basePassive.elemDmg * 100)}% Elemental DMG` : basePassive?.energyFlat ? `+${basePassive.energyFlat} Energy per turn` : basePassive?.spdFlat ? `+${basePassive.spdFlat} SPD` : "none (this awakening grants its first)"}.`,
     ``,
     ...wielderBlock,
     ``,
@@ -431,6 +435,8 @@ export function formatAwakenedPassive(ap: any, maxEffects = 4): string {
   const lines: string[] = [];
   if (ap.desc) lines.push(ap.desc);
   if (ap.elemDmg) lines.push(`+${Math.round(Number(ap.elemDmg) * 100)}% Elemental DMG`);
+  if (ap.energyFlat) lines.push(`+${ap.energyFlat} Energy per turn`);
+  if (ap.spdFlat) lines.push(`+${ap.spdFlat} SPD`);
   if (Array.isArray(ap.effects)) {
     let shown = 0;
     for (const e of ap.effects) {

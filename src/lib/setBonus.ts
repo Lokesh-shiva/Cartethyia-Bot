@@ -394,6 +394,8 @@ export async function resolvePlayerBonuses(userId: string, characterId: string =
     if (weapon.awakened && weapon.awakenedPassive) {
       const ap = weapon.awakenedPassive as any;
       if (ap.elemDmg) bonuses.elemDmgBonus += (Number(ap.elemDmg) || 0) * refineMult;
+      if (ap.energyFlat) bonuses.energyBonus += (Number(ap.energyFlat) || 0) * refineMult;
+      if (ap.spdFlat) bonuses.spdFlat += (Number(ap.spdFlat) || 0) * refineMult;
       if (Array.isArray(ap.effects)) {
         const refinedEffects = ap.effects.map((e: any) => ({ ...e, value: e.value * refineMult }));
         bonuses.abilityEffects.push(...sanitizeEffects(refinedEffects, true, 7));
@@ -402,6 +404,8 @@ export async function resolvePlayerBonuses(userId: string, characterId: string =
       const passive = WEAPON_PASSIVES[weapon.name];
       if (passive) {
         if (passive.elemDmg) bonuses.elemDmgBonus += passive.elemDmg * refineMult;
+        if (passive.energyFlat) bonuses.energyBonus += passive.energyFlat * refineMult;
+        if (passive.spdFlat) bonuses.spdFlat += passive.spdFlat * refineMult;
         if (passive.effects) {
           bonuses.abilityEffects.push(...passive.effects.map(e => ({ ...e, value: e.value * refineMult })));
         }
