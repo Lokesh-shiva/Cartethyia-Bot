@@ -637,8 +637,19 @@ async function startRaid(interaction: ChatInputCommandInteraction) {
   }
 
 
+  // `boss` is a slash-only .addChoices(...) dropdown of exact-string values
+  // (e.g. "wl:0", "field:ignis_behemoth") — the prefix-command adapter's
+  // getString() doesn't enforce "required" the way real slash options do, so
+  // typing `c!raid start` with no/garbage boss arg used to crash here
+  // (choice came back null, then null.split(":") in getRaidBoss). Guard it
+  // and point people at the slash command instead, since prefix has no way
+  // to offer a real dropdown.
   const choice = interaction.options.getString("boss", true);
-  const boss   = getRaidBoss(choice);
+  if (!choice) {
+    await interaction.editReply({ content: "◈ Pick a boss from the dropdown — use `/raid start` (slash command) so Discord shows you the boss list." });
+    return;
+  }
+  const boss = getRaidBoss(choice);
   if (!boss) { await interaction.editReply({ content: "Boss not found." }); return; }
 
   const raid: ActiveRaid = {
