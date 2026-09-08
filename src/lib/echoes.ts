@@ -93,6 +93,160 @@ export const ECHO_DEFINITIONS: EchoDefinition[] = [
     hp: 540, atk: 64, def: 50,
     rarityWeights: [75, 22, 3],
   },
+
+  // ── Roster expansion (2 new plain echoes per element per tier) — base
+  // stats/rarity weights mirror each element's existing tier values above,
+  // same convention as every other echo of that cost+element. ────────────────
+  // Fusion
+  {
+    name: "Blazekit",  element: "FUSION", cost: 1,
+    assetFile: "Blazekit.png",
+    hp: 180, atk: 28, def: 12,
+    rarityWeights: [92, 8, 0],
+  },
+  {
+    name: "Torchpup",  element: "FUSION", cost: 1,
+    assetFile: "Torchpup.png",
+    hp: 180, atk: 28, def: 12,
+    rarityWeights: [92, 8, 0],
+  },
+  {
+    name: "Sunfire Behemoth",  element: "FUSION", cost: 3,
+    assetFile: "Sunfire Behemoth.png",
+    hp: 520, atk: 72, def: 38,
+    rarityWeights: [75, 22, 3],
+  },
+  {
+    name: "Pyrewyrm",  element: "FUSION", cost: 3,
+    assetFile: "Pyrewyrm.png",
+    hp: 520, atk: 72, def: 38,
+    rarityWeights: [75, 22, 3],
+  },
+  // Glacio
+  {
+    name: "Snowpuff",  element: "GLACIO", cost: 1,
+    assetFile: "Snowpuff.png",
+    hp: 200, atk: 22, def: 18,
+    rarityWeights: [92, 8, 0],
+  },
+  {
+    name: "Chillkit",  element: "GLACIO", cost: 1,
+    assetFile: "Chillkit.png",
+    hp: 200, atk: 22, def: 18,
+    rarityWeights: [92, 8, 0],
+  },
+  {
+    name: "Icicle Colossus",  element: "GLACIO", cost: 3,
+    assetFile: "Icicle Colossus.png",
+    hp: 580, atk: 60, def: 55,
+    rarityWeights: [75, 22, 3],
+  },
+  {
+    name: "Blizzardwyrm",  element: "GLACIO", cost: 3,
+    assetFile: "Blizzardwyrm.png",
+    hp: 580, atk: 60, def: 55,
+    rarityWeights: [75, 22, 3],
+  },
+  // Electro
+  {
+    name: "Ampkit",  element: "ELECTRO", cost: 1,
+    assetFile: "Ampkit.png",
+    hp: 160, atk: 32, def: 10,
+    rarityWeights: [92, 8, 0],
+  },
+  {
+    name: "Zappup",  element: "ELECTRO", cost: 1,
+    assetFile: "Zappup.png",
+    hp: 160, atk: 32, def: 10,
+    rarityWeights: [92, 8, 0],
+  },
+  {
+    name: "Surge Behemoth",  element: "ELECTRO", cost: 3,
+    assetFile: "Surge Behemoth.png",
+    hp: 490, atk: 82, def: 32,
+    rarityWeights: [75, 22, 3],
+  },
+  {
+    name: "Currentwyrm",  element: "ELECTRO", cost: 3,
+    assetFile: "Currentwyrm.png",
+    hp: 490, atk: 82, def: 32,
+    rarityWeights: [75, 22, 3],
+  },
+  // Aero
+  {
+    name: "Flutterkit",  element: "AERO", cost: 1,
+    assetFile: "Flutterkit.png",
+    hp: 170, atk: 30, def: 14,
+    rarityWeights: [92, 8, 0],
+  },
+  {
+    name: "Breezepup",  element: "AERO", cost: 1,
+    assetFile: "Breezepup.png",
+    hp: 170, atk: 30, def: 14,
+    rarityWeights: [92, 8, 0],
+  },
+  {
+    name: "Draft Behemoth",  element: "AERO", cost: 3,
+    assetFile: "Draft Behemoth.png",
+    hp: 510, atk: 76, def: 36,
+    rarityWeights: [75, 22, 3],
+  },
+  {
+    name: "Skywyrm",  element: "AERO", cost: 3,
+    assetFile: "Skywyrm.png",
+    hp: 510, atk: 76, def: 36,
+    rarityWeights: [75, 22, 3],
+  },
+  // Havoc
+  {
+    name: "Gloomkit",  element: "HAVOC", cost: 1,
+    assetFile: "Gloomkit.png",
+    hp: 190, atk: 26, def: 16,
+    rarityWeights: [92, 8, 0],
+  },
+  {
+    name: "Murkpup",  element: "HAVOC", cost: 1,
+    assetFile: "Murkpup.png",
+    hp: 190, atk: 26, def: 16,
+    rarityWeights: [92, 8, 0],
+  },
+  {
+    name: "Abyss Behemoth",  element: "HAVOC", cost: 3,
+    assetFile: "Abyss Behemoth.png",
+    hp: 550, atk: 68, def: 44,
+    rarityWeights: [75, 22, 3],
+  },
+  {
+    name: "Eclipsewyrm",  element: "HAVOC", cost: 3,
+    assetFile: "Eclipsewyrm.png",
+    hp: 550, atk: 68, def: 44,
+    rarityWeights: [75, 22, 3],
+  },
+  // Spectro
+  {
+    name: "Gleamkit",  element: "SPECTRO", cost: 1,
+    assetFile: "Gleamkit.png",
+    hp: 175, atk: 24, def: 20,
+    rarityWeights: [92, 8, 0],
+  },
+  {
+    name: "Shinepup",  element: "SPECTRO", cost: 1,
+    assetFile: "Shinepup.png",
+    hp: 175, atk: 24, def: 20,
+    rarityWeights: [92, 8, 0],
+  },
+  {
+    name: "Aurora Behemoth",  element: "SPECTRO", cost: 3,
+    assetFile: "Aurora Behemoth.png",
+    hp: 540, atk: 64, def: 50,
+    rarityWeights: [75, 22, 3],
+  },
+  {
+    name: "Solsticewyrm",  element: "SPECTRO", cost: 3,
+    assetFile: "Solsticewyrm.png",
+    hp: 540, atk: 64, def: 50,
+    rarityWeights: [75, 22, 3],
+  },
 ];
 
 // ── Named Echo Sets — 1-cost/3-cost (4-cost lives in BOSS_ECHO_DEFINITIONS below) ──
