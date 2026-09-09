@@ -71,6 +71,10 @@ import {
   RiloMechanicState, RiloSkillResult, RILO_FORTE_CONFIG, RILO_FORTE_GAIN_PER_BASIC,
   RILO_SHIELD_GAIN_PER_BASIC, RILO_C2_DEF_SHRED_PCT, riloMaxShield, riloUltimateBaseMult, riloUltimateShieldFromDamage, riloOnHitTaken,
 } from "../../lib/kits/riloKit";
+import {
+  RhovenMechanicState, RhovenSkillResult, rhovenUltimateWeaken, rhovenUltimateBaseMult,
+  RHOVEN_FORTE_CONFIG, RHOVEN_FORTE_GAIN_PER_BASIC,
+} from "../../lib/kits/rhovenKit";
 import "../../lib/kits";
 import {
   resolveRoster, nextAliveFallback, isTeamWiped, swappableTargets, positionLabel, positionValue,
@@ -316,6 +320,8 @@ interface ActiveRaid {
   shatterLeft:   number;
   bossDefShredTurnsLeft: number; // Permafrost Sovereign echo skill — shared, since the boss is a single shared target
   bossDefShredPct:       number;
+  bossWeakenTurnsLeft: number; // Rhoven's Ultimate — reduces the boss's own outgoing damage, shared like bossDefShredTurnsLeft
+  bossWeakenPct:       number;
   phase:         "RECRUITING" | "FIGHTING";
   participants:  RaidParticipant[];
   currentIdx:    number;
@@ -456,6 +462,15 @@ function buildRaidButtons(p: RaidParticipant, isDevGuild: boolean): (ActionRowBu
       new ButtonBuilder().setCustomId("raid_basic").setLabel("⚔️  Basic Attack").setStyle(ButtonStyle.Primary),
       new ButtonBuilder().setCustomId("raid_skill").setLabel("🛡️  Guard Break").setStyle(ButtonStyle.Secondary),
       new ButtonBuilder().setCustomId("raid_ultimate").setLabel("🛡️  Avalanche Slam")
+        .setStyle(ButtonStyle.Success).setDisabled(p.concertoEnergy < 100),
+      new ButtonBuilder().setCustomId("raid_retreat")
+        .setLabel("↩  Retreat").setStyle(ButtonStyle.Danger),
+    ));
+  } else if (isDevGuild && p.hasSolace && p.activeUnit === "ally" && p.activeAllyCharacterId === "rhoven") {
+    rows.push(new ActionRowBuilder<ButtonBuilder>().addComponents(
+      new ButtonBuilder().setCustomId("raid_basic").setLabel("⚔️  Basic Attack").setStyle(ButtonStyle.Primary),
+      new ButtonBuilder().setCustomId("raid_skill").setLabel("🌪️  Windward Step").setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder().setCustomId("raid_ultimate").setLabel("🌪️  Eye of the Squall")
         .setStyle(ButtonStyle.Success).setDisabled(p.concertoEnergy < 100),
       new ButtonBuilder().setCustomId("raid_retreat")
         .setLabel("↩  Retreat").setStyle(ButtonStyle.Danger),
@@ -664,6 +679,8 @@ async function startRaid(interaction: ChatInputCommandInteraction) {
     shatterLeft:  0,
     bossDefShredTurnsLeft: 0,
     bossDefShredPct:       0,
+    bossWeakenTurnsLeft: 0,
+    bossWeakenPct:       0,
     phase:        "RECRUITING",
     participants: [],
     currentIdx:   0,
@@ -1391,7 +1408,15 @@ async function launchRaid(
           }
         }
         const isRiloActing = isAllyActing && current.activeAllyCharacterId === "rilo";
+        const isRhovenActing = isAllyActing && current.activeAllyCharacterId === "rhoven";
         const r    = calcPlayerDamage(activeAtk * smolderMult * havocAtkMult * teamMult, defVal, forcedCrit ? 1 : Math.min(1, aCrit + party.critBonus), activeCritDmg, 1.0, isWeak, raid.isShattered);
+        if (isRhovenActing) {
+          const forteBefore = current.solaceForte;
+          current.solaceForte = addForteCharge(current.solaceForte, RHOVEN_FORTE_CONFIG, RHOVEN_FORTE_GAIN_PER_BASIC);
+          if (isForteMaxed(current.solaceForte, RHOVEN_FORTE_CONFIG) && !isForteMaxed(forteBefore, RHOVEN_FORTE_CONFIG)) {
+            forteAnnounce += `\n✨ Forte is **FULLY CHARGED** — next Windward Step always crits!`;
+          }
+        }
         if (isRiloActing) {
           const rState = current.allyMechanicState as RiloMechanicState;
           const maxShield = riloMaxShield(current.solaceConstellation);
@@ -1520,6 +1545,32 @@ async function launchRaid(
           current.solaceForte = addForteCharge(current.solaceForte, RILO_FORTE_CONFIG, RILO_FORTE_GAIN_PER_BASIC);
           if (isForteMaxed(current.solaceForte, RILO_FORTE_CONFIG) && !isForteMaxed(forteBefore, RILO_FORTE_CONFIG)) {
             moveLine += `\n✨ Forte is **FULLY CHARGED** — next Guard Break will be Braced!`;
+          }
+        }
+        current.skillCd = current.allyKit.skillCooldownTurns;
+
+      } else if (raid.isDevGuild && current.activeUnit === "ally" && current.activeAllyCharacterId === "rhoven" && current.allyKit && btn.customId === "raid_skill") {
+        const rhState = current.allyMechanicState as RhovenMechanicState;
+        const forteEmpowered = isForteMaxed(current.solaceForte, RHOVEN_FORTE_CONFIG);
+        const result = current.allyKit.onSkill(
+          { playerHp: current.hp, playerHpMax: current.hpMax, allyHp: current.allyHp, allyHpMax: current.allyHpMax, turn: raid.turn, isShattered: raid.isShattered, mechanicState: rhState },
+          { basicLevel: current.solaceBasicLevel, skillLevel: current.solaceSkillLevel, ultimateLevel: current.solaceUltimateLevel, introLevel: current.solaceIntroLevel, forteLevel: current.solaceForteLevel },
+          current.solaceConstellation,
+        ) as RhovenSkillResult;
+        current.allyMechanicState = result.newMechanicState;
+        if (forteEmpowered) current.solaceForte = resetForte();
+
+        const crit = forteEmpowered || result.forceCrit || Math.random() < aCrit;
+        const r = calcPlayerDamage(activeAtk, defVal, crit ? 1 : 0, activeCritDmg, result.damageMult, isWeak, raid.isShattered);
+        damage = Math.floor(r.damage * (1 + activeBonuses.elemDmgBonus + extraElemBonus) * radiantDmgMult);
+        moveLine = `${current.name} — 🌪️ ${result.moveLabel}${crit ? " **(CRIT)**" : ""}`;
+        isCrit = crit; vibFrac = result.vibFrac;
+
+        if (!forteEmpowered) {
+          const forteBefore = current.solaceForte;
+          current.solaceForte = addForteCharge(current.solaceForte, RHOVEN_FORTE_CONFIG, RHOVEN_FORTE_GAIN_PER_BASIC);
+          if (isForteMaxed(current.solaceForte, RHOVEN_FORTE_CONFIG) && !isForteMaxed(forteBefore, RHOVEN_FORTE_CONFIG)) {
+            moveLine += `\n✨ Forte is **FULLY CHARGED** — next Windward Step always crits!`;
           }
         }
         current.skillCd = current.allyKit.skillCooldownTurns;
@@ -1689,6 +1740,30 @@ async function launchRaid(
         if (result.healResult.actions.length > 0) {
           current.playerDebuffs = cleanseDebuffs(current.playerDebuffs, 1);
         }
+      } else if (raid.isDevGuild && current.activeUnit === "ally" && current.activeAllyCharacterId === "rhoven" && current.allyKit && btn.customId === "raid_ultimate") {
+        const rhState = current.allyMechanicState as RhovenMechanicState;
+        const weaken = rhovenUltimateWeaken(rhState, current.solaceConstellation);
+
+        const result = current.allyKit.onUltimate(
+          { playerHp: current.hp, playerHpMax: current.hpMax, allyHp: current.allyHp, allyHpMax: current.allyHpMax, turn: raid.turn, isShattered: raid.isShattered, mechanicState: rhState },
+          { basicLevel: current.solaceBasicLevel, skillLevel: current.solaceSkillLevel, ultimateLevel: current.solaceUltimateLevel, introLevel: current.solaceIntroLevel, forteLevel: current.solaceForteLevel },
+          current.solaceConstellation,
+        );
+
+        const perHit = calcPlayerDamage(activeAtk, defVal, 1.0, activeCritDmg, rhovenUltimateBaseMult(current.solaceUltimateLevel) * weaken.bonusDamageMult, isWeak, raid.isShattered);
+        damage = Math.floor(perHit.damage * (1 + activeBonuses.elemDmgBonus + extraElemBonus) * radiantDmgMult);
+        moveLine = `${current.name} — 🌪️ ${result.moveLabel} — ${damage} DMG`;
+        isCrit = true; moveType = "ULT"; vibFrac = 0.8;
+
+        current.allyMechanicState = current.solaceConstellation >= 4
+          ? { ...(result.newMechanicState as RhovenMechanicState), tempoStacks: 1 }
+          : result.newMechanicState;
+
+        raid.bossWeakenTurnsLeft = weaken.weakenTurns;
+        raid.bossWeakenPct = weaken.weakenPct;
+        moveLine += `\n◇ The boss is left **WEAKENED** *(-${Math.round(weaken.weakenPct * 100)}% ATK, ${weaken.weakenTurns} turns)*`;
+
+        if (result.resetsConcertoEnergy) { current.concertoEnergy = 0; convergenceUsedThisTurn = true; }
       } else if (btn.customId === "raid_echoskill" && activeBonuses.echoSkill) {
         const def = activeBonuses.echoSkill;
         const echoCrit = forcedCritActive || def.kind === "GUARANTEED_CRIT" || Math.random() < aCrit;
@@ -1888,7 +1963,8 @@ async function launchRaid(
         }
       } else {
         const move    = boss.moves[Math.floor(Math.random() * boss.moves.length)];
-        const aoeBase = Math.floor(raid.bossAtk * move.damage * 0.6); // AoE = 60% of single-target
+        const bossWeakenActive = raid.bossWeakenTurnsLeft > 0;
+        const aoeBase = Math.floor(raid.bossAtk * move.damage * 0.6 * (bossWeakenActive ? (1 - raid.bossWeakenPct) : 1)); // AoE = 60% of single-target
         const alive   = raid.participants.filter(p => !p.isDefeated);
         const dmgLines: string[] = [];
         // Milestone 3d: party-wide DEF bonuses (Attunement DEF-mode/Wellspring/
@@ -2035,6 +2111,7 @@ async function launchRaid(
       if (raid.isDevGuild && current.attunementDoubleTurnsLeft > 0) current.attunementDoubleTurnsLeft--;
       if (raid.isDevGuild && current.forteEmpoweredTurnsLeft > 0) current.forteEmpoweredTurnsLeft--;
       if (raid.bossDefShredTurnsLeft > 0) raid.bossDefShredTurnsLeft--;
+      if (raid.bossWeakenTurnsLeft > 0) raid.bossWeakenTurnsLeft--;
       if (forcedCritActive && !isSwapAction) current.nextCritArmed = false;
 
       // All defeated?
