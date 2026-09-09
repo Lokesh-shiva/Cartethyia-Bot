@@ -76,6 +76,10 @@ import {
   RiloMechanicState, RiloSkillResult, RILO_FORTE_CONFIG, RILO_FORTE_GAIN_PER_BASIC,
   RILO_SHIELD_GAIN_PER_BASIC, RILO_C2_DEF_SHRED_PCT, riloMaxShield, riloUltimateBaseMult, riloUltimateShieldFromDamage, riloOnHitTaken,
 } from "../../lib/kits/riloKit";
+import {
+  RhovenMechanicState, RhovenSkillResult, rhovenUltimateWeaken, rhovenUltimateBaseMult,
+  RHOVEN_FORTE_CONFIG, RHOVEN_FORTE_GAIN_PER_BASIC,
+} from "../../lib/kits/rhovenKit";
 import "../../lib/kits";
 
 const ELEMENT_HEX: Record<string, number> = {
@@ -145,6 +149,14 @@ function buildButtons(
       new ButtonBuilder().setCustomId("boss_basic").setLabel("⚔️  Basic Attack").setStyle(ButtonStyle.Primary),
       new ButtonBuilder().setCustomId("boss_skill").setLabel("🛡️  Guard Break").setStyle(ButtonStyle.Secondary),
       new ButtonBuilder().setCustomId("boss_ultimate").setLabel("🛡️  Avalanche Slam")
+        .setStyle(ButtonStyle.Success).setDisabled(team.concertoEnergy < 100),
+      new ButtonBuilder().setCustomId("boss_flee").setLabel("🚪  Flee").setStyle(ButtonStyle.Danger),
+    ));
+  } else if (team?.isDevGuild && !team.isPlayerActiveNow && team.activeAllyCharacterId === "rhoven") {
+    rows.push(new ActionRowBuilder<ButtonBuilder>().addComponents(
+      new ButtonBuilder().setCustomId("boss_basic").setLabel("⚔️  Basic Attack").setStyle(ButtonStyle.Primary),
+      new ButtonBuilder().setCustomId("boss_skill").setLabel("🌪️  Windward Step").setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder().setCustomId("boss_ultimate").setLabel("🌪️  Eye of the Squall")
         .setStyle(ButtonStyle.Success).setDisabled(team.concertoEnergy < 100),
       new ButtonBuilder().setCustomId("boss_flee").setLabel("🚪  Flee").setStyle(ButtonStyle.Danger),
     ));
@@ -521,6 +533,8 @@ const command: Command = {
       let glacioShieldElemBonus  = 0;   // active elem DMG bonus while shield buff is up
       let riloDefBuffTurnsLeft   = 0;   // Rilo C1's Outro DEF buff on whoever swaps in
       let riloDefBuffPct         = 0;
+      let rhovenBossWeakenTurnsLeft = 0; // Rhoven's Ultimate — no generic "weaken the boss's own ATK" primitive here either, same shape as riloDefBuffTurnsLeft
+      let rhovenBossWeakenPct       = 0;
       let stormBuffTurnsLeft     = 0;   // Stormcaller's Oath 4pc — crit rate buff duration
       let stormBuffCritBonus     = 0;   // active crit rate bonus while post-ult buff is up
       let havocFrenzyAtkMult     = 1.0; // Voidborn Remnant 5pc — active buff values while frenzyActive
@@ -877,6 +891,12 @@ const command: Command = {
               if (isForteMaxed(solaceForte, RILO_FORTE_CONFIG) && !isForteMaxed(forteBefore, RILO_FORTE_CONFIG)) {
                 moveName += `\n✨ Forte is **FULLY CHARGED** — next Guard Break will be Braced!`;
               }
+            } else if (isDevGuild && !isPlayerActive() && activeAllyCharacterId === "rhoven") {
+              const forteBefore = solaceForte;
+              solaceForte = addForteCharge(solaceForte, RHOVEN_FORTE_CONFIG, RHOVEN_FORTE_GAIN_PER_BASIC);
+              if (isForteMaxed(solaceForte, RHOVEN_FORTE_CONFIG) && !isForteMaxed(forteBefore, RHOVEN_FORTE_CONFIG)) {
+                moveName += `\n✨ Forte is **FULLY CHARGED** — next Windward Step always crits!`;
+              }
             }
           }
 
@@ -968,6 +988,32 @@ const command: Command = {
               moveName += `\n❄️ Enemy DEF shredded 10% for 2 turns!`;
             }
             state.bossVibNow = Math.max(0, state.bossVibNow - Math.floor(playerDmg * result.vibFrac * totalVibMult));
+          } else if (btn.customId === "boss_skill" && isDevGuild && !isPlayerActive() && activeAllyCharacterId === "rhoven" && allyKit) {
+            const rhState = allyMechanicState as RhovenMechanicState;
+            const forteEmpowered = isForteMaxed(solaceForte, RHOVEN_FORTE_CONFIG);
+            const result = allyKit.onSkill(
+              { playerHp: state.playerHp, playerHpMax: state.playerHpMax, allyHp, allyHpMax, turn: state.turn, isShattered: state.isShattered, mechanicState: rhState },
+              { basicLevel: allyBasicLevel, skillLevel: allySkillLevel, ultimateLevel: allyUltimateLevel, introLevel: allyIntroLevel, forteLevel: allyForteLevel },
+              allyConstellation,
+            ) as RhovenSkillResult;
+            allyMechanicState = result.newMechanicState;
+            if (forteEmpowered) solaceForte = resetForte();
+
+            const crit = forteEmpowered || result.forceCrit || Math.random() < activeCritRate;
+            abilCrit = crit;
+            const base = Math.max(1, Math.floor(activeAtk * result.damageMult * (1 - defReduction)));
+            const dmg  = Math.floor(base * (crit ? activeCritDmg : 1) * (isWeak ? 1.5 : 1) * (1 + activeBonuses.elemDmgBonus));
+            playerDmg  = dmg;
+            moveName   = `🌪️ ${result.moveLabel}${crit ? " **(CRIT)**" : ""} — ${playerDmg} DMG`;
+            state.bossVibNow = Math.max(0, state.bossVibNow - Math.floor(playerDmg * result.vibFrac * totalVibMult));
+
+            if (!forteEmpowered) {
+              const forteBefore = solaceForte;
+              solaceForte = addForteCharge(forteBefore, RHOVEN_FORTE_CONFIG, RHOVEN_FORTE_GAIN_PER_BASIC);
+              if (isForteMaxed(solaceForte, RHOVEN_FORTE_CONFIG) && !isForteMaxed(forteBefore, RHOVEN_FORTE_CONFIG)) {
+                moveName += `\n✨ Forte is **FULLY CHARGED** — next Windward Step always crits!`;
+              }
+            }
           } else if (btn.customId === "boss_skill") {
             const teamAtkMult  = isSolaceAlly ? getAttunementAtkMult(attunement, solaceAttunementAtkCritBonus(allySkillLevel), attunementDoubleTurnsLeft > 0, allyConstellation >= 6) : 1;
             const teamCritBonus = isSolaceAlly ? getAttunementCritRateBonus(attunement, solaceAttunementAtkCritBonus(allySkillLevel), attunementDoubleTurnsLeft > 0, allyConstellation >= 6) : 0;
@@ -1170,6 +1216,31 @@ const command: Command = {
             if (result.healResult.actions.length > 0) {
               playerDebuffs = cleanseDebuffs(playerDebuffs, 1);
             }
+          } else if (btn.customId === "boss_ultimate" && isDevGuild && !isPlayerActive() && activeAllyCharacterId === "rhoven" && allyKit) {
+            const rhState = allyMechanicState as RhovenMechanicState;
+            const weaken = rhovenUltimateWeaken(rhState, allyConstellation);
+
+            const result = allyKit.onUltimate(
+              { playerHp: state.playerHp, playerHpMax: state.playerHpMax, allyHp, allyHpMax, turn: state.turn, isShattered: state.isShattered, mechanicState: rhState },
+              { basicLevel: allyBasicLevel, skillLevel: allySkillLevel, ultimateLevel: allyUltimateLevel, introLevel: allyIntroLevel, forteLevel: allyForteLevel },
+              allyConstellation,
+            );
+
+            const base = Math.max(1, Math.floor(activeAtk * rhovenUltimateBaseMult(allyUltimateLevel) * weaken.bonusDamageMult * (1 - defReduction)));
+            const dmg  = Math.floor(base * activeCritDmg * (isWeak ? 1.5 : 1) * (1 + activeBonuses.elemDmgBonus));
+            playerDmg  = dmg;
+            moveName   = `🌪️ ${result.moveLabel} — ${playerDmg} DMG`;
+            state.bossVibNow = Math.max(0, state.bossVibNow - Math.floor(playerDmg * 0.8 * totalVibMult));
+
+            allyMechanicState = allyConstellation >= 4
+              ? { ...(result.newMechanicState as RhovenMechanicState), tempoStacks: 1 }
+              : result.newMechanicState;
+
+            rhovenBossWeakenTurnsLeft = weaken.weakenTurns;
+            rhovenBossWeakenPct = weaken.weakenPct;
+            moveName += `\n◇ *${boss.name}* is left **WEAKENED** *(-${Math.round(weaken.weakenPct * 100)}% ATK, ${weaken.weakenTurns} turns)*`;
+
+            if (result.resetsConcertoEnergy) { concertoEnergy = 0; convergenceUsedThisTurn = true; }
           }
 
           if (btn.customId === "boss_echoskill" && activeBonuses.echoSkill) {
@@ -1393,7 +1464,8 @@ const command: Command = {
             const attunementDefBonus = solaceAttunementDefBonus(allySkillLevel);
             const riloDefBuffMult = riloDefBuffTurnsLeft > 0 ? (1 + riloDefBuffPct) : 1;
             const attunementDefMult = (isSolaceAllyForDef ? getAttunementDefMult(attunement, attunementDefBonus, attunementDoubleTurnsLeft > 0, allyConstellation >= 6) : 1) * (1 + wellspringDefBonus) * (1 + forteDefBonus) * riloDefBuffMult;
-            let bossDmg   = Math.max(1, Math.floor(scaled.atk * move.damage * enrageMult - activeDef * attunementDefMult * 0.4));
+            const rhovenWeakenMult = rhovenBossWeakenTurnsLeft > 0 ? (1 - rhovenBossWeakenPct) : 1;
+            let bossDmg   = Math.max(1, Math.floor(scaled.atk * move.damage * enrageMult * rhovenWeakenMult - activeDef * attunementDefMult * 0.4));
             bossDmg       = roll4pcBlock(bonuses, bossDmg);
             const shield  = elemFrostShield(activeBonuses.elementPassive, bossDmg);
             bossDmg       = shield.dmg;
@@ -1469,6 +1541,7 @@ const command: Command = {
           if (state.skillCooldown > 0) state.skillCooldown--;
           if (glacioShieldTurnsLeft > 0) glacioShieldTurnsLeft--;
           if (riloDefBuffTurnsLeft > 0) riloDefBuffTurnsLeft--;
+          if (rhovenBossWeakenTurnsLeft > 0) rhovenBossWeakenTurnsLeft--;
           if (stormBuffTurnsLeft > 0) stormBuffTurnsLeft--;
           if (namedState.spectroFractureTurnsLeft > 0) namedState.spectroFractureTurnsLeft--;
           if (echoSkillCooldown > 0) echoSkillCooldown--;
