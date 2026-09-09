@@ -148,7 +148,7 @@ export function rhovenOnUltimate(
       tempoStacks: 0, // consumed entirely by the Ultimate
       tempoTurnsLeft: 0,
     } as RhovenMechanicState,
-    resetsConcertoEnergy: false,
+    resetsConcertoEnergy: true, // his Ultimate button gates on Concerto Energy like Kaelith/Rilo/default-Solace (not a personal-energy spend like Vesper), so it must reset after use or the button never re-disables
   };
 }
 

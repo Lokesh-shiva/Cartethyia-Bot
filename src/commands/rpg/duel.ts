@@ -381,6 +381,14 @@ function buildDuelButtons(state: DuelState, forUserId: string, isDevGuild: boole
         .setStyle(ButtonStyle.Success).setDisabled(myConcertoEnergy < 100),
       new ButtonBuilder().setCustomId("duel_forfeit").setLabel("🏳️  Forfeit").setStyle(ButtonStyle.Danger),
     ));
+  } else if (isDevGuild && myHasSolace && myActiveUnit === "ally" && myActiveAllyCharacterId === "rhoven") {
+    rows.push(new ActionRowBuilder<ButtonBuilder>().addComponents(
+      new ButtonBuilder().setCustomId("duel_basic").setLabel("⚔️  Basic Attack").setStyle(ButtonStyle.Primary),
+      new ButtonBuilder().setCustomId("duel_skill").setLabel("🌪️  Windward Step").setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder().setCustomId("duel_ultimate").setLabel("🌪️  Eye of the Squall")
+        .setStyle(ButtonStyle.Success).setDisabled(myConcertoEnergy < 100),
+      new ButtonBuilder().setCustomId("duel_forfeit").setLabel("🏳️  Forfeit").setStyle(ButtonStyle.Danger),
+    ));
   } else if (isDevGuild && myHasSolace && myActiveUnit === "ally") {
     const modeLabel = myAttunement.mode ? `(${myAttunement.mode})` : "(inactive)";
     rows.push(new ActionRowBuilder<ButtonBuilder>().addComponents(
@@ -1409,6 +1417,11 @@ export async function startDuelMatch(
           if (isChallenger) state.dPlayerDebuffs = applyDebuff(state.dPlayerDebuffs, "WEAKENED", weaken.weakenPct, weaken.weakenTurns);
           else              state.cPlayerDebuffs = applyDebuff(state.cPlayerDebuffs, "WEAKENED", weaken.weakenPct, weaken.weakenTurns);
           moveLine += `\n◇ Leaves ${isChallenger ? state.challengedName : state.challengerName} **WEAKENED** *(-${Math.round(weaken.weakenPct * 100)}% ATK, ${weaken.weakenTurns} turns)*`;
+
+          if (result.resetsConcertoEnergy) {
+            convergenceUsedThisTurn = true;
+            if (isChallenger) state.cConcertoEnergy = 0; else state.dConcertoEnergy = 0;
+          }
         }
 
         let echoResult: ReturnType<typeof applyEchoSkill> | null = null;
