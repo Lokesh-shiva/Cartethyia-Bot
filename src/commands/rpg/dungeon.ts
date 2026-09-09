@@ -79,7 +79,7 @@ import {
   RILO_SHIELD_GAIN_PER_BASIC, RILO_C2_DEF_SHRED_PCT, riloMaxShield, riloUltimateBaseMult, riloUltimateShieldFromDamage, riloOnHitTaken,
 } from "../../lib/kits/riloKit";
 import {
-  RhovenMechanicState, RhovenSkillResult, rhovenUltimateWeaken, rhovenUltimateBaseMult,
+  RhovenMechanicState, RhovenSkillResult, rhovenUltimateWeaken, rhovenUltimateBaseMult, rhovenMaxTempoStacks,
   RHOVEN_FORTE_CONFIG, RHOVEN_FORTE_GAIN_PER_BASIC,
 } from "../../lib/kits/rhovenKit";
 import "../../lib/kits";
@@ -1211,6 +1211,8 @@ async function runWave(
         } else if (btn.customId === "dg_skill" && ws.isDevGuild && !isPlayerActive() && activeAllyCharacterId === "rhoven" && allyKit) {
           const rhState = allyMechanicState as RhovenMechanicState;
           const forteEmpowered = isForteMaxed(ws.solaceForte, RHOVEN_FORTE_CONFIG);
+          const c6DoubleHit = allyConstellation >= 6 && rhState.tempoStacks >= rhovenMaxTempoStacks(allyConstellation);
+          const hits = c6DoubleHit ? 2 : 1;
           const result = allyKit.onSkill(
             { playerHp: ws.playerHp, playerHpMax: ws.playerHpMax, allyHp: allyHp, allyHpMax: allyHpMax, turn: 1, isShattered, mechanicState: rhState },
             { basicLevel: allyBasicLevel, skillLevel: allySkillLevel, ultimateLevel: allyUltimateLevel, introLevel: allyIntroLevel, forteLevel: allyForteLevel },
@@ -1221,10 +1223,15 @@ async function runWave(
 
           const crit = forteEmpowered || result.forceCrit || Math.random() < cRate;
           abilCrit = crit;
-          const base = Math.max(1, Math.floor(activeAtk * result.damageMult * (1 - defReduction)));
-          const dmg  = Math.floor(base * (crit ? activeCritDmg : 1) * (isWeak ? 1.5 : 1) * (1 + activeBonuses.elemDmgBonus));
-          playerDmg  = dmg;
-          moveLine   = `🌪️ ${result.moveLabel}${crit ? " **(CRIT)**" : ""} — ${playerDmg} DMG`;
+          const perHitBase = Math.max(1, Math.floor(activeAtk * (result.damageMult / hits) * (1 - defReduction)));
+          const perHitDmg  = Math.floor(perHitBase * (crit ? activeCritDmg : 1) * (isWeak ? 1.5 : 1) * (1 + activeBonuses.elemDmgBonus));
+          playerDmg  = perHitDmg * hits;
+          if (hits > 1) {
+            const hitLines = Array.from({ length: hits }, (_, i) => `Hit ${i + 1}: ${perHitDmg} dmg`).join("\n");
+            moveLine = `🌪️ ${result.moveLabel}${crit ? " **(CRIT)**" : ""}\n${hitLines}\n**Total: ${playerDmg} DMG**`;
+          } else {
+            moveLine = `🌪️ ${result.moveLabel}${crit ? " **(CRIT)**" : ""} — ${playerDmg} DMG`;
+          }
           vibBar = Math.max(0, vibBar - Math.floor(playerDmg * result.vibFrac * totalVibMult));
 
           if (!forteEmpowered) {

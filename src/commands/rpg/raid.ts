@@ -72,7 +72,7 @@ import {
   RILO_SHIELD_GAIN_PER_BASIC, RILO_C2_DEF_SHRED_PCT, riloMaxShield, riloUltimateBaseMult, riloUltimateShieldFromDamage, riloOnHitTaken,
 } from "../../lib/kits/riloKit";
 import {
-  RhovenMechanicState, RhovenSkillResult, rhovenUltimateWeaken, rhovenUltimateBaseMult,
+  RhovenMechanicState, RhovenSkillResult, rhovenUltimateWeaken, rhovenUltimateBaseMult, rhovenMaxTempoStacks,
   RHOVEN_FORTE_CONFIG, RHOVEN_FORTE_GAIN_PER_BASIC,
 } from "../../lib/kits/rhovenKit";
 import "../../lib/kits";
@@ -1552,6 +1552,8 @@ async function launchRaid(
       } else if (raid.isDevGuild && current.activeUnit === "ally" && current.activeAllyCharacterId === "rhoven" && current.allyKit && btn.customId === "raid_skill") {
         const rhState = current.allyMechanicState as RhovenMechanicState;
         const forteEmpowered = isForteMaxed(current.solaceForte, RHOVEN_FORTE_CONFIG);
+        const c6DoubleHit = current.solaceConstellation >= 6 && rhState.tempoStacks >= rhovenMaxTempoStacks(current.solaceConstellation);
+        const hits = c6DoubleHit ? 2 : 1;
         const result = current.allyKit.onSkill(
           { playerHp: current.hp, playerHpMax: current.hpMax, allyHp: current.allyHp, allyHpMax: current.allyHpMax, turn: raid.turn, isShattered: raid.isShattered, mechanicState: rhState },
           { basicLevel: current.solaceBasicLevel, skillLevel: current.solaceSkillLevel, ultimateLevel: current.solaceUltimateLevel, introLevel: current.solaceIntroLevel, forteLevel: current.solaceForteLevel },
@@ -1561,10 +1563,16 @@ async function launchRaid(
         if (forteEmpowered) current.solaceForte = resetForte();
 
         const crit = forteEmpowered || result.forceCrit || Math.random() < aCrit;
-        const r = calcPlayerDamage(activeAtk, defVal, crit ? 1 : 0, activeCritDmg, result.damageMult, isWeak, raid.isShattered);
-        damage = Math.floor(r.damage * (1 + activeBonuses.elemDmgBonus + extraElemBonus) * radiantDmgMult);
-        moveLine = `${current.name} — 🌪️ ${result.moveLabel}${crit ? " **(CRIT)**" : ""}`;
+        const perHit = calcPlayerDamage(activeAtk, defVal, crit ? 1 : 0, activeCritDmg, result.damageMult / hits, isWeak, raid.isShattered);
+        const perHitDmg = Math.floor(perHit.damage * (1 + activeBonuses.elemDmgBonus + extraElemBonus) * radiantDmgMult);
+        damage = perHitDmg * hits;
         isCrit = crit; vibFrac = result.vibFrac;
+        if (hits > 1) {
+          const hitLines = Array.from({ length: hits }, (_, i) => `Hit ${i + 1}: ${perHitDmg} dmg`).join("\n");
+          moveLine = `${current.name} — 🌪️ ${result.moveLabel}${crit ? " **(CRIT)**" : ""}\n${hitLines}\n**Total: ${damage} DMG**`;
+        } else {
+          moveLine = `${current.name} — 🌪️ ${result.moveLabel}${crit ? " **(CRIT)**" : ""}`;
+        }
 
         if (!forteEmpowered) {
           const forteBefore = current.solaceForte;

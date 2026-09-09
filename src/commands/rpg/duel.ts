@@ -66,7 +66,7 @@ import {
   RILO_SHIELD_GAIN_PER_BASIC, RILO_C2_DEF_SHRED_PCT, riloMaxShield, riloUltimateBaseMult, riloUltimateShieldFromDamage, riloOnHitTaken,
 } from "../../lib/kits/riloKit";
 import {
-  RhovenMechanicState, RhovenSkillResult, rhovenUltimateWeaken, rhovenUltimateBaseMult,
+  RhovenMechanicState, RhovenSkillResult, rhovenUltimateWeaken, rhovenUltimateBaseMult, rhovenMaxTempoStacks,
   RHOVEN_FORTE_CONFIG, RHOVEN_FORTE_GAIN_PER_BASIC,
 } from "../../lib/kits/rhovenKit";
 import "../../lib/kits";
@@ -1191,6 +1191,8 @@ export async function startDuelMatch(
         } else if (btn.customId === "duel_skill" && isDevGuild && myActiveUnit === "ally" && myActiveAllyCharacterId === "rhoven" && myAllyKit) {
           const rhState = myAllyMechanicState as RhovenMechanicState;
           const forteEmpowered = isForteMaxed(mySolaceForte, RHOVEN_FORTE_CONFIG);
+          const c6DoubleHit = mySolaceConstellation >= 6 && rhState.tempoStacks >= rhovenMaxTempoStacks(mySolaceConstellation);
+          const hits = c6DoubleHit ? 2 : 1;
           const result = myAllyKit.onSkill(
             { playerHp: myHp, playerHpMax: myHpMax, allyHp: myAllyHpVal, allyHpMax: myAllyHpMaxVal, turn: state.turn, isShattered: false, mechanicState: rhState },
             { basicLevel: mySolaceBasicLevel, skillLevel: mySolaceSkillLevel, ultimateLevel: mySolaceUltimateLvl, introLevel: mySolaceIntroLevel, forteLevel: mySolaceForteLevel },
@@ -1200,10 +1202,16 @@ export async function startDuelMatch(
           if (forteEmpowered) { const reset = resetForte(); if (isChallenger) state.cSolaceForte = reset; else state.dSolaceForte = reset; }
 
           const crit = forteEmpowered || result.forceCrit || Math.random() < aCrit;
-          const r = calcPlayerDamage(activeAtk * result.damageMult, effectiveOppDef, crit ? 1 : 0, activeCritDmg, 1.0, isWeak, false);
-          damage = Math.floor(r.damage * (1 + myElemDmg + extraElemBonus));
-          isCrit = r.isCrit; moveType = "SKILL";
-          moveLine = `${myName} — 🌪️ ${result.moveLabel}${crit ? " **(CRIT)**" : ""}`;
+          const perHit = calcPlayerDamage(activeAtk * (result.damageMult / hits), effectiveOppDef, crit ? 1 : 0, activeCritDmg, 1.0, isWeak, false);
+          const perHitDmg = Math.floor(perHit.damage * (1 + myElemDmg + extraElemBonus));
+          damage = perHitDmg * hits;
+          isCrit = perHit.isCrit; moveType = "SKILL";
+          if (hits > 1) {
+            const hitLines = Array.from({ length: hits }, (_, i) => `Hit ${i + 1}: ${perHitDmg} dmg`).join("\n");
+            moveLine = `${myName} — 🌪️ ${result.moveLabel}${crit ? " **(CRIT)**" : ""}\n${hitLines}\n**Total: ${damage} DMG**`;
+          } else {
+            moveLine = `${myName} — 🌪️ ${result.moveLabel}${crit ? " **(CRIT)**" : ""}`;
+          }
 
           if (!forteEmpowered) {
             const forteBefore = mySolaceForte;

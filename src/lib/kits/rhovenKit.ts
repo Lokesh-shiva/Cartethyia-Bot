@@ -221,7 +221,7 @@ export const RHOVEN_CONSTELLATION_EFFECTS = [
   "Max Tempo stacks raised from 3 to 4.",
   "Tempo stacks no longer decay over time — they persist until spent.",
   "Eye of the Squall's Weaken duration extended from 2 turns to 3.",
-  "Eye of the Squall also grants the active ally 1 Tempo stack.",
+  "Eye of the Squall refunds 1 Tempo stack immediately after use.",
   "Windward Step's hit is always a critical hit.",
   "**(Defining)** Whenever Tempo is at max stacks, Windward Step hits twice — each hit still grants its normal Tempo refill (capped).",
 ];
