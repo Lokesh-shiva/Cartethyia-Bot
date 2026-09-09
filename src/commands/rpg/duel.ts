@@ -65,6 +65,10 @@ import {
   RiloMechanicState, RiloSkillResult, RILO_FORTE_CONFIG, RILO_FORTE_GAIN_PER_BASIC,
   RILO_SHIELD_GAIN_PER_BASIC, RILO_C2_DEF_SHRED_PCT, riloMaxShield, riloUltimateBaseMult, riloUltimateShieldFromDamage, riloOnHitTaken,
 } from "../../lib/kits/riloKit";
+import {
+  RhovenMechanicState, RhovenSkillResult, rhovenUltimateWeaken, rhovenUltimateBaseMult,
+  RHOVEN_FORTE_CONFIG, RHOVEN_FORTE_GAIN_PER_BASIC,
+} from "../../lib/kits/rhovenKit";
 import "../../lib/kits";
 import {
   resolveRoster, nextAliveFallback, isTeamWiped, swappableTargets, positionLabel, positionValue,
@@ -1065,6 +1069,13 @@ export async function startDuelMatch(
             if (isForteMaxed(forteAfter, RILO_FORTE_CONFIG) && !isForteMaxed(forteBefore, RILO_FORTE_CONFIG)) {
               moveLine += `\n✨ Forte is **FULLY CHARGED** — next Guard Break will be Braced!`;
             }
+          } else if (myHasSolace && myActiveUnit === "ally" && myActiveAllyCharacterId === "rhoven") {
+            const forteBefore = mySolaceForte;
+            const forteAfter  = addForteCharge(forteBefore, RHOVEN_FORTE_CONFIG, RHOVEN_FORTE_GAIN_PER_BASIC);
+            if (isChallenger) state.cSolaceForte = forteAfter; else state.dSolaceForte = forteAfter;
+            if (isForteMaxed(forteAfter, RHOVEN_FORTE_CONFIG) && !isForteMaxed(forteBefore, RHOVEN_FORTE_CONFIG)) {
+              moveLine += `\n✨ Forte is **FULLY CHARGED** — next Windward Step always crits!`;
+            }
           }
         }
 
@@ -1167,6 +1178,31 @@ export async function startDuelMatch(
             if (isChallenger) state.cSolaceForte = forteAfter; else state.dSolaceForte = forteAfter;
             if (isForteMaxed(forteAfter, RILO_FORTE_CONFIG) && !isForteMaxed(forteBefore, RILO_FORTE_CONFIG)) {
               moveLine += `\n✨ Forte is **FULLY CHARGED** — next Guard Break will be Braced!`;
+            }
+          }
+        } else if (btn.customId === "duel_skill" && isDevGuild && myActiveUnit === "ally" && myActiveAllyCharacterId === "rhoven" && myAllyKit) {
+          const rhState = myAllyMechanicState as RhovenMechanicState;
+          const forteEmpowered = isForteMaxed(mySolaceForte, RHOVEN_FORTE_CONFIG);
+          const result = myAllyKit.onSkill(
+            { playerHp: myHp, playerHpMax: myHpMax, allyHp: myAllyHpVal, allyHpMax: myAllyHpMaxVal, turn: state.turn, isShattered: false, mechanicState: rhState },
+            { basicLevel: mySolaceBasicLevel, skillLevel: mySolaceSkillLevel, ultimateLevel: mySolaceUltimateLvl, introLevel: mySolaceIntroLevel, forteLevel: mySolaceForteLevel },
+            mySolaceConstellation,
+          ) as RhovenSkillResult;
+          if (isChallenger) state.cAllyMechanicState = result.newMechanicState; else state.dAllyMechanicState = result.newMechanicState;
+          if (forteEmpowered) { const reset = resetForte(); if (isChallenger) state.cSolaceForte = reset; else state.dSolaceForte = reset; }
+
+          const crit = forteEmpowered || result.forceCrit || Math.random() < aCrit;
+          const r = calcPlayerDamage(activeAtk * result.damageMult, effectiveOppDef, crit ? 1 : 0, activeCritDmg, 1.0, isWeak, false);
+          damage = Math.floor(r.damage * (1 + myElemDmg + extraElemBonus));
+          isCrit = r.isCrit; moveType = "SKILL";
+          moveLine = `${myName} — 🌪️ ${result.moveLabel}${crit ? " **(CRIT)**" : ""}`;
+
+          if (!forteEmpowered) {
+            const forteBefore = mySolaceForte;
+            const forteAfter  = addForteCharge(forteBefore, RHOVEN_FORTE_CONFIG, RHOVEN_FORTE_GAIN_PER_BASIC);
+            if (isChallenger) state.cSolaceForte = forteAfter; else state.dSolaceForte = forteAfter;
+            if (isForteMaxed(forteAfter, RHOVEN_FORTE_CONFIG) && !isForteMaxed(forteBefore, RHOVEN_FORTE_CONFIG)) {
+              moveLine += `\n✨ Forte is **FULLY CHARGED** — next Windward Step always crits!`;
             }
           }
         } else if (btn.customId === "duel_skill") {
@@ -1347,6 +1383,32 @@ export async function startDuelMatch(
             const cleansed = cleanseDebuffs(isChallenger ? state.cPlayerDebuffs : state.dPlayerDebuffs, 1);
             if (isChallenger) state.cPlayerDebuffs = cleansed; else state.dPlayerDebuffs = cleansed;
           }
+        } else if (btn.customId === "duel_ultimate" && isDevGuild && myActiveUnit === "ally" && myActiveAllyCharacterId === "rhoven" && myAllyKit) {
+          const rhState = myAllyMechanicState as RhovenMechanicState;
+          const weaken = rhovenUltimateWeaken(rhState, mySolaceConstellation);
+
+          const result = myAllyKit.onUltimate(
+            { playerHp: myHp, playerHpMax: myHpMax, allyHp: myAllyHpVal, allyHpMax: myAllyHpMaxVal, turn: state.turn, isShattered: false, mechanicState: rhState },
+            { basicLevel: mySolaceBasicLevel, skillLevel: mySolaceSkillLevel, ultimateLevel: mySolaceUltimateLvl, introLevel: mySolaceIntroLevel, forteLevel: mySolaceForteLevel },
+            mySolaceConstellation,
+          );
+          if (isChallenger) state.cAllyMechanicState = result.newMechanicState; else state.dAllyMechanicState = result.newMechanicState;
+
+          const r = calcPlayerDamage(activeAtk * rhovenUltimateBaseMult(mySolaceUltimateLvl) * weaken.bonusDamageMult, effectiveOppDef, 1.0, activeCritDmg, 1.0, isWeak, false);
+          damage = r.damage; isCrit = true; moveType = "ULT";
+          moveLine = `${myName} — 🌪️ ${result.moveLabel} — ${damage} DMG`;
+
+          // C4 also grants the active ally a Tempo stack (the active ally IS
+          // Rhoven here, so this folds into his own post-ultimate state rather
+          // than needing a separate "ally" target the way Rilo's cleanse does).
+          if (mySolaceConstellation >= 4) {
+            const withTempo = { ...(result.newMechanicState as RhovenMechanicState), tempoStacks: 1 };
+            if (isChallenger) state.cAllyMechanicState = withTempo; else state.dAllyMechanicState = withTempo;
+          }
+
+          if (isChallenger) state.dPlayerDebuffs = applyDebuff(state.dPlayerDebuffs, "WEAKENED", weaken.weakenPct, weaken.weakenTurns);
+          else              state.cPlayerDebuffs = applyDebuff(state.cPlayerDebuffs, "WEAKENED", weaken.weakenPct, weaken.weakenTurns);
+          moveLine += `\n◇ Leaves ${isChallenger ? state.challengedName : state.challengerName} **WEAKENED** *(-${Math.round(weaken.weakenPct * 100)}% ATK, ${weaken.weakenTurns} turns)*`;
         }
 
         let echoResult: ReturnType<typeof applyEchoSkill> | null = null;
