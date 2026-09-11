@@ -79,6 +79,10 @@ import {
   BrenMechanicState, BrenSkillResult, BrenUltimateResult, brenSkillLifestealPct,
   BREN_FORTE_CONFIG, BREN_FORTE_GAIN_PER_BASIC, BREN_C5_LINGER_TURNS, BREN_C5_LINGER_BONUS,
 } from "../../lib/kits/brenKit";
+import {
+  FeyraMechanicState, FeyraSkillResult, FeyraUltimateResult, feyraWeaken, feyraMaxFrostStacks,
+  FEYRA_FORTE_CONFIG, FEYRA_FORTE_GAIN_PER_BASIC,
+} from "../../lib/kits/feyraKit";
 import "../../lib/kits";
 import {
   resolveRoster, nextAliveFallback, isTeamWiped, swappableTargets, positionLabel, positionValue,
@@ -328,6 +332,8 @@ interface ActiveRaid {
   bossDefShredPct:       number;
   bossWeakenTurnsLeft: number; // Rhoven's Ultimate — reduces the boss's own outgoing damage, shared like bossDefShredTurnsLeft
   bossWeakenPct:       number;
+  feyraBossWeakenTurnsLeft: number; // Feyra's Ultimate — separate shared counter, same shape as Rhoven's own
+  feyraBossWeakenPct:       number;
   phase:         "RECRUITING" | "FIGHTING";
   participants:  RaidParticipant[];
   currentIdx:    number;
@@ -486,6 +492,15 @@ function buildRaidButtons(p: RaidParticipant, isDevGuild: boolean): (ActionRowBu
       new ButtonBuilder().setCustomId("raid_basic").setLabel("⚔️  Basic Attack").setStyle(ButtonStyle.Primary),
       new ButtonBuilder().setCustomId("raid_skill").setLabel("🩸  Bloodprice Cleave").setStyle(ButtonStyle.Secondary),
       new ButtonBuilder().setCustomId("raid_ultimate").setLabel("🩸  Last Man Standing")
+        .setStyle(ButtonStyle.Success).setDisabled(p.concertoEnergy < 100),
+      new ButtonBuilder().setCustomId("raid_retreat")
+        .setLabel("↩  Retreat").setStyle(ButtonStyle.Danger),
+    ));
+  } else if (isDevGuild && p.hasSolace && p.activeUnit === "ally" && p.activeAllyCharacterId === "feyra") {
+    rows.push(new ActionRowBuilder<ButtonBuilder>().addComponents(
+      new ButtonBuilder().setCustomId("raid_basic").setLabel("⚔️  Basic Attack").setStyle(ButtonStyle.Primary),
+      new ButtonBuilder().setCustomId("raid_skill").setLabel("❄️  Frostbind").setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder().setCustomId("raid_ultimate").setLabel("❄️  Absolute Zero")
         .setStyle(ButtonStyle.Success).setDisabled(p.concertoEnergy < 100),
       new ButtonBuilder().setCustomId("raid_retreat")
         .setLabel("↩  Retreat").setStyle(ButtonStyle.Danger),
@@ -696,6 +711,8 @@ async function startRaid(interaction: ChatInputCommandInteraction) {
     bossDefShredPct:       0,
     bossWeakenTurnsLeft: 0,
     bossWeakenPct:       0,
+    feyraBossWeakenTurnsLeft: 0,
+    feyraBossWeakenPct:       0,
     phase:        "RECRUITING",
     participants: [],
     currentIdx:   0,
@@ -1426,6 +1443,7 @@ async function launchRaid(
         const isRiloActing = isAllyActing && current.activeAllyCharacterId === "rilo";
         const isRhovenActing = isAllyActing && current.activeAllyCharacterId === "rhoven";
         const isBrenActing = isAllyActing && current.activeAllyCharacterId === "bren";
+        const isFeyraActing = isAllyActing && current.activeAllyCharacterId === "feyra";
         const brenLingerMult = (isBrenActing && current.brenLingerTurnsLeft > 0) ? (1 + current.brenLingerBonus) : 1;
         const r    = calcPlayerDamage(activeAtk * smolderMult * havocAtkMult * teamMult * brenLingerMult, defVal, forcedCrit ? 1 : Math.min(1, aCrit + party.critBonus), activeCritDmg, 1.0, isWeak, raid.isShattered);
         if (isRhovenActing) {
@@ -1440,6 +1458,13 @@ async function launchRaid(
           current.solaceForte = addForteCharge(current.solaceForte, BREN_FORTE_CONFIG, BREN_FORTE_GAIN_PER_BASIC);
           if (isForteMaxed(current.solaceForte, BREN_FORTE_CONFIG) && !isForteMaxed(forteBefore, BREN_FORTE_CONFIG)) {
             forteAnnounce += `\n✨ Forte is **FULLY CHARGED** — next Bloodprice Cleave costs no HP!`;
+          }
+        }
+        if (isFeyraActing) {
+          const forteBefore = current.solaceForte;
+          current.solaceForte = addForteCharge(current.solaceForte, FEYRA_FORTE_CONFIG, FEYRA_FORTE_GAIN_PER_BASIC);
+          if (isForteMaxed(current.solaceForte, FEYRA_FORTE_CONFIG) && !isForteMaxed(forteBefore, FEYRA_FORTE_CONFIG)) {
+            forteAnnounce += `\n✨ Forte is **FULLY CHARGED** — next Frostbind is guaranteed to crit!`;
           }
         }
         if (isRiloActing) {
@@ -1639,6 +1664,45 @@ async function launchRaid(
           current.solaceForte = addForteCharge(forteBefore, BREN_FORTE_CONFIG, BREN_FORTE_GAIN_PER_BASIC);
           if (isForteMaxed(current.solaceForte, BREN_FORTE_CONFIG) && !isForteMaxed(forteBefore, BREN_FORTE_CONFIG)) {
             moveLine += `\n✨ Forte is **FULLY CHARGED** — next Bloodprice Cleave costs no HP!`;
+          }
+        }
+        current.skillCd = current.allyKit.skillCooldownTurns;
+
+      } else if (raid.isDevGuild && current.activeUnit === "ally" && current.activeAllyCharacterId === "feyra" && current.allyKit && btn.customId === "raid_skill") {
+        const feState = current.allyMechanicState as FeyraMechanicState;
+        const forteEmpowered = isForteMaxed(current.solaceForte, FEYRA_FORTE_CONFIG);
+        const c6DoubleHit = current.solaceConstellation >= 6 && feState.frostStacks >= feyraMaxFrostStacks(current.solaceConstellation);
+        const hits = c6DoubleHit ? 2 : 1;
+        const result = current.allyKit.onSkill(
+          { playerHp: current.hp, playerHpMax: current.hpMax, allyHp: current.allyHp, allyHpMax: current.allyHpMax, turn: raid.turn, isShattered: raid.isShattered, mechanicState: feState, forteEmpowered } as any,
+          { basicLevel: current.solaceBasicLevel, skillLevel: current.solaceSkillLevel, ultimateLevel: current.solaceUltimateLevel, introLevel: current.solaceIntroLevel, forteLevel: current.solaceForteLevel },
+          current.solaceConstellation,
+        ) as FeyraSkillResult;
+        current.allyMechanicState = result.newMechanicState;
+        if (forteEmpowered) current.solaceForte = resetForte();
+
+        const crit = result.forceCrit || Math.random() < aCrit;
+        const perHit = calcPlayerDamage(activeAtk, defVal, crit ? 1 : 0, activeCritDmg, result.damageMult / hits, isWeak, raid.isShattered);
+        const perHitDmg = Math.floor(perHit.damage * (1 + activeBonuses.elemDmgBonus + extraElemBonus) * radiantDmgMult);
+        damage = perHitDmg * hits;
+        isCrit = crit; vibFrac = result.vibFrac;
+        if (hits > 1) {
+          const hitLines = Array.from({ length: hits }, (_, i) => `Hit ${i + 1}: ${perHitDmg} dmg`).join("\n");
+          moveLine = `${current.name} — ❄️ ${result.moveLabel}${crit ? " **(CRIT)**" : ""}\n${hitLines}\n**Total: ${damage} DMG**`;
+        } else {
+          moveLine = `${current.name} — ❄️ ${result.moveLabel}${crit ? " **(CRIT)**" : ""}`;
+        }
+
+        const weaken = feyraWeaken(current.solaceConstellation);
+        raid.feyraBossWeakenTurnsLeft = weaken.weakenTurns;
+        raid.feyraBossWeakenPct = weaken.weakenPct;
+        moveLine += `\n◇ The boss is left **WEAKENED** *(-${Math.round(weaken.weakenPct * 100)}% ATK, ${weaken.weakenTurns} turns)*`;
+
+        if (!forteEmpowered) {
+          const forteBefore = current.solaceForte;
+          current.solaceForte = addForteCharge(forteBefore, FEYRA_FORTE_CONFIG, FEYRA_FORTE_GAIN_PER_BASIC);
+          if (isForteMaxed(current.solaceForte, FEYRA_FORTE_CONFIG) && !isForteMaxed(forteBefore, FEYRA_FORTE_CONFIG)) {
+            moveLine += `\n✨ Forte is **FULLY CHARGED** — next Frostbind is guaranteed to crit!`;
           }
         }
         current.skillCd = current.allyKit.skillCooldownTurns;
@@ -1856,6 +1920,29 @@ async function launchRaid(
 
         if (current.solaceConstellation >= 5) { current.brenLingerTurnsLeft = BREN_C5_LINGER_TURNS + 1; current.brenLingerBonus = BREN_C5_LINGER_BONUS; }
         if (result.resetsConcertoEnergy) { current.concertoEnergy = 0; convergenceUsedThisTurn = true; }
+      } else if (raid.isDevGuild && current.activeUnit === "ally" && current.activeAllyCharacterId === "feyra" && current.allyKit && btn.customId === "raid_ultimate") {
+        const feState = current.allyMechanicState as FeyraMechanicState;
+        const result = current.allyKit.onUltimate(
+          { playerHp: current.hp, playerHpMax: current.hpMax, allyHp: current.allyHp, allyHpMax: current.allyHpMax, turn: raid.turn, isShattered: raid.isShattered, mechanicState: feState },
+          { basicLevel: current.solaceBasicLevel, skillLevel: current.solaceSkillLevel, ultimateLevel: current.solaceUltimateLevel, introLevel: current.solaceIntroLevel, forteLevel: current.solaceForteLevel },
+          current.solaceConstellation,
+        ) as FeyraUltimateResult;
+        current.allyMechanicState = result.newMechanicState;
+
+        const perHit = calcPlayerDamage(activeAtk, defVal, 1.0, activeCritDmg, result.damageMult, isWeak, raid.isShattered);
+        damage = Math.floor(perHit.damage * (1 + activeBonuses.elemDmgBonus + extraElemBonus) * radiantDmgMult);
+        moveLine = `${current.name} — ❄️ ${result.moveLabel} — ${damage} DMG`;
+        isCrit = true; moveType = "ULT"; vibFrac = 0.8;
+
+        const weaken = feyraWeaken(current.solaceConstellation);
+        raid.feyraBossWeakenTurnsLeft = weaken.weakenTurns;
+        raid.feyraBossWeakenPct = weaken.weakenPct;
+        moveLine += `\n◇ The boss is left **WEAKENED** *(-${Math.round(weaken.weakenPct * 100)}% ATK, ${weaken.weakenTurns} turns)*`;
+
+        if (result.healResult.actions.length > 0) {
+          current.playerDebuffs = cleanseDebuffs(current.playerDebuffs, 1);
+        }
+        if (result.resetsConcertoEnergy) { current.concertoEnergy = 0; convergenceUsedThisTurn = true; }
       } else if (btn.customId === "raid_echoskill" && activeBonuses.echoSkill) {
         const def = activeBonuses.echoSkill;
         const echoCrit = forcedCritActive || def.kind === "GUARANTEED_CRIT" || Math.random() < aCrit;
@@ -2056,7 +2143,8 @@ async function launchRaid(
       } else {
         const move    = boss.moves[Math.floor(Math.random() * boss.moves.length)];
         const bossWeakenActive = raid.bossWeakenTurnsLeft > 0;
-        const aoeBase = Math.floor(raid.bossAtk * move.damage * 0.6 * (bossWeakenActive ? (1 - raid.bossWeakenPct) : 1)); // AoE = 60% of single-target
+        const feyraBossWeakenActive = raid.feyraBossWeakenTurnsLeft > 0;
+        const aoeBase = Math.floor(raid.bossAtk * move.damage * 0.6 * (bossWeakenActive ? (1 - raid.bossWeakenPct) : 1) * (feyraBossWeakenActive ? (1 - raid.feyraBossWeakenPct) : 1)); // AoE = 60% of single-target
         const alive   = raid.participants.filter(p => !p.isDefeated);
         const dmgLines: string[] = [];
         // Milestone 3d: party-wide DEF bonuses (Attunement DEF-mode/Wellspring/
@@ -2205,6 +2293,7 @@ async function launchRaid(
       if (raid.isDevGuild && current.forteEmpoweredTurnsLeft > 0) current.forteEmpoweredTurnsLeft--;
       if (raid.bossDefShredTurnsLeft > 0) raid.bossDefShredTurnsLeft--;
       if (raid.bossWeakenTurnsLeft > 0) raid.bossWeakenTurnsLeft--;
+      if (raid.feyraBossWeakenTurnsLeft > 0) raid.feyraBossWeakenTurnsLeft--;
       if (forcedCritActive && !isSwapAction) current.nextCritArmed = false;
 
       // All defeated?
