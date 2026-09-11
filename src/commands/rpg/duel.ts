@@ -69,6 +69,10 @@ import {
   RhovenMechanicState, RhovenSkillResult, rhovenUltimateWeaken, rhovenUltimateBaseMult, rhovenMaxTempoStacks,
   RHOVEN_FORTE_CONFIG, RHOVEN_FORTE_GAIN_PER_BASIC,
 } from "../../lib/kits/rhovenKit";
+import {
+  BrenMechanicState, BrenSkillResult, BrenUltimateResult, brenSkillLifestealPct,
+  BREN_FORTE_CONFIG, BREN_FORTE_GAIN_PER_BASIC, BREN_C5_LINGER_TURNS, BREN_C5_LINGER_BONUS,
+} from "../../lib/kits/brenKit";
 import "../../lib/kits";
 import {
   resolveRoster, nextAliveFallback, isTeamWiped, swappableTargets, positionLabel, positionValue,
@@ -99,6 +103,7 @@ interface DuelState {
   cNamedState: NamedSetState;
   cGlacioShieldTurnsLeft: number; cGlacioShieldElemBonus: number;
   cRiloDefBuffTurnsLeft: number; cRiloDefBuffPct: number;
+  cBrenLingerTurnsLeft: number; cBrenLingerBonus: number;
   cStormBuffTurnsLeft: number; cStormBuffCritBonus: number;
   cHavocFrenzyAtkMult: number; cHavocFrenzyLifesteal: number; cHavocFrenzyDefIgnore: number;
   cEchoSkillCd: number; cDefShredTurnsLeft: number; cDefShredPct: number; cNextCritArmed: boolean;
@@ -126,6 +131,7 @@ interface DuelState {
   dNamedState: NamedSetState;
   dGlacioShieldTurnsLeft: number; dGlacioShieldElemBonus: number;
   dRiloDefBuffTurnsLeft: number; dRiloDefBuffPct: number;
+  dBrenLingerTurnsLeft: number; dBrenLingerBonus: number;
   dStormBuffTurnsLeft: number; dStormBuffCritBonus: number;
   dHavocFrenzyAtkMult: number; dHavocFrenzyLifesteal: number; dHavocFrenzyDefIgnore: number;
   dEchoSkillCd: number; dDefShredTurnsLeft: number; dDefShredPct: number; dNextCritArmed: boolean;
@@ -389,6 +395,14 @@ function buildDuelButtons(state: DuelState, forUserId: string, isDevGuild: boole
         .setStyle(ButtonStyle.Success).setDisabled(myConcertoEnergy < 100),
       new ButtonBuilder().setCustomId("duel_forfeit").setLabel("🏳️  Forfeit").setStyle(ButtonStyle.Danger),
     ));
+  } else if (isDevGuild && myHasSolace && myActiveUnit === "ally" && myActiveAllyCharacterId === "bren") {
+    rows.push(new ActionRowBuilder<ButtonBuilder>().addComponents(
+      new ButtonBuilder().setCustomId("duel_basic").setLabel("⚔️  Basic Attack").setStyle(ButtonStyle.Primary),
+      new ButtonBuilder().setCustomId("duel_skill").setLabel("🩸  Bloodprice Cleave").setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder().setCustomId("duel_ultimate").setLabel("🩸  Last Man Standing")
+        .setStyle(ButtonStyle.Success).setDisabled(myConcertoEnergy < 100),
+      new ButtonBuilder().setCustomId("duel_forfeit").setLabel("🏳️  Forfeit").setStyle(ButtonStyle.Danger),
+    ));
   } else if (isDevGuild && myHasSolace && myActiveUnit === "ally") {
     const modeLabel = myAttunement.mode ? `(${myAttunement.mode})` : "(inactive)";
     rows.push(new ActionRowBuilder<ButtonBuilder>().addComponents(
@@ -533,6 +547,7 @@ export async function startDuelMatch(
       cNamedState: initNamedSetState(),
       cGlacioShieldTurnsLeft: 0, cGlacioShieldElemBonus: 0,
       cRiloDefBuffTurnsLeft: 0, cRiloDefBuffPct: 0,
+      cBrenLingerTurnsLeft: 0, cBrenLingerBonus: 0,
       cStormBuffTurnsLeft: 0, cStormBuffCritBonus: 0,
       cHavocFrenzyAtkMult: 1.0, cHavocFrenzyLifesteal: 0, cHavocFrenzyDefIgnore: 0,
       cEchoSkillCd: 0, cDefShredTurnsLeft: 0, cDefShredPct: 0, cNextCritArmed: false,
@@ -557,6 +572,7 @@ export async function startDuelMatch(
       dNamedState: initNamedSetState(),
       dGlacioShieldTurnsLeft: 0, dGlacioShieldElemBonus: 0,
       dRiloDefBuffTurnsLeft: 0, dRiloDefBuffPct: 0,
+      dBrenLingerTurnsLeft: 0, dBrenLingerBonus: 0,
       dStormBuffTurnsLeft: 0, dStormBuffCritBonus: 0,
       dHavocFrenzyAtkMult: 1.0, dHavocFrenzyLifesteal: 0, dHavocFrenzyDefIgnore: 0,
       dEchoSkillCd: 0, dDefShredTurnsLeft: 0, dDefShredPct: 0, dNextCritArmed: false,
@@ -999,7 +1015,15 @@ export async function startDuelMatch(
             ? windstridersLegacyCheckExplosion(myNamedState) : { proc: false, guaranteedCrit: false, bonusMult: 1.0 };
           const smolderMult = mySetId === "SMOLDERING_SOVEREIGN" ? smolderingSovereignOnAction(myNamedState) : 1;
           const forcedCrit = forcedCritActive || windExplosion.guaranteedCrit;
-          const r      = calcPlayerDamage(activeAtk * teamMult * basicMoveMult * smolderMult * myHavocAtkMult, effectiveOppDef, forcedCrit ? 1 : Math.min(1, aCrit + teamCritBonus + wellspringCritBonus + forteCritBonus), activeCritDmg, 1.0, isWeak, false);
+          // Bren's C5 linger window — a flat bonus to his own Basic Attacks
+          // for 2 turns after Skill/Ultimate, tracked as a dedicated per-side
+          // counter (myBrenLingerTurnsLeft/Bonus) since no generic "buff my
+          // own next-N-basics" primitive exists, same pattern as every other
+          // kit's bespoke per-fight counters.
+          const myBrenLingerTurnsLeft = isChallenger ? state.cBrenLingerTurnsLeft : state.dBrenLingerTurnsLeft;
+          const myBrenLingerBonus     = isChallenger ? state.cBrenLingerBonus    : state.dBrenLingerBonus;
+          const brenLingerMult = (myActiveAllyCharacterId === "bren" && myBrenLingerTurnsLeft > 0) ? (1 + myBrenLingerBonus) : 1;
+          const r      = calcPlayerDamage(activeAtk * teamMult * basicMoveMult * smolderMult * myHavocAtkMult * brenLingerMult, effectiveOppDef, forcedCrit ? 1 : Math.min(1, aCrit + teamCritBonus + wellspringCritBonus + forteCritBonus), activeCritDmg, 1.0, isWeak, false);
           let base     = Math.floor(r.damage * (1 + myElemDmg + extraElemBonus) * radiantDmgMult);
           base         = Math.floor(base * elemWindstrideMult(myBonus.elementPassive, state.turn, "BASIC"));
           if (mySetId === "WINDSTRIDERS_LEGACY") {
@@ -1083,6 +1107,13 @@ export async function startDuelMatch(
             if (isChallenger) state.cSolaceForte = forteAfter; else state.dSolaceForte = forteAfter;
             if (isForteMaxed(forteAfter, RHOVEN_FORTE_CONFIG) && !isForteMaxed(forteBefore, RHOVEN_FORTE_CONFIG)) {
               moveLine += `\n✨ Forte is **FULLY CHARGED** — next Windward Step always crits!`;
+            }
+          } else if (myHasSolace && myActiveUnit === "ally" && myActiveAllyCharacterId === "bren") {
+            const forteBefore = mySolaceForte;
+            const forteAfter  = addForteCharge(forteBefore, BREN_FORTE_CONFIG, BREN_FORTE_GAIN_PER_BASIC);
+            if (isChallenger) state.cSolaceForte = forteAfter; else state.dSolaceForte = forteAfter;
+            if (isForteMaxed(forteAfter, BREN_FORTE_CONFIG) && !isForteMaxed(forteBefore, BREN_FORTE_CONFIG)) {
+              moveLine += `\n✨ Forte is **FULLY CHARGED** — next Bloodprice Cleave costs no HP!`;
             }
           }
         }
@@ -1219,6 +1250,50 @@ export async function startDuelMatch(
             if (isChallenger) state.cSolaceForte = forteAfter; else state.dSolaceForte = forteAfter;
             if (isForteMaxed(forteAfter, RHOVEN_FORTE_CONFIG) && !isForteMaxed(forteBefore, RHOVEN_FORTE_CONFIG)) {
               moveLine += `\n✨ Forte is **FULLY CHARGED** — next Windward Step always crits!`;
+            }
+          }
+        } else if (btn.customId === "duel_skill" && isDevGuild && myActiveUnit === "ally" && myActiveAllyCharacterId === "bren" && myAllyKit) {
+          const brState = myAllyMechanicState as BrenMechanicState;
+          const forteEmpowered = isForteMaxed(mySolaceForte, BREN_FORTE_CONFIG);
+          const result = myAllyKit.onSkill(
+            { playerHp: myHp, playerHpMax: myHpMax, allyHp: myAllyHpVal, allyHpMax: myAllyHpMaxVal, turn: state.turn, isShattered: false, mechanicState: brState, forteEmpowered } as any,
+            { basicLevel: mySolaceBasicLevel, skillLevel: mySolaceSkillLevel, ultimateLevel: mySolaceUltimateLvl, introLevel: mySolaceIntroLevel, forteLevel: mySolaceForteLevel },
+            mySolaceConstellation,
+          ) as BrenSkillResult;
+          if (isChallenger) state.cAllyMechanicState = result.newMechanicState; else state.dAllyMechanicState = result.newMechanicState;
+          if (forteEmpowered) { const reset = resetForte(); if (isChallenger) state.cSolaceForte = reset; else state.dSolaceForte = reset; }
+
+          const crit = Math.random() < aCrit;
+          const r = calcPlayerDamage(activeAtk * result.damageMult, effectiveOppDef, crit ? 1 : 0, activeCritDmg, 1.0, isWeak, false);
+          damage = Math.floor(r.damage * (1 + myElemDmg + extraElemBonus));
+          isCrit = r.isCrit; moveType = "SKILL";
+          moveLine = `${myName} — 🩸 ${result.moveLabel}${crit ? " **(CRIT)**" : ""}${result.hpCost > 0 ? ` (spent ${result.hpCost} HP)` : ""}`;
+
+          // Pay the HP cost to his own pool (he IS the active ally here).
+          const newAllyHpAfterCost = Math.max(1, myAllyHpVal - result.hpCost);
+          if (isChallenger) state.cAllyHp = newAllyHpAfterCost; else state.dAllyHp = newAllyHpAfterCost;
+
+          // C3: Lifesteal on this hit, healing back onto the same pool the cost came from.
+          const lifestealPct = brenSkillLifestealPct(mySolaceConstellation);
+          if (lifestealPct > 0) {
+            const healed = Math.floor(damage * lifestealPct);
+            const healedHp = Math.min(myAllyHpMaxVal, newAllyHpAfterCost + healed);
+            if (isChallenger) state.cAllyHp = healedHp; else state.dAllyHp = healedHp;
+            if (healed > 0) moveLine += `\n🩸 +${healed} HP (Lifesteal)`;
+          }
+
+          // C5: linger bonus window for Basic Attacks.
+          if (mySolaceConstellation >= 5) {
+            if (isChallenger) { state.cBrenLingerTurnsLeft = BREN_C5_LINGER_TURNS + 1; state.cBrenLingerBonus = BREN_C5_LINGER_BONUS; }
+            else              { state.dBrenLingerTurnsLeft = BREN_C5_LINGER_TURNS + 1; state.dBrenLingerBonus = BREN_C5_LINGER_BONUS; }
+          }
+
+          if (!forteEmpowered) {
+            const forteBefore = mySolaceForte;
+            const forteAfter  = addForteCharge(forteBefore, BREN_FORTE_CONFIG, BREN_FORTE_GAIN_PER_BASIC);
+            if (isChallenger) state.cSolaceForte = forteAfter; else state.dSolaceForte = forteAfter;
+            if (isForteMaxed(forteAfter, BREN_FORTE_CONFIG) && !isForteMaxed(forteBefore, BREN_FORTE_CONFIG)) {
+              moveLine += `\n✨ Forte is **FULLY CHARGED** — next Bloodprice Cleave costs no HP!`;
             }
           }
         } else if (btn.customId === "duel_skill") {
@@ -1425,6 +1500,39 @@ export async function startDuelMatch(
           if (isChallenger) state.dPlayerDebuffs = applyDebuff(state.dPlayerDebuffs, "WEAKENED", weaken.weakenPct, weaken.weakenTurns);
           else              state.cPlayerDebuffs = applyDebuff(state.cPlayerDebuffs, "WEAKENED", weaken.weakenPct, weaken.weakenTurns);
           moveLine += `\n◇ Leaves ${isChallenger ? state.challengedName : state.challengerName} **WEAKENED** *(-${Math.round(weaken.weakenPct * 100)}% ATK, ${weaken.weakenTurns} turns)*`;
+
+          if (result.resetsConcertoEnergy) {
+            convergenceUsedThisTurn = true;
+            if (isChallenger) state.cConcertoEnergy = 0; else state.dConcertoEnergy = 0;
+          }
+        } else if (btn.customId === "duel_ultimate" && isDevGuild && myActiveUnit === "ally" && myActiveAllyCharacterId === "bren" && myAllyKit) {
+          const brState = myAllyMechanicState as BrenMechanicState;
+          const result = myAllyKit.onUltimate(
+            { playerHp: myHp, playerHpMax: myHpMax, allyHp: myAllyHpVal, allyHpMax: myAllyHpMaxVal, turn: state.turn, isShattered: false, mechanicState: brState },
+            { basicLevel: mySolaceBasicLevel, skillLevel: mySolaceSkillLevel, ultimateLevel: mySolaceUltimateLvl, introLevel: mySolaceIntroLevel, forteLevel: mySolaceForteLevel },
+            mySolaceConstellation,
+          ) as BrenUltimateResult;
+          if (isChallenger) state.cAllyMechanicState = result.newMechanicState; else state.dAllyMechanicState = result.newMechanicState;
+
+          const r = calcPlayerDamage(activeAtk * result.damageMult, effectiveOppDef, 1.0, activeCritDmg, 1.0, isWeak, false);
+          damage = r.damage; isCrit = true; moveType = "ULT";
+          moveLine = `${myName} — 🩸 ${result.moveLabel} — ${damage} DMG${result.hpCost > 0 ? ` (spent ${result.hpCost} HP)` : ""}`;
+
+          // Pay the HP cost, then apply C4's heal-back (if any) on top.
+          let allyHpAfter = Math.max(1, myAllyHpVal - result.hpCost);
+          if (result.healResult.actions.length > 0) {
+            const healResult = resolveIntroOutroEffect(result.healResult, { hp: allyHpAfter, hpMax: myAllyHpMaxVal });
+            const healed = Math.min(myAllyHpMaxVal, allyHpAfter + healResult.hpDelta) - allyHpAfter;
+            allyHpAfter = Math.min(myAllyHpMaxVal, allyHpAfter + healResult.hpDelta);
+            if (healed > 0) moveLine += `\n🩸 +${healed} HP (Last Man Standing)`;
+          }
+          if (isChallenger) state.cAllyHp = allyHpAfter; else state.dAllyHp = allyHpAfter;
+
+          // C5: same linger bonus window as his Skill.
+          if (mySolaceConstellation >= 5) {
+            if (isChallenger) { state.cBrenLingerTurnsLeft = BREN_C5_LINGER_TURNS + 1; state.cBrenLingerBonus = BREN_C5_LINGER_BONUS; }
+            else              { state.dBrenLingerTurnsLeft = BREN_C5_LINGER_TURNS + 1; state.dBrenLingerBonus = BREN_C5_LINGER_BONUS; }
+          }
 
           if (result.resetsConcertoEnergy) {
             convergenceUsedThisTurn = true;
@@ -1812,6 +1920,7 @@ export async function startDuelMatch(
         if (isChallenger) {
           if (state.cGlacioShieldTurnsLeft > 0) state.cGlacioShieldTurnsLeft--;
           if (state.cRiloDefBuffTurnsLeft > 0) state.cRiloDefBuffTurnsLeft--;
+          if (state.cBrenLingerTurnsLeft > 0) state.cBrenLingerTurnsLeft--;
           if (state.cStormBuffTurnsLeft > 0) state.cStormBuffTurnsLeft--;
           if (state.cNamedState.spectroFractureTurnsLeft > 0) state.cNamedState.spectroFractureTurnsLeft--;
           if (state.cEchoSkillCd > 0) state.cEchoSkillCd--;
@@ -1822,6 +1931,7 @@ export async function startDuelMatch(
         } else {
           if (state.dGlacioShieldTurnsLeft > 0) state.dGlacioShieldTurnsLeft--;
           if (state.dRiloDefBuffTurnsLeft > 0) state.dRiloDefBuffTurnsLeft--;
+          if (state.dBrenLingerTurnsLeft > 0) state.dBrenLingerTurnsLeft--;
           if (state.dStormBuffTurnsLeft > 0) state.dStormBuffTurnsLeft--;
           if (state.dNamedState.spectroFractureTurnsLeft > 0) state.dNamedState.spectroFractureTurnsLeft--;
           if (state.dEchoSkillCd > 0) state.dEchoSkillCd--;
