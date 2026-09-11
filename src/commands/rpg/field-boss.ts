@@ -83,6 +83,10 @@ import {
   RhovenMechanicState, RhovenSkillResult, rhovenUltimateWeaken, rhovenUltimateBaseMult, rhovenMaxTempoStacks,
   RHOVEN_FORTE_CONFIG, RHOVEN_FORTE_GAIN_PER_BASIC,
 } from "../../lib/kits/rhovenKit";
+import {
+  BrenMechanicState, BrenSkillResult, BrenUltimateResult, brenSkillLifestealPct,
+  BREN_FORTE_CONFIG, BREN_FORTE_GAIN_PER_BASIC, BREN_C5_LINGER_TURNS, BREN_C5_LINGER_BONUS,
+} from "../../lib/kits/brenKit";
 import "../../lib/kits";
 import {
   rollRarity, rollMainStat, rollSubstats, rollSubstatValue,
@@ -195,6 +199,14 @@ function buildButtons(
       new ButtonBuilder().setCustomId("fb_basic").setLabel("⚔️  Basic Attack").setStyle(ButtonStyle.Primary),
       new ButtonBuilder().setCustomId("fb_skill").setLabel("🌪️  Windward Step").setStyle(ButtonStyle.Secondary),
       new ButtonBuilder().setCustomId("fb_ultimate").setLabel("🌪️  Eye of the Squall")
+        .setStyle(ButtonStyle.Success).setDisabled(team.concertoEnergy < 100),
+      new ButtonBuilder().setCustomId("fb_flee").setLabel("🚪  Flee").setStyle(ButtonStyle.Danger),
+    ));
+  } else if (team?.isDevGuild && !team.isPlayerActiveNow && team.activeAllyCharacterId === "bren") {
+    rows.push(new ActionRowBuilder<ButtonBuilder>().addComponents(
+      new ButtonBuilder().setCustomId("fb_basic").setLabel("⚔️  Basic Attack").setStyle(ButtonStyle.Primary),
+      new ButtonBuilder().setCustomId("fb_skill").setLabel("🩸  Bloodprice Cleave").setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder().setCustomId("fb_ultimate").setLabel("🩸  Last Man Standing")
         .setStyle(ButtonStyle.Success).setDisabled(team.concertoEnergy < 100),
       new ButtonBuilder().setCustomId("fb_flee").setLabel("🚪  Flee").setStyle(ButtonStyle.Danger),
     ));
@@ -420,6 +432,8 @@ const command: Command = {
       let riloDefBuffPct         = 0;
       let rhovenBossWeakenTurnsLeft = 0; // Rhoven's Ultimate — dedicated per-fight counter, same shape as riloDefBuffTurnsLeft
       let rhovenBossWeakenPct       = 0;
+      let brenLingerTurnsLeft = 0; // Bren's C5 — 2-turn Basic Attack bonus after Skill/Ultimate
+      let brenLingerBonus     = 0;
       let stormBuffTurnsLeft     = 0;   // Stormcaller's Oath 4pc — crit rate buff duration
       let stormBuffCritBonus     = 0;   // active crit rate bonus while post-ult buff is up
       let havocFrenzyAtkMult     = 1.0; // Voidborn Remnant 5pc — active buff values while frenzyActive
@@ -985,7 +999,8 @@ const command: Command = {
             const crit = forcedCritActive || windExplosion.guaranteedCrit || Math.random() < Math.min(1, activeCritRate + teamCritBonus + wellspringCritBonus + forteCritBonus); abilCrit = crit;
             const smolderMult = activeBonuses.activeNamedSetId === "SMOLDERING_SOVEREIGN"
               ? smolderingSovereignOnAction(namedState) : 1;
-            const base = Math.max(1, Math.floor(activeAtk * teamMult * basicMoveMult * smolderMult * havocAtkMult * radiantDmgMult * (1 - defReduction)));
+            const brenLingerMult = (isDevGuild && !isPlayerActiveNow && activeAllyCharacterId === "bren" && brenLingerTurnsLeft > 0) ? (1 + brenLingerBonus) : 1;
+            const base = Math.max(1, Math.floor(activeAtk * teamMult * basicMoveMult * smolderMult * havocAtkMult * radiantDmgMult * brenLingerMult * (1 - defReduction)));
             const extraElemBonus = glacioShieldTurnsLeft > 0 ? glacioShieldElemBonus : 0;
             let dmg    = Math.floor(base * (crit ? activeCritDmg : 1) * (isWeak ? 1.5 : 1) * (1 + activeBonuses.elemDmgBonus + extraElemBonus));
             if (activeBonuses.activeNamedSetId === "WINDSTRIDERS_LEGACY") {
@@ -1074,6 +1089,12 @@ const command: Command = {
               solaceForte = addForteCharge(solaceForte, RHOVEN_FORTE_CONFIG, RHOVEN_FORTE_GAIN_PER_BASIC);
               if (isForteMaxed(solaceForte, RHOVEN_FORTE_CONFIG) && !isForteMaxed(forteBefore, RHOVEN_FORTE_CONFIG)) {
                 moveName += `\n✨ Forte is **FULLY CHARGED** — next Windward Step always crits!`;
+              }
+            } else if (isDevGuild && !isPlayerActiveNow && activeAllyCharacterId === "bren") {
+              const forteBefore = solaceForte;
+              solaceForte = addForteCharge(solaceForte, BREN_FORTE_CONFIG, BREN_FORTE_GAIN_PER_BASIC);
+              if (isForteMaxed(solaceForte, BREN_FORTE_CONFIG) && !isForteMaxed(forteBefore, BREN_FORTE_CONFIG)) {
+                moveName += `\n✨ Forte is **FULLY CHARGED** — next Bloodprice Cleave costs no HP!`;
               }
             }
           }
@@ -1199,6 +1220,40 @@ const command: Command = {
               solaceForte = addForteCharge(forteBefore, RHOVEN_FORTE_CONFIG, RHOVEN_FORTE_GAIN_PER_BASIC);
               if (isForteMaxed(solaceForte, RHOVEN_FORTE_CONFIG) && !isForteMaxed(forteBefore, RHOVEN_FORTE_CONFIG)) {
                 moveName += `\n✨ Forte is **FULLY CHARGED** — next Windward Step always crits!`;
+              }
+            }
+          } else if (btn.customId === "fb_skill" && isDevGuild && !isPlayerActiveNow && activeAllyCharacterId === "bren" && allyKit) {
+            const brState = allyMechanicState as BrenMechanicState;
+            const forteEmpowered = isForteMaxed(solaceForte, BREN_FORTE_CONFIG);
+            const result = allyKit.onSkill(
+              { playerHp: state.playerHp, playerHpMax: state.playerHpMax, allyHp, allyHpMax, turn: state.turn, isShattered: state.isShattered, mechanicState: brState, forteEmpowered } as any,
+              { basicLevel: allyBasicLevel, skillLevel: allySkillLevel, ultimateLevel: allyUltimateLevel, introLevel: allyIntroLevel, forteLevel: allyForteLevel },
+              allyConstellation,
+            ) as BrenSkillResult;
+            allyMechanicState = result.newMechanicState;
+            if (forteEmpowered) solaceForte = resetForte();
+
+            const crit = Math.random() < activeCritRate;
+            abilCrit = crit;
+            const base = Math.max(1, Math.floor(activeAtk * result.damageMult * (1 - defReduction)));
+            playerDmg  = Math.floor(base * (crit ? activeCritDmg : 1) * (isWeak ? 1.5 : 1) * (1 + activeBonuses.elemDmgBonus));
+            moveName   = `🩸 ${result.moveLabel}${crit ? " **(CRIT)**" : ""} — ${playerDmg} DMG${result.hpCost > 0 ? ` (spent ${result.hpCost} HP)` : ""}`;
+            state.bossVibNow = Math.max(0, state.bossVibNow - Math.floor(playerDmg * result.vibFrac * totalVibMult));
+
+            allyHp = Math.max(1, allyHp - result.hpCost);
+            const lifestealPct = brenSkillLifestealPct(allyConstellation);
+            if (lifestealPct > 0) {
+              const healed = Math.floor(playerDmg * lifestealPct);
+              allyHp = Math.min(allyHpMax, allyHp + healed);
+              if (healed > 0) moveName += `\n🩸 +${healed} HP (Lifesteal)`;
+            }
+            if (allyConstellation >= 5) { brenLingerTurnsLeft = BREN_C5_LINGER_TURNS + 1; brenLingerBonus = BREN_C5_LINGER_BONUS; }
+
+            if (!forteEmpowered) {
+              const forteBefore = solaceForte;
+              solaceForte = addForteCharge(forteBefore, BREN_FORTE_CONFIG, BREN_FORTE_GAIN_PER_BASIC);
+              if (isForteMaxed(solaceForte, BREN_FORTE_CONFIG) && !isForteMaxed(forteBefore, BREN_FORTE_CONFIG)) {
+                moveName += `\n✨ Forte is **FULLY CHARGED** — next Bloodprice Cleave costs no HP!`;
               }
             }
           } else if (btn.customId === "fb_skill") {
@@ -1422,6 +1477,30 @@ const command: Command = {
             rhovenBossWeakenPct = weaken.weakenPct;
             moveName += `\n◇ The boss is left **WEAKENED** *(-${Math.round(weaken.weakenPct * 100)}% ATK, ${weaken.weakenTurns} turns)*`;
 
+            if (result.resetsConcertoEnergy) { concertoEnergy = 0; }
+          } else if (btn.customId === "fb_ultimate" && isDevGuild && !isPlayerActiveNow && activeAllyCharacterId === "bren" && allyKit) {
+            const brState = allyMechanicState as BrenMechanicState;
+            const result = allyKit.onUltimate(
+              { playerHp: state.playerHp, playerHpMax: state.playerHpMax, allyHp, allyHpMax, turn: state.turn, isShattered: state.isShattered, mechanicState: brState },
+              { basicLevel: allyBasicLevel, skillLevel: allySkillLevel, ultimateLevel: allyUltimateLevel, introLevel: allyIntroLevel, forteLevel: allyForteLevel },
+              allyConstellation,
+            ) as BrenUltimateResult;
+            allyMechanicState = result.newMechanicState;
+
+            const base = Math.max(1, Math.floor(activeAtk * result.damageMult * (1 - defReduction)));
+            playerDmg  = Math.floor(base * activeCritDmg * (isWeak ? 1.5 : 1) * (1 + activeBonuses.elemDmgBonus));
+            moveName   = `🩸 ${result.moveLabel} — ${playerDmg} DMG${result.hpCost > 0 ? ` (spent ${result.hpCost} HP)` : ""}`;
+            state.bossVibNow = Math.max(0, state.bossVibNow - Math.floor(playerDmg * 0.8 * totalVibMult));
+
+            allyHp = Math.max(1, allyHp - result.hpCost);
+            if (result.healResult.actions.length > 0) {
+              const healResult = resolveIntroOutroEffect(result.healResult, { hp: allyHp, hpMax: allyHpMax });
+              const healed = Math.min(allyHpMax, allyHp + healResult.hpDelta) - allyHp;
+              allyHp = Math.min(allyHpMax, allyHp + healResult.hpDelta);
+              if (healed > 0) moveName += `\n🩸 +${healed} HP (Last Man Standing)`;
+            }
+
+            if (allyConstellation >= 5) { brenLingerTurnsLeft = BREN_C5_LINGER_TURNS + 1; brenLingerBonus = BREN_C5_LINGER_BONUS; }
             if (result.resetsConcertoEnergy) { concertoEnergy = 0; }
           }
 
@@ -1747,6 +1826,7 @@ const command: Command = {
           if (state.skillCooldown > 0) state.skillCooldown--;
           if (glacioShieldTurnsLeft > 0) glacioShieldTurnsLeft--;
           if (riloDefBuffTurnsLeft > 0) riloDefBuffTurnsLeft--;
+          if (brenLingerTurnsLeft > 0) brenLingerTurnsLeft--;
           if (rhovenBossWeakenTurnsLeft > 0) rhovenBossWeakenTurnsLeft--;
           if (stormBuffTurnsLeft > 0) stormBuffTurnsLeft--;
           if (namedState.spectroFractureTurnsLeft > 0) namedState.spectroFractureTurnsLeft--;
