@@ -84,6 +84,10 @@ import {
   BrenMechanicState, BrenSkillResult, BrenUltimateResult, brenSkillLifestealPct,
   BREN_FORTE_CONFIG, BREN_FORTE_GAIN_PER_BASIC, BREN_C5_LINGER_TURNS, BREN_C5_LINGER_BONUS,
 } from "../../lib/kits/brenKit";
+import {
+  FeyraMechanicState, FeyraSkillResult, FeyraUltimateResult, feyraWeaken, feyraMaxFrostStacks,
+  FEYRA_FORTE_CONFIG, FEYRA_FORTE_GAIN_PER_BASIC,
+} from "../../lib/kits/feyraKit";
 import "../../lib/kits";
 
 const ELEMENT_HEX: Record<string, number> = {
@@ -169,6 +173,14 @@ function buildButtons(
       new ButtonBuilder().setCustomId("boss_basic").setLabel("⚔️  Basic Attack").setStyle(ButtonStyle.Primary),
       new ButtonBuilder().setCustomId("boss_skill").setLabel("🩸  Bloodprice Cleave").setStyle(ButtonStyle.Secondary),
       new ButtonBuilder().setCustomId("boss_ultimate").setLabel("🩸  Last Man Standing")
+        .setStyle(ButtonStyle.Success).setDisabled(team.concertoEnergy < 100),
+      new ButtonBuilder().setCustomId("boss_flee").setLabel("🚪  Flee").setStyle(ButtonStyle.Danger),
+    ));
+  } else if (team?.isDevGuild && !team.isPlayerActiveNow && team.activeAllyCharacterId === "feyra") {
+    rows.push(new ActionRowBuilder<ButtonBuilder>().addComponents(
+      new ButtonBuilder().setCustomId("boss_basic").setLabel("⚔️  Basic Attack").setStyle(ButtonStyle.Primary),
+      new ButtonBuilder().setCustomId("boss_skill").setLabel("❄️  Frostbind").setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder().setCustomId("boss_ultimate").setLabel("❄️  Absolute Zero")
         .setStyle(ButtonStyle.Success).setDisabled(team.concertoEnergy < 100),
       new ButtonBuilder().setCustomId("boss_flee").setLabel("🚪  Flee").setStyle(ButtonStyle.Danger),
     ));
@@ -561,6 +573,8 @@ const command: Command = {
       let nextAttackCritArmed    = false;
       let brenLingerTurnsLeft = 0; // Bren's C5 — 2-turn Basic Attack bonus after Skill/Ultimate
       let brenLingerBonus     = 0;
+      let feyraBossWeakenTurnsLeft = 0; // Feyra's Ultimate — same dedicated per-fight counter shape as rhovenBossWeakenTurnsLeft
+      let feyraBossWeakenPct       = 0;
 
       const state: BattleCardState = {
         boss,
@@ -918,6 +932,12 @@ const command: Command = {
               if (isForteMaxed(solaceForte, BREN_FORTE_CONFIG) && !isForteMaxed(forteBefore, BREN_FORTE_CONFIG)) {
                 moveName += `\n✨ Forte is **FULLY CHARGED** — next Bloodprice Cleave costs no HP!`;
               }
+            } else if (isDevGuild && !isPlayerActive() && activeAllyCharacterId === "feyra") {
+              const forteBefore = solaceForte;
+              solaceForte = addForteCharge(solaceForte, FEYRA_FORTE_CONFIG, FEYRA_FORTE_GAIN_PER_BASIC);
+              if (isForteMaxed(solaceForte, FEYRA_FORTE_CONFIG) && !isForteMaxed(forteBefore, FEYRA_FORTE_CONFIG)) {
+                moveName += `\n✨ Forte is **FULLY CHARGED** — next Frostbind is guaranteed to crit!`;
+              }
             }
           }
 
@@ -1076,6 +1096,46 @@ const command: Command = {
               solaceForte = addForteCharge(forteBefore, BREN_FORTE_CONFIG, BREN_FORTE_GAIN_PER_BASIC);
               if (isForteMaxed(solaceForte, BREN_FORTE_CONFIG) && !isForteMaxed(forteBefore, BREN_FORTE_CONFIG)) {
                 moveName += `\n✨ Forte is **FULLY CHARGED** — next Bloodprice Cleave costs no HP!`;
+              }
+            }
+          } else if (btn.customId === "boss_skill" && isDevGuild && !isPlayerActive() && activeAllyCharacterId === "feyra" && allyKit) {
+            const feState = allyMechanicState as FeyraMechanicState;
+            const forteEmpowered = isForteMaxed(solaceForte, FEYRA_FORTE_CONFIG);
+            const c6DoubleHit = allyConstellation >= 6 && feState.frostStacks >= feyraMaxFrostStacks(allyConstellation);
+            const hits = c6DoubleHit ? 2 : 1;
+            const result = allyKit.onSkill(
+              { playerHp: state.playerHp, playerHpMax: state.playerHpMax, allyHp, allyHpMax, turn: state.turn, isShattered: state.isShattered, mechanicState: feState, forteEmpowered } as any,
+              { basicLevel: allyBasicLevel, skillLevel: allySkillLevel, ultimateLevel: allyUltimateLevel, introLevel: allyIntroLevel, forteLevel: allyForteLevel },
+              allyConstellation,
+            ) as FeyraSkillResult;
+            allyMechanicState = result.newMechanicState;
+            if (forteEmpowered) solaceForte = resetForte();
+
+            const crit = result.forceCrit || Math.random() < activeCritRate;
+            abilCrit = crit;
+            const perHitBase = Math.max(1, Math.floor(activeAtk * (result.damageMult / hits) * (1 - defReduction)));
+            const perHitDmg  = Math.floor(perHitBase * (crit ? activeCritDmg : 1) * (isWeak ? 1.5 : 1) * (1 + activeBonuses.elemDmgBonus));
+            playerDmg  = perHitDmg * hits;
+            if (hits > 1) {
+              const hitLines = Array.from({ length: hits }, (_, i) => `Hit ${i + 1}: ${perHitDmg} dmg`).join("\n");
+              moveName = `❄️ ${result.moveLabel}${crit ? " **(CRIT)**" : ""}\n${hitLines}\n**Total: ${playerDmg} DMG**`;
+              state.hitBadge = hits;
+            } else {
+              moveName = `❄️ ${result.moveLabel}${crit ? " **(CRIT)**" : ""} — ${playerDmg} DMG`;
+              state.hitBadge = undefined;
+            }
+            state.bossVibNow = Math.max(0, state.bossVibNow - Math.floor(playerDmg * result.vibFrac * totalVibMult));
+
+            const weaken = feyraWeaken(allyConstellation);
+            feyraBossWeakenTurnsLeft = weaken.weakenTurns;
+            feyraBossWeakenPct = weaken.weakenPct;
+            moveName += `\n◇ *${boss.name}* is left **WEAKENED** *(-${Math.round(weaken.weakenPct * 100)}% ATK, ${weaken.weakenTurns} turns)*`;
+
+            if (!forteEmpowered) {
+              const forteBefore = solaceForte;
+              solaceForte = addForteCharge(forteBefore, FEYRA_FORTE_CONFIG, FEYRA_FORTE_GAIN_PER_BASIC);
+              if (isForteMaxed(solaceForte, FEYRA_FORTE_CONFIG) && !isForteMaxed(forteBefore, FEYRA_FORTE_CONFIG)) {
+                moveName += `\n✨ Forte is **FULLY CHARGED** — next Frostbind is guaranteed to crit!`;
               }
             }
           } else if (btn.customId === "boss_skill") {
@@ -1329,6 +1389,29 @@ const command: Command = {
 
             if (allyConstellation >= 5) { brenLingerTurnsLeft = BREN_C5_LINGER_TURNS + 1; brenLingerBonus = BREN_C5_LINGER_BONUS; }
             if (result.resetsConcertoEnergy) { concertoEnergy = 0; convergenceUsedThisTurn = true; }
+          } else if (btn.customId === "boss_ultimate" && isDevGuild && !isPlayerActive() && activeAllyCharacterId === "feyra" && allyKit) {
+            const feState = allyMechanicState as FeyraMechanicState;
+            const result = allyKit.onUltimate(
+              { playerHp: state.playerHp, playerHpMax: state.playerHpMax, allyHp, allyHpMax, turn: state.turn, isShattered: state.isShattered, mechanicState: feState },
+              { basicLevel: allyBasicLevel, skillLevel: allySkillLevel, ultimateLevel: allyUltimateLevel, introLevel: allyIntroLevel, forteLevel: allyForteLevel },
+              allyConstellation,
+            ) as FeyraUltimateResult;
+            allyMechanicState = result.newMechanicState;
+
+            const base = Math.max(1, Math.floor(activeAtk * result.damageMult * (1 - defReduction)));
+            playerDmg  = Math.floor(base * activeCritDmg * (isWeak ? 1.5 : 1) * (1 + activeBonuses.elemDmgBonus));
+            moveName   = `❄️ ${result.moveLabel} — ${playerDmg} DMG`;
+            state.bossVibNow = Math.max(0, state.bossVibNow - Math.floor(playerDmg * 0.8 * totalVibMult));
+
+            const weaken = feyraWeaken(allyConstellation);
+            feyraBossWeakenTurnsLeft = weaken.weakenTurns;
+            feyraBossWeakenPct = weaken.weakenPct;
+            moveName += `\n◇ *${boss.name}* is left **WEAKENED** *(-${Math.round(weaken.weakenPct * 100)}% ATK, ${weaken.weakenTurns} turns)*`;
+
+            if (result.healResult.actions.length > 0) {
+              playerDebuffs = cleanseDebuffs(playerDebuffs, 1);
+            }
+            if (result.resetsConcertoEnergy) { concertoEnergy = 0; convergenceUsedThisTurn = true; }
           }
 
           if (btn.customId === "boss_echoskill" && activeBonuses.echoSkill) {
@@ -1553,7 +1636,8 @@ const command: Command = {
             const riloDefBuffMult = riloDefBuffTurnsLeft > 0 ? (1 + riloDefBuffPct) : 1;
             const attunementDefMult = (isSolaceAllyForDef ? getAttunementDefMult(attunement, attunementDefBonus, attunementDoubleTurnsLeft > 0, allyConstellation >= 6) : 1) * (1 + wellspringDefBonus) * (1 + forteDefBonus) * riloDefBuffMult;
             const rhovenWeakenMult = rhovenBossWeakenTurnsLeft > 0 ? (1 - rhovenBossWeakenPct) : 1;
-            let bossDmg   = Math.max(1, Math.floor(scaled.atk * move.damage * enrageMult * rhovenWeakenMult - activeDef * attunementDefMult * 0.4));
+            const feyraWeakenMult = feyraBossWeakenTurnsLeft > 0 ? (1 - feyraBossWeakenPct) : 1;
+            let bossDmg   = Math.max(1, Math.floor(scaled.atk * move.damage * enrageMult * rhovenWeakenMult * feyraWeakenMult - activeDef * attunementDefMult * 0.4));
             bossDmg       = roll4pcBlock(bonuses, bossDmg);
             const shield  = elemFrostShield(activeBonuses.elementPassive, bossDmg);
             bossDmg       = shield.dmg;
@@ -1630,6 +1714,7 @@ const command: Command = {
           if (glacioShieldTurnsLeft > 0) glacioShieldTurnsLeft--;
           if (riloDefBuffTurnsLeft > 0) riloDefBuffTurnsLeft--;
           if (brenLingerTurnsLeft > 0) brenLingerTurnsLeft--;
+          if (feyraBossWeakenTurnsLeft > 0) feyraBossWeakenTurnsLeft--;
           if (rhovenBossWeakenTurnsLeft > 0) rhovenBossWeakenTurnsLeft--;
           if (stormBuffTurnsLeft > 0) stormBuffTurnsLeft--;
           if (namedState.spectroFractureTurnsLeft > 0) namedState.spectroFractureTurnsLeft--;
