@@ -75,6 +75,10 @@ import {
   RhovenMechanicState, RhovenSkillResult, rhovenUltimateWeaken, rhovenUltimateBaseMult, rhovenMaxTempoStacks,
   RHOVEN_FORTE_CONFIG, RHOVEN_FORTE_GAIN_PER_BASIC,
 } from "../../lib/kits/rhovenKit";
+import {
+  BrenMechanicState, BrenSkillResult, BrenUltimateResult, brenSkillLifestealPct,
+  BREN_FORTE_CONFIG, BREN_FORTE_GAIN_PER_BASIC, BREN_C5_LINGER_TURNS, BREN_C5_LINGER_BONUS,
+} from "../../lib/kits/brenKit";
 import "../../lib/kits";
 import {
   resolveRoster, nextAliveFallback, isTeamWiped, swappableTargets, positionLabel, positionValue,
@@ -270,6 +274,8 @@ interface RaidParticipant {
   glacioShieldElemBonus: number;
   riloDefBuffTurnsLeft:  number;
   riloDefBuffPct:        number;
+  brenLingerTurnsLeft: number;
+  brenLingerBonus:     number;
   stormBuffTurnsLeft:    number;
   stormBuffCritBonus:    number;
   havocFrenzyAtkMult:    number;
@@ -471,6 +477,15 @@ function buildRaidButtons(p: RaidParticipant, isDevGuild: boolean): (ActionRowBu
       new ButtonBuilder().setCustomId("raid_basic").setLabel("⚔️  Basic Attack").setStyle(ButtonStyle.Primary),
       new ButtonBuilder().setCustomId("raid_skill").setLabel("🌪️  Windward Step").setStyle(ButtonStyle.Secondary),
       new ButtonBuilder().setCustomId("raid_ultimate").setLabel("🌪️  Eye of the Squall")
+        .setStyle(ButtonStyle.Success).setDisabled(p.concertoEnergy < 100),
+      new ButtonBuilder().setCustomId("raid_retreat")
+        .setLabel("↩  Retreat").setStyle(ButtonStyle.Danger),
+    ));
+  } else if (isDevGuild && p.hasSolace && p.activeUnit === "ally" && p.activeAllyCharacterId === "bren") {
+    rows.push(new ActionRowBuilder<ButtonBuilder>().addComponents(
+      new ButtonBuilder().setCustomId("raid_basic").setLabel("⚔️  Basic Attack").setStyle(ButtonStyle.Primary),
+      new ButtonBuilder().setCustomId("raid_skill").setLabel("🩸  Bloodprice Cleave").setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder().setCustomId("raid_ultimate").setLabel("🩸  Last Man Standing")
         .setStyle(ButtonStyle.Success).setDisabled(p.concertoEnergy < 100),
       new ButtonBuilder().setCustomId("raid_retreat")
         .setLabel("↩  Retreat").setStyle(ButtonStyle.Danger),
@@ -840,6 +855,7 @@ async function addParticipant(raid: ActiveRaid, userId: string, displayName: str
     namedState: initNamedSetState(),
     glacioShieldTurnsLeft: 0, glacioShieldElemBonus: 0,
     riloDefBuffTurnsLeft: 0, riloDefBuffPct: 0,
+    brenLingerTurnsLeft: 0, brenLingerBonus: 0,
     stormBuffTurnsLeft: 0, stormBuffCritBonus: 0,
     havocFrenzyAtkMult: 1.0, havocFrenzyLifesteal: 0, havocFrenzyDefIgnore: 0,
     echoSkillCd: 0, nextCritArmed: false,
@@ -1409,12 +1425,21 @@ async function launchRaid(
         }
         const isRiloActing = isAllyActing && current.activeAllyCharacterId === "rilo";
         const isRhovenActing = isAllyActing && current.activeAllyCharacterId === "rhoven";
-        const r    = calcPlayerDamage(activeAtk * smolderMult * havocAtkMult * teamMult, defVal, forcedCrit ? 1 : Math.min(1, aCrit + party.critBonus), activeCritDmg, 1.0, isWeak, raid.isShattered);
+        const isBrenActing = isAllyActing && current.activeAllyCharacterId === "bren";
+        const brenLingerMult = (isBrenActing && current.brenLingerTurnsLeft > 0) ? (1 + current.brenLingerBonus) : 1;
+        const r    = calcPlayerDamage(activeAtk * smolderMult * havocAtkMult * teamMult * brenLingerMult, defVal, forcedCrit ? 1 : Math.min(1, aCrit + party.critBonus), activeCritDmg, 1.0, isWeak, raid.isShattered);
         if (isRhovenActing) {
           const forteBefore = current.solaceForte;
           current.solaceForte = addForteCharge(current.solaceForte, RHOVEN_FORTE_CONFIG, RHOVEN_FORTE_GAIN_PER_BASIC);
           if (isForteMaxed(current.solaceForte, RHOVEN_FORTE_CONFIG) && !isForteMaxed(forteBefore, RHOVEN_FORTE_CONFIG)) {
             forteAnnounce += `\n✨ Forte is **FULLY CHARGED** — next Windward Step always crits!`;
+          }
+        }
+        if (isBrenActing) {
+          const forteBefore = current.solaceForte;
+          current.solaceForte = addForteCharge(current.solaceForte, BREN_FORTE_CONFIG, BREN_FORTE_GAIN_PER_BASIC);
+          if (isForteMaxed(current.solaceForte, BREN_FORTE_CONFIG) && !isForteMaxed(forteBefore, BREN_FORTE_CONFIG)) {
+            forteAnnounce += `\n✨ Forte is **FULLY CHARGED** — next Bloodprice Cleave costs no HP!`;
           }
         }
         if (isRiloActing) {
@@ -1579,6 +1604,41 @@ async function launchRaid(
           current.solaceForte = addForteCharge(current.solaceForte, RHOVEN_FORTE_CONFIG, RHOVEN_FORTE_GAIN_PER_BASIC);
           if (isForteMaxed(current.solaceForte, RHOVEN_FORTE_CONFIG) && !isForteMaxed(forteBefore, RHOVEN_FORTE_CONFIG)) {
             moveLine += `\n✨ Forte is **FULLY CHARGED** — next Windward Step always crits!`;
+          }
+        }
+        current.skillCd = current.allyKit.skillCooldownTurns;
+
+      } else if (raid.isDevGuild && current.activeUnit === "ally" && current.activeAllyCharacterId === "bren" && current.allyKit && btn.customId === "raid_skill") {
+        const brState = current.allyMechanicState as BrenMechanicState;
+        const forteEmpowered = isForteMaxed(current.solaceForte, BREN_FORTE_CONFIG);
+        const result = current.allyKit.onSkill(
+          { playerHp: current.hp, playerHpMax: current.hpMax, allyHp: current.allyHp, allyHpMax: current.allyHpMax, turn: raid.turn, isShattered: raid.isShattered, mechanicState: brState, forteEmpowered } as any,
+          { basicLevel: current.solaceBasicLevel, skillLevel: current.solaceSkillLevel, ultimateLevel: current.solaceUltimateLevel, introLevel: current.solaceIntroLevel, forteLevel: current.solaceForteLevel },
+          current.solaceConstellation,
+        ) as BrenSkillResult;
+        current.allyMechanicState = result.newMechanicState;
+        if (forteEmpowered) current.solaceForte = resetForte();
+
+        const crit = Math.random() < aCrit;
+        const r = calcPlayerDamage(activeAtk * result.damageMult, defVal, crit ? 1 : 0, activeCritDmg, 1.0, isWeak, raid.isShattered);
+        damage = Math.floor(r.damage * (1 + activeBonuses.elemDmgBonus + extraElemBonus) * radiantDmgMult);
+        isCrit = crit; vibFrac = result.vibFrac;
+        moveLine = `${current.name} — 🩸 ${result.moveLabel}${crit ? " **(CRIT)**" : ""}${result.hpCost > 0 ? ` (spent ${result.hpCost} HP)` : ""}`;
+
+        current.allyHp = Math.max(1, current.allyHp - result.hpCost);
+        const lifestealPct = brenSkillLifestealPct(current.solaceConstellation);
+        if (lifestealPct > 0) {
+          const healed = Math.floor(damage * lifestealPct);
+          current.allyHp = Math.min(current.allyHpMax, current.allyHp + healed);
+          if (healed > 0) moveLine += `\n🩸 +${healed} HP (Lifesteal)`;
+        }
+        if (current.solaceConstellation >= 5) { current.brenLingerTurnsLeft = BREN_C5_LINGER_TURNS + 1; current.brenLingerBonus = BREN_C5_LINGER_BONUS; }
+
+        if (!forteEmpowered) {
+          const forteBefore = current.solaceForte;
+          current.solaceForte = addForteCharge(forteBefore, BREN_FORTE_CONFIG, BREN_FORTE_GAIN_PER_BASIC);
+          if (isForteMaxed(current.solaceForte, BREN_FORTE_CONFIG) && !isForteMaxed(forteBefore, BREN_FORTE_CONFIG)) {
+            moveLine += `\n✨ Forte is **FULLY CHARGED** — next Bloodprice Cleave costs no HP!`;
           }
         }
         current.skillCd = current.allyKit.skillCooldownTurns;
@@ -1771,6 +1831,30 @@ async function launchRaid(
         raid.bossWeakenPct = weaken.weakenPct;
         moveLine += `\n◇ The boss is left **WEAKENED** *(-${Math.round(weaken.weakenPct * 100)}% ATK, ${weaken.weakenTurns} turns)*`;
 
+        if (result.resetsConcertoEnergy) { current.concertoEnergy = 0; convergenceUsedThisTurn = true; }
+      } else if (raid.isDevGuild && current.activeUnit === "ally" && current.activeAllyCharacterId === "bren" && current.allyKit && btn.customId === "raid_ultimate") {
+        const brState = current.allyMechanicState as BrenMechanicState;
+        const result = current.allyKit.onUltimate(
+          { playerHp: current.hp, playerHpMax: current.hpMax, allyHp: current.allyHp, allyHpMax: current.allyHpMax, turn: raid.turn, isShattered: raid.isShattered, mechanicState: brState },
+          { basicLevel: current.solaceBasicLevel, skillLevel: current.solaceSkillLevel, ultimateLevel: current.solaceUltimateLevel, introLevel: current.solaceIntroLevel, forteLevel: current.solaceForteLevel },
+          current.solaceConstellation,
+        ) as BrenUltimateResult;
+        current.allyMechanicState = result.newMechanicState;
+
+        const perHit = calcPlayerDamage(activeAtk, defVal, 1.0, activeCritDmg, result.damageMult, isWeak, raid.isShattered);
+        damage = Math.floor(perHit.damage * (1 + activeBonuses.elemDmgBonus + extraElemBonus) * radiantDmgMult);
+        moveLine = `${current.name} — 🩸 ${result.moveLabel} — ${damage} DMG${result.hpCost > 0 ? ` (spent ${result.hpCost} HP)` : ""}`;
+        isCrit = true; moveType = "ULT"; vibFrac = 0.8;
+
+        current.allyHp = Math.max(1, current.allyHp - result.hpCost);
+        if (result.healResult.actions.length > 0) {
+          const healResult = resolveIntroOutroEffect(result.healResult, { hp: current.allyHp, hpMax: current.allyHpMax });
+          const healed = Math.min(current.allyHpMax, current.allyHp + healResult.hpDelta) - current.allyHp;
+          current.allyHp = Math.min(current.allyHpMax, current.allyHp + healResult.hpDelta);
+          if (healed > 0) moveLine += `\n🩸 +${healed} HP (Last Man Standing)`;
+        }
+
+        if (current.solaceConstellation >= 5) { current.brenLingerTurnsLeft = BREN_C5_LINGER_TURNS + 1; current.brenLingerBonus = BREN_C5_LINGER_BONUS; }
         if (result.resetsConcertoEnergy) { current.concertoEnergy = 0; convergenceUsedThisTurn = true; }
       } else if (btn.customId === "raid_echoskill" && activeBonuses.echoSkill) {
         const def = activeBonuses.echoSkill;
@@ -2107,6 +2191,7 @@ async function launchRaid(
 
           if (p.glacioShieldTurnsLeft > 0) p.glacioShieldTurnsLeft--;
           if (p.riloDefBuffTurnsLeft > 0) p.riloDefBuffTurnsLeft--;
+          if (p.brenLingerTurnsLeft > 0) p.brenLingerTurnsLeft--;
           if (p.stormBuffTurnsLeft > 0) p.stormBuffTurnsLeft--;
           if (p.namedState.spectroFractureTurnsLeft > 0) p.namedState.spectroFractureTurnsLeft--;
         }
