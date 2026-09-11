@@ -86,6 +86,10 @@ import {
   BrenMechanicState, BrenSkillResult, BrenUltimateResult, brenSkillLifestealPct,
   BREN_FORTE_CONFIG, BREN_FORTE_GAIN_PER_BASIC, BREN_C5_LINGER_TURNS, BREN_C5_LINGER_BONUS,
 } from "../../lib/kits/brenKit";
+import {
+  FeyraMechanicState, FeyraSkillResult, FeyraUltimateResult, feyraWeaken, feyraMaxFrostStacks,
+  FEYRA_FORTE_CONFIG, FEYRA_FORTE_GAIN_PER_BASIC,
+} from "../../lib/kits/feyraKit";
 import "../../lib/kits";
 
 const SKILL_CD     = 3;
@@ -409,6 +413,8 @@ async function runDungeon(
     let rhovenBossWeakenPct       = 0;
     let brenLingerTurnsLeft = 0;
     let brenLingerBonus     = 0;
+    let feyraBossWeakenTurnsLeft = 0;
+    let feyraBossWeakenPct       = 0;
     let stormBuffTurnsLeft    = 0;
     let stormBuffCritBonus    = 0;
     let havocFrenzyAtkMult    = 1.0;
@@ -436,7 +442,7 @@ async function runDungeon(
         thread, interaction.user.id, dungeon, waveIdx, currentDbUser, stats, bonuses,
         {
           playerHp, playerHpMax, playerEnergy, skillCooldown, firstActionDone, firstSkillUsed, v2Stacks,
-          namedState, glacioShieldTurnsLeft, glacioShieldElemBonus, riloDefBuffTurnsLeft, riloDefBuffPct, rhovenBossWeakenTurnsLeft, rhovenBossWeakenPct, brenLingerTurnsLeft, brenLingerBonus, stormBuffTurnsLeft, stormBuffCritBonus,
+          namedState, glacioShieldTurnsLeft, glacioShieldElemBonus, riloDefBuffTurnsLeft, riloDefBuffPct, rhovenBossWeakenTurnsLeft, rhovenBossWeakenPct, brenLingerTurnsLeft, brenLingerBonus, feyraBossWeakenTurnsLeft, feyraBossWeakenPct, stormBuffTurnsLeft, stormBuffCritBonus,
           havocFrenzyAtkMult, havocFrenzyLifesteal, havocFrenzyDefIgnore, quickStrikeUsed,
           echoSkillCooldown, enemyDefShredTurnsLeft, enemyDefShredPct, nextAttackCritArmed,
           isDevGuild, hasSolace, activeUnit, concertoEnergy, playerDebuffs, attunement,
@@ -479,6 +485,8 @@ async function runDungeon(
       rhovenBossWeakenPct       = result.rhovenBossWeakenPct;
       brenLingerTurnsLeft = result.brenLingerTurnsLeft;
       brenLingerBonus     = result.brenLingerBonus;
+      feyraBossWeakenTurnsLeft = result.feyraBossWeakenTurnsLeft;
+      feyraBossWeakenPct       = result.feyraBossWeakenPct;
       stormBuffTurnsLeft    = result.stormBuffTurnsLeft;
       stormBuffCritBonus    = result.stormBuffCritBonus;
       havocFrenzyAtkMult    = result.havocFrenzyAtkMult;
@@ -602,6 +610,8 @@ interface WaveState {
   rhovenBossWeakenPct:       number;
   brenLingerTurnsLeft: number;
   brenLingerBonus:     number;
+  feyraBossWeakenTurnsLeft: number;
+  feyraBossWeakenPct:       number;
   stormBuffTurnsLeft:    number;
   stormBuffCritBonus:    number;
   havocFrenzyAtkMult:    number;
@@ -810,6 +820,14 @@ async function runWave(
         new ButtonBuilder().setCustomId("dg_basic").setLabel("⚔️  Basic Attack").setStyle(ButtonStyle.Primary),
         new ButtonBuilder().setCustomId("dg_skill").setLabel("🩸  Bloodprice Cleave").setStyle(ButtonStyle.Secondary),
         new ButtonBuilder().setCustomId("dg_ultimate").setLabel("🩸  Last Man Standing")
+          .setStyle(ButtonStyle.Success).setDisabled(ws.concertoEnergy < 100),
+        new ButtonBuilder().setCustomId("dg_flee").setLabel("↩  Flee").setStyle(ButtonStyle.Danger),
+      ));
+    } else if (ws.hasSolace && !isPlayerActive() && activeAllyCharacterId === "feyra") {
+      rows.push(new ActionRowBuilder<ButtonBuilder>().addComponents(
+        new ButtonBuilder().setCustomId("dg_basic").setLabel("⚔️  Basic Attack").setStyle(ButtonStyle.Primary),
+        new ButtonBuilder().setCustomId("dg_skill").setLabel("❄️  Frostbind").setStyle(ButtonStyle.Secondary),
+        new ButtonBuilder().setCustomId("dg_ultimate").setLabel("❄️  Absolute Zero")
           .setStyle(ButtonStyle.Success).setDisabled(ws.concertoEnergy < 100),
         new ButtonBuilder().setCustomId("dg_flee").setLabel("↩  Flee").setStyle(ButtonStyle.Danger),
       ));
@@ -1144,6 +1162,12 @@ async function runWave(
             if (isForteMaxed(ws.solaceForte, BREN_FORTE_CONFIG) && !isForteMaxed(forteBefore, BREN_FORTE_CONFIG)) {
               moveLine += `\n✨ Forte is **FULLY CHARGED** — next Bloodprice Cleave costs no HP!`;
             }
+          } else if (ws.isDevGuild && !isPlayerActive() && activeAllyCharacterId === "feyra") {
+            const forteBefore = ws.solaceForte;
+            ws.solaceForte = addForteCharge(ws.solaceForte, FEYRA_FORTE_CONFIG, FEYRA_FORTE_GAIN_PER_BASIC);
+            if (isForteMaxed(ws.solaceForte, FEYRA_FORTE_CONFIG) && !isForteMaxed(forteBefore, FEYRA_FORTE_CONFIG)) {
+              moveLine += `\n✨ Forte is **FULLY CHARGED** — next Frostbind is guaranteed to crit!`;
+            }
           }
         }
 
@@ -1298,6 +1322,44 @@ async function runWave(
             ws.solaceForte = addForteCharge(forteBefore, BREN_FORTE_CONFIG, BREN_FORTE_GAIN_PER_BASIC);
             if (isForteMaxed(ws.solaceForte, BREN_FORTE_CONFIG) && !isForteMaxed(forteBefore, BREN_FORTE_CONFIG)) {
               moveLine += `\n✨ Forte is **FULLY CHARGED** — next Bloodprice Cleave costs no HP!`;
+            }
+          }
+        } else if (btn.customId === "dg_skill" && ws.isDevGuild && !isPlayerActive() && activeAllyCharacterId === "feyra" && allyKit) {
+          const feState = allyMechanicState as FeyraMechanicState;
+          const forteEmpowered = isForteMaxed(ws.solaceForte, FEYRA_FORTE_CONFIG);
+          const c6DoubleHit = allyConstellation >= 6 && feState.frostStacks >= feyraMaxFrostStacks(allyConstellation);
+          const hits = c6DoubleHit ? 2 : 1;
+          const result = allyKit.onSkill(
+            { playerHp: ws.playerHp, playerHpMax: ws.playerHpMax, allyHp: allyHp, allyHpMax: allyHpMax, turn: 1, isShattered, mechanicState: feState, forteEmpowered } as any,
+            { basicLevel: allyBasicLevel, skillLevel: allySkillLevel, ultimateLevel: allyUltimateLevel, introLevel: allyIntroLevel, forteLevel: allyForteLevel },
+            allyConstellation,
+          ) as FeyraSkillResult;
+          allyMechanicState = result.newMechanicState;
+          if (forteEmpowered) ws.solaceForte = resetForte();
+
+          const crit = result.forceCrit || Math.random() < cRate;
+          abilCrit = crit;
+          const perHitBase = Math.max(1, Math.floor(activeAtk * (result.damageMult / hits) * (1 - defReduction)));
+          const perHitDmg  = Math.floor(perHitBase * (crit ? activeCritDmg : 1) * (isWeak ? 1.5 : 1) * (1 + activeBonuses.elemDmgBonus));
+          playerDmg  = perHitDmg * hits;
+          if (hits > 1) {
+            const hitLines = Array.from({ length: hits }, (_, i) => `Hit ${i + 1}: ${perHitDmg} dmg`).join("\n");
+            moveLine = `❄️ ${result.moveLabel}${crit ? " **(CRIT)**" : ""}\n${hitLines}\n**Total: ${playerDmg} DMG**`;
+          } else {
+            moveLine = `❄️ ${result.moveLabel}${crit ? " **(CRIT)**" : ""} — ${playerDmg} DMG`;
+          }
+          vibBar = Math.max(0, vibBar - Math.floor(playerDmg * result.vibFrac * totalVibMult));
+
+          const weaken = feyraWeaken(allyConstellation);
+          ws.feyraBossWeakenTurnsLeft = weaken.weakenTurns;
+          ws.feyraBossWeakenPct = weaken.weakenPct;
+          moveLine += `\n◇ The boss is left **WEAKENED** *(-${Math.round(weaken.weakenPct * 100)}% ATK, ${weaken.weakenTurns} turns)*`;
+
+          if (!forteEmpowered) {
+            const forteBefore = ws.solaceForte;
+            ws.solaceForte = addForteCharge(forteBefore, FEYRA_FORTE_CONFIG, FEYRA_FORTE_GAIN_PER_BASIC);
+            if (isForteMaxed(ws.solaceForte, FEYRA_FORTE_CONFIG) && !isForteMaxed(forteBefore, FEYRA_FORTE_CONFIG)) {
+              moveLine += `\n✨ Forte is **FULLY CHARGED** — next Frostbind is guaranteed to crit!`;
             }
           }
         } else if (btn.customId === "dg_skill") {
@@ -1551,6 +1613,29 @@ async function runWave(
 
           if (allyConstellation >= 5) { ws.brenLingerTurnsLeft = BREN_C5_LINGER_TURNS + 1; ws.brenLingerBonus = BREN_C5_LINGER_BONUS; }
           if (result.resetsConcertoEnergy) { ws.concertoEnergy = 0; }
+        } else if (btn.customId === "dg_ultimate" && ws.isDevGuild && !isPlayerActive() && activeAllyCharacterId === "feyra" && allyKit) {
+          const feState = allyMechanicState as FeyraMechanicState;
+          const result = allyKit.onUltimate(
+            { playerHp: ws.playerHp, playerHpMax: ws.playerHpMax, allyHp: allyHp, allyHpMax: allyHpMax, turn: 1, isShattered, mechanicState: feState },
+            { basicLevel: allyBasicLevel, skillLevel: allySkillLevel, ultimateLevel: allyUltimateLevel, introLevel: allyIntroLevel, forteLevel: allyForteLevel },
+            allyConstellation,
+          ) as FeyraUltimateResult;
+          allyMechanicState = result.newMechanicState;
+
+          const base = Math.max(1, Math.floor(activeAtk * result.damageMult * (1 - defReduction)));
+          playerDmg  = Math.floor(base * activeCritDmg * (isWeak ? 1.5 : 1) * (1 + activeBonuses.elemDmgBonus));
+          moveLine   = `❄️ ${result.moveLabel} — ${playerDmg} DMG`;
+          vibBar = Math.max(0, vibBar - Math.floor(playerDmg * 0.8 * totalVibMult));
+
+          const weaken = feyraWeaken(allyConstellation);
+          ws.feyraBossWeakenTurnsLeft = weaken.weakenTurns;
+          ws.feyraBossWeakenPct = weaken.weakenPct;
+          moveLine += `\n◇ The boss is left **WEAKENED** *(-${Math.round(weaken.weakenPct * 100)}% ATK, ${weaken.weakenTurns} turns)*`;
+
+          if (result.healResult.actions.length > 0) {
+            ws.playerDebuffs = cleanseDebuffs(ws.playerDebuffs, 1);
+          }
+          if (result.resetsConcertoEnergy) { ws.concertoEnergy = 0; }
         }
 
         if (btn.customId === "dg_echoskill" && activeBonuses.echoSkill) {
@@ -1762,7 +1847,8 @@ async function runWave(
           const riloDefBuffMult = ws.riloDefBuffTurnsLeft > 0 ? (1 + ws.riloDefBuffPct) : 1;
           const attunementDefMult = (isSolaceAllyForDef ? getAttunementDefMult(ws.attunement, attunementDefBonus, ws.attunementDoubleTurnsLeft > 0, allyConstellation >= 6) : 1) * (1 + wellspringDefBonus) * (1 + forteDefBonus) * riloDefBuffMult;
           const rhovenWeakenMult = ws.rhovenBossWeakenTurnsLeft > 0 ? (1 - ws.rhovenBossWeakenPct) : 1;
-          let bossDmg   = Math.max(1, Math.floor(scaled.atk * 0.9 * rhovenWeakenMult - activeDef * attunementDefMult * 0.4));
+          const feyraWeakenMult = ws.feyraBossWeakenTurnsLeft > 0 ? (1 - ws.feyraBossWeakenPct) : 1;
+          let bossDmg   = Math.max(1, Math.floor(scaled.atk * 0.9 * rhovenWeakenMult * feyraWeakenMult - activeDef * attunementDefMult * 0.4));
           bossDmg       = roll4pcBlock(bonuses, bossDmg);
           const shield  = elemFrostShield(activeBonuses.elementPassive, bossDmg);
           bossDmg       = shield.dmg;
@@ -1838,6 +1924,7 @@ async function runWave(
         if (ws.glacioShieldTurnsLeft > 0) ws.glacioShieldTurnsLeft--;
         if (ws.riloDefBuffTurnsLeft > 0) ws.riloDefBuffTurnsLeft--;
         if (ws.brenLingerTurnsLeft > 0) ws.brenLingerTurnsLeft--;
+        if (ws.feyraBossWeakenTurnsLeft > 0) ws.feyraBossWeakenTurnsLeft--;
         if (ws.rhovenBossWeakenTurnsLeft > 0) ws.rhovenBossWeakenTurnsLeft--;
         if (ws.stormBuffTurnsLeft > 0) ws.stormBuffTurnsLeft--;
         if (ws.namedState.spectroFractureTurnsLeft > 0) ws.namedState.spectroFractureTurnsLeft--;
