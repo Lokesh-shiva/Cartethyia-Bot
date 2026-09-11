@@ -92,13 +92,17 @@ export function feyraOnSkill(
   const state = ctx.mechanicState as FeyraMechanicState;
   const maxStacks = feyraMaxFrostStacks(constellation);
   const newStacks = Math.min(maxStacks, state.frostStacks + 1);
+  // Forte-empowered: a guaranteed crit even before C3 makes it permanent —
+  // same "early taste of the constellation payoff" pattern Rhoven's Forte
+  // uses for his own always-crit C5.
+  const forteEmpowered = (ctx as any).forteEmpowered === true;
 
   return {
     damageMult: feyraSkillBaseMult(skillLevel),
     vibFrac: 0.55,
-    moveLabel: "Frostbind",
+    moveLabel: forteEmpowered ? "Frostbind (Empowered)" : "Frostbind",
     newMechanicState: { frostStacks: newStacks } as FeyraMechanicState,
-    forceCrit: constellation >= 3,
+    forceCrit: constellation >= 3 || forteEmpowered,
   };
 }
 

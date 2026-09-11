@@ -73,6 +73,10 @@ import {
   BrenMechanicState, BrenSkillResult, BrenUltimateResult, brenSkillLifestealPct,
   BREN_FORTE_CONFIG, BREN_FORTE_GAIN_PER_BASIC, BREN_C5_LINGER_TURNS, BREN_C5_LINGER_BONUS,
 } from "../../lib/kits/brenKit";
+import {
+  FeyraMechanicState, FeyraSkillResult, FeyraUltimateResult, feyraWeaken, feyraMaxFrostStacks,
+  FEYRA_FORTE_CONFIG, FEYRA_FORTE_GAIN_PER_BASIC,
+} from "../../lib/kits/feyraKit";
 import "../../lib/kits";
 import {
   resolveRoster, nextAliveFallback, isTeamWiped, swappableTargets, positionLabel, positionValue,
@@ -400,6 +404,14 @@ function buildDuelButtons(state: DuelState, forUserId: string, isDevGuild: boole
       new ButtonBuilder().setCustomId("duel_basic").setLabel("⚔️  Basic Attack").setStyle(ButtonStyle.Primary),
       new ButtonBuilder().setCustomId("duel_skill").setLabel("🩸  Bloodprice Cleave").setStyle(ButtonStyle.Secondary),
       new ButtonBuilder().setCustomId("duel_ultimate").setLabel("🩸  Last Man Standing")
+        .setStyle(ButtonStyle.Success).setDisabled(myConcertoEnergy < 100),
+      new ButtonBuilder().setCustomId("duel_forfeit").setLabel("🏳️  Forfeit").setStyle(ButtonStyle.Danger),
+    ));
+  } else if (isDevGuild && myHasSolace && myActiveUnit === "ally" && myActiveAllyCharacterId === "feyra") {
+    rows.push(new ActionRowBuilder<ButtonBuilder>().addComponents(
+      new ButtonBuilder().setCustomId("duel_basic").setLabel("⚔️  Basic Attack").setStyle(ButtonStyle.Primary),
+      new ButtonBuilder().setCustomId("duel_skill").setLabel("❄️  Frostbind").setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder().setCustomId("duel_ultimate").setLabel("❄️  Absolute Zero")
         .setStyle(ButtonStyle.Success).setDisabled(myConcertoEnergy < 100),
       new ButtonBuilder().setCustomId("duel_forfeit").setLabel("🏳️  Forfeit").setStyle(ButtonStyle.Danger),
     ));
@@ -1115,6 +1127,13 @@ export async function startDuelMatch(
             if (isForteMaxed(forteAfter, BREN_FORTE_CONFIG) && !isForteMaxed(forteBefore, BREN_FORTE_CONFIG)) {
               moveLine += `\n✨ Forte is **FULLY CHARGED** — next Bloodprice Cleave costs no HP!`;
             }
+          } else if (myHasSolace && myActiveUnit === "ally" && myActiveAllyCharacterId === "feyra") {
+            const forteBefore = mySolaceForte;
+            const forteAfter  = addForteCharge(forteBefore, FEYRA_FORTE_CONFIG, FEYRA_FORTE_GAIN_PER_BASIC);
+            if (isChallenger) state.cSolaceForte = forteAfter; else state.dSolaceForte = forteAfter;
+            if (isForteMaxed(forteAfter, FEYRA_FORTE_CONFIG) && !isForteMaxed(forteBefore, FEYRA_FORTE_CONFIG)) {
+              moveLine += `\n✨ Forte is **FULLY CHARGED** — next Frostbind is guaranteed to crit!`;
+            }
           }
         }
 
@@ -1294,6 +1313,44 @@ export async function startDuelMatch(
             if (isChallenger) state.cSolaceForte = forteAfter; else state.dSolaceForte = forteAfter;
             if (isForteMaxed(forteAfter, BREN_FORTE_CONFIG) && !isForteMaxed(forteBefore, BREN_FORTE_CONFIG)) {
               moveLine += `\n✨ Forte is **FULLY CHARGED** — next Bloodprice Cleave costs no HP!`;
+            }
+          }
+        } else if (btn.customId === "duel_skill" && isDevGuild && myActiveUnit === "ally" && myActiveAllyCharacterId === "feyra" && myAllyKit) {
+          const feState = myAllyMechanicState as FeyraMechanicState;
+          const forteEmpowered = isForteMaxed(mySolaceForte, FEYRA_FORTE_CONFIG);
+          const c6DoubleHit = mySolaceConstellation >= 6 && feState.frostStacks >= feyraMaxFrostStacks(mySolaceConstellation);
+          const hits = c6DoubleHit ? 2 : 1;
+          const result = myAllyKit.onSkill(
+            { playerHp: myHp, playerHpMax: myHpMax, allyHp: myAllyHpVal, allyHpMax: myAllyHpMaxVal, turn: state.turn, isShattered: false, mechanicState: feState, forteEmpowered } as any,
+            { basicLevel: mySolaceBasicLevel, skillLevel: mySolaceSkillLevel, ultimateLevel: mySolaceUltimateLvl, introLevel: mySolaceIntroLevel, forteLevel: mySolaceForteLevel },
+            mySolaceConstellation,
+          ) as FeyraSkillResult;
+          if (isChallenger) state.cAllyMechanicState = result.newMechanicState; else state.dAllyMechanicState = result.newMechanicState;
+          if (forteEmpowered) { const reset = resetForte(); if (isChallenger) state.cSolaceForte = reset; else state.dSolaceForte = reset; }
+
+          const crit = result.forceCrit || Math.random() < aCrit;
+          const perHit = calcPlayerDamage(activeAtk * (result.damageMult / hits), effectiveOppDef, crit ? 1 : 0, activeCritDmg, 1.0, isWeak, false);
+          const perHitDmg = Math.floor(perHit.damage * (1 + myElemDmg + extraElemBonus));
+          damage = perHitDmg * hits;
+          isCrit = perHit.isCrit; moveType = "SKILL";
+          if (hits > 1) {
+            const hitLines = Array.from({ length: hits }, (_, i) => `Hit ${i + 1}: ${perHitDmg} dmg`).join("\n");
+            moveLine = `${myName} — ❄️ ${result.moveLabel}${crit ? " **(CRIT)**" : ""}\n${hitLines}\n**Total: ${damage} DMG**`;
+          } else {
+            moveLine = `${myName} — ❄️ ${result.moveLabel}${crit ? " **(CRIT)**" : ""}`;
+          }
+
+          const weaken = feyraWeaken(mySolaceConstellation);
+          if (isChallenger) state.dPlayerDebuffs = applyDebuff(state.dPlayerDebuffs, "WEAKENED", weaken.weakenPct, weaken.weakenTurns);
+          else              state.cPlayerDebuffs = applyDebuff(state.cPlayerDebuffs, "WEAKENED", weaken.weakenPct, weaken.weakenTurns);
+          moveLine += `\n◇ Leaves ${isChallenger ? state.challengedName : state.challengerName} **WEAKENED** *(-${Math.round(weaken.weakenPct * 100)}% ATK, ${weaken.weakenTurns} turns)*`;
+
+          if (!forteEmpowered) {
+            const forteBefore = mySolaceForte;
+            const forteAfter  = addForteCharge(forteBefore, FEYRA_FORTE_CONFIG, FEYRA_FORTE_GAIN_PER_BASIC);
+            if (isChallenger) state.cSolaceForte = forteAfter; else state.dSolaceForte = forteAfter;
+            if (isForteMaxed(forteAfter, FEYRA_FORTE_CONFIG) && !isForteMaxed(forteBefore, FEYRA_FORTE_CONFIG)) {
+              moveLine += `\n✨ Forte is **FULLY CHARGED** — next Frostbind is guaranteed to crit!`;
             }
           }
         } else if (btn.customId === "duel_skill") {
@@ -1532,6 +1589,34 @@ export async function startDuelMatch(
           if (mySolaceConstellation >= 5) {
             if (isChallenger) { state.cBrenLingerTurnsLeft = BREN_C5_LINGER_TURNS + 1; state.cBrenLingerBonus = BREN_C5_LINGER_BONUS; }
             else              { state.dBrenLingerTurnsLeft = BREN_C5_LINGER_TURNS + 1; state.dBrenLingerBonus = BREN_C5_LINGER_BONUS; }
+          }
+
+          if (result.resetsConcertoEnergy) {
+            convergenceUsedThisTurn = true;
+            if (isChallenger) state.cConcertoEnergy = 0; else state.dConcertoEnergy = 0;
+          }
+        } else if (btn.customId === "duel_ultimate" && isDevGuild && myActiveUnit === "ally" && myActiveAllyCharacterId === "feyra" && myAllyKit) {
+          const feState = myAllyMechanicState as FeyraMechanicState;
+          const result = myAllyKit.onUltimate(
+            { playerHp: myHp, playerHpMax: myHpMax, allyHp: myAllyHpVal, allyHpMax: myAllyHpMaxVal, turn: state.turn, isShattered: false, mechanicState: feState },
+            { basicLevel: mySolaceBasicLevel, skillLevel: mySolaceSkillLevel, ultimateLevel: mySolaceUltimateLvl, introLevel: mySolaceIntroLevel, forteLevel: mySolaceForteLevel },
+            mySolaceConstellation,
+          ) as FeyraUltimateResult;
+          if (isChallenger) state.cAllyMechanicState = result.newMechanicState; else state.dAllyMechanicState = result.newMechanicState;
+
+          const r = calcPlayerDamage(activeAtk * result.damageMult, effectiveOppDef, 1.0, activeCritDmg, 1.0, isWeak, false);
+          damage = r.damage; isCrit = true; moveType = "ULT";
+          moveLine = `${myName} — ❄️ ${result.moveLabel} — ${damage} DMG`;
+
+          const weaken = feyraWeaken(mySolaceConstellation);
+          if (isChallenger) state.dPlayerDebuffs = applyDebuff(state.dPlayerDebuffs, "WEAKENED", weaken.weakenPct, weaken.weakenTurns);
+          else              state.cPlayerDebuffs = applyDebuff(state.cPlayerDebuffs, "WEAKENED", weaken.weakenPct, weaken.weakenTurns);
+          moveLine += `\n◇ Leaves ${isChallenger ? state.challengedName : state.challengerName} **WEAKENED** *(-${Math.round(weaken.weakenPct * 100)}% ATK, ${weaken.weakenTurns} turns)*`;
+
+          // C4: cleanses 1 of her own debuffs.
+          if (result.healResult.actions.length > 0) {
+            const cleansed = cleanseDebuffs(myPlayerDebuffs, 1);
+            if (isChallenger) state.cPlayerDebuffs = cleansed; else state.dPlayerDebuffs = cleansed;
           }
 
           if (result.resetsConcertoEnergy) {
