@@ -91,10 +91,10 @@ export function brenOnSkill(
   skillLevel: number,
   constellation: number,
 ): BrenSkillResult {
-  const hpCost = computeHpCost(ctx.playerHp, BREN_SKILL_HP_COST_FRAC, constellation);
+  const hpCost = computeHpCost(ctx.allyHp, BREN_SKILL_HP_COST_FRAC, constellation);
   const scalar = BREN_HP_BONUS_SCALAR * (constellation >= 2 ? (1 + BREN_C2_BONUS_BOOST) : 1);
-  const belowThreshold = (ctx.playerHp - hpCost) <= ctx.playerHpMax * BREN_C6_LOW_HP_THRESHOLD;
-  const bonusMult = (hpCost / ctx.playerHpMax) * scalar + (constellation >= 6 && belowThreshold ? BREN_C6_FLAT_BONUS : 0);
+  const belowThreshold = (ctx.allyHp - hpCost) <= ctx.allyHpMax * BREN_C6_LOW_HP_THRESHOLD;
+  const bonusMult = (hpCost / ctx.allyHpMax) * scalar + (constellation >= 6 && belowThreshold ? BREN_C6_FLAT_BONUS : 0);
 
   return {
     damageMult: brenSkillBaseMult(skillLevel) + bonusMult,
@@ -110,10 +110,10 @@ export function brenOnUltimate(
   ultimateLevel: number,
   constellation: number,
 ): BrenUltimateResult {
-  const hpCost = computeHpCost(ctx.playerHp, BREN_ULT_HP_COST_FRAC, constellation);
+  const hpCost = computeHpCost(ctx.allyHp, BREN_ULT_HP_COST_FRAC, constellation);
   const scalar = BREN_HP_BONUS_SCALAR * (constellation >= 2 ? (1 + BREN_C2_BONUS_BOOST) : 1);
-  const belowThreshold = (ctx.playerHp - hpCost) <= ctx.playerHpMax * BREN_C6_LOW_HP_THRESHOLD;
-  const bonusMult = (hpCost / ctx.playerHpMax) * scalar + (constellation >= 6 && belowThreshold ? BREN_C6_FLAT_BONUS : 0);
+  const belowThreshold = (ctx.allyHp - hpCost) <= ctx.allyHpMax * BREN_C6_LOW_HP_THRESHOLD;
+  const bonusMult = (hpCost / ctx.allyHpMax) * scalar + (constellation >= 6 && belowThreshold ? BREN_C6_FLAT_BONUS : 0);
 
   // C4: heals back 10% of the HP this Ultimate cost, applied AFTER damage —
   // the calling combat loop resolves this via the standard HEAL_ALLY action
@@ -121,7 +121,7 @@ export function brenOnUltimate(
   const healBack = constellation >= 4 ? Math.floor(hpCost * 0.10) : 0;
 
   return {
-    healResult: { actions: healBack > 0 ? [{ type: "HEAL_ALLY", value: healBack / Math.max(1, ctx.playerHpMax) }] : [] },
+    healResult: { actions: healBack > 0 ? [{ type: "HEAL_ALLY", value: healBack / Math.max(1, ctx.allyHpMax) }] : [] },
     moveLabel: "Last Man Standing",
     newMechanicState: {},
     resetsConcertoEnergy: true, // gates on Concerto Energy like Kaelith/Rilo/Rhoven/default-Solace, not a personal-energy spend
