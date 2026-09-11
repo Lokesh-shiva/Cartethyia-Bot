@@ -9,5 +9,6 @@ import "./vesperKit";
 import "./riloKit";
 import "./rhovenKit";
 import "./brenKit";
+import "./feyraKit";
 
 CHARACTER_KITS[solaceKit.id] = solaceKit;
