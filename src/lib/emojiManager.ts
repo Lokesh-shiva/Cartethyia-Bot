@@ -320,4 +320,5 @@ export const CE = {
   get vs() { return getEmoji("cc_voltaic", "⚡"); },
   get gs() { return getEmoji("cc_glacial", "❄️"); },
   get ts() { return getEmoji("cc_tempest", "🌪️"); }, // Rhoven ascension mat — no icon asset registered yet, falls back to the Unicode emoji until one's added to EMOJI_ASSETS
+  get es() { return getEmoji("cc_ember", "🔥"); }, // Bren ascension mat — same, no icon asset registered yet
 };

@@ -753,6 +753,14 @@ const command: Command = {
               data: { tempestShards: { increment: 1 } },
             });
           }
+          let emberShardsDropped = 0;
+          if (fb.id === "ignis_behemoth") {
+            emberShardsDropped = 1;
+            await prisma.user.update({
+              where: { id: interaction.user.id },
+              data: { emberShards: { increment: 1 } },
+            });
+          }
 
           const lvl        = await checkLevelUp(interaction.user.id);
           const bondResult = await incrementWeaponBond(interaction.user.id).catch(() => null);
@@ -770,6 +778,7 @@ const command: Command = {
                 (voltaicShardsDropped ? `\n${CE.vs} **1 Voltaic Shard**` : "") +
                 (glacialShardsDropped ? `\n${CE.gs} **1 Glacial Shard**` : "") +
                 (tempestShardsDropped ? `\n${CE.ts} **1 Tempest Shard**` : "") +
+                (emberShardsDropped ? `\n${CE.es} **1 Ember Shard**` : "") +
                 (lvl.didLevelUp ? `\n◈ Level **${lvl.oldLevel}** → **${lvl.newLevel}**` : "") +
                 (bondResult ? `\n✦ Weapon Bond **${bondResult.bond}/10**${bondResult.milestone ? ` — *${bondResult.milestone}*` : ""}` : "") +
                 voteNudge() + supportNudge() + await mailNudge(interaction.user.id)
