@@ -149,6 +149,45 @@ export async function execute(interaction: Interaction) {
       return;
     }
 
+    if (customId.startsWith("alpharaid_join_")) {
+      const instanceId = customId.replace("alpharaid_join_", "");
+      const instance = await prisma.alphaRaidInstance.findUnique({ where: { id: instanceId } });
+      if (!instance || instance.phase !== "RECRUITING") {
+        await interaction.reply({ content: "This Alpha Raid isn't open for joining anymore.", flags: 64 });
+        return;
+      }
+      const already = await prisma.alphaRaidParticipant.findUnique({
+        where: { instanceId_userId: { instanceId, userId: interaction.user.id } },
+      });
+      if (already) {
+        await interaction.reply({ content: "You're already in.", flags: 64 });
+        return;
+      }
+      await prisma.alphaRaidParticipant.create({
+        data: { instanceId, userId: interaction.user.id },
+      }).catch(() => null); // unique-constraint race: a double-click loses the race harmlessly
+
+      const newCount = await prisma.alphaRaidParticipant.count({ where: { instanceId } });
+      const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
+        new ButtonBuilder().setCustomId(customId).setLabel("⚔️  Join Alpha Raid").setStyle(ButtonStyle.Danger),
+      );
+      await interaction.update({
+        embeds: [new EmbedBuilder()
+          .setColor(0xFF4F4F)
+          .setTitle("⚡  ALPHA RAID — A Rare Threat Has Emerged")
+          .setDescription(
+            `A boss far stronger than anything in the usual rotation has appeared — server-wide, everywhere the bot lives.\n\n` +
+            `**Players joined:** ${newCount}\n` +
+            `**Kill window closes:** <t:${Math.floor(instance.deadlineAt.getTime() / 1000)}:R>\n\n` +
+            `Bring your best. This one only comes around when the owner calls it — and the rewards (Fracture Keys, Radiant Keys) don't come from anywhere else.\n\n` +
+            `Click below to join!`
+          )
+          .setFooter({ text: "CARTETHYIA  ·  Alpha Raid" })],
+        components: [row],
+      }).catch(() => {});
+      return;
+    }
+
     // All other buttons (vibe return, ascend, bond) handled by collectors in their commands
     return;
   }
