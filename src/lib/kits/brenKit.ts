@@ -91,7 +91,11 @@ export function brenOnSkill(
   skillLevel: number,
   constellation: number,
 ): BrenSkillResult {
-  const hpCost = computeHpCost(ctx.allyHp, BREN_SKILL_HP_COST_FRAC, constellation);
+  // Forte-empowered: this Skill costs no HP, matching every other kit's
+  // Forte payoff being a real combat effect (Rilo's Braced refund, Vesper's
+  // Arc Discharge, etc.) rather than a flavor-only reward.
+  const forteEmpowered = (ctx as any).forteEmpowered === true;
+  const hpCost = forteEmpowered ? 0 : computeHpCost(ctx.allyHp, BREN_SKILL_HP_COST_FRAC, constellation);
   const scalar = BREN_HP_BONUS_SCALAR * (constellation >= 2 ? (1 + BREN_C2_BONUS_BOOST) : 1);
   const belowThreshold = (ctx.allyHp - hpCost) <= ctx.allyHpMax * BREN_C6_LOW_HP_THRESHOLD;
   const bonusMult = (hpCost / ctx.allyHpMax) * scalar + (constellation >= 6 && belowThreshold ? BREN_C6_FLAT_BONUS : 0);
@@ -99,7 +103,7 @@ export function brenOnSkill(
   return {
     damageMult: brenSkillBaseMult(skillLevel) + bonusMult,
     vibFrac: 0.55,
-    moveLabel: "Bloodprice Cleave",
+    moveLabel: forteEmpowered ? "Bloodprice Cleave (Free)" : "Bloodprice Cleave",
     newMechanicState: {},
     hpCost,
   };
