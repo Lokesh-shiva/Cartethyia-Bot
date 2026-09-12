@@ -443,6 +443,42 @@ model TournamentMatch {
   @@map("tournament_matches")
 }
 
+// ─── Alpha Raid (global, owner-triggered event) ────────────────────────────
+// See docs/superpowers/specs/2026-09-12-alpha-raid-design.md
+model AlphaRaidEvent {
+  id          String   @id @default(cuid())
+  triggeredBy String   // owner's Discord userId
+  triggeredAt DateTime @default(now())
+  instances   AlphaRaidInstance[]
+
+  @@map("alpha_raid_events")
+}
+
+model AlphaRaidInstance {
+  id           String   @id @default(cuid())
+  eventId      String
+  event        AlphaRaidEvent @relation(fields: [eventId], references: [id])
+  guildId      String
+  channelId    String
+  messageId    String?  // the recruiting message, for live participant-count edits
+  phase        String   @default("RECRUITING") // "RECRUITING" | "EXPIRED" — FIGHTING/COMPLETE added when the fight-engine handoff ships
+  deadlineAt   DateTime // triggeredAt + 72h — kill window, not signup window
+  participants AlphaRaidParticipant[]
+
+  @@index([phase, deadlineAt])
+  @@map("alpha_raid_instances")
+}
+
+model AlphaRaidParticipant {
+  id         String   @id @default(cuid())
+  instanceId String
+  instance   AlphaRaidInstance @relation(fields: [instanceId], references: [id])
+  userId     String
+
+  @@unique([instanceId, userId])
+  @@map("alpha_raid_participants")
+}
+
 // ─── Active Encounter ────────────────────────────────────────────────────────
 
 model ActiveEncounter {
