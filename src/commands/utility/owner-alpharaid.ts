@@ -17,7 +17,11 @@ const KILL_WINDOW_HOURS = 72;
 export const data = new SlashCommandBuilder()
   .setName("owner-alpharaid")
   .setDescription("Owner only — trigger a global Alpha Raid event across every server.")
-  .addSubcommand(s => s.setName("start").setDescription("Fire the event now.")) as SlashCommandBuilder;
+  .addSubcommand(s => s.setName("start")
+    .setDescription("Fire the event now.")
+    .addStringOption(o => o.setName("test-guild-id")
+      .setDescription("Testing only — restrict to a single server ID instead of firing globally.")
+      .setRequired(false))) as SlashCommandBuilder;
 
 function buildRecruitEmbed(count: number, deadlineAt: Date): EmbedBuilder {
   return new EmbedBuilder()
@@ -42,6 +46,16 @@ export const command: Command = {
     }
     await interaction.deferReply({ flags: 64 });
 
+    const testGuildId = interaction.options.getString("test-guild-id");
+    const targetGuilds = testGuildId
+      ? [...interaction.client.guilds.cache.values()].filter(g => g.id === testGuildId)
+      : [...interaction.client.guilds.cache.values()];
+
+    if (testGuildId && targetGuilds.length === 0) {
+      await interaction.editReply({ content: `⚡ Bot isn't in a server with ID \`${testGuildId}\`.` });
+      return;
+    }
+
     const triggeredAt = new Date();
     const deadlineAt = new Date(triggeredAt.getTime() + KILL_WINDOW_HOURS * 60 * 60 * 1000);
 
@@ -50,7 +64,7 @@ export const command: Command = {
     });
 
     let posted = 0, skipped = 0;
-    for (const guild of interaction.client.guilds.cache.values()) {
+    for (const guild of targetGuilds) {
       const channel = await resolveAlphaRaidChannel(guild).catch(() => null);
       if (!channel) { skipped++; continue; }
 
@@ -70,7 +84,7 @@ export const command: Command = {
     }
 
     await interaction.editReply({
-      content: `⚡ Alpha Raid triggered — posted in **${posted}** server(s), skipped **${skipped}** (no postable channel found).`,
+      content: `⚡ Alpha Raid triggered${testGuildId ? " (test mode — single server)" : ""} — posted in **${posted}** server(s), skipped **${skipped}** (no postable channel found).`,
     });
   },
 };
