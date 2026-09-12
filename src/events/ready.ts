@@ -8,6 +8,7 @@ import { setAuditClient, runBalanceSweep } from "../lib/antiCheat";
 import prisma from "../lib/prisma";
 import { refundAura } from "../lib/aura";
 import { startTournamentSweep } from "../lib/tournamentSweep";
+import { startAlphaRaidSweep } from "../lib/alphaRaidSweep";
 
 export const name = Events.ClientReady;
 export const once = true;
@@ -106,6 +107,7 @@ export async function execute(client: Client) {
   // Weekly duel tournament: signup close, match auto-start, deadline
   // forfeits, round advance, reward distribution — all driven from here.
   startTournamentSweep(client);
+  startAlphaRaidSweep(client);
 
   client.user?.setPresence({
     activities: [
