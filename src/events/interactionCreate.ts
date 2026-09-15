@@ -5,6 +5,7 @@ import { runFirstExpedition } from "../lib/firstExpedition";
 import { logError } from "../lib/logger";
 import { grantDrifterRole } from "../lib/supportServer";
 import { buildTournamentSignupEmbed } from "../lib/tournamentSweep";
+import { buildAlphaRaidRecruitEmbed, buildAlphaRaidRecruitRow } from "../lib/alphaRaidEmbed";
 import prisma from "../lib/prisma";
 
 export const name = Events.InteractionCreate;
@@ -168,22 +169,9 @@ export async function execute(interaction: Interaction) {
       }).catch(() => null); // unique-constraint race: a double-click loses the race harmlessly
 
       const newCount = await prisma.alphaRaidParticipant.count({ where: { instanceId } });
-      const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
-        new ButtonBuilder().setCustomId(customId).setLabel("⚔️  Join Alpha Raid").setStyle(ButtonStyle.Danger),
-      );
       await interaction.update({
-        embeds: [new EmbedBuilder()
-          .setColor(0xFF4F4F)
-          .setTitle("⚡  ALPHA RAID — A Rare Threat Has Emerged")
-          .setDescription(
-            `A boss far stronger than anything in the usual rotation has appeared — server-wide, everywhere the bot lives.\n\n` +
-            `**Players joined:** ${newCount}\n` +
-            `**Kill window closes:** <t:${Math.floor(instance.deadlineAt.getTime() / 1000)}:R>\n\n` +
-            `Bring your best. This one only comes around when the owner calls it — and the rewards (Fracture Keys, Radiant Keys) don't come from anywhere else.\n\n` +
-            `Click below to join!`
-          )
-          .setFooter({ text: "CARTETHYIA  ·  Alpha Raid" })],
-        components: [row],
+        embeds: [buildAlphaRaidRecruitEmbed(newCount, instance.deadlineAt)],
+        components: [buildAlphaRaidRecruitRow(instanceId)],
       }).catch(() => {});
       return;
     }

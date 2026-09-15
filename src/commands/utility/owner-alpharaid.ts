@@ -11,6 +11,7 @@ import { Command } from "../../types";
 import { isOwner } from "../../lib/owner";
 import prisma from "../../lib/prisma";
 import { resolveAlphaRaidChannel } from "../../lib/alphaRaidChannel";
+import { buildAlphaRaidRecruitEmbed, buildAlphaRaidRecruitRow } from "../../lib/alphaRaidEmbed";
 
 const KILL_WINDOW_HOURS = 72;
 
@@ -22,20 +23,6 @@ export const data = new SlashCommandBuilder()
     .addStringOption(o => o.setName("test-guild-id")
       .setDescription("Testing only — restrict to a single server ID instead of firing globally.")
       .setRequired(false))) as SlashCommandBuilder;
-
-function buildRecruitEmbed(count: number, deadlineAt: Date): EmbedBuilder {
-  return new EmbedBuilder()
-    .setColor(0xFF4F4F)
-    .setTitle("⚡  ALPHA RAID — A Rare Threat Has Emerged")
-    .setDescription(
-      `A boss far stronger than anything in the usual rotation has appeared — server-wide, everywhere the bot lives.\n\n` +
-      `**Players joined:** ${count}\n` +
-      `**Kill window closes:** <t:${Math.floor(deadlineAt.getTime() / 1000)}:R>\n\n` +
-      `Bring your best. This one only comes around when the owner calls it — and the rewards (Fracture Keys, Radiant Keys) don't come from anywhere else.\n\n` +
-      `Click below to join!`
-    )
-    .setFooter({ text: "CARTETHYIA  ·  Alpha Raid" });
-}
 
 export const command: Command = {
   data,
@@ -72,11 +59,9 @@ export const command: Command = {
         data: { eventId: event.id, guildId: guild.id, channelId: channel.id, deadlineAt },
       });
 
-      const joinRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
-        new ButtonBuilder().setCustomId(`alpharaid_join_${instance.id}`).setLabel("⚔️  Join Alpha Raid").setStyle(ButtonStyle.Danger),
-      );
+      const joinRow = buildAlphaRaidRecruitRow(instance.id);
 
-      const msg = await channel.send({ embeds: [buildRecruitEmbed(0, deadlineAt)], components: [joinRow] }).catch(() => null);
+      const msg = await channel.send({ embeds: [buildAlphaRaidRecruitEmbed(0, deadlineAt)], components: [joinRow] }).catch(() => null);
       if (!msg) { skipped++; continue; }
 
       await prisma.alphaRaidInstance.update({ where: { id: instance.id }, data: { messageId: msg.id } });
