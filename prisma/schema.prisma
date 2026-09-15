@@ -449,6 +449,10 @@ model AlphaRaidEvent {
   id          String   @id @default(cuid())
   triggeredBy String   // owner's Discord userId
   triggeredAt DateTime @default(now())
+  bossCharacterId    String   @default("solace") // CHARACTER_KITS id — which character's kit the boss uses
+  fractureKeysReward Int      @default(10)
+  radiantKeysReward  Int      @default(10)
+  fractoniteReward   Int      @default(1500)
   instances   AlphaRaidInstance[]
 
   @@map("alpha_raid_events")
