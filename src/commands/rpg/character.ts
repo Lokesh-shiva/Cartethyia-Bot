@@ -48,12 +48,15 @@ const CHARACTERS: Record<string, { label: string; emoji: string; element: string
 // built), so kits report their REAL shard cost under an extra, kit-specific
 // property alongside a `starfallShards: 0` filler. This map tells the UI
 // which property + currency/label to actually read and spend per character.
-type ShardDbField = "starfallShards" | "umbralShards" | "voltaicShards" | "glacialShards";
+type ShardDbField = "starfallShards" | "umbralShards" | "voltaicShards" | "glacialShards" | "tempestShards" | "emberShards";
 const ASCENSION_SHARD_CURRENCY: Record<string, { field: string; dbField: ShardDbField; label: string }> = {
   solace:  { field: "starfallShards", dbField: "starfallShards", label: "Starfall Shards" },
   kaelith: { field: "umbralShards",   dbField: "umbralShards",   label: "Umbral Shards"   },
   vesper:  { field: "voltaicShards",  dbField: "voltaicShards",  label: "Voltaic Shards"  },
   rilo:    { field: "glacialShards",  dbField: "glacialShards",  label: "Glacial Shards"  },
+  rhoven:  { field: "tempestShards",  dbField: "tempestShards",  label: "Tempest Shards"  },
+  bren:    { field: "emberShards",    dbField: "emberShards",    label: "Ember Shards"    },
+  feyra:   { field: "glacialShards",  dbField: "glacialShards",  label: "Glacial Shards"  },
 };
 function shardInfo(characterId: string) {
   return ASCENSION_SHARD_CURRENCY[characterId] ?? ASCENSION_SHARD_CURRENCY.solace;
@@ -140,6 +143,9 @@ const RECOMMENDED_SET: Record<string, string> = {
   kaelith: "**Voidborn Remnant** (Havoc) — his own element, and its Frenzy mechanics amplify his stack-detonation damage instead of fighting it.",
   vesper:  "**Stormcaller's Oath** (Electro) — her own element, and its thunderbolt/crit-rate mechanics complement a Discharge-chain playstyle without fighting it.",
   rilo:    "**Frostveil Bastion** (Glacio) — her own element, and its shield/panic-shield mechanics stack naturally on top of her own Guard gauge instead of fighting it.",
+  rhoven:  "**Windstrider's Legacy** (Aero) — his own element, and its stacking DMG mechanics reward his fast-cycling Tempo playstyle instead of fighting it.",
+  bren:    "**Smoldering Sovereign** (Fusion) — his own element, and its offense mechanics amplify his HP-cost berserker damage instead of fighting it.",
+  feyra:   "**Frostveil Bastion** (Glacio) — her own element, shared with Rilo, and its shield mechanics complement her weaken/freeze control kit instead of fighting it.",
 };
 
 // Field boss whose guaranteed drop is this character's ascension shard —
@@ -149,6 +155,9 @@ const SHARD_FIELD_BOSS: Record<string, string> = {
   kaelith: "Null Ravager",
   vesper:  "Voltaic Aberrant",
   rilo:    "Permafrost Sovereign",
+  rhoven:  "Tempest Ancient",
+  bren:    "Ignis Behemoth",
+  feyra:   "Permafrost Sovereign",
 };
 
 // Simulates spending resonanceRecords/credits one level at a time (per the

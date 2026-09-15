@@ -14,4 +14,7 @@ export const CHARACTER_ELEMENTS: Record<string, string> = {
   kaelith: "HAVOC",
   vesper: "ELECTRO",
   rilo: "GLACIO",
+  rhoven: "AERO",
+  bren: "FUSION",
+  feyra: "GLACIO",
 };
