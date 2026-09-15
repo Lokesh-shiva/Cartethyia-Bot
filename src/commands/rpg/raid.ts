@@ -961,6 +961,55 @@ async function endRaid(interaction: ChatInputCommandInteraction) {
 }
 
 // ── /raid begin ───────────────────────────────────────────────────────────────
+// ── Alpha Raid entrypoint ────────────────────────────────────────────────────
+// Reuses launchRaid() directly rather than a second fight loop. The caller
+// (interactionCreate.ts's alpharaid_begin_ handler) already has the DB
+// participant list — this seeds a fresh in-memory ActiveRaid from it the
+// same way addParticipant() already builds one from a live interaction.
+export interface AlphaRaidOptions {
+  statMultiplier: number;      // applied to every axis of computeRaidBossStats()'s output
+  evasionChance: number;       // 0-1, boss dodges a player hit entirely
+  bossArtPathOverride: string | null;
+  bonusReward: { fractureKeys: number; radiantKeys: number; fractonite: number };
+  onComplete: (won: boolean) => Promise<void>; // fired once, after the fight resolves
+}
+
+export async function startAlphaRaidFight(
+  channel:      TextChannel,
+  channelId:    string,
+  guildId:      string,
+  organizerId:  string,
+  boss:         RaidBossConfig,
+  participants: { userId: string; displayName: string }[],
+  alphaOptions: AlphaRaidOptions,
+): Promise<{ ok: true } | { ok: false; reason: string }> {
+  if (activeRaids.has(channelId)) {
+    return { ok: false, reason: "A raid is already active in this channel — try again once it finishes." };
+  }
+
+  const raid: ActiveRaid = {
+    bossChoice:  `alpha:${boss.id}`,
+    bossHp: 1, bossHpMax: 1, bossAtk: 0, bossDef: 0, bossVib: 1, bossVibMax: 1, // placeholders — launchRaid rescales immediately
+    isShattered: false, shatterLeft: 0,
+    bossDefShredTurnsLeft: 0, bossDefShredPct: 0,
+    bossWeakenTurnsLeft: 0, bossWeakenPct: 0,
+    feyraBossWeakenTurnsLeft: 0, feyraBossWeakenPct: 0,
+    phase: "RECRUITING", participants: [], currentIdx: 0, turn: 1,
+    channelId, guildId, organizerId, isDevGuild: true,
+  };
+  activeRaids.set(channelId, raid);
+
+  for (const p of participants) await addParticipant(raid, p.userId, p.displayName);
+
+  if (raid.participants.length < MIN_PLAYERS) {
+    activeRaids.delete(channelId);
+    return { ok: false, reason: `Need at least ${MIN_PLAYERS} players who have run /start — some joiners may not have onboarded.` };
+  }
+
+  await launchRaid(channel, channelId, boss, null, alphaOptions);
+  return { ok: true };
+}
+
 async function beginRaid(interaction: ChatInputCommandInteraction) {
   if (!canManageRaids(interaction)) {
     await interaction.reply({ content: "You need **Manage Server** to begin raids.", flags: 64 }); return;
@@ -980,10 +1029,11 @@ async function beginRaid(interaction: ChatInputCommandInteraction) {
 
 // ── Core fight loop ───────────────────────────────────────────────────────────
 async function launchRaid(
-  channel:     TextChannel,
-  channelId:   string,
-  boss:        RaidBossConfig,
-  recruitMsg:  any,
+  channel:      TextChannel,
+  channelId:    string,
+  boss:         RaidBossConfig,
+  recruitMsg:   any,
+  alphaOptions?: AlphaRaidOptions,
 ) {
   const raid = activeRaids.get(channelId);
   if (!raid) return;
@@ -995,12 +1045,13 @@ async function launchRaid(
 
   // ── Scale boss stats to this party ──────────────────────────────────────────
   const scaled     = computeRaidBossStats(boss, raid.participants);
-  raid.bossHp      = scaled.hp;
-  raid.bossHpMax   = scaled.hp;
-  raid.bossAtk     = scaled.atk;
-  raid.bossDef     = scaled.def;
-  raid.bossVib     = scaled.vibBar;
-  raid.bossVibMax  = scaled.vibBar;
+  const statMult   = alphaOptions?.statMultiplier ?? 1;
+  raid.bossHp      = Math.floor(scaled.hp * statMult);
+  raid.bossHpMax   = raid.bossHp;
+  raid.bossAtk     = Math.floor(scaled.atk * statMult);
+  raid.bossDef     = Math.floor(scaled.def * statMult);
+  raid.bossVib     = Math.floor(scaled.vibBar * statMult);
+  raid.bossVibMax  = raid.bossVib;
 
   // ── Show scaling summary in the recruit embed ────────────────────────────────
   const n          = raid.participants.length;
@@ -1011,7 +1062,7 @@ async function launchRaid(
   let thread;
   try {
     thread = await channel.threads.create({
-      name: `☄️ Calamity Raid — ${boss.name}`,
+      name: alphaOptions ? `⚡ Alpha Raid — ${boss.name}` : `☄️ Calamity Raid — ${boss.name}`,
       autoArchiveDuration: 1440,
       type: ChannelType.PublicThread,
     });
@@ -1039,7 +1090,7 @@ async function launchRaid(
   });
 
   // Raid intro card
-  const bossArtPath = path.join(process.cwd(), "Bosses", boss.artFile);
+  const bossArtPath = alphaOptions?.bossArtPathOverride ?? path.join(process.cwd(), "Bosses", boss.artFile);
   const introCard   = await generateRaidCard(
     boss.name, boss.element,
     fs.existsSync(bossArtPath) ? bossArtPath : null,
@@ -1072,6 +1123,9 @@ async function launchRaid(
       };
 
       await Promise.all(raid.participants.map(p => awardUser(p.userId, perPlayer, "raid")));
+      if (alphaOptions) {
+        await Promise.all(raid.participants.map(p => awardUser(p.userId, alphaOptions.bonusReward, "raid")));
+      }
       await Promise.all(
         raid.participants.filter(p => !p.isDefeated).map(p =>
           prisma.user.update({ where: { id: p.userId }, data: { raidWins: { increment: 1 } } }).catch(() => {})
@@ -1164,6 +1218,8 @@ async function launchRaid(
 
     await thread.setArchived(true).catch(() => {});
     setTimeout(() => thread.delete().catch(() => {}), 5 * 60 * 1000);
+
+    if (alphaOptions) await alphaOptions.onComplete(won).catch((err: any) => console.error("[AlphaRaid] onComplete error:", err));
   };
 
   // ── Turn loop ─────────────────────────────────────────────────────────────
@@ -2110,6 +2166,11 @@ async function launchRaid(
         if (concertoGain > 0) current.concertoEnergy = addConcertoEnergy(current.concertoEnergy, concertoGain);
       }
 
+      if (alphaOptions && Math.random() < alphaOptions.evasionChance) {
+        damage = 0;
+        moveLine += `\n◇ **${boss.name}** evades the strike!`;
+      }
+
       current.dmgDealt += damage;
       raid.bossHp       = Math.max(0, raid.bossHp - damage);
 
@@ -2141,11 +2202,14 @@ async function launchRaid(
           moveLine += `\n◇ Boss stunned (${raid.shatterLeft} turn${raid.shatterLeft > 1 ? "s" : ""} left).`;
         }
       } else {
-        const move    = boss.moves[Math.floor(Math.random() * boss.moves.length)];
+        const enraged = !!alphaOptions && raid.bossHp / raid.bossHpMax <= 0.4;
+        const move    = enraged ? boss.moves[boss.moves.length - 1]! : boss.moves[Math.floor(Math.random() * boss.moves.length)]!;
+        const enrageAtkMult = enraged ? 1.6 : 1;
         const bossWeakenActive = raid.bossWeakenTurnsLeft > 0;
         const feyraBossWeakenActive = raid.feyraBossWeakenTurnsLeft > 0;
-        const aoeBase = Math.floor(raid.bossAtk * move.damage * 0.6 * (bossWeakenActive ? (1 - raid.bossWeakenPct) : 1) * (feyraBossWeakenActive ? (1 - raid.feyraBossWeakenPct) : 1)); // AoE = 60% of single-target
+        const aoeBase = Math.floor(raid.bossAtk * move.damage * 0.6 * enrageAtkMult * (bossWeakenActive ? (1 - raid.bossWeakenPct) : 1) * (feyraBossWeakenActive ? (1 - raid.feyraBossWeakenPct) : 1)); // AoE = 60% of single-target
         const alive   = raid.participants.filter(p => !p.isDefeated);
+        if (enraged && alphaOptions) moveLine += `\n🔥 **${boss.name}** enrages, striking with everything it has!`;
         const dmgLines: string[] = [];
         // Milestone 3d: party-wide DEF bonuses (Attunement DEF-mode/Wellspring/
         // Forte) from whoever currently has their Solace active apply to
@@ -2153,6 +2217,12 @@ async function launchRaid(
         const party = raid.isDevGuild ? partyWideTeamBonuses(raid) : { atkMult: 1, critBonus: 0, defMult: 1 };
 
         for (const p of alive) {
+          if (alphaOptions && move.effect === "ALPHA_SKILL_DEBUFF") {
+            p.playerDebuffs = applyDebuff(p.playerDebuffs, "VULNERABLE", 0.15, 2);
+          } else if (alphaOptions && move.effect === "ALPHA_ULT_DEBUFF") {
+            p.playerDebuffs = applyDebuff(p.playerDebuffs, "WEAKENED", 0.25, 2);
+          }
+
           // Milestone 3.5b: while this participant's Solace is defending,
           // damage reduction uses HER OWN DEF, not the player's own.
           const pDefendingWithAlly = raid.isDevGuild && p.activeUnit === "ally" && p.allySolaceStats !== null;
