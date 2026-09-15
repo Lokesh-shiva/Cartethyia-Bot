@@ -98,7 +98,7 @@ interface RaidAllyBundle {
 }
 
 // ── Unified boss handle (works for both World bosses and Field bosses) ─────────
-interface RaidBossConfig {
+export interface RaidBossConfig {
   id:       string;
   name:     string;
   title:    string;
