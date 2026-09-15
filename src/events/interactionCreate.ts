@@ -1,4 +1,4 @@
-import { Events, Interaction, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, TextChannel } from "discord.js";
+import { Events, Interaction, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, TextChannel, PermissionFlagsBits } from "discord.js";
 import { ExtendedClient } from "../types";
 import { handleEncounterFight, getBotChannelIds } from "../lib/encounter";
 import { runFirstExpedition } from "../lib/firstExpedition";
@@ -6,6 +6,9 @@ import { logError } from "../lib/logger";
 import { grantDrifterRole } from "../lib/supportServer";
 import { buildTournamentSignupEmbed } from "../lib/tournamentSweep";
 import { buildAlphaRaidRecruitEmbed, buildAlphaRaidRecruitRow } from "../lib/alphaRaidEmbed";
+import { isOwner } from "../lib/owner";
+import { startAlphaRaidFight } from "../commands/rpg/raid";
+import { buildAlphaRaidBoss, alphaRaidBossArtPath } from "../lib/alphaRaidBoss";
 import prisma from "../lib/prisma";
 
 export const name = Events.InteractionCreate;
@@ -173,6 +176,78 @@ export async function execute(interaction: Interaction) {
         embeds: [buildAlphaRaidRecruitEmbed(newCount, instance.deadlineAt)],
         components: [buildAlphaRaidRecruitRow(instanceId)],
       }).catch(() => {});
+      return;
+    }
+
+    if (customId.startsWith("alpharaid_begin_")) {
+      const instanceId = customId.replace("alpharaid_begin_", "");
+      const canManage = (interaction.memberPermissions?.has(PermissionFlagsBits.ManageGuild) ?? false) || isOwner(interaction.user.id);
+      if (!canManage) {
+        await interaction.reply({ content: "You need **Manage Server** to begin this fight.", flags: 64 });
+        return;
+      }
+
+      const instance = await prisma.alphaRaidInstance.findUnique({
+        where: { id: instanceId },
+        include: { participants: true, event: true },
+      });
+      if (!instance || instance.phase !== "RECRUITING") {
+        await interaction.reply({ content: "This Alpha Raid isn't open to begin anymore.", flags: 64 });
+        return;
+      }
+      if (instance.participants.length < 2) {
+        await interaction.reply({ content: "Need at least 2 joined players to begin.", flags: 64 });
+        return;
+      }
+
+      const boss = buildAlphaRaidBoss(instance.event.bossCharacterId);
+      if (!boss) {
+        await interaction.reply({ content: "That character's kit is no longer available — contact the bot owner.", flags: 64 });
+        return;
+      }
+
+      await interaction.deferUpdate();
+
+      const guild = interaction.guild;
+      const channel = guild ? await guild.channels.fetch(instance.channelId).catch(() => null) : null;
+      if (!channel || !channel.isTextBased()) {
+        await interaction.followUp({ content: "Couldn't reach the announcement channel — it may have been deleted.", flags: 64 }).catch(() => {});
+        return;
+      }
+
+      const members = guild
+        ? await guild.members.fetch({ user: instance.participants.map(p => p.userId) }).catch(() => null)
+        : null;
+      const displayNameOf = (userId: string) => members?.get(userId)?.displayName ?? userId;
+
+      const result = await startAlphaRaidFight(
+        channel as TextChannel, instance.channelId, instance.guildId, interaction.user.id,
+        boss,
+        instance.participants.map(p => ({ userId: p.userId, displayName: displayNameOf(p.userId) })),
+        {
+          statMultiplier: 1.5,
+          evasionChance: 0.18,
+          bossArtPathOverride: alphaRaidBossArtPath(instance.event.bossCharacterId),
+          bonusReward: {
+            fractureKeys: instance.event.fractureKeysReward,
+            radiantKeys:  instance.event.radiantKeysReward,
+            fractonite:   instance.event.fractoniteReward,
+          },
+          onComplete: async (won: boolean) => {
+            await prisma.alphaRaidInstance.update({
+              where: { id: instanceId },
+              data: { phase: won ? "COMPLETE" : "EXPIRED" },
+            }).catch(() => {});
+          },
+        },
+      );
+
+      if (!result.ok) {
+        await interaction.followUp({ content: result.reason, flags: 64 }).catch(() => {});
+        return;
+      }
+
+      await prisma.alphaRaidInstance.update({ where: { id: instanceId }, data: { phase: "FIGHTING" } }).catch(() => {});
       return;
     }
 
