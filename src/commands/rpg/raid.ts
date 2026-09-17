@@ -2195,6 +2195,13 @@ async function launchRaid(
         moveLine += `\n◇ **${boss.name}** evades the strike!`;
       }
 
+      if (alphaOptions && raid.bossShieldHp > 0 && damage > 0) {
+        const absorbed = Math.min(raid.bossShieldHp, damage);
+        raid.bossShieldHp -= absorbed;
+        damage -= absorbed;
+        moveLine += `\n🛡 **${boss.name}**'s shield absorbs ${absorbed} damage!`;
+      }
+
       current.dmgDealt += damage;
       raid.bossHp       = Math.max(0, raid.bossHp - damage);
 
