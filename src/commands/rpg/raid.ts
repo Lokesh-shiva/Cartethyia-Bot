@@ -2327,8 +2327,37 @@ async function launchRaid(
               p.secondWindUsed = true; p.hp = 1;
               dmgLines.push(`${p.name} -${bossDmg} ✦UNDYING`);
             } else {
-              p.hp = 0; p.isDefeated = true;
-              dmgLines.push(`${p.name} -${bossDmg} 💀`);
+              p.hp = 0;
+              // Same fallback the hitsAlly branch above already does — dying
+              // while playing as yourself should check for an alive ally in
+              // reserve before declaring defeat, exactly like dying while an
+              // ally is active checks for the player (or another ally).
+              // Previously this branch skipped straight to isDefeated, so a
+              // player with a fully-healthy benched ally still got wiped.
+              const fallback = nextAliveFallback(p.roster, p.activePosition, pos => raidPositionHp(p, pos));
+              if (fallback === null) {
+                p.isDefeated = true;
+                dmgLines.push(`${p.name} -${bossDmg} — team wiped, 💀 defeated!`);
+              } else {
+                const bundle = positionValue(p.roster, fallback) === "self" ? null : (p.allyBundles[fallback] ?? null);
+                p.activePosition = fallback;
+                p.activeUnit = bundle ? "ally" : "player";
+                p.activeAllyCharacterId = bundle?.characterId ?? null;
+                p.allyKit = bundle?.kit ?? null;
+                p.allyHp = bundle?.hp ?? 0;
+                p.allyHpMax = bundle?.hpMax ?? 0;
+                p.allyMechanicState = bundle?.mechanicState ?? null;
+                p.solaceBasicLevel = bundle?.basicLevel ?? 1;
+                p.solaceSkillLevel = bundle?.skillLevel ?? 1;
+                p.solaceUltimateLevel = bundle?.ultimateLevel ?? 1;
+                p.solaceIntroLevel = bundle?.introLevel ?? 1;
+                p.solaceForteLevel = bundle?.forteLevel ?? 1;
+                p.solaceConstellation = bundle?.constellation ?? 0;
+                p.allySolaceStats = bundle?.solaceStats ?? null;
+                p.allyBonuses = bundle?.bonuses ?? null;
+                const fallbackLabel = bundle ? bundle.kit.label : p.name;
+                dmgLines.push(`${p.name} -${bossDmg} — falls back to **${fallbackLabel}**!`);
+              }
             }
           } else {
             const suffix = shield.blocked ? " 🛡" : radRegen > 0 ? ` +${radRegen}✨` : "";
