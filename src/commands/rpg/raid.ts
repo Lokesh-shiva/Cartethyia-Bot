@@ -2494,6 +2494,9 @@ async function launchRaid(
       if (raid.bossDefShredTurnsLeft > 0) raid.bossDefShredTurnsLeft--;
       if (raid.bossWeakenTurnsLeft > 0) raid.bossWeakenTurnsLeft--;
       if (raid.feyraBossWeakenTurnsLeft > 0) raid.feyraBossWeakenTurnsLeft--;
+      if (raid.bossSkillCdTurns > 0) raid.bossSkillCdTurns--;
+      if (raid.bossShieldTurnsLeft > 0) { raid.bossShieldTurnsLeft--; if (raid.bossShieldTurnsLeft === 0) raid.bossShieldHp = 0; }
+      if (raid.bossAtkBuffTurnsLeft > 0) { raid.bossAtkBuffTurnsLeft--; if (raid.bossAtkBuffTurnsLeft === 0) raid.bossAtkBuffPct = 0; }
       if (forcedCritActive && !isSwapAction) current.nextCritArmed = false;
 
       // All defeated?
