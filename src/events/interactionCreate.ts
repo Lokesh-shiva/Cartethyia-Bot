@@ -225,6 +225,7 @@ export async function execute(interaction: Interaction) {
         boss,
         instance.participants.map(p => ({ userId: p.userId, displayName: displayNameOf(p.userId) })),
         {
+          characterId: instance.event.bossCharacterId,
           statMultiplier: 1.5,
           evasionChance: 0.18,
           bossArtPathOverride: alphaRaidBossArtPath(instance.event.bossCharacterId),

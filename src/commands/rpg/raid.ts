@@ -55,11 +55,11 @@ import {
   getWellspringAtkBonus, getWellspringCritRateBonus, getWellspringDefBonus,
 } from "../../lib/wellspring";
 import { ForteState, addForteCharge, isForteMaxed, resetForte } from "../../lib/forte";
-import { AllyActionTarget } from "../../lib/allyActions";
+import { AllyAction, AllyActionTarget, applyAllyAction } from "../../lib/allyActions";
 import { addConcertoEnergy } from "../../lib/concertoEnergy";
 import { DebuffState, applyDebuff, tickDebuffs, getWeakenedMult, cleanseDebuffs } from "../../lib/debuffs";
-import { getOrCreateCharacterProgress } from "../../lib/characterProgress";
-import { CHARACTER_KITS, PlayableCharacterKit } from "../../lib/characterKit";
+import { getOrCreateCharacterProgress, MAX_KIT_LEVEL } from "../../lib/characterProgress";
+import { CHARACTER_KITS, PlayableCharacterKit, CharacterCombatContext } from "../../lib/characterKit";
 import {
   kaelithStackCap, kaelithBasicStackGain, kaelithUltimateBaseMult, KAELITH_PER_STACK_ULT_BONUS,
   KAELITH_FORTE_CONFIG, KAELITH_FORTE_GAIN_PER_BASIC, KaelithMechanicState,
@@ -334,6 +334,16 @@ interface ActiveRaid {
   bossWeakenPct:       number;
   feyraBossWeakenTurnsLeft: number; // Feyra's Ultimate — separate shared counter, same shape as Rhoven's own
   feyraBossWeakenPct:       number;
+  // ── Alpha Raid Phase 3: real per-character boss AI state ──────────────────
+  // Only ever populated when alphaOptions is present — undefined/0 for every
+  // normal /raid boss. Mirrors how a player's own allyMechanicState/skillCd
+  // round-trip, but for the boss itself.
+  bossMechanicState: unknown;
+  bossSkillCdTurns:  number;
+  bossShieldHp:         number; // absorbs incoming player damage before bossHp, from a kit's SHIELD_ALLY action
+  bossShieldTurnsLeft:  number;
+  bossAtkBuffPct:        number; // from a kit's BUFF_ALLY_ATK action
+  bossAtkBuffTurnsLeft:  number;
   phase:         "RECRUITING" | "FIGHTING";
   participants:  RaidParticipant[];
   currentIdx:    number;
@@ -713,6 +723,9 @@ async function startRaid(interaction: ChatInputCommandInteraction) {
     bossWeakenPct:       0,
     feyraBossWeakenTurnsLeft: 0,
     feyraBossWeakenPct:       0,
+    bossMechanicState: null, bossSkillCdTurns: 0,
+    bossShieldHp: 0, bossShieldTurnsLeft: 0,
+    bossAtkBuffPct: 0, bossAtkBuffTurnsLeft: 0,
     phase:        "RECRUITING",
     participants: [],
     currentIdx:   0,
@@ -967,6 +980,7 @@ async function endRaid(interaction: ChatInputCommandInteraction) {
 // participant list — this seeds a fresh in-memory ActiveRaid from it the
 // same way addParticipant() already builds one from a live interaction.
 export interface AlphaRaidOptions {
+  characterId: string;         // CHARACTER_KITS id — which kit the boss's real Skill/Ultimate calls use
   statMultiplier: number;      // applied to every axis of computeRaidBossStats()'s output
   evasionChance: number;       // 0-1, boss dodges a player hit entirely
   bossArtPathOverride: string | null;
@@ -994,6 +1008,9 @@ export async function startAlphaRaidFight(
     bossDefShredTurnsLeft: 0, bossDefShredPct: 0,
     bossWeakenTurnsLeft: 0, bossWeakenPct: 0,
     feyraBossWeakenTurnsLeft: 0, feyraBossWeakenPct: 0,
+    bossMechanicState: null, bossSkillCdTurns: 0,
+    bossShieldHp: 0, bossShieldTurnsLeft: 0,
+    bossAtkBuffPct: 0, bossAtkBuffTurnsLeft: 0,
     phase: "RECRUITING", participants: [], currentIdx: 0, turn: 1,
     channelId, guildId, organizerId, isDevGuild: true,
   };
@@ -1052,6 +1069,13 @@ async function launchRaid(
   raid.bossDef     = Math.floor(scaled.def * statMult);
   raid.bossVib     = Math.floor(scaled.vibBar * statMult);
   raid.bossVibMax  = raid.bossVib;
+
+  // Alpha Raid Phase 3: seed the boss's own mechanic-state from its real kit,
+  // exactly like a player's allyMechanicState is seeded at join time.
+  if (alphaOptions) {
+    const bossKit = CHARACTER_KITS[alphaOptions.characterId];
+    raid.bossMechanicState = bossKit?.createInitialMechanicState() ?? null;
+  }
 
   // ── Show scaling summary in the recruit embed ────────────────────────────────
   const n          = raid.participants.length;
