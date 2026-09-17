@@ -2227,14 +2227,84 @@ async function launchRaid(
         }
       } else {
         const enraged = !!alphaOptions && raid.bossHp / raid.bossHpMax <= 0.4;
-        const move    = enraged ? boss.moves[boss.moves.length - 1]! : boss.moves[Math.floor(Math.random() * boss.moves.length)]!;
+        // Alpha Raid Phase 3 cadence: enrage -> real Ultimate, cooldown-ready
+        // -> real Skill, else Basic (flavor-name-only, unchanged from Phase 2).
+        // Normal /raid bosses (alphaOptions absent) keep Phase 2's fully
+        // random tier pick, since they never had real-kit moves to gate.
+        const moveIdx = !alphaOptions
+          ? Math.floor(Math.random() * boss.moves.length)
+          : enraged ? 2 : (raid.bossSkillCdTurns === 0 ? 1 : 0);
+        const move = boss.moves[moveIdx]!;
         const enrageAtkMult = enraged ? 1.6 : 1;
         const bossWeakenActive = raid.bossWeakenTurnsLeft > 0;
         const feyraBossWeakenActive = raid.feyraBossWeakenTurnsLeft > 0;
-        const aoeBase = Math.floor(raid.bossAtk * move.damage * 0.6 * enrageAtkMult * (bossWeakenActive ? (1 - raid.bossWeakenPct) : 1) * (feyraBossWeakenActive ? (1 - raid.feyraBossWeakenPct) : 1)); // AoE = 60% of single-target
+        const alphaAtkBuffActive = !!alphaOptions && raid.bossAtkBuffTurnsLeft > 0;
         const alive   = raid.participants.filter(p => !p.isDefeated);
         if (enraged && alphaOptions) moveLine += `\n🔥 **${boss.name}** enrages, striking with everything it has!`;
         const dmgLines: string[] = [];
+
+        // Alpha Raid Phase 3: run the real kit call for Skill/Ultimate tiers,
+        // applying ONLY the generic base-interface fields — damageMult,
+        // mechanic-state, and healResult.actions via applyAllyAction(). Never
+        // reads a character-specific extension field (hpCost, enemy-facing
+        // weaken, etc.) — that's the whole point: a brand-new character's
+        // kit works here with zero new code, the same day it's added to
+        // CHARACTER_KITS.
+        let kitDamageMult = 1;
+        if (alphaOptions && moveIdx > 0) {
+          const bossKit = CHARACTER_KITS[alphaOptions.characterId];
+          if (bossKit) {
+            const ctx: CharacterCombatContext = {
+              playerHp: raid.bossHp, playerHpMax: raid.bossHpMax,
+              allyHp:   raid.bossHp, allyHpMax:   raid.bossHpMax,
+              turn: raid.turn, isShattered: false,
+              mechanicState: raid.bossMechanicState,
+            };
+            const kitLevels = {
+              basicLevel: MAX_KIT_LEVEL, skillLevel: MAX_KIT_LEVEL, ultimateLevel: MAX_KIT_LEVEL,
+              introLevel: MAX_KIT_LEVEL, forteLevel: MAX_KIT_LEVEL,
+            };
+            const healActions: AllyAction[] = [];
+            if (moveIdx === 2) {
+              const ult = bossKit.onUltimate(ctx, kitLevels, 0);
+              raid.bossMechanicState = ult.newMechanicState;
+              if (ult.moveLabel) moveLine += `\n⚡ ${ult.moveLabel}`;
+              healActions.push(...ult.healResult.actions);
+            } else {
+              const sk = bossKit.onSkill(ctx, kitLevels, 0);
+              raid.bossMechanicState = sk.newMechanicState;
+              kitDamageMult = sk.damageMult;
+              raid.bossSkillCdTurns = bossKit.skillCooldownTurns;
+              if (sk.moveLabel) moveLine += `\n✦ ${sk.moveLabel}`;
+            }
+            for (const action of healActions) {
+              const result = applyAllyAction(action, { hp: raid.bossHp, hpMax: raid.bossHpMax });
+              if (result.hpDelta > 0) {
+                raid.bossHp = Math.min(raid.bossHpMax, raid.bossHp + result.hpDelta);
+                moveLine += `\n💚 **${boss.name}** heals for ${result.hpDelta}!`;
+              }
+              if (result.shieldDelta > 0) {
+                raid.bossShieldHp = result.shieldDelta;
+                raid.bossShieldTurnsLeft = 3;
+                moveLine += `\n🛡 **${boss.name}** shields itself for ${result.shieldDelta}!`;
+              }
+              if (result.atkBuffPct > 0) {
+                raid.bossAtkBuffPct = result.atkBuffPct;
+                raid.bossAtkBuffTurnsLeft = 3;
+                moveLine += `\n💢 **${boss.name}**'s ATK rises!`;
+              }
+              // critRateBuffPct/cleanseCount: no boss-side analog (bosses don't
+              // crit-roll their own attacks, and take no debuffs today) —
+              // intentional no-op, not a missing branch.
+            }
+          }
+        }
+
+        // aoeBase is computed AFTER the real-kit call above so kitDamageMult
+        // (only known once a Skill cast resolves) can fold in — move.damage
+        // stays the Phase 2 baseline (1.0/1.3/1.6 by tier), kitDamageMult
+        // multiplies on top, defaulting to 1 for Basic/Ultimate/non-Alpha bosses.
+        const aoeBase = Math.floor(raid.bossAtk * move.damage * kitDamageMult * 0.6 * enrageAtkMult * (alphaAtkBuffActive ? (1 + raid.bossAtkBuffPct) : 1) * (bossWeakenActive ? (1 - raid.bossWeakenPct) : 1) * (feyraBossWeakenActive ? (1 - raid.feyraBossWeakenPct) : 1)); // AoE = 60% of single-target
         // Milestone 3d: party-wide DEF bonuses (Attunement DEF-mode/Wellspring/
         // Forte) from whoever currently has their Solace active apply to
         // EVERY living participant's damage taken, not just the owner's.
