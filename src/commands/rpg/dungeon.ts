@@ -1881,11 +1881,17 @@ async function runWave(
               moveLine += `\n🌑 **Void Frenzy** — ATK +${Math.floor((frenzy.atkMult - 1) * 100)}%, Lifesteal +${Math.floor(frenzy.lifesteal * 100)}%, ignoring ${Math.floor(frenzy.defIgnorePct * 100)}% enemy DEF!`;
             }
           }
+          // Bug fix (2026-09-18): see raid.ts/boss.ts/field-boss.ts — these
+          // three effects key off activeBonuses/namedState (dynamically the
+          // active unit) but were applying the heal/shield to the hardcoded
+          // player body.
+          const activeHpMaxForHeals = allyIsActive ? allyHpMax : ws.playerHpMax;
           if (activeBonuses.activeNamedSetId === "RADIANT_CONVERGENCE") {
-            radiantConvergenceOnHitTaken(ws.namedState, bossDmg, ws.playerHpMax);
-            const burst = radiantConvergenceCheckBurstHeal(ws.namedState, ws.playerHp, ws.playerHpMax, activeBonuses.healingBonus);
-            if (burst > 0) {
-              ws.playerHp = Math.min(ws.playerHpMax, ws.playerHp + burst);
+            radiantConvergenceOnHitTaken(ws.namedState, bossDmg, activeHpMaxForHeals);
+            const burst = radiantConvergenceCheckBurstHeal(ws.namedState, allyIsActive ? allyHp : ws.playerHp, activeHpMaxForHeals, activeBonuses.healingBonus);
+            if (burst > 0 && (allyIsActive ? allyHp : ws.playerHp) > 0) {
+              if (allyIsActive) allyHp = Math.min(allyHpMax, allyHp + burst);
+              else ws.playerHp = Math.min(ws.playerHpMax, ws.playerHp + burst);
               moveLine += `\n✨ **Radiant Convergence** — burst-heal +${burst} HP!`;
             }
           }
@@ -1895,9 +1901,10 @@ async function runWave(
               vibBar = Math.max(0, vibBar - Math.floor(50 * counter.vibDrain));
               moveLine += `\n❄️ **Counter-Frost** — drained ${Math.floor(counter.vibDrain * 100)}% enemy vibration!`;
             }
-            const panic = frostveilBastionCheckPanicShield(ws.namedState, ws.playerHp, ws.playerHpMax);
-            if (panic.triggered) {
-              ws.playerHp = Math.min(ws.playerHpMax, ws.playerHp + panic.shieldAmount);
+            const panic = frostveilBastionCheckPanicShield(ws.namedState, allyIsActive ? allyHp : ws.playerHp, activeHpMaxForHeals);
+            if (panic.triggered && (allyIsActive ? allyHp : ws.playerHp) > 0) {
+              if (allyIsActive) allyHp = Math.min(allyHpMax, allyHp + panic.shieldAmount);
+              else ws.playerHp = Math.min(ws.playerHpMax, ws.playerHp + panic.shieldAmount);
               ws.glacioShieldTurnsLeft = panic.turnsLeft + 1;
               ws.glacioShieldElemBonus = panic.elemDmgBonus;
               moveLine += `\n❄️ **Frostveil Shield** — +${panic.shieldAmount} HP, +${Math.floor(panic.elemDmgBonus * 100)}% Glacio DMG for ${panic.turnsLeft} turns!`;
@@ -1907,8 +1914,11 @@ async function runWave(
           if (hpRegen > 0 && typeof activeBonuses.set5pc?.value === "number" && activeBonuses.set5pc.value < 1) {
             ws.playerHp = Math.min(ws.playerHpMax, ws.playerHp + hpRegen);
           }
-          const radRegen = elemRadianceRegen(activeBonuses.elementPassive, ws.playerHpMax);
-          if (radRegen > 0) ws.playerHp = Math.min(ws.playerHpMax, ws.playerHp + radRegen);
+          const radRegen = elemRadianceRegen(activeBonuses.elementPassive, activeHpMaxForHeals);
+          if (radRegen > 0 && (allyIsActive ? allyHp : ws.playerHp) > 0) {
+            if (allyIsActive) allyHp = Math.min(allyHpMax, allyHp + radRegen);
+            else ws.playerHp = Math.min(ws.playerHpMax, ws.playerHp + radRegen);
+          }
           ws.playerEnergy = Math.min(100, ws.playerEnergy + 15);
           moveLine      += `\n◇ ${enemy.name} ${move} — **${bossDmg} DMG**${shield.blocked ? " *(Frost Shield!)*" : ""}${radRegen > 0 ? ` *(+${radRegen} Radiance)*` : ""}`;
 

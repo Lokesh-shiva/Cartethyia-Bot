@@ -1873,11 +1873,16 @@ const command: Command = {
                 state.lastMove = (state.lastMove ?? "") + `\n🌑 **Void Frenzy** — ATK +${Math.floor((frenzy.atkMult - 1) * 100)}%, Lifesteal +${Math.floor(frenzy.lifesteal * 100)}%, ignoring ${Math.floor(frenzy.defIgnorePct * 100)}% enemy DEF!`;
               }
             }
+            // Bug fix (2026-09-18): see raid.ts/boss.ts — these three effects
+            // key off activeBonuses/namedState (dynamically the active unit)
+            // but were applying the heal/shield to the hardcoded player body.
+            const activeHpMaxForHeals = allyIsActive ? allyHpMax : state.playerHpMax;
             if (activeBonuses.activeNamedSetId === "RADIANT_CONVERGENCE") {
-              radiantConvergenceOnHitTaken(namedState, bossDmg, state.playerHpMax);
-              const burst = radiantConvergenceCheckBurstHeal(namedState, state.playerHp, state.playerHpMax, activeBonuses.healingBonus);
-              if (burst > 0) {
-                state.playerHp = Math.min(state.playerHpMax, state.playerHp + burst);
+              radiantConvergenceOnHitTaken(namedState, bossDmg, activeHpMaxForHeals);
+              const burst = radiantConvergenceCheckBurstHeal(namedState, allyIsActive ? allyHp : state.playerHp, activeHpMaxForHeals, activeBonuses.healingBonus);
+              if (burst > 0 && (allyIsActive ? allyHp : state.playerHp) > 0) {
+                if (allyIsActive) allyHp = Math.min(allyHpMax, allyHp + burst);
+                else state.playerHp = Math.min(state.playerHpMax, state.playerHp + burst);
                 state.lastMove = (state.lastMove ?? "") + `\n✨ **Radiant Convergence** — burst-heal +${burst} HP!`;
               }
             }
@@ -1887,9 +1892,10 @@ const command: Command = {
                 state.bossVibNow = Math.max(0, state.bossVibNow - Math.floor(fb.vibBar * counter.vibDrain));
                 state.lastMove  += `\n❄️ **Counter-Frost** — drained ${Math.floor(counter.vibDrain * 100)}% enemy vibration!`;
               }
-              const panic = frostveilBastionCheckPanicShield(namedState, state.playerHp, state.playerHpMax);
-              if (panic.triggered) {
-                state.playerHp = Math.min(state.playerHpMax, state.playerHp + panic.shieldAmount);
+              const panic = frostveilBastionCheckPanicShield(namedState, allyIsActive ? allyHp : state.playerHp, activeHpMaxForHeals);
+              if (panic.triggered && (allyIsActive ? allyHp : state.playerHp) > 0) {
+                if (allyIsActive) allyHp = Math.min(allyHpMax, allyHp + panic.shieldAmount);
+                else state.playerHp = Math.min(state.playerHpMax, state.playerHp + panic.shieldAmount);
                 glacioShieldTurnsLeft = panic.turnsLeft + 1; // +1 compensates for the same-round decrement that fires immediately after this triggers (shield is granted mid-round, after the player already acted, so the triggering round's decrement would otherwise eat into the advertised duration)
                 glacioShieldElemBonus = panic.elemDmgBonus;
                 state.lastMove += `\n❄️ **Frostveil Shield** — +${panic.shieldAmount} HP, +${Math.floor(panic.elemDmgBonus * 100)}% Glacio DMG for ${panic.turnsLeft} turns!`;
@@ -1898,8 +1904,11 @@ const command: Command = {
             const hpRegen  = get5pcHpRegen(bonuses, state.playerHpMax);
             if (hpRegen > 0 && typeof activeBonuses.set5pc?.value === "number" && activeBonuses.set5pc.value < 1)
               state.playerHp = Math.min(state.playerHpMax, state.playerHp + hpRegen);
-            const radRegen = elemRadianceRegen(activeBonuses.elementPassive, state.playerHpMax);
-            if (radRegen > 0) state.playerHp = Math.min(state.playerHpMax, state.playerHp + radRegen);
+            const radRegen = elemRadianceRegen(activeBonuses.elementPassive, activeHpMaxForHeals);
+            if (radRegen > 0 && (allyIsActive ? allyHp : state.playerHp) > 0) {
+              if (allyIsActive) allyHp = Math.min(allyHpMax, allyHp + radRegen);
+              else state.playerHp = Math.min(state.playerHpMax, state.playerHp + radRegen);
+            }
             state.lastMove += `\n◇ ${fb.name} ${move.effect} — **${bossDmg} DMG**${shield.blocked ? " *(Frost Shield!)*" : ""}${radRegen > 0 ? ` *(+${radRegen} Radiance)*` : ""}`;
             state.playerEnergy = Math.min(100, state.playerEnergy + 15);
             const v2Regen = abilityV2TurnRegen(bonuses, state.playerHpMax);

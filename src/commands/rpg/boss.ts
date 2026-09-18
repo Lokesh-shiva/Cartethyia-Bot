@@ -1667,11 +1667,21 @@ const command: Command = {
                 state.lastMove = (state.lastMove ?? "") + `\n🌑 **Void Frenzy** — ATK +${Math.floor((frenzy.atkMult - 1) * 100)}%, Lifesteal +${Math.floor(frenzy.lifesteal * 100)}%, ignoring ${Math.floor(frenzy.defIgnorePct * 100)}% enemy DEF!`;
               }
             }
+            // Bug fix (2026-09-18): these three effects all key off
+            // activeBonuses/namedState — which dynamically follows whichever
+            // unit (player or active ally) is currently fighting — but were
+            // applying their heal/shield result to the hardcoded player body
+            // regardless. When an ally with the matching element/named-set
+            // was active, the heal/shield silently went to the WRONG (benched)
+            // pool. Also guards against reviving a unit that just hit 0 from
+            // the preceding lethal hit, before any KO check has run.
+            const activeHpMaxForHeals = allyIsActive ? allyHpMax : state.playerHpMax;
             if (activeBonuses.activeNamedSetId === "RADIANT_CONVERGENCE") {
-              radiantConvergenceOnHitTaken(namedState, bossDmg, state.playerHpMax);
-              const burst = radiantConvergenceCheckBurstHeal(namedState, state.playerHp, state.playerHpMax, activeBonuses.healingBonus);
-              if (burst > 0) {
-                state.playerHp = Math.min(state.playerHpMax, state.playerHp + burst);
+              radiantConvergenceOnHitTaken(namedState, bossDmg, activeHpMaxForHeals);
+              const burst = radiantConvergenceCheckBurstHeal(namedState, allyIsActive ? allyHp : state.playerHp, activeHpMaxForHeals, activeBonuses.healingBonus);
+              if (burst > 0 && (allyIsActive ? allyHp : state.playerHp) > 0) {
+                if (allyIsActive) allyHp = Math.min(allyHpMax, allyHp + burst);
+                else state.playerHp = Math.min(state.playerHpMax, state.playerHp + burst);
                 state.lastMove = (state.lastMove ?? "") + `\n✨ **Radiant Convergence** — burst-heal +${burst} HP!`;
               }
             }
@@ -1681,9 +1691,10 @@ const command: Command = {
                 state.bossVibNow = Math.max(0, state.bossVibNow - Math.floor(boss.vibBar * counter.vibDrain));
                 state.lastMove  += `\n❄️ **Counter-Frost** — drained ${Math.floor(counter.vibDrain * 100)}% enemy vibration!`;
               }
-              const panic = frostveilBastionCheckPanicShield(namedState, state.playerHp, state.playerHpMax);
-              if (panic.triggered) {
-                state.playerHp = Math.min(state.playerHpMax, state.playerHp + panic.shieldAmount);
+              const panic = frostveilBastionCheckPanicShield(namedState, allyIsActive ? allyHp : state.playerHp, activeHpMaxForHeals);
+              if (panic.triggered && (allyIsActive ? allyHp : state.playerHp) > 0) {
+                if (allyIsActive) allyHp = Math.min(allyHpMax, allyHp + panic.shieldAmount);
+                else state.playerHp = Math.min(state.playerHpMax, state.playerHp + panic.shieldAmount);
                 glacioShieldTurnsLeft = panic.turnsLeft + 1; // +1 compensates for the same-round decrement that fires immediately after this triggers
                 glacioShieldElemBonus = panic.elemDmgBonus;
                 state.lastMove += `\n❄️ **Frostveil Shield** — +${panic.shieldAmount} HP, +${Math.floor(panic.elemDmgBonus * 100)}% Glacio DMG for ${panic.turnsLeft} turns!`;
@@ -1693,8 +1704,11 @@ const command: Command = {
             if (hpRegen > 0 && typeof activeBonuses.set5pc?.value === "number" && activeBonuses.set5pc.value < 1) {
               state.playerHp = Math.min(state.playerHpMax, state.playerHp + hpRegen);
             }
-            const radRegen = elemRadianceRegen(activeBonuses.elementPassive, state.playerHpMax);
-            if (radRegen > 0) state.playerHp = Math.min(state.playerHpMax, state.playerHp + radRegen);
+            const radRegen = elemRadianceRegen(activeBonuses.elementPassive, activeHpMaxForHeals);
+            if (radRegen > 0 && (allyIsActive ? allyHp : state.playerHp) > 0) {
+              if (allyIsActive) allyHp = Math.min(allyHpMax, allyHp + radRegen);
+              else state.playerHp = Math.min(state.playerHpMax, state.playerHp + radRegen);
+            }
             state.lastMove += `\n◇ ${boss.name} ${move.effect} — **${bossDmg} DMG**${isEnraged ? " 🔴" : ""}${shield.blocked ? " *(Frost Shield!)*" : ""}${radRegen > 0 ? ` *(+${radRegen} Radiance)*` : ""}`;
             state.playerEnergy = Math.min(100, state.playerEnergy + 15);
 
