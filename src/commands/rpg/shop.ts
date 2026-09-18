@@ -119,6 +119,20 @@ const SHOP_ITEMS: ShopItem[] = [
     gives: { resonanceRecords: 3 },
     quantities: [1, 3],
   },
+  {
+    id: "lk_fracture_key", name: "Fracture Key", emoji: "🗝️",
+    description: "1 Standard Banner pull for 2 Lunakite.",
+    currency: "lunakite", price: 2,
+    gives: { fractureKeys: 1 },
+    quantities: [1, 3, 5],
+  },
+  {
+    id: "lk_radiant_key", name: "Radiant Key", emoji: "🔑",
+    description: "1 Limited Banner pull for 3 Lunakite.",
+    currency: "lunakite", price: 3,
+    gives: { radiantKeys: 1 },
+    quantities: [1, 3, 5],
+  },
 ];
 
 const CREDITS_ITEMS  = SHOP_ITEMS.filter(i => i.currency === "credits");
