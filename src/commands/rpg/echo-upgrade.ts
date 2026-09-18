@@ -20,7 +20,30 @@ const REVEAL_MILESTONES = [5, 10, 15, 20, 25];
 
 export const data = new SlashCommandBuilder()
   .setName("echo-upgrade")
-  .setDescription("Level up an echo using Tuning Modules (max level 25).");
+  .setDescription("Level up an echo using Tuning Modules (max level 25).")
+  .addStringOption(o =>
+    o.setName("main_stat")
+      .setDescription("Filter by main stat")
+      .setRequired(false)
+      .addChoices(
+        { name: "HP",             value: "HP_FLAT"     },
+        { name: "HP%",            value: "HP_PCT"       },
+        { name: "ATK",            value: "ATK_FLAT"     },
+        { name: "ATK%",           value: "ATK_PCT"      },
+        { name: "DEF",            value: "DEF_FLAT"     },
+        { name: "DEF%",           value: "DEF_PCT"      },
+        { name: "Crit Rate",      value: "CRIT_RATE"    },
+        { name: "Crit DMG",       value: "CRIT_DMG"     },
+        { name: "Elemental DMG%", value: "ELEM_DMG_PCT" },
+        { name: "Healing Bonus",  value: "HEALING_PCT"  },
+        { name: "Fusion DMG",     value: "FUSION_DMG"   },
+        { name: "Glacio DMG",     value: "GLACIO_DMG"   },
+        { name: "Electro DMG",    value: "ELECTRO_DMG"  },
+        { name: "Aero DMG",       value: "AERO_DMG"     },
+        { name: "Havoc DMG",      value: "HAVOC_DMG"    },
+        { name: "Spectro DMG",    value: "SPECTRO_DMG"  },
+      )
+  );
 
 function modeButtons(echoId: string, ar: boolean) {
   const a = ar ? "1" : "0";
@@ -45,8 +68,12 @@ export async function execute(interaction: ChatInputCommandInteraction) {
 
   const color = ELEMENT_COLORS[dbUser.element as Element];
 
+  const filterMainStat = interaction.options.getString("main_stat") ?? null;
+  const where: any = { userId: interaction.user.id };
+  if (filterMainStat) where.mainStatType = filterMainStat;
+
   const echoes = await prisma.echo.findMany({
-    where:   { userId: interaction.user.id },
+    where,
     orderBy: [{ isEquipped: "desc" }, { rarity: "desc" }, { level: "asc" }],
     take:    25,
   });
@@ -57,7 +84,11 @@ export async function execute(interaction: ChatInputCommandInteraction) {
     await interaction.editReply({
       embeds: [new EmbedBuilder()
         .setColor(color)
-        .setDescription("All your echoes are already at max level.")
+        .setDescription(
+          filterMainStat
+            ? `No upgradeable echoes found with main stat **${MAIN_STAT_LABELS[filterMainStat] ?? filterMainStat}**.`
+            : "All your echoes are already at max level."
+        )
         .setFooter({ text: "CARTETHYIA  ·  Echo Upgrade" })],
     });
     return;
@@ -79,7 +110,9 @@ export async function execute(interaction: ChatInputCommandInteraction) {
   const selectRow = new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(
     new StringSelectMenuBuilder()
       .setCustomId("echo_upgrade_select")
-      .setPlaceholder("Select an echo to upgrade…")
+      .setPlaceholder(filterMainStat
+        ? `Showing ${upgradeable.length} echo${upgradeable.length !== 1 ? "es" : ""} — Main: ${MAIN_STAT_LABELS[filterMainStat] ?? filterMainStat}`
+        : "Select an echo to upgrade…")
       .addOptions(options)
   );
 

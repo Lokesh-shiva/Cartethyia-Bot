@@ -37,13 +37,37 @@ export const data = new SlashCommandBuilder()
         { name: "3-cost  (field)",        value: 3 },
         { name: "4-cost  (boss)",         value: 4 },
       )
+  )
+  .addStringOption(o =>
+    o.setName("main_stat")
+      .setDescription("Filter by main stat")
+      .setRequired(false)
+      .addChoices(
+        { name: "HP",             value: "HP_FLAT"     },
+        { name: "HP%",            value: "HP_PCT"       },
+        { name: "ATK",            value: "ATK_FLAT"     },
+        { name: "ATK%",           value: "ATK_PCT"      },
+        { name: "DEF",            value: "DEF_FLAT"     },
+        { name: "DEF%",           value: "DEF_PCT"      },
+        { name: "Crit Rate",      value: "CRIT_RATE"    },
+        { name: "Crit DMG",       value: "CRIT_DMG"     },
+        { name: "Elemental DMG%", value: "ELEM_DMG_PCT" },
+        { name: "Healing Bonus",  value: "HEALING_PCT"  },
+        { name: "Fusion DMG",     value: "FUSION_DMG"   },
+        { name: "Glacio DMG",     value: "GLACIO_DMG"   },
+        { name: "Electro DMG",    value: "ELECTRO_DMG"  },
+        { name: "Aero DMG",       value: "AERO_DMG"     },
+        { name: "Havoc DMG",      value: "HAVOC_DMG"    },
+        { name: "Spectro DMG",    value: "SPECTRO_DMG"  },
+      )
   );
 
 export async function execute(interaction: ChatInputCommandInteraction) {
   await interaction.deferReply();
 
-  const filterElement = interaction.options.getString("element")   ?? null;
-  const filterCost    = interaction.options.getInteger("cost")     ?? null;
+  const filterElement  = interaction.options.getString("element")   ?? null;
+  const filterCost     = interaction.options.getInteger("cost")     ?? null;
+  const filterMainStat = interaction.options.getString("main_stat") ?? null;
 
   const dbUser = await prisma.user.findUnique({
     where:  { id: interaction.user.id },
@@ -52,8 +76,9 @@ export async function execute(interaction: ChatInputCommandInteraction) {
   if (!dbUser) { await replyNotStarted(interaction); return; }
 
   const where: any = { userId: interaction.user.id };
-  if (filterElement) where.element = filterElement;
-  if (filterCost)    where.cost    = filterCost;
+  if (filterElement)  where.element      = filterElement;
+  if (filterCost)     where.cost         = filterCost;
+  if (filterMainStat) where.mainStatType = filterMainStat;
 
   const echoes = await prisma.echo.findMany({
     where,
@@ -61,8 +86,9 @@ export async function execute(interaction: ChatInputCommandInteraction) {
   });
 
   const filterDesc = [
-    filterElement ? `${ELEMENT_EMOJI[filterElement as Element]} ${filterElement}` : null,
-    filterCost    ? `${filterCost}-cost` : null,
+    filterElement  ? `${ELEMENT_EMOJI[filterElement as Element]} ${filterElement}` : null,
+    filterCost     ? `${filterCost}-cost` : null,
+    filterMainStat ? `Main: ${MAIN_STAT_LABELS[filterMainStat] ?? filterMainStat}` : null,
   ].filter(Boolean).join("  ·  ");
 
   const color = ELEMENT_COLORS[(filterElement as Element) ?? (dbUser.element as Element)];
