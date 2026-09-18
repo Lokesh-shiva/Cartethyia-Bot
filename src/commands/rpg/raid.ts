@@ -2333,12 +2333,24 @@ async function launchRaid(
           let bossDmg    = calcEnemyDamage(aoeBase, pActiveDef * party.defMult * pRiloDefBuffMult, 1.0);
           const shield   = elemFrostShield(pActiveBonuses.elementPassive, bossDmg);
           bossDmg        = shield.dmg;
-          const radRegen = elemRadianceRegen(pActiveBonuses.elementPassive, p.hpMax);
 
           // Milestone 3d: while a participant's own Solace is active, AoE
           // damage routes into her ally HP pool instead of the participant's
           // own HP — depleting it is NOT a defeat, just a forced swap back.
           const hitsAlly = raid.isDevGuild && p.activeUnit === "ally";
+          // Bug fix (2026-09-18): radRegen was previously computed off
+          // p.hpMax unconditionally, even for an active ally with a
+          // completely different (often much smaller) allyHpMax — inflating
+          // the regen fraction whenever the player's own HP pool was larger
+          // than their ally's. Worse, it was applied unconditionally right
+          // after the damage subtraction, in the SAME block, before any KO
+          // check ran — so a lethal hit that dropped HP to 0 got silently
+          // revived by regen before the game ever noticed the unit had died.
+          // A Spectro-passive (RADIANCE) unit — Solace herself included —
+          // was therefore functionally unkillable via this AoE regardless of
+          // level, exactly as reported: "level 1 Solace not even dying to a
+          // raid boss... other person['s] Solace also not dying."
+          const radRegen = elemRadianceRegen(pActiveBonuses.elementPassive, hitsAlly ? p.allyHpMax : p.hpMax);
           if (hitsAlly && p.activeAllyCharacterId === "rilo") {
             const rState = p.allyMechanicState as RiloMechanicState;
             const hitResult = riloOnHitTaken(rState, bossDmg, p.allyHp, p.allyHpMax, p.solaceConstellation);
@@ -2348,10 +2360,10 @@ async function launchRaid(
           }
           if (hitsAlly) {
             p.allyHp = Math.max(0, p.allyHp - bossDmg);
-            if (radRegen > 0) p.allyHp = Math.min(p.allyHpMax, p.allyHp + radRegen);
+            if (radRegen > 0 && p.allyHp > 0) p.allyHp = Math.min(p.allyHpMax, p.allyHp + radRegen);
           } else {
             p.hp = Math.max(0, p.hp - bossDmg);
-            if (radRegen > 0) p.hp = Math.min(p.hpMax, p.hp + radRegen);
+            if (radRegen > 0 && p.hp > 0) p.hp = Math.min(p.hpMax, p.hp + radRegen);
           }
 
           const pSetId = pActiveBonuses.activeNamedSetId;
