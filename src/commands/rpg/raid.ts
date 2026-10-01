@@ -34,6 +34,12 @@ import { incrementWeaponBond }    from "../../lib/weaponAwakening";
 import { generateRaidCard }       from "../../lib/versusCard";
 import { isOwner }                from "../../lib/owner";
 import {
+  CombatStats, addCombatStats, emptyCombatStats, formatCombatStats,
+  formatCombatStatsSummary, recordDamageDone, recordDamageTaken,
+  recordDirectHeal, recordLifesteal, recordShatter, recordVibrationDamage,
+  sumCombatStats,
+} from "../../lib/combatStats";
+import {
   BOSS_ECHO_DEFINITIONS, rollRarity, rollMainStat, substatCount,
   rollSubstats, rollSubstatValue, calcMainStatValue, scaledFieldBossRarityWeights,
 } from "../../lib/echoes";
@@ -272,6 +278,7 @@ interface RaidParticipant {
   firstAction:    boolean;
   secondWindUsed: boolean;
   dmgDealt:       number;
+  combatStats:    CombatStats;
   isDefeated:     boolean;
   namedState:            NamedSetState;
   glacioShieldTurnsLeft: number;
@@ -378,6 +385,21 @@ function elementEmoji(el: string): string {
   return m[el] ?? "◇";
 }
 
+function setRaidVibration(raid: ActiveRaid, participant: RaidParticipant, next: number): void {
+  const before = raid.bossVib;
+  raid.bossVib = Math.max(0, next);
+  recordVibrationDamage(participant.combatStats, before, raid.bossVib);
+}
+
+function raidStatsRow(p: RaidParticipant): string {
+  const s = p.combatStats;
+  return `${elementEmoji(p.element)} **${p.name}** — DMG ${s.damageDone.toLocaleString()} · Taken ${s.damageTaken.toLocaleString()} · Heal ${s.healed.toLocaleString()} · LS ${s.lifesteal.toLocaleString()} · Vib ${s.vibrationDamage.toLocaleString()} · Shatters ${s.shatters}`;
+}
+
+function raidStatsTotal(raid: ActiveRaid): CombatStats {
+  return sumCombatStats(raid.participants.map(p => p.combatStats));
+}
+
 /**
  * Milestone 3d: party-wide team status line. Empty string outside dev guilds.
  * Lists every participant who has Solace unlocked, their currently-active unit,
@@ -440,6 +462,11 @@ function raidEmbed(raid: ActiveRaid, boss: RaidBossConfig, lastAction: string): 
       {
         name:  `Resonators  [${alive.length}/${raid.participants.length} standing]`,
         value: participantLines.join("\n"),
+        inline: false,
+      },
+      {
+        name:  "📊 Party Combat Stats",
+        value: formatCombatStats(raidStatsTotal(raid)),
         inline: false,
       },
       {
@@ -881,7 +908,7 @@ async function addParticipant(raid: ActiveRaid, userId: string, displayName: str
     critRate: stats.critRate, critDmg: stats.critDmg,
     elemDmg: stats.elemDmgBonus, lifesteal: stats.lifesteal, bonuses,
     firstAction: true, secondWindUsed: false,
-    dmgDealt: 0, isDefeated: false,
+    dmgDealt: 0, combatStats: emptyCombatStats(), isDefeated: false,
     namedState: initNamedSetState(),
     glacioShieldTurnsLeft: 0, glacioShieldElemBonus: 0,
     riloDefBuffTurnsLeft: 0, riloDefBuffPct: 0,
@@ -1135,6 +1162,11 @@ async function launchRaid(
     activeRaids.delete(channelId);
     for (const p of raid.participants) await clearFight(p.userId).catch(() => {});
 
+    const contribLines = [...raid.participants]
+      .sort((a, b) => b.combatStats.damageDone - a.combatStats.damageDone)
+      .map((p, i) => `${i + 1}. ${raidStatsRow(p)}`);
+    const totalStats = raidStatsTotal(raid);
+
     if (won) {
       const loot     = boss.defeatLoot;
       const perPlayer = {
@@ -1198,10 +1230,6 @@ async function launchRaid(
         raidEchoLine = `\n🌀 **${raidEchoDef.name}** (4-cost) awarded to every participant!`;
       }
 
-      const contribLines = [...raid.participants]
-        .sort((a, b) => b.dmgDealt - a.dmgDealt)
-        .map((p, i) => `${i + 1}. ${elementEmoji(p.element)} ${p.name} — **${p.dmgDealt.toLocaleString()} DMG**`);
-
       const winCard = await generateRaidCard(
         boss.name, boss.element,
         fs.existsSync(bossArtPath) ? bossArtPath : null,
@@ -1215,7 +1243,8 @@ async function launchRaid(
           .setDescription(
             `**${boss.name}** has been defeated!\n\n` +
             `**Rewards per player:**\n${buildRewardText(perPlayer)}${raidEchoLine}\n\n` +
-            `**Damage Standings:**\n${contribLines.join("\n")}`
+            `**Combat Statistics:**\n${contribLines.join("\n")}\n\n` +
+            `**TOTAL:** ${formatCombatStatsSummary(totalStats)}`
           )
           .setImage("attachment://raid-victory.webp")
           .setFooter({ text: "CARTETHYIA  ·  Calamity Raid" })],
@@ -1232,7 +1261,11 @@ async function launchRaid(
       await battleMsg.edit({
         embeds: [new EmbedBuilder().setColor(0x4A4A5A)
           .setTitle("☄️  Raid — Defeated")
-          .setDescription(`All Resonators fell before **${boss.name}**.\n*The Calamity retreats… for now.*`)
+          .setDescription(
+            `All Resonators fell before **${boss.name}**.\n*The Calamity retreats… for now.*\n\n` +
+            `**Combat Statistics:**\n${contribLines.join("\n")}\n\n` +
+            `**TOTAL:** ${formatCombatStatsSummary(totalStats)}`
+          )
           .setImage("attachment://raid-defeat.webp")
           .setFooter({ text: "CARTETHYIA  ·  Calamity Raid" })],
         files:      [new AttachmentBuilder(loseCard, { name: "raid-defeat.webp" })],
@@ -1270,6 +1303,7 @@ async function launchRaid(
 
     collector.on("collect", async (btn: ButtonInteraction | StringSelectMenuInteraction) => {
       await btn.deferUpdate();
+      const bossHpBeforeAction = raid.bossHp;
 
       // Swap is either a single button (raid_swap_<pos>) or a select menu
       // (raid_swap_select, value = position) depending on how many valid
@@ -1319,7 +1353,9 @@ async function launchRaid(
       let radiantTurnHealAmount = 0;
       if (mySetId === "RADIANT_CONVERGENCE") {
         const heal = radiantConvergenceOnTurnHeal(current.namedState, current.hpMax, activeBonuses.healingBonus);
+        const hpBefore = current.hp;
         current.hp = Math.min(current.hpMax, current.hp + heal.healAmount);
+        recordDirectHeal(current.combatStats, hpBefore, current.hp);
         radiantDmgMult = heal.dmgMult;
         radiantTurnHealAmount = heal.healAmount;
       }
@@ -1413,6 +1449,7 @@ async function launchRaid(
           const totalBonus = outroResult.hpDelta + introResult.hpDelta + outroResult.shieldDelta + introResult.shieldDelta + riloShieldTransferBonus;
           const incomingHpAfter = Math.min(incomingHpMaxVal, incomingHpBefore + totalBonus);
           const actualGain = incomingHpAfter - incomingHpBefore;
+          recordDirectHeal(current.combatStats, incomingHpBefore, incomingHpAfter);
 
           // Commit the OUTGOING unit's final state into its bundle slot
           // BEFORE overwriting the legacy fields with the incoming unit.
@@ -1734,7 +1771,9 @@ async function launchRaid(
         const lifestealPct = brenSkillLifestealPct(current.solaceConstellation);
         if (lifestealPct > 0) {
           const healed = Math.floor(damage * lifestealPct);
+          const hpBeforeLifesteal = current.allyHp;
           current.allyHp = Math.min(current.allyHpMax, current.allyHp + healed);
+          recordLifesteal(current.combatStats, hpBeforeLifesteal, current.allyHp);
           if (healed > 0) moveLine += `\n🩸 +${healed} HP (Lifesteal)`;
         }
         if (current.solaceConstellation >= 5) { current.brenLingerTurnsLeft = BREN_C5_LINGER_TURNS + 1; current.brenLingerBonus = BREN_C5_LINGER_BONUS; }
@@ -1843,10 +1882,12 @@ async function launchRaid(
           const beforeBody = p.hp;
           p.hp = Math.min(p.hpMax, p.hp + bodyResult.hpDelta);
           const actualBody = p.hp - beforeBody;
+          recordDirectHeal(p.combatStats, beforeBody, p.hp);
 
           const beforeAlly = p.allyHp;
           p.allyHp = Math.min(p.allyHpMax, p.allyHp + allyResult.hpDelta);
           const actualAlly = p.allyHp - beforeAlly;
+          recordDirectHeal(p.combatStats, beforeAlly, p.allyHp);
 
           p.playerDebuffs = cleanseDebuffs(p.playerDebuffs, bodyResult.cleanseCount);
 
@@ -1895,7 +1936,9 @@ async function launchRaid(
 
         if (result.healResult.actions.length > 0) {
           const healResult = resolveIntroOutroEffect(result.healResult, { hp: current.allyHp, hpMax: current.allyHpMax });
+          const hpBefore = current.allyHp;
           current.allyHp = Math.min(current.allyHpMax, current.allyHp + healResult.hpDelta);
+          recordDirectHeal(current.combatStats, hpBefore, current.allyHp);
         }
         if (result.resetsConcertoEnergy) { current.concertoEnergy = 0; convergenceUsedThisTurn = true; }
       } else if (raid.isDevGuild && current.activeUnit === "ally" && current.activeAllyCharacterId === "vesper" && current.allyKit && btn.customId === "raid_ultimate") {
@@ -1994,7 +2037,9 @@ async function launchRaid(
         if (result.healResult.actions.length > 0) {
           const healResult = resolveIntroOutroEffect(result.healResult, { hp: current.allyHp, hpMax: current.allyHpMax });
           const healed = Math.min(current.allyHpMax, current.allyHp + healResult.hpDelta) - current.allyHp;
+          const hpBefore = current.allyHp;
           current.allyHp = Math.min(current.allyHpMax, current.allyHp + healResult.hpDelta);
+          recordDirectHeal(current.combatStats, hpBefore, current.allyHp);
           if (healed > 0) moveLine += `\n🩸 +${healed} HP (Last Man Standing)`;
         }
 
@@ -2052,12 +2097,14 @@ async function launchRaid(
               // drains the boss's vib bar directly (bypasses the 30% proc
               // chance and the "on being hit" requirement).
               const instantVibDrain = Math.floor(raid.bossVibMax * 0.20);
-              raid.bossVib = Math.max(0, raid.bossVib - instantVibDrain);
+              setRaidVibration(raid, current, raid.bossVib - instantVibDrain);
               let tag = `Counter-Frost! -${instantVibDrain} vib`;
               if (!current.namedState.glacioShieldUsed) {
                 current.namedState.glacioShieldUsed = true;
                 const shieldAmt = Math.floor(current.hpMax * 0.28);
+                const hpBefore = current.hp;
                 current.hp = Math.min(current.hpMax, current.hp + shieldAmt);
+                recordDirectHeal(current.combatStats, hpBefore, current.hp);
                 current.glacioShieldTurnsLeft = 5; current.glacioShieldElemBonus = 0.22;
                 tag += ` · +${shieldAmt} HP shield!`;
               }
@@ -2083,9 +2130,11 @@ async function launchRaid(
               // as if it had just Shattered the enemy.
               const remnant  = voidbornRemnantOnShatter();
               const bonusDmg = Math.floor(current.atk * remnant.bonusMult);
-              raid.bossHp    = Math.max(0, raid.bossHp - bonusDmg);
+                raid.bossHp    = Math.max(0, raid.bossHp - bonusDmg);
               const healAmt  = Math.floor(current.hpMax * remnant.healPct);
+                const hpBefore = current.hp;
               current.hp     = Math.min(current.hpMax, current.hp + healAmt);
+                recordDirectHeal(current.combatStats, hpBefore, current.hp);
               let tag = `+${bonusDmg} Shatter DMG! +${healAmt} HP`;
               if (!current.namedState.havocFrenzyUsed) {
                 current.namedState.havocFrenzyUsed = true;
@@ -2122,11 +2171,18 @@ async function launchRaid(
             const pHealBonuses = (p.activeUnit === "ally" && p.allyBonuses) ? p.allyBonuses : p.bonuses;
             const scaledHeal = Math.floor(result.healHp * (1 + pHealBonuses.healingBonus));
             if (positionValue(p.roster, p.activePosition) === "self") {
+              const hpBefore = p.hp;
               p.hp = Math.min(p.hpMax, p.hp + scaledHeal);
+              recordDirectHeal(p.combatStats, hpBefore, p.hp);
               healLines.push(`${p.name} +${scaledHeal}`);
             } else {
               const b = p.allyBundles[p.activePosition];
-              if (b) { b.hp = Math.min(b.hpMax, b.hp + scaledHeal); healLines.push(`${p.name}'s ${b.kit.label} +${scaledHeal}`); }
+              if (b) {
+                const hpBefore = b.hp;
+                b.hp = Math.min(b.hpMax, b.hp + scaledHeal);
+                recordDirectHeal(p.combatStats, hpBefore, b.hp);
+                healLines.push(`${p.name}'s ${b.kit.label} +${scaledHeal}`);
+              }
             }
           }
           if (healLines.length > 0) moveLine += `\n💚 Party heal: ${healLines.join("  ·  ")}`;
@@ -2137,7 +2193,7 @@ async function launchRaid(
           raid.bossDefShredPct = result.defShredPct;
         }
         if (!result.noDamage) {
-          raid.bossVib = Math.max(0, raid.bossVib - result.extraVibDrain); // vibFrac-based drain applied below by the shared block
+          setRaidVibration(raid, current, raid.bossVib - result.extraVibDrain); // vibFrac-based drain applied below by the shared block
         }
       }
       const echoFlatLifesteal = (btn.customId === "raid_echoskill" && activeBonuses.echoSkill?.kind === "FLAT_LIFESTEAL")
@@ -2153,18 +2209,25 @@ async function launchRaid(
         damage = ar.dmg;
         if (ar.tag) moveLine += `  ✦${ar.tag}`;
         moveLine += ` — **${damage.toLocaleString()} DMG**`;
-        current.hp        = Math.min(current.hpMax, applyLifesteal(activeBonuses.lifesteal + havocLifesteal + echoFlatLifesteal, damage, current.hp, current.hpMax) + ar.healHp);
+        const hpBeforeLifesteal = current.hp;
+        const hpAfterLifesteal = applyLifesteal(activeBonuses.lifesteal + havocLifesteal + echoFlatLifesteal, damage, current.hp, current.hpMax);
+        recordLifesteal(current.combatStats, hpBeforeLifesteal, hpAfterLifesteal);
+        current.hp        = Math.min(current.hpMax, hpAfterLifesteal + ar.healHp);
+        recordDirectHeal(current.combatStats, hpAfterLifesteal, current.hp);
         current.energy    = Math.min(100, current.energy + ar.bonusEnergy);
         current.firstAction = false;
-        raid.bossVib       = Math.max(0, raid.bossVib - Math.floor(damage * vibFrac * vibMult));
+        setRaidVibration(raid, current, raid.bossVib - Math.floor(damage * vibFrac * vibMult));
 
         if (raid.bossVib <= 0 && !raid.isShattered) {
           raid.isShattered  = true;
           raid.shatterLeft  = 2;
+          recordShatter(current.combatStats);
           moveLine += "\n✦ **SHATTER!** Boss stunned — next 2 attacks guaranteed CRIT!";
           const voidHeal = elemVoidSurgeHeal(activeBonuses.elementPassive, current.hpMax);
           if (voidHeal > 0) {
+            const hpBefore = current.hp;
             current.hp = Math.min(current.hpMax, current.hp + voidHeal);
+            recordDirectHeal(current.combatStats, hpBefore, current.hp);
             moveLine  += `\n✦ **${current.name}'s Void Surge** — +${voidHeal} HP!`;
           }
           if (mySetId === "VOIDBORN_REMNANT") {
@@ -2172,7 +2235,9 @@ async function launchRaid(
             const bonusDmg = Math.floor(current.atk * remnant.bonusMult);
             raid.bossHp    = Math.max(0, raid.bossHp - bonusDmg);
             const healAmt  = Math.floor(current.hpMax * remnant.healPct);
+            const hpBefore = current.hp;
             current.hp     = Math.min(current.hpMax, current.hp + healAmt);
+            recordDirectHeal(current.combatStats, hpBefore, current.hp);
             moveLine += `\n🌑 **${current.name}'s Voidborn Rupture** — +${bonusDmg} bonus DMG, +${healAmt} HP!`;
           }
         }
@@ -2202,8 +2267,9 @@ async function launchRaid(
         moveLine += `\n🛡 **${boss.name}**'s shield absorbs ${absorbed} damage!`;
       }
 
-      current.dmgDealt += damage;
       raid.bossHp       = Math.max(0, raid.bossHp - damage);
+      const effectiveDamage = recordDamageDone(current.combatStats, bossHpBeforeAction, raid.bossHp);
+      current.dmgDealt += effectiveDamage;
 
       // Victory
       if (raid.bossHp <= 0) {
@@ -2359,11 +2425,23 @@ async function launchRaid(
             if (hitResult.forteGain > 0) p.solaceForte = addForteCharge(p.solaceForte, RILO_FORTE_CONFIG, hitResult.forteGain);
           }
           if (hitsAlly) {
+            const hpBeforeDamage = p.allyHp;
             p.allyHp = Math.max(0, p.allyHp - bossDmg);
-            if (radRegen > 0 && p.allyHp > 0) p.allyHp = Math.min(p.allyHpMax, p.allyHp + radRegen);
+            recordDamageTaken(p.combatStats, hpBeforeDamage, p.allyHp);
+            if (radRegen > 0 && p.allyHp > 0) {
+              const hpBeforeRegen = p.allyHp;
+              p.allyHp = Math.min(p.allyHpMax, p.allyHp + radRegen);
+              recordDirectHeal(p.combatStats, hpBeforeRegen, p.allyHp);
+            }
           } else {
+            const hpBeforeDamage = p.hp;
             p.hp = Math.max(0, p.hp - bossDmg);
-            if (radRegen > 0 && p.hp > 0) p.hp = Math.min(p.hpMax, p.hp + radRegen);
+            recordDamageTaken(p.combatStats, hpBeforeDamage, p.hp);
+            if (radRegen > 0 && p.hp > 0) {
+              const hpBeforeRegen = p.hp;
+              p.hp = Math.min(p.hpMax, p.hp + radRegen);
+              recordDirectHeal(p.combatStats, hpBeforeRegen, p.hp);
+            }
           }
 
           const pSetId = pActiveBonuses.activeNamedSetId;
@@ -2379,17 +2457,24 @@ async function launchRaid(
           if (pSetId === "RADIANT_CONVERGENCE" && p.hp > 0) {
             radiantConvergenceOnHitTaken(p.namedState, bossDmg, p.hpMax);
             const burst = radiantConvergenceCheckBurstHeal(p.namedState, p.hp, p.hpMax, pActiveBonuses.healingBonus);
-            if (burst > 0) { p.hp = Math.min(p.hpMax, p.hp + burst); dmgLines.push(`${p.name} +${burst}✨Fracture`); }
+            if (burst > 0) {
+              const hpBefore = p.hp;
+              p.hp = Math.min(p.hpMax, p.hp + burst);
+              recordDirectHeal(p.combatStats, hpBefore, p.hp);
+              dmgLines.push(`${p.name} +${burst}✨Fracture`);
+            }
           }
           if (pSetId === "FROSTVEIL_BASTION" && p.hp > 0) {
             const counter = frostveilBastionOnHitTaken(p.namedState);
             if (counter.counterProc) {
-              raid.bossVib = Math.max(0, raid.bossVib - Math.floor(raid.bossVibMax * counter.vibDrain));
+              setRaidVibration(raid, p, raid.bossVib - Math.floor(raid.bossVibMax * counter.vibDrain));
               dmgLines.push(`${p.name} ❄️Counter-Frost`);
             }
             const panic = frostveilBastionCheckPanicShield(p.namedState, p.hp, p.hpMax);
             if (panic.triggered) {
+              const hpBefore = p.hp;
               p.hp = Math.min(p.hpMax, p.hp + panic.shieldAmount);
+              recordDirectHeal(p.combatStats, hpBefore, p.hp);
               p.glacioShieldTurnsLeft = panic.turnsLeft + 1;
               p.glacioShieldElemBonus = panic.elemDmgBonus;
               dmgLines.push(`${p.name} +${panic.shieldAmount}❄️Shield`);

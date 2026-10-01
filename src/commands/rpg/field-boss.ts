@@ -17,6 +17,11 @@ import {
   momentumGustOnBossTurn, lifestealFrenzyOnBossTurn, steadyRegenOnBossTurn,
 } from "../../lib/fieldBossMechanics";
 import { gearAwareScale, baselineAtk } from "../../lib/combat";
+import {
+  CombatStats, emptyCombatStats, formatCombatStats, formatCombatStatsSummary,
+  recordDamageDone, recordDamageTaken, recordDirectHeal, recordLifesteal,
+  recordShatter, recordVibrationDamage,
+} from "../../lib/combatStats";
 import { incrementWeaponBond } from "../../lib/weaponAwakening";
 import { voteNudge, supportNudge } from "../../lib/voteNudge";
 import { mailNudge } from "../../lib/mailNudge";
@@ -453,6 +458,7 @@ const command: Command = {
       let havocFrenzyAtkMult     = 1.0; // Voidborn Remnant 5pc — active buff values while frenzyActive
       let havocFrenzyLifesteal   = 0;
       let havocFrenzyDefIgnore   = 0;
+      const combatStats: CombatStats = emptyCombatStats();
 
       // ── Milestone 3.5c: 3-position team state ─────────────────────────────────
       // Replaces the old single fixed "ally" bundle with a resolved 3-position
@@ -611,7 +617,8 @@ const command: Command = {
       syncActiveBundle();
 
       function teamStatusLine(): string {
-        if (!hasSolace) return "";
+        const statsLine = `\n\n${formatCombatStats(combatStats)}`;
+        if (!hasSolace) return statsLine;
         const isPlayerNow = isPlayerActive();
         // Pick ONE benched (non-active) ally position to summarize — with 3
         // positions there can be up to 2 benched allies at once; this line
@@ -627,7 +634,7 @@ const command: Command = {
           ? `  ·  ${playerDebuffs.map(d => `${d.type} (${d.turnsLeft})`).join(", ")}`
           : "";
         const mechanicLine = benchBundle ? `  ·  ${benchBundle.kit.statusLineText(benchBundle.mechanicState)}` : "";
-        return `\n\n🔄 Benched: **${benchedName}** — ${benchedHp}/${benchedMax} HP  ·  ` +
+        return statsLine + `\n🔄 Benched: **${benchedName}** — ${benchedHp}/${benchedMax} HP  ·  ` +
                `Concerto Energy: **${concertoEnergy}/100**${mechanicLine}${debuffLine}`;
       }
 
@@ -772,6 +779,7 @@ const command: Command = {
               .setDescription(
                 `**${fb.name}** has been driven off.\n\n` +
                 (echoLines.length ? `**Echo Dropped:**\n${echoLines.join("\n")}\n\n` : "") +
+                `**Combat Summary:** ${formatCombatStatsSummary(combatStats)}\n\n` +
                 `${CE.cr} ${credits} Credits  ·  ${CE.ft ?? "🔷"} 60 Fractonite` +
                 (starfallShardsDropped ? `\n${CE.sf} **1 Starfall Shard**` : "") +
                 (umbralShardsDropped ? `\n${CE.us} **1 Umbral Shard**` : "") +
@@ -815,6 +823,8 @@ const command: Command = {
 
         collector.on("collect", async (btn: any) => {
           await btn.deferUpdate();
+          const bossHpBeforeAction = state.bossHpNow;
+          const bossVibBeforeAction = state.bossVibNow;
 
           // Re-sync the legacy ally* vars for the position active at the
           // START of this turn (may be stale if buildButtons wasn't the last
@@ -839,7 +849,9 @@ const command: Command = {
           let radiantTurnHealAmount = 0;
           if (activeBonuses.activeNamedSetId === "RADIANT_CONVERGENCE" && btn.customId !== "fb_flee") {
             const heal = radiantConvergenceOnTurnHeal(namedState, state.playerHpMax, activeBonuses.healingBonus);
+            const hpBeforeTurnHeal = state.playerHp;
             state.playerHp  = Math.min(state.playerHpMax, state.playerHp + heal.healAmount);
+            recordDirectHeal(combatStats, hpBeforeTurnHeal, state.playerHp);
             radiantDmgMult  = heal.dmgMult;
             radiantTurnHealAmount = heal.healAmount;
           }
@@ -973,10 +985,12 @@ const command: Command = {
                 const before = state.playerHp;
                 state.playerHp = Math.min(state.playerHpMax, state.playerHp + totalBonus);
                 actualGain = state.playerHp - before;
+                recordDirectHeal(combatStats, before, state.playerHp);
               } else {
                 const before = incomingBundle!.hp;
                 incomingBundle!.hp = Math.min(incomingBundle!.hpMax, incomingBundle!.hp + totalBonus);
                 actualGain = incomingBundle!.hp - before;
+                recordDirectHeal(combatStats, before, incomingBundle!.hp);
               }
 
               moveName = actualGain > 0
@@ -1054,7 +1068,11 @@ const command: Command = {
             if (ign.tag) moveName += `  ✦${ign.tag}`;
             state.bossVibNow   = Math.max(0, state.bossVibNow - Math.floor(playerDmg * 0.3 * totalVibMult));
             state.playerEnergy = Math.min(100, state.playerEnergy + ENERGY_PER_TURN + elemDischargeEnergy(activeBonuses.elementPassive, crit) + ar_b.bonusEnergy + thunderboltEnergy);
-            state.playerHp     = Math.min(state.playerHpMax, applyLifesteal(activeBonuses.lifesteal + havocLifesteal + (ar_b.lifesteal ?? 0), playerDmg, state.playerHp, state.playerHpMax) + ar_b.healHp);
+            const hpBeforeBasicLifesteal = state.playerHp;
+            const hpAfterBasicLifesteal = applyLifesteal(activeBonuses.lifesteal + havocLifesteal + (ar_b.lifesteal ?? 0), playerDmg, state.playerHp, state.playerHpMax);
+            recordLifesteal(combatStats, hpBeforeBasicLifesteal, hpAfterBasicLifesteal);
+            state.playerHp     = Math.min(state.playerHpMax, hpAfterBasicLifesteal + ar_b.healHp);
+            recordDirectHeal(combatStats, hpAfterBasicLifesteal, state.playerHp);
             if (activeBonuses.activeNamedSetId === "STORMCALLERS_OATH") stormcallersOathCheckThunderbolt(namedState, state.playerEnergy);
 
             if (isDevGuild && !isPlayerActiveNow && activeAllyCharacterId === "kaelith") {
@@ -1273,7 +1291,9 @@ const command: Command = {
             const lifestealPct = brenSkillLifestealPct(allyConstellation);
             if (lifestealPct > 0) {
               const healed = Math.floor(playerDmg * lifestealPct);
+              const hpBeforeLifesteal = allyHp;
               allyHp = Math.min(allyHpMax, allyHp + healed);
+              recordLifesteal(combatStats, hpBeforeLifesteal, allyHp);
               if (healed > 0) moveName += `\n🩸 +${healed} HP (Lifesteal)`;
             }
             if (allyConstellation >= 5) { brenLingerTurnsLeft = BREN_C5_LINGER_TURNS + 1; brenLingerBonus = BREN_C5_LINGER_BONUS; }
@@ -1358,7 +1378,11 @@ const command: Command = {
             state.bossVibNow    = Math.max(0, state.bossVibNow - Math.floor(playerDmg * 0.6 * totalVibMult));
             state.skillCooldown = effectiveSkillCooldown(bonuses, SKILL_COOLDOWN);
             state.playerEnergy  = Math.min(100, state.playerEnergy + ENERGY_PER_TURN + elemDischargeEnergy(activeBonuses.elementPassive, crit) + ar_s.bonusEnergy);
-            state.playerHp      = Math.min(state.playerHpMax, applyLifesteal(activeBonuses.lifesteal + havocLifesteal + (ar_s.lifesteal ?? 0), playerDmg, state.playerHp, state.playerHpMax) + ar_s.healHp);
+            const hpBeforeSkillLifesteal = state.playerHp;
+            const hpAfterSkillLifesteal = applyLifesteal(activeBonuses.lifesteal + havocLifesteal + (ar_s.lifesteal ?? 0), playerDmg, state.playerHp, state.playerHpMax);
+            recordLifesteal(combatStats, hpBeforeSkillLifesteal, hpAfterSkillLifesteal);
+            state.playerHp      = Math.min(state.playerHpMax, hpAfterSkillLifesteal + ar_s.healHp);
+            recordDirectHeal(combatStats, hpAfterSkillLifesteal, state.playerHp);
             if (activeBonuses.set5pc?.type === "POST_ULT_SKILL") state.skillCooldown = 0;
           }
 
@@ -1392,7 +1416,11 @@ const command: Command = {
             moveName   = `⚡ ULTIMATE — ${playerDmg} DMG`;
             state.bossVibNow   = Math.max(0, state.bossVibNow - Math.floor(playerDmg * 0.8 * totalVibMult));
             state.playerEnergy = Math.min(100, ar_u.bonusEnergy);
-            state.playerHp     = Math.min(state.playerHpMax, applyLifesteal(activeBonuses.lifesteal + havocLifesteal + (ar_u.lifesteal ?? 0), playerDmg, state.playerHp, state.playerHpMax) + ar_u.healHp);
+            const hpBeforeUltimateLifesteal = state.playerHp;
+            const hpAfterUltimateLifesteal = applyLifesteal(activeBonuses.lifesteal + havocLifesteal + (ar_u.lifesteal ?? 0), playerDmg, state.playerHp, state.playerHpMax);
+            recordLifesteal(combatStats, hpBeforeUltimateLifesteal, hpAfterUltimateLifesteal);
+            state.playerHp     = Math.min(state.playerHpMax, hpAfterUltimateLifesteal + ar_u.healHp);
+            recordDirectHeal(combatStats, hpAfterUltimateLifesteal, state.playerHp);
             if (activeBonuses.set5pc?.type === "POST_ULT_SKILL") state.skillCooldown = 0;
             if (activeBonuses.activeNamedSetId === "STORMCALLERS_OATH") {
               const surge = stormcallersOathOnUltimate();
@@ -1414,10 +1442,12 @@ const command: Command = {
             const beforePlayer = state.playerHp;
             state.playerHp = Math.min(state.playerHpMax, state.playerHp + healResult.hpDelta);
             const actualHealPlayer = state.playerHp - beforePlayer;
+            recordDirectHeal(combatStats, beforePlayer, state.playerHp);
 
             const beforeAlly = allyHp;
             allyHp = Math.min(allyHpMax, allyHp + allyHealResult.hpDelta);
             const actualHealAlly = allyHp - beforeAlly;
+            recordDirectHeal(combatStats, beforeAlly, allyHp);
 
             playerDebuffs = cleanseDebuffs(playerDebuffs, healResult.cleanseCount);
 
@@ -1462,7 +1492,9 @@ const command: Command = {
 
             if (result.healResult.actions.length > 0) {
               const healResult = resolveIntroOutroEffect(result.healResult, { hp: allyHp, hpMax: allyHpMax });
+              const hpBeforeAllyHeal = allyHp;
               allyHp = Math.min(allyHpMax, allyHp + healResult.hpDelta);
+              recordDirectHeal(combatStats, hpBeforeAllyHeal, allyHp);
             }
             if (result.resetsConcertoEnergy) { concertoEnergy = 0; convergenceUsedThisTurn = true; }
           } else if (btn.customId === "fb_ultimate" && isDevGuild && !isPlayerActiveNow && activeAllyCharacterId === "vesper" && allyKit) {
@@ -1565,7 +1597,9 @@ const command: Command = {
             if (result.healResult.actions.length > 0) {
               const healResult = resolveIntroOutroEffect(result.healResult, { hp: allyHp, hpMax: allyHpMax });
               const healed = Math.min(allyHpMax, allyHp + healResult.hpDelta) - allyHp;
+              const hpBeforeAllyHeal = allyHp;
               allyHp = Math.min(allyHpMax, allyHp + healResult.hpDelta);
+              recordDirectHeal(combatStats, hpBeforeAllyHeal, allyHp);
               if (healed > 0) moveName += `\n🩸 +${healed} HP (Last Man Standing)`;
             }
 
@@ -1632,7 +1666,9 @@ const command: Command = {
                   if (!namedState.glacioShieldUsed) {
                     namedState.glacioShieldUsed = true;
                     const shieldAmt = Math.floor(state.playerHpMax * 0.28);
+                  const hpBeforeShieldHeal = state.playerHp;
                     state.playerHp = Math.min(state.playerHpMax, state.playerHp + shieldAmt);
+                  recordDirectHeal(combatStats, hpBeforeShieldHeal, state.playerHp);
                     glacioShieldTurnsLeft = 5; glacioShieldElemBonus = 0.22;
                     tag += ` · +${shieldAmt} HP shield!`;
                   }
@@ -1660,7 +1696,9 @@ const command: Command = {
                   const bonusDmg  = Math.floor(stats.atk * remnant.bonusMult);
                   state.bossHpNow = Math.max(0, state.bossHpNow - bonusDmg);
                   const healAmt   = Math.floor(state.playerHpMax * remnant.healPct);
+                  const hpBeforeRemnantHeal = state.playerHp;
                   state.playerHp  = Math.min(state.playerHpMax, state.playerHp + healAmt);
+                  recordDirectHeal(combatStats, hpBeforeRemnantHeal, state.playerHp);
                   let tag = `+${bonusDmg} Shatter DMG! +${healAmt} HP`;
                   if (!namedState.havocFrenzyUsed) {
                     namedState.havocFrenzyUsed = true;
@@ -1699,12 +1737,18 @@ const command: Command = {
             let echoLifesteal = activeBonuses.lifesteal + havocLifesteal + (ar_e.lifesteal ?? 0);
             if (def.kind === "FLAT_LIFESTEAL") echoLifesteal += def.pct;
             const scaledEchoHeal = Math.floor(result.healHp * (1 + activeBonuses.healingBonus));
-            state.playerHp = Math.min(state.playerHpMax, applyLifesteal(echoLifesteal, playerDmg, state.playerHp, state.playerHpMax) + ar_e.healHp + scaledEchoHeal);
+            const hpBeforeEchoLifesteal = state.playerHp;
+            const hpAfterEchoLifesteal = applyLifesteal(echoLifesteal, playerDmg, state.playerHp, state.playerHpMax);
+            recordLifesteal(combatStats, hpBeforeEchoLifesteal, hpAfterEchoLifesteal);
+            state.playerHp = Math.min(state.playerHpMax, hpAfterEchoLifesteal + ar_e.healHp + scaledEchoHeal);
+            recordDirectHeal(combatStats, hpAfterEchoLifesteal, state.playerHp);
             if (scaledEchoHeal > 0) {
               const benchPos = ([1, 2, 3] as PositionIndex[]).find(pos => pos !== activeUnit && allyBundles[pos] && allyBundles[pos]!.hp > 0);
               if (benchPos) {
                 const b = allyBundles[benchPos]!;
+                const benchHpBefore = b.hp;
                 b.hp = Math.min(b.hpMax, b.hp + scaledEchoHeal);
+                recordDirectHeal(combatStats, benchHpBefore, b.hp);
                 moveName += `\n💚 +${scaledEchoHeal} HP (also healed ${b.kit.label})`;
               } else {
                 moveName += `\n💚 +${scaledEchoHeal} HP`;
@@ -1743,10 +1787,13 @@ const command: Command = {
           if (state.bossVibNow <= 0 && !state.isShattered) {
             state.isShattered = true;
             shatterTurnsLeft  = 1;
+            recordShatter(combatStats);
             moveName += "\n✦ **SHATTER!** Boss stunned 1 turn — all attacks critical!";
             const voidHeal = elemVoidSurgeHeal(activeBonuses.elementPassive, state.playerHpMax);
             if (voidHeal > 0) {
+              const hpBeforeVoidHeal = state.playerHp;
               state.playerHp = Math.min(state.playerHpMax, state.playerHp + voidHeal);
+              recordDirectHeal(combatStats, hpBeforeVoidHeal, state.playerHp);
               moveName += `\n✦ **Void Surge** — +${voidHeal} HP!`;
             }
             if (activeBonuses.activeNamedSetId === "VOIDBORN_REMNANT") {
@@ -1754,11 +1801,15 @@ const command: Command = {
               const bonusDmg = Math.floor(stats.atk * remnant.bonusMult);
               state.bossHpNow = Math.max(0, state.bossHpNow - bonusDmg);
               const healAmt = Math.floor(state.playerHpMax * remnant.healPct);
+              const hpBeforeRuptureHeal = state.playerHp;
               state.playerHp = Math.min(state.playerHpMax, state.playerHp + healAmt);
+              recordDirectHeal(combatStats, hpBeforeRuptureHeal, state.playerHp);
               moveName += `\n🌑 **Voidborn Rupture** — +${bonusDmg} bonus DMG, +${healAmt} HP!`;
             }
           }
 
+          recordDamageDone(combatStats, bossHpBeforeAction, state.bossHpNow);
+          recordVibrationDamage(combatStats, bossVibBeforeAction, state.bossVibNow);
           if (radiantTurnHealAmount > 0) moveName += `\n✨ Radiant Convergence — turn-heal +${radiantTurnHealAmount} HP!`;
           state.lastMove = moveName;
 
@@ -1858,9 +1909,13 @@ const command: Command = {
               if (hitResult.zeroShieldSaveTriggered) state.lastMove = (state.lastMove ?? "") + `\n❄️ **Unbreakable Guard** — Shield surges back from nothing!`;
             }
             if (allyIsActive) {
+              const hpBeforeDamage = allyHp;
               allyHp = Math.max(0, allyHp - bossDmg);
+              recordDamageTaken(combatStats, hpBeforeDamage, allyHp);
             } else {
+              const hpBeforeDamage = state.playerHp;
               state.playerHp = Math.max(0, state.playerHp - bossDmg);
+              recordDamageTaken(combatStats, hpBeforeDamage, state.playerHp);
             }
             if (activeBonuses.activeNamedSetId === "SMOLDERING_SOVEREIGN") smolderingSovereignOnDamageTaken(namedState);
             if (activeBonuses.activeNamedSetId === "WINDSTRIDERS_LEGACY") windstridersLegacyOnBigHitTaken(namedState, bossDmg, state.playerHpMax);
@@ -1881,38 +1936,68 @@ const command: Command = {
               radiantConvergenceOnHitTaken(namedState, bossDmg, activeHpMaxForHeals);
               const burst = radiantConvergenceCheckBurstHeal(namedState, allyIsActive ? allyHp : state.playerHp, activeHpMaxForHeals, activeBonuses.healingBonus);
               if (burst > 0 && (allyIsActive ? allyHp : state.playerHp) > 0) {
-                if (allyIsActive) allyHp = Math.min(allyHpMax, allyHp + burst);
-                else state.playerHp = Math.min(state.playerHpMax, state.playerHp + burst);
+                if (allyIsActive) {
+                  const hpBeforeBurst = allyHp;
+                  allyHp = Math.min(allyHpMax, allyHp + burst);
+                  recordDirectHeal(combatStats, hpBeforeBurst, allyHp);
+                } else {
+                  const hpBeforeBurst = state.playerHp;
+                  state.playerHp = Math.min(state.playerHpMax, state.playerHp + burst);
+                  recordDirectHeal(combatStats, hpBeforeBurst, state.playerHp);
+                }
                 state.lastMove = (state.lastMove ?? "") + `\n✨ **Radiant Convergence** — burst-heal +${burst} HP!`;
               }
             }
             if (activeBonuses.activeNamedSetId === "FROSTVEIL_BASTION") {
               const counter = frostveilBastionOnHitTaken(namedState);
               if (counter.counterProc) {
+                const vibBefore = state.bossVibNow;
                 state.bossVibNow = Math.max(0, state.bossVibNow - Math.floor(fb.vibBar * counter.vibDrain));
+                recordVibrationDamage(combatStats, vibBefore, state.bossVibNow);
                 state.lastMove  += `\n❄️ **Counter-Frost** — drained ${Math.floor(counter.vibDrain * 100)}% enemy vibration!`;
               }
               const panic = frostveilBastionCheckPanicShield(namedState, allyIsActive ? allyHp : state.playerHp, activeHpMaxForHeals);
               if (panic.triggered && (allyIsActive ? allyHp : state.playerHp) > 0) {
-                if (allyIsActive) allyHp = Math.min(allyHpMax, allyHp + panic.shieldAmount);
-                else state.playerHp = Math.min(state.playerHpMax, state.playerHp + panic.shieldAmount);
+                if (allyIsActive) {
+                  const hpBeforePanic = allyHp;
+                  allyHp = Math.min(allyHpMax, allyHp + panic.shieldAmount);
+                  recordDirectHeal(combatStats, hpBeforePanic, allyHp);
+                } else {
+                  const hpBeforePanic = state.playerHp;
+                  state.playerHp = Math.min(state.playerHpMax, state.playerHp + panic.shieldAmount);
+                  recordDirectHeal(combatStats, hpBeforePanic, state.playerHp);
+                }
                 glacioShieldTurnsLeft = panic.turnsLeft + 1; // +1 compensates for the same-round decrement that fires immediately after this triggers (shield is granted mid-round, after the player already acted, so the triggering round's decrement would otherwise eat into the advertised duration)
                 glacioShieldElemBonus = panic.elemDmgBonus;
                 state.lastMove += `\n❄️ **Frostveil Shield** — +${panic.shieldAmount} HP, +${Math.floor(panic.elemDmgBonus * 100)}% Glacio DMG for ${panic.turnsLeft} turns!`;
               }
             }
             const hpRegen  = get5pcHpRegen(bonuses, state.playerHpMax);
-            if (hpRegen > 0 && typeof activeBonuses.set5pc?.value === "number" && activeBonuses.set5pc.value < 1)
+            if (hpRegen > 0 && typeof activeBonuses.set5pc?.value === "number" && activeBonuses.set5pc.value < 1) {
+              const hpBeforeRegen = state.playerHp;
               state.playerHp = Math.min(state.playerHpMax, state.playerHp + hpRegen);
+              recordDirectHeal(combatStats, hpBeforeRegen, state.playerHp);
+            }
             const radRegen = elemRadianceRegen(activeBonuses.elementPassive, activeHpMaxForHeals);
             if (radRegen > 0 && (allyIsActive ? allyHp : state.playerHp) > 0) {
-              if (allyIsActive) allyHp = Math.min(allyHpMax, allyHp + radRegen);
-              else state.playerHp = Math.min(state.playerHpMax, state.playerHp + radRegen);
+              if (allyIsActive) {
+                const hpBeforeRegen = allyHp;
+                allyHp = Math.min(allyHpMax, allyHp + radRegen);
+                recordDirectHeal(combatStats, hpBeforeRegen, allyHp);
+              } else {
+                const hpBeforeRegen = state.playerHp;
+                state.playerHp = Math.min(state.playerHpMax, state.playerHp + radRegen);
+                recordDirectHeal(combatStats, hpBeforeRegen, state.playerHp);
+              }
             }
             state.lastMove += `\n◇ ${fb.name} ${move.effect} — **${bossDmg} DMG**${shield.blocked ? " *(Frost Shield!)*" : ""}${radRegen > 0 ? ` *(+${radRegen} Radiance)*` : ""}`;
             state.playerEnergy = Math.min(100, state.playerEnergy + 15);
             const v2Regen = abilityV2TurnRegen(bonuses, state.playerHpMax);
-            if (v2Regen.healHp > 0) state.playerHp = Math.min(state.playerHpMax, state.playerHp + v2Regen.healHp);
+            if (v2Regen.healHp > 0) {
+              const hpBeforeV2Regen = state.playerHp;
+              state.playerHp = Math.min(state.playerHpMax, state.playerHp + v2Regen.healHp);
+              recordDirectHeal(combatStats, hpBeforeV2Regen, state.playerHp);
+            }
             if (v2Regen.energy > 0) state.playerEnergy = Math.min(100, state.playerEnergy + v2Regen.energy);
 
             // Milestone 3c-ii: exercises the debuff system inside a real fight.
@@ -1983,7 +2068,7 @@ const command: Command = {
             await sendBattleCard(thread as any, { ...state, ...activeCardIdentity(), lastMove: state.lastMove + " — **YOU FELL.**" }, buildButtons(state, activeBonuses.echoSkill ? { name: activeBonuses.echoSkill.name, cooldown: echoSkillCooldown } : null, teamButtonContext()), teamStatusLine());
             await thread.send({
               embeds: [new EmbedBuilder().setColor(0x334155)
-                .setDescription(`◈ Defeated by **${fb.name}**. Use **/field-boss** to try again.`)
+                .setDescription(`◈ Defeated by **${fb.name}**.\n\n**Combat Summary:** ${formatCombatStatsSummary(combatStats)}\n\nUse **/field-boss** to try again.`)
                 .setFooter({ text: "CARTETHYIA  ·  Field Boss" })],
             });
             collector.stop();

@@ -46,6 +46,11 @@ import { ForteState, addForteCharge, isForteMaxed, resetForte } from "./forte";
 import { AllyActionTarget } from "./allyActions";
 import { addConcertoEnergy } from "./concertoEnergy";
 import { DebuffState, applyDebuff, tickDebuffs, getWeakenedMult, cleanseDebuffs } from "./debuffs";
+import {
+  CombatStats, emptyCombatStats, formatCombatStats, formatCombatStatsSummary,
+  recordDamageDone, recordDamageTaken, recordDirectHeal, recordLifesteal,
+  recordShatter, recordVibrationDamage,
+} from "./combatStats";
 import { CHARACTER_KITS, PlayableCharacterKit } from "./characterKit";
 import {
   resolveRoster, nextAliveFallback, isTeamWiped, swappableTargets, positionLabel,
@@ -561,6 +566,7 @@ export async function handleEncounterFight(
   let riloDefBuffTurnsLeft   = 0;
   let riloDefBuffPct         = 0;
   let nextAttackCritArmed    = false;
+  const combatStats = emptyCombatStats();
 
   function buildEncounterButtons(): ActionRowBuilder<ButtonBuilder>[] {
     const rows: ActionRowBuilder<ButtonBuilder>[] = [];
@@ -659,7 +665,8 @@ export async function handleEncounterFight(
   }
 
   function teamStatusLine(): string {
-    if (!hasSolace) return "";
+    const statsLine = `\n\n${formatCombatStats(combatStats)}`;
+    if (!hasSolace) return statsLine;
     const benchedLines = ([1, 2, 3] as PositionIndex[])
       .filter(p => p !== activeUnit && posValue(p) !== null)
       .map(p => {
@@ -668,12 +675,12 @@ export async function handleEncounterFight(
         return b ? `${b.kit.label} — ${b.hp}/${b.hpMax} HP  ·  ${b.kit.statusLineText(b.mechanicState)}` : null;
       })
       .filter((x): x is string => x !== null);
-    if (benchedLines.length === 0) return "";
+    if (benchedLines.length === 0) return statsLine;
     const debuffLine = playerDebuffs.length > 0
       ? `  ·  ${playerDebuffs.map(d => `${d.type} (${d.turnsLeft})`).join(", ")}`
       : "";
     return `\n\n🔄 Benched: ${benchedLines.join("  |  ")}\n` +
-           `Concerto Energy: **${concertoEnergy}/100**${debuffLine}`;
+           `Concerto Energy: **${concertoEnergy}/100**${debuffLine}` + statsLine;
   }
 
   // Send the battle card as a new message
@@ -698,6 +705,8 @@ export async function handleEncounterFight(
 
     collector.on("collect", async (btn: ButtonInteraction | StringSelectMenuInteraction) => {
       await btn.deferUpdate();
+      const bossHpBeforeAction = state.bossHpNow;
+      const bossVibBeforeAction = state.bossVibNow;
       syncActiveBundle();
       const swapSelectTarget = btn.customId === "enc_swap_select" && btn.isStringSelectMenu()
         ? (Number(btn.values[0]) as PositionIndex) : null;
@@ -810,6 +819,7 @@ export async function handleEncounterFight(
           const after = Math.min(incomingHpMax, incomingHpBefore + totalBonus);
           const actualGain = after - incomingHpBefore;
           if (incomingIsPlayer) { state.playerHp = after; } else { incomingBundle!.hp = after; }
+          recordDirectHeal(combatStats, incomingHpBefore, after);
 
           const CONCERTO_INTRO_HEADSTART = 20;
           concertoEnergy = addConcertoEnergy(0, CONCERTO_INTRO_HEADSTART);
@@ -1079,10 +1089,12 @@ export async function handleEncounterFight(
         const beforePlayer = state.playerHp;
         state.playerHp = Math.min(state.playerHpMax, state.playerHp + healResult.hpDelta);
         const actualHealPlayer = state.playerHp - beforePlayer;
+        recordDirectHeal(combatStats, beforePlayer, state.playerHp);
 
         const beforeAlly = allyHp;
         allyHp = Math.min(allyHpMax, allyHp + allyHealResult.hpDelta);
         const actualHealAlly = allyHp - beforeAlly;
+        recordDirectHeal(combatStats, beforeAlly, allyHp);
 
         playerDebuffs = cleanseDebuffs(playerDebuffs, healResult.cleanseCount);
 
@@ -1131,7 +1143,9 @@ export async function handleEncounterFight(
 
         if (result.healResult.actions.length > 0) {
           const healResult = resolveIntroOutroEffect(result.healResult, { hp: allyHp, hpMax: allyHpMax });
+          const hpBeforeAllyHeal = allyHp;
           allyHp = Math.min(allyHpMax, allyHp + healResult.hpDelta);
+          recordDirectHeal(combatStats, hpBeforeAllyHeal, allyHp);
         }
         if (result.resetsConcertoEnergy) { concertoEnergy = 0; convergenceUsedThisTurn = true; }
       } else if (btn.customId === "enc_ultimate" && isDevGuild && !isPlayerActive() && activeAllyCharacterId === "vesper" && allyKit) {
@@ -1219,11 +1233,15 @@ export async function handleEncounterFight(
         state.playerEnergy = result.setEnergyFull ? 100 : Math.min(100, state.playerEnergy + ENERGY_PER_TURN + elemDischargeEnergy(bonuses.elementPassive, echoCrit) + result.bonusEnergy);
         if (result.healHp > 0) {
           const scaledEchoHeal = Math.floor(result.healHp * (1 + bonuses.healingBonus));
+          const hpBeforeEchoHeal = state.playerHp;
           state.playerHp = Math.min(state.playerHpMax, state.playerHp + scaledEchoHeal);
+          recordDirectHeal(combatStats, hpBeforeEchoHeal, state.playerHp);
           const benchPos = ([1, 2, 3] as PositionIndex[]).find(pos => pos !== activeUnit && allyBundles[pos] && allyBundles[pos]!.hp > 0);
           if (benchPos) {
             const b = allyBundles[benchPos]!;
+            const benchHpBefore = b.hp;
             b.hp = Math.min(b.hpMax, b.hp + scaledEchoHeal);
+            recordDirectHeal(combatStats, benchHpBefore, b.hp);
             moveName += `\n💚 +${scaledEchoHeal} HP (also healed ${b.kit.label})`;
           } else {
             moveName += `\n💚 +${scaledEchoHeal} HP`;
@@ -1268,10 +1286,16 @@ export async function handleEncounterFight(
       });
       playerDmg = ar.dmg;
       if (ar.tag) moveName += `  ✦${ar.tag}`;
-      if (ar.healHp > 0)      state.playerHp     = Math.min(state.playerHpMax, state.playerHp + ar.healHp);
+      if (ar.healHp > 0) {
+        const hpBeforeAbilityHeal = state.playerHp;
+        state.playerHp = Math.min(state.playerHpMax, state.playerHp + ar.healHp);
+        recordDirectHeal(combatStats, hpBeforeAbilityHeal, state.playerHp);
+      }
       if (ar.bonusEnergy > 0) state.playerEnergy = Math.min(100, state.playerEnergy + ar.bonusEnergy);
       // Lifesteal from echoes/abilities
+      const hpBeforeLifesteal = state.playerHp;
       state.playerHp = applyLifesteal(stats.lifesteal + echoLifestealPct, playerDmg, state.playerHp, state.playerHpMax);
+      recordLifesteal(combatStats, hpBeforeLifesteal, state.playerHp);
       firstActionDone = true;
 
       state.bossVibNow = Math.max(0, state.bossVibNow - Math.floor(playerDmg * vibFrac * vibMult));
@@ -1280,13 +1304,19 @@ export async function handleEncounterFight(
       if (state.bossVibNow <= 0 && !state.isShattered) {
         state.isShattered = true;
         shatterTurnsLeft  = 2;
+        recordShatter(combatStats);
         moveName += "\n✦ **SHATTER!** Echo stunned — all hits critical!";
         const voidHeal = elemVoidSurgeHeal(bonuses.elementPassive, state.playerHpMax);
         if (voidHeal > 0) {
+          const hpBeforeVoidHeal = state.playerHp;
           state.playerHp = Math.min(state.playerHpMax, state.playerHp + voidHeal);
+          recordDirectHeal(combatStats, hpBeforeVoidHeal, state.playerHp);
           moveName += `\n✦ **Void Surge** — +${voidHeal} HP!`;
         }
       }
+
+      recordDamageDone(combatStats, bossHpBeforeAction, state.bossHpNow);
+      recordVibrationDamage(combatStats, bossVibBeforeAction, state.bossVibNow);
 
       state.lastMove = moveName;
 
@@ -1325,6 +1355,7 @@ export async function handleEncounterFight(
           .setTitle(`${ELEMENT_EMOJI[enc.enemy.element]}  Echo Captured`)
           .setDescription(
             `**${displayName}** defeated the **${enc.enemy.name}**!\n\n` +
+            `**Combat Summary:** ${formatCombatStatsSummary(combatStats)}\n\n` +
             `› ${subCount} substats sealed — reveal with \`/echo-reveal\`. View all with \`/echoes\`.`
           )
           .setImage("attachment://echo.webp")
@@ -1387,11 +1418,23 @@ export async function handleEncounterFight(
         const targetHpMax  = allyIsActive ? allyHpMax : state.playerHpMax;
         const radRegen     = elemRadianceRegen(bonuses.elementPassive, targetHpMax);
         if (allyIsActive) {
+          const hpBeforeDamage = allyHp;
           allyHp = Math.max(0, allyHp - bossDmg);
-          if (radRegen > 0) allyHp = Math.min(allyHpMax, allyHp + radRegen);
+          recordDamageTaken(combatStats, hpBeforeDamage, allyHp);
+          if (radRegen > 0) {
+            const hpBeforeRegen = allyHp;
+            allyHp = Math.min(allyHpMax, allyHp + radRegen);
+            recordDirectHeal(combatStats, hpBeforeRegen, allyHp);
+          }
         } else {
+          const hpBeforeDamage = state.playerHp;
           state.playerHp = Math.max(0, state.playerHp - bossDmg);
-          if (radRegen > 0) state.playerHp = Math.min(state.playerHpMax, state.playerHp + radRegen);
+          recordDamageTaken(combatStats, hpBeforeDamage, state.playerHp);
+          if (radRegen > 0) {
+            const hpBeforeRegen = state.playerHp;
+            state.playerHp = Math.min(state.playerHpMax, state.playerHp + radRegen);
+            recordDirectHeal(combatStats, hpBeforeRegen, state.playerHp);
+          }
         }
         state.lastMove += `\n◇ ${enc.enemy.name} ${move.effect} — **${bossDmg} DMG**${allyIsActive ? ` *(hit ${allyKit?.label ?? "your ally"})*` : ""}${shield.blocked ? " *(Frost Shield!)*" : ""}${radRegen > 0 ? ` *(+${radRegen} Radiance)*` : ""}`;
         state.playerEnergy = Math.min(100, state.playerEnergy + 15);
@@ -1443,7 +1486,7 @@ export async function handleEncounterFight(
         removeEncounter(interaction.message.id);
         const loseEmbed = new EmbedBuilder()
           .setColor(0x4A4A5A)
-          .setDescription(`**${displayName}** was defeated by the **${enc.enemy.name}**.\n*The echo escapes.*`)
+          .setDescription(`**${displayName}** was defeated by the **${enc.enemy.name}**.\n\n**Combat Summary:** ${formatCombatStatsSummary(combatStats)}\n\n*The echo escapes.*`)
           .setFooter({ text: "CARTETHYIA  ·  Encounter" });
         await battleMsg!.edit({ embeds: [loseEmbed], components: [], files: [] }).catch(() => {});
         return;

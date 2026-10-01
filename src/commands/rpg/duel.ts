@@ -83,6 +83,10 @@ import {
   ResolvedRoster, PositionIndex,
 } from "../../lib/teamPositions";
 import { StringSelectMenuBuilder, StringSelectMenuInteraction } from "discord.js";
+import {
+  CombatStats, emptyCombatStats, formatCombatStats, formatCombatStatsSummary,
+  recordDamageDone, recordDamageTaken, recordDirectHeal, recordLifesteal,
+} from "../../lib/combatStats";
 
 interface DuelAllyBundle {
   characterId: string; kit: PlayableCharacterKit; hp: number; hpMax: number;
@@ -104,6 +108,7 @@ interface DuelState {
   cAtk:    number; cDef:   number; cSpd: number; cCritRate: number; cCritDmg: number; cElement: string;
   cElemDmg: number; cLifesteal: number; cBonuses: PlayerBonuses;
   cFirstAction: boolean; cSecondWindUsed: boolean; cV2Stacks: number;
+  cCombatStats: CombatStats;
   cNamedState: NamedSetState;
   cGlacioShieldTurnsLeft: number; cGlacioShieldElemBonus: number;
   cRiloDefBuffTurnsLeft: number; cRiloDefBuffPct: number;
@@ -132,6 +137,7 @@ interface DuelState {
   dAtk:    number; dDef:   number; dSpd: number; dCritRate: number; dCritDmg: number; dElement: string;
   dElemDmg: number; dLifesteal: number; dBonuses: PlayerBonuses;
   dFirstAction: boolean; dSecondWindUsed: boolean; dV2Stacks: number;
+  dCombatStats: CombatStats;
   dNamedState: NamedSetState;
   dGlacioShieldTurnsLeft: number; dGlacioShieldElemBonus: number;
   dRiloDefBuffTurnsLeft: number; dRiloDefBuffPct: number;
@@ -195,6 +201,8 @@ function duelEmbed(state: DuelState, lastMove: string, _color: number): EmbedBui
   const dTurn = state.currentTurn === state.challengedId ? "▸ " : "";
   const cActive = duelActiveIdentity(state, true);
   const dActive = duelActiveIdentity(state, false);
+  const cStats = formatCombatStats(state.cCombatStats);
+  const dStats = formatCombatStats(state.dCombatStats);
 
   return new EmbedBuilder()
     .setColor(themeColor)
@@ -217,6 +225,11 @@ function duelEmbed(state: DuelState, lastMove: string, _color: number): EmbedBui
       {
         name:   "◈  Combat Log",
         value:  lastMove || "*The duel begins.*",
+        inline: false,
+      },
+      {
+        name:   "📊  Combat Stats",
+        value:  `**${state.challengerName}:** ${cStats}\n**${state.challengedName}:** ${dStats}`,
         inline: false,
       },
     )
@@ -320,8 +333,12 @@ function activeHpMax(state: DuelState, isChallenger: boolean): number {
   const unit = isChallenger ? state.cActiveUnit : state.dActiveUnit;
   return unit === "ally" ? (isChallenger ? state.cAllyHpMax : state.dAllyHpMax) : (isChallenger ? state.cHpMax : state.dHpMax);
 }
-function healActiveUnit(state: DuelState, isChallenger: boolean, amount: number): void {
+function duelCombatStats(state: DuelState, isChallenger: boolean): CombatStats {
+  return isChallenger ? state.cCombatStats : state.dCombatStats;
+}
+function healActiveUnit(state: DuelState, isChallenger: boolean, amount: number, kind: "direct" | "lifesteal" = "direct"): void {
   if (amount <= 0) return;
+  const before = activeHp(state, isChallenger);
   const unit = isChallenger ? state.cActiveUnit : state.dActiveUnit;
   const max  = activeHpMax(state, isChallenger);
   if (unit === "ally") {
@@ -331,9 +348,13 @@ function healActiveUnit(state: DuelState, isChallenger: boolean, amount: number)
     if (isChallenger) state.cHp = Math.min(max, state.cHp + amount);
     else              state.dHp = Math.min(max, state.dHp + amount);
   }
+  const after = activeHp(state, isChallenger);
+  if (kind === "lifesteal") recordLifesteal(duelCombatStats(state, isChallenger), before, after);
+  else recordDirectHeal(duelCombatStats(state, isChallenger), before, after);
 }
 function damageActiveUnit(state: DuelState, isChallenger: boolean, amount: number): void {
   if (amount <= 0) return;
+  const before = activeHp(state, isChallenger);
   const unit = isChallenger ? state.cActiveUnit : state.dActiveUnit;
   if (unit === "ally") {
     if (isChallenger) state.cAllyHp = Math.max(0, state.cAllyHp - amount);
@@ -342,6 +363,7 @@ function damageActiveUnit(state: DuelState, isChallenger: boolean, amount: numbe
     if (isChallenger) state.cHp = Math.max(0, state.cHp - amount);
     else              state.dHp = Math.max(0, state.dHp - amount);
   }
+  recordDamageTaken(duelCombatStats(state, isChallenger), before, activeHp(state, isChallenger));
 }
 
 function buildDuelButtons(state: DuelState, forUserId: string, isDevGuild: boolean): (ActionRowBuilder<ButtonBuilder> | ActionRowBuilder<StringSelectMenuBuilder>)[] {
@@ -556,6 +578,7 @@ export async function startDuelMatch(
       cElement: challengerDb.element,
       cElemDmg: cStats.elemDmgBonus, cLifesteal: cStats.lifesteal, cBonuses,
       cFirstAction: true, cSecondWindUsed: false, cV2Stacks: 0,
+      cCombatStats: emptyCombatStats(),
       cNamedState: initNamedSetState(),
       cGlacioShieldTurnsLeft: 0, cGlacioShieldElemBonus: 0,
       cRiloDefBuffTurnsLeft: 0, cRiloDefBuffPct: 0,
@@ -581,6 +604,7 @@ export async function startDuelMatch(
       dElement: challengedDb.element,
       dElemDmg: dStats.elemDmgBonus, dLifesteal: dStats.lifesteal, dBonuses,
       dFirstAction: true, dSecondWindUsed: false, dV2Stacks: 0,
+      dCombatStats: emptyCombatStats(),
       dNamedState: initNamedSetState(),
       dGlacioShieldTurnsLeft: 0, dGlacioShieldElemBonus: 0,
       dRiloDefBuffTurnsLeft: 0, dRiloDefBuffPct: 0,
@@ -673,6 +697,7 @@ export async function startDuelMatch(
             { name: elementEmoji(state.cElement) + "  " + cName, value: `\`HP\` **${state.cHp}** / ${state.cHpMax}`, inline: true },
             { name: elementEmoji(state.dElement) + "  " + dName, value: `\`HP\` **${state.dHp}** / ${state.dHpMax}`, inline: true },
             { name: "Turns", value: `${state.turn}`, inline: true },
+            { name: "📊 Combat Summary", value: `**${cName}:** ${formatCombatStatsSummary(state.cCombatStats)}\n**${dName}:** ${formatCombatStatsSummary(state.dCombatStats)}`, inline: false },
           )
           .setFooter({ text: "CARTETHYIA  ·  Duel" })],
         components: [],
@@ -936,6 +961,7 @@ export async function startDuelMatch(
             } else if (incomingIsPlayer) {
               if (isChallenger) state.cHp = incomingHpAfter; else state.dHp = incomingHpAfter;
             }
+            recordDirectHeal(duelCombatStats(state, isChallenger), incomingHpBefore, incomingHpAfter);
 
             moveLine = actualGain > 0
               ? `${myName} — 🔄 Swapped to **${incomingIsPlayer ? myName : incomingBundle!.kit.label}** — Outro+Intro combo! +${actualGain} HP.`
@@ -1298,6 +1324,7 @@ export async function startDuelMatch(
             const healed = Math.floor(damage * lifestealPct);
             const healedHp = Math.min(myAllyHpMaxVal, newAllyHpAfterCost + healed);
             if (isChallenger) state.cAllyHp = healedHp; else state.dAllyHp = healedHp;
+            recordLifesteal(duelCombatStats(state, isChallenger), newAllyHpAfterCost, healedHp);
             if (healed > 0) moveLine += `\n🩸 +${healed} HP (Lifesteal)`;
           }
 
@@ -1429,6 +1456,8 @@ export async function startDuelMatch(
             state.dHp = afterPlayer; state.dAllyHp = afterAlly; state.dPlayerDebuffs = cleansedDebuffs;
             state.dConcertoEnergy = 0;
           }
+          recordDirectHeal(duelCombatStats(state, isChallenger), beforePlayer, afterPlayer);
+          recordDirectHeal(duelCombatStats(state, isChallenger), beforeAlly, afterAlly);
           convergenceUsedThisTurn = true;
           damage = 0; isCrit = false; moveType = "ULT";
 
@@ -1581,6 +1610,7 @@ export async function startDuelMatch(
             const healResult = resolveIntroOutroEffect(result.healResult, { hp: allyHpAfter, hpMax: myAllyHpMaxVal });
             const healed = Math.min(myAllyHpMaxVal, allyHpAfter + healResult.hpDelta) - allyHpAfter;
             allyHpAfter = Math.min(myAllyHpMaxVal, allyHpAfter + healResult.hpDelta);
+            recordDirectHeal(duelCombatStats(state, isChallenger), Math.max(1, myAllyHpVal - result.hpCost), allyHpAfter);
             if (healed > 0) moveLine += `\n🩸 +${healed} HP (Last Man Standing)`;
           }
           if (isChallenger) state.cAllyHp = allyHpAfter; else state.dAllyHp = allyHpAfter;
@@ -1737,7 +1767,9 @@ export async function startDuelMatch(
             const benchPos = ([1, 2, 3] as PositionIndex[]).find(pos => pos !== myActivePos && myAllyBundlesForHeal[pos] && myAllyBundlesForHeal[pos]!.hp > 0);
             if (benchPos) {
               const b = myAllyBundlesForHeal[benchPos]!;
+              const benchHpBefore = b.hp;
               b.hp = Math.min(b.hpMax, b.hp + scaledEchoHeal);
+              recordDirectHeal(duelCombatStats(state, isChallenger), benchHpBefore, b.hp);
               moveLine += `\n💚 +${scaledEchoHeal} HP (also healed ${b.kit.label})`;
             } else {
               moveLine += `\n💚 +${scaledEchoHeal} HP`;
@@ -1801,9 +1833,10 @@ export async function startDuelMatch(
         // unit is actually dealing the hit (self or ally), not always the
         // literal player, same reasoning as healActiveUnit's other callers.
         const echoLifestealPct = echoResult && myBonus.echoSkill?.kind === "FLAT_LIFESTEAL" ? myBonus.echoSkill.pct : 0;
-        const activeHpForHeal = activeHp(state, isChallenger);
-        const healed = applyLifesteal(myLife + myHavocLifesteal + echoLifestealPct, damage, activeHpForHeal, activeHpMax(state, isChallenger)) - activeHpForHeal + ar.healHp;
-        healActiveUnit(state, isChallenger, Math.max(0, healed));
+        if (ar.healHp > 0) healActiveUnit(state, isChallenger, ar.healHp);
+        const hpAfterDirectHeal = activeHp(state, isChallenger);
+        const lifestealGain = applyLifesteal(myLife + myHavocLifesteal + echoLifestealPct, damage, hpAfterDirectHeal, activeHpMax(state, isChallenger)) - hpAfterDirectHeal;
+        if (lifestealGain > 0) healActiveUnit(state, isChallenger, lifestealGain, "lifesteal");
         if (isChallenger) {
           state.cEnergy = Math.min(100, state.cEnergy + ar.bonusEnergy);
           if (!isSwapAction) state.cFirstAction = false;
@@ -1816,6 +1849,7 @@ export async function startDuelMatch(
         // instead of their own HP if their Solace is currently active.
         // Symmetric: both branches need this check, not just one (the
         // biggest copy-paste risk in this file's c*/d* duplication pattern).
+        const opponentHpBeforeHit = activeHp(state, !isChallenger);
         if (isChallenger) {
           if (isDevGuild && state.dActiveUnit === "ally" && state.dActiveAllyCharacterId === "rilo") {
             const rState = state.dAllyMechanicState as RiloMechanicState;
@@ -1837,6 +1871,9 @@ export async function startDuelMatch(
           if (isDevGuild && state.cActiveUnit === "ally") state.cAllyHp = Math.max(0, state.cAllyHp - damage);
           else                                            state.cHp     = Math.max(0, state.cHp - damage);
         }
+        const opponentHpAfterHit = activeHp(state, !isChallenger);
+        recordDamageDone(duelCombatStats(state, isChallenger), opponentHpBeforeHit, opponentHpAfterHit);
+        recordDamageTaken(duelCombatStats(state, !isChallenger), opponentHpBeforeHit, opponentHpAfterHit);
 
         // Milestone 3e: landing a real attack has a 25% chance to leave the
         // opponent WEAKENED, mirroring /boss's retaliation-side chance.

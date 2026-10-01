@@ -19,6 +19,11 @@ import {
 } from "../../lib/namedSets";
 import { echoSkillBaseMult, applyEchoSkill } from "../../lib/echoSkills";
 import { hpBar, energyBar, baselineAtk, COUNTER_ELEMENT } from "../../lib/combat";
+import {
+  CombatStats, emptyCombatStats, formatCombatStats, formatCombatStatsSummary,
+  recordDamageDone, recordDamageTaken, recordDirectHeal, recordLifesteal,
+  recordShatter, recordVibrationDamage,
+} from "../../lib/combatStats";
 import { voteNudge, supportNudge } from "../../lib/voteNudge";
 import { mailNudge } from "../../lib/mailNudge";
 import { rollRarity, rollMainStat, rollSubstats, rollSubstatValue, calcMainStatValue, substatCount, RARITY_STARS, ELEMENT_EMOJI } from "../../lib/echoes";
@@ -425,6 +430,7 @@ async function runDungeon(
     let enemyDefShredTurnsLeft = 0;
     let enemyDefShredPct       = 0;
     let nextAttackCritArmed    = false;
+    const combatStats = emptyCombatStats();
     let survivedAll            = true;
 
     // ── Milestone 3a: team state (dev guild only), carried across waves the
@@ -445,6 +451,7 @@ async function runDungeon(
           namedState, glacioShieldTurnsLeft, glacioShieldElemBonus, riloDefBuffTurnsLeft, riloDefBuffPct, rhovenBossWeakenTurnsLeft, rhovenBossWeakenPct, brenLingerTurnsLeft, brenLingerBonus, feyraBossWeakenTurnsLeft, feyraBossWeakenPct, stormBuffTurnsLeft, stormBuffCritBonus,
           havocFrenzyAtkMult, havocFrenzyLifesteal, havocFrenzyDefIgnore, quickStrikeUsed,
           echoSkillCooldown, enemyDefShredTurnsLeft, enemyDefShredPct, nextAttackCritArmed,
+          combatStats,
           isDevGuild, hasSolace, activeUnit, concertoEnergy, playerDebuffs, attunement,
           attunementDoubleTurnsLeft, solaceForte, forteEmpoweredTurnsLeft,
           roster, allyBundles,
@@ -461,6 +468,7 @@ async function runDungeon(
             .setTitle("💀  Dungeon Failed")
             .setDescription(
               `You fell on **Wave ${waveIdx + 1}** of 3.\n\n` +
+              `**Combat Summary:** ${formatCombatStatsSummary(result.combatStats)}\n\n` +
               `No rewards this run. The dungeon cooldown still applies.\n` +
               `Come back stronger.`
             )
@@ -531,6 +539,12 @@ async function runDungeon(
     }
 
     // All 3 waves cleared — grant rewards
+    await thread.send({
+      embeds: [new EmbedBuilder()
+        .setColor(dungeon.color)
+        .setDescription(`📊 **Dungeon Combat Summary**\n${formatCombatStatsSummary(combatStats)}`)
+        .setFooter({ text: "CARTETHYIA  ·  Dungeon" })],
+    });
     await grantRewards(thread, interaction.user.id, dungeon, currentDbUser.worldLevel, displayName);
     await prisma.user.update({ where: { id: interaction.user.id }, data: { dungeonClears: { increment: 1 }, fractonite: { increment: 40 } } }).catch(() => {});
     await checkLevelUp(interaction.user.id);
@@ -622,6 +636,7 @@ interface WaveState {
   enemyDefShredTurnsLeft: number;
   enemyDefShredPct:       number;
   nextAttackCritArmed:    boolean;
+  combatStats: CombatStats;
   // ── Milestone 3a: team state ──────────────────────────────────────────
   isDevGuild: boolean;
   // Owns+selected an ally via /team, and their own resolved stats (own
@@ -660,6 +675,7 @@ async function runWave(
   ws:          WaveState,
   displayName: string,
 ): Promise<WaveResult> {
+  const combatStats = ws.combatStats;
   // ── 3-position roster helpers ────────────────────────────────────────────
   // The legacy `ws.ally*`-shaped locals below are resynced from whichever
   // bundle `ws.activeUnit` points at, so every existing per-character
@@ -722,7 +738,8 @@ async function runWave(
   const vibMult   = get5pcVibDrainMult(bonuses);
 
   function teamStatusLine(): string {
-    if (!ws.hasSolace) return "";
+    const statsLine = `\n\n${formatCombatStats(combatStats)}`;
+    if (!ws.hasSolace) return statsLine;
     const benchedLines = ([1, 2, 3] as PositionIndex[])
       .filter(p => p !== ws.activeUnit && posValue(p) !== null)
       .map(p => {
@@ -731,11 +748,11 @@ async function runWave(
         return b ? `${b.kit.label} — ${b.hp}/${b.hpMax} HP  ·  ${b.kit.statusLineText(b.mechanicState)}` : null;
       })
       .filter((x): x is string => x !== null);
-    if (benchedLines.length === 0) return "";
+    if (benchedLines.length === 0) return statsLine;
     const debuffLine = ws.playerDebuffs.length > 0
       ? `  ·  ${ws.playerDebuffs.map(d => `${d.type} (${d.turnsLeft})`).join(", ")}`
       : "";
-    return `\n\n🔄 Benched: ${benchedLines.join("  |  ")}\n` +
+    return statsLine + `\n🔄 Benched: ${benchedLines.join("  |  ")}\n` +
            `Concerto Energy: **${ws.concertoEnergy}/100**${debuffLine}`;
   }
 
@@ -902,6 +919,8 @@ async function runWave(
 
       collector.on("collect", async (btn: any) => {
         await btn.deferUpdate().catch(() => {});
+        const enemyHpBeforeAction = enemyHp;
+        const vibBeforeAction = vibBar;
         syncActiveBundle();
         // Milestone 3.5b: whichever unit is currently acting/defending uses
         // ITS OWN full bonus set (elemDmgBonus/lifesteal/elementPassive/
@@ -922,7 +941,9 @@ async function runWave(
         let radiantTurnHealAmount = 0;
         if (activeBonuses.activeNamedSetId === "RADIANT_CONVERGENCE") {
           const heal = radiantConvergenceOnTurnHeal(ws.namedState, ws.playerHpMax, activeBonuses.healingBonus);
+          const hpBeforeTurnHeal = ws.playerHp;
           ws.playerHp    = Math.min(ws.playerHpMax, ws.playerHp + heal.healAmount);
+          recordDirectHeal(combatStats, hpBeforeTurnHeal, ws.playerHp);
           radiantDmgMult = heal.dmgMult;
           radiantTurnHealAmount = heal.healAmount;
         }
@@ -1034,6 +1055,7 @@ async function runWave(
             const after = Math.min(incomingHpMax, incomingHpBefore + totalBonus);
             const actualGain = after - incomingHpBefore;
             if (incomingIsPlayer) { ws.playerHp = after; } else { incomingBundle!.hp = after; }
+            recordDirectHeal(combatStats, incomingHpBefore, after);
 
             moveLine = actualGain > 0
               ? `🔄 Swapped to **${incomingLabel}** — Outro+Intro combo! +${actualGain} HP.`
@@ -1101,8 +1123,12 @@ async function runWave(
           if (ignite.tag) moveLine += `  ✦${ignite.tag}`;
           vibBar           = Math.max(0, vibBar - Math.floor(playerDmg * 0.3 * totalVibMult));
           ws.playerEnergy  = Math.min(100, ws.playerEnergy + Math.floor(stats.energyPerTurn) + elemDischargeEnergy(activeBonuses.elementPassive, crit) + ar_b.bonusEnergy + thunderboltEnergy);
+          const hpBeforeBasicHeal = ws.playerHp;
           ws.playerHp      = Math.min(ws.playerHpMax, ws.playerHp + ar_b.healHp);
+          recordDirectHeal(combatStats, hpBeforeBasicHeal, ws.playerHp);
+          const hpBeforeBasicLifesteal = ws.playerHp;
           ws.playerHp      = applyLifesteal(activeBonuses.lifesteal + havocLifesteal + (ar_b.lifesteal ?? 0), playerDmg, ws.playerHp, ws.playerHpMax);
+          recordLifesteal(combatStats, hpBeforeBasicLifesteal, ws.playerHp);
           if (activeBonuses.activeNamedSetId === "STORMCALLERS_OATH") stormcallersOathCheckThunderbolt(ws.namedState, ws.playerEnergy);
 
           if (ws.isDevGuild && !isPlayerActive() && activeAllyCharacterId === "kaelith") {
@@ -1312,7 +1338,9 @@ async function runWave(
           const lifestealPct = brenSkillLifestealPct(allyConstellation);
           if (lifestealPct > 0) {
             const healed = Math.floor(playerDmg * lifestealPct);
+            const hpBeforeLifesteal = allyHp;
             allyHp = Math.min(allyHpMax, allyHp + healed);
+            recordLifesteal(combatStats, hpBeforeLifesteal, allyHp);
             if (healed > 0) moveLine += `\n🩸 +${healed} HP (Lifesteal)`;
           }
           if (allyConstellation >= 5) { ws.brenLingerTurnsLeft = BREN_C5_LINGER_TURNS + 1; ws.brenLingerBonus = BREN_C5_LINGER_BONUS; }
@@ -1397,8 +1425,12 @@ async function runWave(
           vibBar           = Math.max(0, vibBar - Math.floor(playerDmg * 0.6 * totalVibMult));
           ws.skillCooldown  = effectiveSkillCooldown(bonuses, SKILL_CD);
           ws.playerEnergy   = Math.min(100, ws.playerEnergy + Math.floor(stats.energyPerTurn) + elemDischargeEnergy(activeBonuses.elementPassive, crit) + ar_s.bonusEnergy);
+          const hpBeforeSkillHeal = ws.playerHp;
           ws.playerHp       = Math.min(ws.playerHpMax, ws.playerHp + ar_s.healHp);
+          recordDirectHeal(combatStats, hpBeforeSkillHeal, ws.playerHp);
+          const hpBeforeSkillLifesteal = ws.playerHp;
           ws.playerHp       = applyLifesteal(activeBonuses.lifesteal + havocLifesteal + (ar_s.lifesteal ?? 0), playerDmg, ws.playerHp, ws.playerHpMax);
+          recordLifesteal(combatStats, hpBeforeSkillLifesteal, ws.playerHp);
           ws.firstSkillUsed = true;
         }
 
@@ -1434,8 +1466,12 @@ async function runWave(
           if (ar_u.tag) moveLine += `  ✦${ar_u.tag}`;
           vibBar    = Math.max(0, vibBar - Math.floor(playerDmg * 0.8 * totalVibMult));
           ws.playerEnergy = Math.min(100, ar_u.bonusEnergy); // drain to 0 then apply any ability energy gain
+          const hpBeforeUltimateHeal = ws.playerHp;
           ws.playerHp     = Math.min(ws.playerHpMax, ws.playerHp + ar_u.healHp);
+          recordDirectHeal(combatStats, hpBeforeUltimateHeal, ws.playerHp);
+          const hpBeforeUltimateLifesteal = ws.playerHp;
           ws.playerHp     = applyLifesteal(activeBonuses.lifesteal + havocLifesteal + (ar_u.lifesteal ?? 0), playerDmg, ws.playerHp, ws.playerHpMax);
+          recordLifesteal(combatStats, hpBeforeUltimateLifesteal, ws.playerHp);
           if (activeBonuses.set5pc?.type === "POST_ULT_SKILL") ws.skillCooldown = 0;
           if (activeBonuses.activeNamedSetId === "STORMCALLERS_OATH") {
             const surge = stormcallersOathOnUltimate();
@@ -1460,10 +1496,12 @@ async function runWave(
           const beforePlayer = ws.playerHp;
           ws.playerHp = Math.min(ws.playerHpMax, ws.playerHp + healResult.hpDelta);
           const actualHealPlayer = ws.playerHp - beforePlayer;
+          recordDirectHeal(combatStats, beforePlayer, ws.playerHp);
 
           const beforeAlly = allyHp;
           allyHp = Math.min(allyHpMax, allyHp + allyHealResult.hpDelta);
           const actualHealAlly = allyHp - beforeAlly;
+          recordDirectHeal(combatStats, beforeAlly, allyHp);
 
           ws.playerDebuffs = cleanseDebuffs(ws.playerDebuffs, healResult.cleanseCount);
 
@@ -1507,7 +1545,9 @@ async function runWave(
 
           if (result.healResult.actions.length > 0) {
             const healResult = resolveIntroOutroEffect(result.healResult, { hp: allyHp, hpMax: allyHpMax });
+            const hpBeforeAllyHeal = allyHp;
             allyHp = Math.min(allyHpMax, allyHp + healResult.hpDelta);
+            recordDirectHeal(combatStats, hpBeforeAllyHeal, allyHp);
           }
           if (result.resetsConcertoEnergy) { ws.concertoEnergy = 0; convergenceUsedThisTurn = true; }
         } else if (btn.customId === "dg_ultimate" && ws.isDevGuild && !isPlayerActive() && activeAllyCharacterId === "vesper" && allyKit) {
@@ -1607,7 +1647,9 @@ async function runWave(
           if (result.healResult.actions.length > 0) {
             const healResult = resolveIntroOutroEffect(result.healResult, { hp: allyHp, hpMax: allyHpMax });
             const healed = Math.min(allyHpMax, allyHp + healResult.hpDelta) - allyHp;
+              const hpBeforeAllyHeal = allyHp;
             allyHp = Math.min(allyHpMax, allyHp + healResult.hpDelta);
+              recordDirectHeal(combatStats, hpBeforeAllyHeal, allyHp);
             if (healed > 0) moveLine += `\n🩸 +${healed} HP (Last Man Standing)`;
           }
 
@@ -1674,7 +1716,9 @@ async function runWave(
                 if (!ws.namedState.glacioShieldUsed) {
                   ws.namedState.glacioShieldUsed = true;
                   const shieldAmt = Math.floor(ws.playerHpMax * 0.28);
+                  const hpBeforeShieldHeal = ws.playerHp;
                   ws.playerHp = Math.min(ws.playerHpMax, ws.playerHp + shieldAmt);
+                  recordDirectHeal(combatStats, hpBeforeShieldHeal, ws.playerHp);
                   ws.glacioShieldTurnsLeft = 5; ws.glacioShieldElemBonus = 0.22;
                   tag += ` · +${shieldAmt} HP shield!`;
                 }
@@ -1738,12 +1782,16 @@ async function runWave(
           const energyGain = Math.floor(stats.energyPerTurn) + elemDischargeEnergy(activeBonuses.elementPassive, crit) + result.bonusEnergy;
           ws.playerEnergy = result.setEnergyFull ? 100 : Math.min(100, ws.playerEnergy + energyGain);
           const scaledEchoHeal = Math.floor(result.healHp * (1 + activeBonuses.healingBonus));
+          const hpBeforeEchoHeal = ws.playerHp;
           ws.playerHp = Math.min(ws.playerHpMax, ws.playerHp + ar_e.healHp + scaledEchoHeal);
+          recordDirectHeal(combatStats, hpBeforeEchoHeal, ws.playerHp);
           if (scaledEchoHeal > 0) {
             const benchPos = ([1, 2, 3] as PositionIndex[]).find(pos => pos !== ws.activeUnit && ws.allyBundles[pos] && ws.allyBundles[pos]!.hp > 0);
             if (benchPos) {
               const b = ws.allyBundles[benchPos]!;
+              const benchHpBefore = b.hp;
               b.hp = Math.min(b.hpMax, b.hp + scaledEchoHeal);
+              recordDirectHeal(combatStats, benchHpBefore, b.hp);
               moveLine += `\n💚 +${scaledEchoHeal} HP (also healed ${b.kit.label})`;
             } else {
               moveLine += `\n💚 +${scaledEchoHeal} HP`;
@@ -1752,7 +1800,9 @@ async function runWave(
 
           let echoLifesteal = activeBonuses.lifesteal + havocLifesteal + (ar_e.lifesteal ?? 0);
           if (def.kind === "FLAT_LIFESTEAL") echoLifesteal += def.pct;
+          const hpBeforeEchoLifesteal = ws.playerHp;
           ws.playerHp = applyLifesteal(echoLifesteal, playerDmg, ws.playerHp, ws.playerHpMax);
+          recordLifesteal(combatStats, hpBeforeEchoLifesteal, ws.playerHp);
 
           if (result.armsNextCrit) ws.nextAttackCritArmed = true;
           if (result.defShredTurns > 0) {
@@ -1775,7 +1825,11 @@ async function runWave(
 
         // V2 turn-start regen (applied each enemy counter phase = start of next player turn)
         const v2Regen = abilityV2TurnRegen(bonuses, ws.playerHpMax);
-        if (v2Regen.healHp  > 0) ws.playerHp     = Math.min(ws.playerHpMax, ws.playerHp + v2Regen.healHp);
+        if (v2Regen.healHp  > 0) {
+          const hpBeforeV2Regen = ws.playerHp;
+          ws.playerHp     = Math.min(ws.playerHpMax, ws.playerHp + v2Regen.healHp);
+          recordDirectHeal(combatStats, hpBeforeV2Regen, ws.playerHp);
+        }
         if (v2Regen.energy  > 0) ws.playerEnergy = Math.min(100, ws.playerEnergy + v2Regen.energy);
 
         // Milestone 3a: a swap isn't a real attack, so it shouldn't burn the
@@ -1799,10 +1853,13 @@ async function runWave(
         if (vibBar <= 0 && !isShattered) {
           isShattered  = true;
           shatterLeft  = 2;
+          recordShatter(combatStats);
           moveLine    += "\n✦ **SHATTER!** Enemy stunned — all hits critical!";
           const voidHeal = elemVoidSurgeHeal(activeBonuses.elementPassive, ws.playerHpMax);
           if (voidHeal > 0) {
+            const hpBeforeVoidHeal = ws.playerHp;
             ws.playerHp = Math.min(ws.playerHpMax, ws.playerHp + voidHeal);
+            recordDirectHeal(combatStats, hpBeforeVoidHeal, ws.playerHp);
             moveLine   += `\n✦ **Void Surge** — +${voidHeal} HP!`;
           }
           if (activeBonuses.activeNamedSetId === "VOIDBORN_REMNANT") {
@@ -1810,11 +1867,15 @@ async function runWave(
             const bonusDmg = Math.floor(stats.atk * remnant.bonusMult);
             enemyHp = Math.max(0, enemyHp - bonusDmg);
             const healAmt  = Math.floor(ws.playerHpMax * remnant.healPct);
+            const hpBeforeRuptureHeal = ws.playerHp;
             ws.playerHp = Math.min(ws.playerHpMax, ws.playerHp + healAmt);
+            recordDirectHeal(combatStats, hpBeforeRuptureHeal, ws.playerHp);
             moveLine += `\n🌑 **Voidborn Rupture** — +${bonusDmg} bonus DMG, +${healAmt} HP!`;
           }
         }
 
+        recordDamageDone(combatStats, enemyHpBeforeAction, enemyHp);
+        recordVibrationDamage(combatStats, vibBeforeAction, vibBar);
         if (radiantTurnHealAmount > 0) moveLine += `\n✨ Radiant Convergence — turn-heal +${radiantTurnHealAmount} HP!`;
 
         // Win
@@ -1866,9 +1927,13 @@ async function runWave(
             if (hitResult.zeroShieldSaveTriggered) moveLine += `\n❄️ **Unbreakable Guard** — Shield surges back from nothing!`;
           }
           if (allyIsActive) {
+            const hpBeforeDamage = allyHp;
             allyHp = Math.max(0, allyHp - bossDmg);
+            recordDamageTaken(combatStats, hpBeforeDamage, allyHp);
           } else {
+            const hpBeforeDamage = ws.playerHp;
             ws.playerHp = Math.max(0, ws.playerHp - bossDmg);
+            recordDamageTaken(combatStats, hpBeforeDamage, ws.playerHp);
           }
           if (activeBonuses.activeNamedSetId === "SMOLDERING_SOVEREIGN") smolderingSovereignOnDamageTaken(ws.namedState);
           if (activeBonuses.activeNamedSetId === "WINDSTRIDERS_LEGACY") windstridersLegacyOnBigHitTaken(ws.namedState, bossDmg, ws.playerHpMax);
@@ -1890,21 +1955,37 @@ async function runWave(
             radiantConvergenceOnHitTaken(ws.namedState, bossDmg, activeHpMaxForHeals);
             const burst = radiantConvergenceCheckBurstHeal(ws.namedState, allyIsActive ? allyHp : ws.playerHp, activeHpMaxForHeals, activeBonuses.healingBonus);
             if (burst > 0 && (allyIsActive ? allyHp : ws.playerHp) > 0) {
-              if (allyIsActive) allyHp = Math.min(allyHpMax, allyHp + burst);
-              else ws.playerHp = Math.min(ws.playerHpMax, ws.playerHp + burst);
+              if (allyIsActive) {
+                const hpBeforeBurst = allyHp;
+                allyHp = Math.min(allyHpMax, allyHp + burst);
+                recordDirectHeal(combatStats, hpBeforeBurst, allyHp);
+              } else {
+                const hpBeforeBurst = ws.playerHp;
+                ws.playerHp = Math.min(ws.playerHpMax, ws.playerHp + burst);
+                recordDirectHeal(combatStats, hpBeforeBurst, ws.playerHp);
+              }
               moveLine += `\n✨ **Radiant Convergence** — burst-heal +${burst} HP!`;
             }
           }
           if (activeBonuses.activeNamedSetId === "FROSTVEIL_BASTION") {
             const counter = frostveilBastionOnHitTaken(ws.namedState);
             if (counter.counterProc) {
+              const vibBefore = vibBar;
               vibBar = Math.max(0, vibBar - Math.floor(50 * counter.vibDrain));
+              recordVibrationDamage(combatStats, vibBefore, vibBar);
               moveLine += `\n❄️ **Counter-Frost** — drained ${Math.floor(counter.vibDrain * 100)}% enemy vibration!`;
             }
             const panic = frostveilBastionCheckPanicShield(ws.namedState, allyIsActive ? allyHp : ws.playerHp, activeHpMaxForHeals);
             if (panic.triggered && (allyIsActive ? allyHp : ws.playerHp) > 0) {
-              if (allyIsActive) allyHp = Math.min(allyHpMax, allyHp + panic.shieldAmount);
-              else ws.playerHp = Math.min(ws.playerHpMax, ws.playerHp + panic.shieldAmount);
+              if (allyIsActive) {
+                const hpBeforePanic = allyHp;
+                allyHp = Math.min(allyHpMax, allyHp + panic.shieldAmount);
+                recordDirectHeal(combatStats, hpBeforePanic, allyHp);
+              } else {
+                const hpBeforePanic = ws.playerHp;
+                ws.playerHp = Math.min(ws.playerHpMax, ws.playerHp + panic.shieldAmount);
+                recordDirectHeal(combatStats, hpBeforePanic, ws.playerHp);
+              }
               ws.glacioShieldTurnsLeft = panic.turnsLeft + 1;
               ws.glacioShieldElemBonus = panic.elemDmgBonus;
               moveLine += `\n❄️ **Frostveil Shield** — +${panic.shieldAmount} HP, +${Math.floor(panic.elemDmgBonus * 100)}% Glacio DMG for ${panic.turnsLeft} turns!`;
@@ -1912,12 +1993,21 @@ async function runWave(
           }
           const hpRegen = get5pcHpRegen(bonuses, ws.playerHpMax);
           if (hpRegen > 0 && typeof activeBonuses.set5pc?.value === "number" && activeBonuses.set5pc.value < 1) {
+            const hpBeforeRegen = ws.playerHp;
             ws.playerHp = Math.min(ws.playerHpMax, ws.playerHp + hpRegen);
+            recordDirectHeal(combatStats, hpBeforeRegen, ws.playerHp);
           }
           const radRegen = elemRadianceRegen(activeBonuses.elementPassive, activeHpMaxForHeals);
           if (radRegen > 0 && (allyIsActive ? allyHp : ws.playerHp) > 0) {
-            if (allyIsActive) allyHp = Math.min(allyHpMax, allyHp + radRegen);
-            else ws.playerHp = Math.min(ws.playerHpMax, ws.playerHp + radRegen);
+            if (allyIsActive) {
+              const hpBeforeRegen = allyHp;
+              allyHp = Math.min(allyHpMax, allyHp + radRegen);
+              recordDirectHeal(combatStats, hpBeforeRegen, allyHp);
+            } else {
+              const hpBeforeRegen = ws.playerHp;
+              ws.playerHp = Math.min(ws.playerHpMax, ws.playerHp + radRegen);
+              recordDirectHeal(combatStats, hpBeforeRegen, ws.playerHp);
+            }
           }
           ws.playerEnergy = Math.min(100, ws.playerEnergy + 15);
           moveLine      += `\n◇ ${enemy.name} ${move} — **${bossDmg} DMG**${shield.blocked ? " *(Frost Shield!)*" : ""}${radRegen > 0 ? ` *(+${radRegen} Radiance)*` : ""}`;
