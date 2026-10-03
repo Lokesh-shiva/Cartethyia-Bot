@@ -9,7 +9,7 @@ import prisma from "./prisma";
 import { askAI } from "./ai";
 import { ABILITY_REGISTRY, AbilityEffect, sanitizeEffects, formatEffects } from "./abilityEffects";
 import { sanitizeV2Effects, formatV2Effects } from "./abilityEngineV2";
-import { WEAPON_PASSIVES, WeaponPassive } from "./weapons";
+import { WEAPON_PASSIVES, WeaponPassive, REFINEMENT_MULT } from "./weapons";
 import { derivePersonality, deriveBonds, deriveCombat, deriveDedication } from "./uniqueAbility";
 import { SOLACE_LORE_FRAGMENTS } from "./solace";
 
@@ -430,23 +430,22 @@ export async function regenerateArtPrompt(userId: string): Promise<string | null
 // ── Display helper ────────────────────────────────────────────────────────────
 // Builds the full passive string for display: desc + each named effect on its
 // own line. Used by weapon card, /weapons, /equip, /weapon so they all match.
-export function formatAwakenedPassive(ap: any, maxEffects = 4): string {
+export function formatAwakenedPassive(ap: any, maxEffects = 4, refinement = 1): string {
   if (!ap) return "";
+  const refineMult = REFINEMENT_MULT[refinement] ?? 1;
   const lines: string[] = [];
   if (ap.desc) lines.push(ap.desc);
-  if (ap.elemDmg) lines.push(`+${Math.round(Number(ap.elemDmg) * 100)}% Elemental DMG`);
-  if (ap.energyFlat) lines.push(`+${ap.energyFlat} Energy per turn`);
-  if (ap.spdFlat) lines.push(`+${ap.spdFlat} SPD`);
+  if (ap.elemDmg) lines.push(`+${Math.round(Number(ap.elemDmg) * refineMult * 100)}% Elemental DMG`);
+  if (ap.energyFlat) lines.push(`+${Number(ap.energyFlat) * refineMult} Energy per turn`);
+  if (ap.spdFlat) lines.push(`+${Number(ap.spdFlat) * refineMult} SPD`);
   if (Array.isArray(ap.effects)) {
-    let shown = 0;
-    for (const e of ap.effects) {
-      if (shown >= maxEffects) break;
-      const def = (ABILITY_REGISTRY as any)[e.type];
-      if (!def) continue;
-      const valStr = def.isPct ? `${Math.round(e.value * 100)}` : String(e.value);
-      lines.push(`${def.label}: ${def.desc.replace("{v}", valStr)}`);
-      shown++;
-    }
+    const effects = sanitizeEffects(
+      ap.effects.map((e: any) => ({ ...e, value: Number(e.value) * refineMult })),
+      true,
+      7,
+    ).slice(0, maxEffects);
+    const effectsText = formatEffects(effects);
+    if (effectsText) lines.push(effectsText);
   }
   return lines.join("\n");
 }

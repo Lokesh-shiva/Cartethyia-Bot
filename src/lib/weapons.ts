@@ -1,7 +1,7 @@
 import { WeaponType } from "@prisma/client";
 import path from "path";
 import fs   from "fs";
-import { formatEffects } from "./abilityEffects";
+import { formatEffects, sanitizeEffects } from "./abilityEffects";
 import { ALL_WISH_WEAPONS } from "./wishWeapons";
 
 export interface WeaponDefinition {
@@ -225,14 +225,15 @@ export const MAX_REFINEMENT = 5;
 // applies in combat, unlike the hand-written `passive` flavor text on each
 // WeaponDefinition/WishWeapon, which is just prose and isn't checked against
 // the real effect values.
-export function describeWeaponPassive(weaponName: string): string {
+export function describeWeaponPassive(weaponName: string, refinement = 1): string {
   const p = WEAPON_PASSIVES[weaponName];
   if (!p) return "";
+  const refineMult = REFINEMENT_MULT[refinement] ?? 1;
   const lines: string[] = [];
-  if (p.elemDmg) lines.push(`Elemental DMG: +${Math.round(p.elemDmg * 100)}%`);
-  if (p.energyFlat) lines.push(`Energy: +${p.energyFlat} per turn`);
-  if (p.spdFlat) lines.push(`SPD: +${p.spdFlat}`);
-  const effectsText = formatEffects(p.effects ?? []);
+  if (p.elemDmg) lines.push(`Elemental DMG: +${Math.round(p.elemDmg * refineMult * 100)}%`);
+  if (p.energyFlat) lines.push(`Energy: +${p.energyFlat * refineMult} per turn`);
+  if (p.spdFlat) lines.push(`SPD: +${p.spdFlat * refineMult}`);
+  const effectsText = formatEffects((p.effects ?? []).map(e => ({ ...e, value: e.value * refineMult })));
   if (effectsText) lines.push(effectsText);
   return lines.join("\n");
 }
@@ -242,16 +243,25 @@ export function describeWeaponPassive(weaponName: string): string {
 // WEAPON_PASSIVES entry. Used anywhere (e.g. /weapon-refine) that shows a
 // passive description alongside a specific owned weapon, so the text matches
 // what setBonus.ts actually applies.
-export function describeWeaponPassiveForRow(weapon: { name: string; awakened: boolean; awakenedPassive: unknown }): string {
+export function describeWeaponPassiveForRow(weapon: { name: string; awakened: boolean; awakenedPassive: unknown; refinement?: number }): string {
+  const refineMult = REFINEMENT_MULT[weapon.refinement ?? 1] ?? 1;
   if (weapon.awakened && weapon.awakenedPassive) {
-    const ap = weapon.awakenedPassive as { elemDmg?: number; effects?: any[]; desc?: string };
+    const ap = weapon.awakenedPassive as { elemDmg?: number; energyFlat?: number; spdFlat?: number; effects?: any[]; desc?: string };
     const lines: string[] = [];
-    if (ap.elemDmg) lines.push(`Elemental DMG: +${Math.round(ap.elemDmg * 100)}%`);
-    const effectsText = formatEffects(ap.effects ?? []);
+    if (ap.elemDmg) lines.push(`Elemental DMG: +${Math.round(ap.elemDmg * refineMult * 100)}%`);
+    if (ap.energyFlat) lines.push(`Energy: +${ap.energyFlat * refineMult} per turn`);
+    if (ap.spdFlat) lines.push(`SPD: +${ap.spdFlat * refineMult}`);
+    // Match setBonus.ts exactly: refinement happens first, then the same
+    // evolved-effect sanitizer caps the displayed effect at the combat value.
+    const effectsText = formatEffects(sanitizeEffects(
+      (ap.effects ?? []).map(e => ({ ...e, value: Number(e.value) * refineMult })),
+      true,
+      7,
+    ));
     if (effectsText) lines.push(effectsText);
     return lines.join("\n") || ap.desc || "";
   }
-  const structured = describeWeaponPassive(weapon.name);
+  const structured = describeWeaponPassive(weapon.name, weapon.refinement ?? 1);
   if (structured) return structured;
   // Wish-banner weapons (Wellspring, standard 5★s) aren't in WEAPON_PASSIVES —
   // their passive is prose, not a structured {effects: [...]} entry. Show that

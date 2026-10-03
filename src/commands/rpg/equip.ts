@@ -72,7 +72,7 @@ function weaponBlock(w: any): string {
 
   // Passive
   const passiveDesc = w.awakened && w.awakenedPassive
-    ? formatAwakenedPassive(w.awakenedPassive)
+    ? formatAwakenedPassive(w.awakenedPassive, 4, w.refinement)
     : forgeDef?.passive ?? wishDef?.passive ?? "";
   if (passiveDesc) {
     const short = passiveDesc.length > 80 ? passiveDesc.slice(0, 77) + "…" : passiveDesc;
@@ -81,7 +81,7 @@ function weaponBlock(w: any): string {
 
   // Verified passive breakdown — generated straight from WEAPON_PASSIVES, can't drift from what actually applies
   if (!w.awakened) {
-    const verified = describeWeaponPassive(w.name);
+    const verified = describeWeaponPassive(w.name, w.refinement);
     if (verified) lines.push(`\`${verified.split("\n").join(" · ")}\``);
   }
 
@@ -107,7 +107,7 @@ async function buildCard(w: any, element: string, ownerName: string, ownerAvatar
     subStatVal:   w.subStatVal  ?? null,
     effectiveSub: w.subStatVal != null ? effectiveSub(w.subStatVal, w.level) : null,
     passive:      w.awakened && w.awakenedPassive
-      ? formatAwakenedPassive(w.awakenedPassive, maxEffects)
+      ? formatAwakenedPassive(w.awakenedPassive, maxEffects, w.refinement)
       : describeWeaponPassiveForRow(w) || forgeDef?.passive || "",
     element,
     ownerName,

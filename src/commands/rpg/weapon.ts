@@ -43,6 +43,7 @@ const command: Command = {
       where: { userId: target.id, isEquipped: true },
       select: {
         name: true, weaponType: true, rarity: true, level: true,
+        refinement: true,
         baseAtk: true, subStatType: true, subStatVal: true,
         hiddenSub1Type: true, hiddenSub1Val: true,
         hiddenSub2Type: true, hiddenSub2Val: true,
@@ -90,7 +91,7 @@ const command: Command = {
       subStatVal:   weapon.subStatVal  ?? null,
       effectiveSub: weapon.subStatVal  != null ? effectiveSub(weapon.subStatVal, weapon.level) : null,
       passive:      weapon.awakened && weapon.awakenedPassive
-        ? formatAwakenedPassive(weapon.awakenedPassive, target.id === "979379636586819746" ? (interaction.user.id === target.id ? 7 : 0) : 4)
+        ? formatAwakenedPassive(weapon.awakenedPassive, target.id === "979379636586819746" ? (interaction.user.id === target.id ? 7 : 0) : 4, weapon.refinement)
         : describeWeaponPassiveForRow(weapon) || weaponDef?.passive || WEAPON_TYPE_LABEL[weapon.weaponType as WeaponType] || "",
       element:      user.element,
       ownerName:    displayName,
@@ -114,7 +115,7 @@ const command: Command = {
 
     // Verified passive breakdown — generated straight from WEAPON_PASSIVES, can't drift from what actually applies
     if (!weapon.awakened) {
-      const verified = describeWeaponPassive(weapon.name);
+      const verified = describeWeaponPassive(weapon.name, weapon.refinement);
       if (verified) {
         embed.addFields({ name: "Verified Passive", value: `\`\`\`${verified}\`\`\``, inline: false });
       }

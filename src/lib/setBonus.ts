@@ -334,6 +334,18 @@ export async function resolvePlayerBonuses(userId: string, characterId: string =
     }
   };
 
+  // Snapshot the resolver state after innate/affinity effects but before any
+  // echo stats are applied. The display summary below can then describe only
+  // the echo contribution instead of accidentally attributing weapon/set
+  // bonuses to echoes.
+  const echoBaseline = {
+    atkFlat: bonuses.atkFlat, hpFlat: bonuses.hpFlat, defFlat: bonuses.defFlat,
+    atkMult: bonuses.atkMult, hpMult: bonuses.hpMult, defMult: bonuses.defMult,
+    critRateBonus: bonuses.critRateBonus, critDmgBonus: bonuses.critDmgBonus,
+    energyBonus: bonuses.energyBonus, spdFlat: bonuses.spdFlat,
+    elemDmgBonus: bonuses.elemDmgBonus, healingBonus: bonuses.healingBonus,
+  };
+
   for (const e of echoes) {
     applyStat(e.mainStatType, e.mainStatValue);
     const subs: [string | null, number | null][] = [
@@ -347,6 +359,31 @@ export async function resolvePlayerBonuses(userId: string, characterId: string =
       if (type && base != null) {
         applyStat(type, calcSubstatValue(type, base, e.level));
       }
+    }
+  }
+
+  // Summarise echo stat contribution for display. Keep every stat that the
+  // resolver actually applies, including SPD/energy/elemental/healing values.
+  if (echoes.length > 0) {
+    const parts: string[] = [];
+    const pctDelta = (after: number, before: number) => (after / before - 1) * 100;
+    const addPositive = (label: string, value: number, shown = Math.round(value)) => {
+      if (value > 0) parts.push(`+${shown} ${label}`);
+    };
+    addPositive("ATK", bonuses.atkFlat - echoBaseline.atkFlat);
+    addPositive("HP", bonuses.hpFlat - echoBaseline.hpFlat);
+    addPositive("DEF", bonuses.defFlat - echoBaseline.defFlat);
+    addPositive("ATK%", pctDelta(bonuses.atkMult, echoBaseline.atkMult));
+    addPositive("HP%", pctDelta(bonuses.hpMult, echoBaseline.hpMult));
+    addPositive("DEF%", pctDelta(bonuses.defMult, echoBaseline.defMult));
+    addPositive("Crit Rate", (bonuses.critRateBonus - echoBaseline.critRateBonus) * 100, Number(((bonuses.critRateBonus - echoBaseline.critRateBonus) * 100).toFixed(1)));
+    addPositive("Crit DMG", (bonuses.critDmgBonus - echoBaseline.critDmgBonus) * 100, Number(((bonuses.critDmgBonus - echoBaseline.critDmgBonus) * 100).toFixed(1)));
+    addPositive("Energy/turn", bonuses.energyBonus - echoBaseline.energyBonus, Number((bonuses.energyBonus - echoBaseline.energyBonus).toFixed(1)));
+    addPositive("SPD", bonuses.spdFlat - echoBaseline.spdFlat, Number((bonuses.spdFlat - echoBaseline.spdFlat).toFixed(1)));
+    addPositive("Elem DMG", (bonuses.elemDmgBonus - echoBaseline.elemDmgBonus) * 100, Number(((bonuses.elemDmgBonus - echoBaseline.elemDmgBonus) * 100).toFixed(1)));
+    addPositive("Healing", (bonuses.healingBonus - echoBaseline.healingBonus) * 100, Number(((bonuses.healingBonus - echoBaseline.healingBonus) * 100).toFixed(1)));
+    if (parts.length > 0) {
+      bonuses.activeLabels.push(`◈ Echo Stats: ${parts.join("  ·  ")}`);
     }
   }
 
@@ -414,22 +451,6 @@ export async function resolvePlayerBonuses(userId: string, characterId: string =
 
     const shownName = weapon.awakened && weapon.awakenedName ? `✦ ${weapon.awakenedName}` : weapon.name;
     bonuses.activeLabels.push(`🗡️ ${shownName} Lv${weapon.level} — +${effectiveAtk} ATK`);
-  }
-
-  // Summarise echo stat contribution for display
-  if (echoes.length > 0) {
-    const parts: string[] = [];
-    if (bonuses.atkFlat)       parts.push(`+${Math.round(bonuses.atkFlat)} ATK`);
-    if (bonuses.hpFlat)        parts.push(`+${Math.round(bonuses.hpFlat)} HP`);
-    if (bonuses.defFlat)       parts.push(`+${Math.round(bonuses.defFlat)} DEF`);
-    if (bonuses.atkMult > 1)   parts.push(`+${Math.round((bonuses.atkMult - 1) * 100)}% ATK`);
-    if (bonuses.hpMult  > 1)   parts.push(`+${Math.round((bonuses.hpMult  - 1) * 100)}% HP`);
-    if (bonuses.defMult > 1)   parts.push(`+${Math.round((bonuses.defMult - 1) * 100)}% DEF`);
-    if (bonuses.critRateBonus) parts.push(`+${(bonuses.critRateBonus * 100).toFixed(1)}% Crit Rate`);
-    if (bonuses.critDmgBonus)  parts.push(`+${(bonuses.critDmgBonus * 100).toFixed(1)}% Crit DMG`);
-    if (parts.length > 0) {
-      bonuses.activeLabels.push(`◈ Echo Stats: ${parts.join("  ·  ")}`);
-    }
   }
 
   // ── Set bonuses (count by element among equipped echoes) ─────────────────

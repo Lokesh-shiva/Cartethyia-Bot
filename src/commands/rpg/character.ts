@@ -289,6 +289,7 @@ async function buildWeaponView(userId: string, characterId: string): Promise<Pag
     where: { userId, characterId, isEquipped: true },
     select: {
       name: true, weaponType: true, rarity: true, level: true, baseAtk: true,
+      refinement: true,
       subStatType: true, subStatVal: true,
       hiddenSub1Type: true, hiddenSub1Val: true, hiddenSub2Type: true, hiddenSub2Val: true,
       awakened: true, awakenedName: true, awakenedPassive: true, weaponBond: true,
