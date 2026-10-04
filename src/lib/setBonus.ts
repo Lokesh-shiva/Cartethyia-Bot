@@ -178,7 +178,7 @@ export interface PlayerBonuses {
   energyBonus:    number;
   lifesteal:      number;
   elemDmgBonus:   number;
-  healingBonus:   number; // from HEALING_PCT echo substat — scales echo-skill heals + RADIANT_CONVERGENCE's self-heals
+  healingBonus:   number; // from HEALING_PCT echo substat — scales outgoing heals, echo-skill heals, and RADIANT_CONVERGENCE self-heals
 
   // Active set effects
   set4pc: FourPcEffect | null;

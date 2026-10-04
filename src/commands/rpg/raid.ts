@@ -61,7 +61,7 @@ import {
   getWellspringAtkBonus, getWellspringCritRateBonus, getWellspringDefBonus,
 } from "../../lib/wellspring";
 import { ForteState, addForteCharge, isForteMaxed, resetForte } from "../../lib/forte";
-import { AllyAction, AllyActionTarget, applyAllyAction } from "../../lib/allyActions";
+import { AllyAction, AllyActionTarget, applyAllyAction, scaleOutgoingHealing } from "../../lib/allyActions";
 import { addConcertoEnergy } from "../../lib/concertoEnergy";
 import { DebuffState, applyDebuff, tickDebuffs, getWeakenedMult, cleanseDebuffs } from "../../lib/debuffs";
 import { AlphaRoundState, beginAlphaRound, recordAlphaAction } from "../../lib/alphaRaidRounds";
@@ -1773,8 +1773,14 @@ async function launchRaid(
 
           const outroEffect = outgoingIsPlayer ? PLAYER_SELF_OUTRO : current.allyKit!.outroEffect(current.solaceConstellation);
           const introEffect: IntroOutroEffect = incomingIsPlayer ? PLAYER_SELF_INTRO : incomingBundle!.kit.introEffect(incomingBundle!.introLevel, incomingBundle!.constellation);
-          const outroResult = resolveIntroOutroEffect(outroEffect, incomingTarget);
-          const introResult = resolveIntroOutroEffect(introEffect, incomingTarget);
+          const outgoingHealingBonus = outgoingIsPlayer
+            ? current.bonuses.healingBonus
+            : (current.allyBonuses?.healingBonus ?? 0);
+          const incomingHealingBonus = incomingIsPlayer
+            ? current.bonuses.healingBonus
+            : (incomingBundle?.bonuses.healingBonus ?? 0);
+          const outroResult = resolveIntroOutroEffect(outroEffect, incomingTarget, outgoingHealingBonus);
+          const introResult = resolveIntroOutroEffect(introEffect, incomingTarget, incomingHealingBonus);
 
           // Incoming-side mechanic grants — gated on the INCOMING unit's own
           // identity (not the outgoing unit's), fixing the same pre-existing
@@ -2256,10 +2262,10 @@ async function launchRaid(
           const bodyResult = resolveIntroOutroEffect({ actions: [
             { type: "HEAL_ALLY", value: healPct },
             { type: "CLEANSE_ALLY", value: solaceConvergenceCleanseCount(current.solaceConstellation) },
-          ] }, { hp: p.hp, hpMax: p.hpMax });
+          ] }, { hp: p.hp, hpMax: p.hpMax }, activeBonuses.healingBonus);
           const allyResult = resolveIntroOutroEffect({ actions: [
             { type: "HEAL_ALLY", value: healPct },
-          ] }, { hp: p.allyHp, hpMax: p.allyHpMax });
+          ] }, { hp: p.allyHp, hpMax: p.allyHpMax }, activeBonuses.healingBonus);
 
           const beforeBody = p.hp;
           p.hp = Math.min(p.hpMax, p.hp + bodyResult.hpDelta);
@@ -2317,7 +2323,7 @@ async function launchRaid(
         moveLine = `${current.name} — 🌑 ${result.moveLabel}`;
 
         if (result.healResult.actions.length > 0) {
-          const healResult = resolveIntroOutroEffect(result.healResult, { hp: current.allyHp, hpMax: current.allyHpMax });
+          const healResult = resolveIntroOutroEffect(result.healResult, { hp: current.allyHp, hpMax: current.allyHpMax }, activeBonuses.healingBonus);
           const hpBefore = current.allyHp;
           current.allyHp = Math.min(current.allyHpMax, current.allyHp + healResult.hpDelta);
           recordDirectHeal(current.combatStats, hpBefore, current.allyHp);
@@ -2417,7 +2423,7 @@ async function launchRaid(
 
         current.allyHp = Math.max(1, current.allyHp - result.hpCost);
         if (result.healResult.actions.length > 0) {
-          const healResult = resolveIntroOutroEffect(result.healResult, { hp: current.allyHp, hpMax: current.allyHpMax });
+          const healResult = resolveIntroOutroEffect(result.healResult, { hp: current.allyHp, hpMax: current.allyHpMax }, activeBonuses.healingBonus);
           const healed = Math.min(current.allyHpMax, current.allyHp + healResult.hpDelta) - current.allyHp;
           const hpBefore = current.allyHp;
           current.allyHp = Math.min(current.allyHpMax, current.allyHp + healResult.hpDelta);
@@ -2544,14 +2550,12 @@ async function launchRaid(
         current.echoSkillCd = (result.resetCdOnCrit && echoCrit) ? 0 : 4;
         current.energy = result.setEnergyFull ? 100 : Math.min(100, current.energy + echoEnGain);
         if (result.healHp > 0) {
-          // Party-wide: every living participant's own currently-active unit
-          // gets healed, each scaled by THEIR OWN Healing Bonus — this is the
-          // one real "heal a teammate" path in the game today.
+          // Party-wide: the acting unit is the source of the heal, so its
+          // Healing Bonus scales the same outgoing heal for every target.
           const healLines: string[] = [];
           for (const p of raid.participants) {
             if (p.isDefeated) continue;
-            const pHealBonuses = (p.activeUnit === "ally" && p.allyBonuses) ? p.allyBonuses : p.bonuses;
-            const scaledHeal = Math.floor(result.healHp * (1 + pHealBonuses.healingBonus));
+            const scaledHeal = scaleOutgoingHealing(result.healHp, activeBonuses.healingBonus);
             if (positionValue(p.roster, p.activePosition) === "self") {
               const hpBefore = p.hp;
               p.hp = Math.min(p.hpMax, p.hp + scaledHeal);

@@ -28,11 +28,20 @@ export interface AllyActionResult {
   cleanseCount: number; // debuff count to remove via debuffs.ts's cleanseDebuffs()
 }
 
-export function applyAllyAction(action: AllyAction, target: AllyActionTarget): AllyActionResult {
+/** Scale healing produced by a unit, rather than healing received by a target. */
+export function scaleOutgoingHealing(baseHeal: number, healingBonus: number = 0): number {
+  return Math.floor(baseHeal * (1 + healingBonus));
+}
+
+export function applyAllyAction(
+  action: AllyAction,
+  target: AllyActionTarget,
+  healingBonus: number = 0,
+): AllyActionResult {
   const result: AllyActionResult = { hpDelta: 0, shieldDelta: 0, atkBuffPct: 0, critRateBuffPct: 0, cleanseCount: 0 };
   switch (action.type) {
     case "HEAL_ALLY":
-      result.hpDelta = Math.floor(target.hpMax * action.value);
+      result.hpDelta = scaleOutgoingHealing(Math.floor(target.hpMax * action.value), healingBonus);
       break;
     case "SHIELD_ALLY":
       result.shieldDelta = Math.floor(target.hpMax * action.value);
