@@ -64,6 +64,7 @@ import { ForteState, addForteCharge, isForteMaxed, resetForte } from "../../lib/
 import { AllyAction, AllyActionTarget, applyAllyAction } from "../../lib/allyActions";
 import { addConcertoEnergy } from "../../lib/concertoEnergy";
 import { DebuffState, applyDebuff, tickDebuffs, getWeakenedMult, cleanseDebuffs } from "../../lib/debuffs";
+import { AlphaRoundState, beginAlphaRound, recordAlphaAction } from "../../lib/alphaRaidRounds";
 import { getOrCreateCharacterProgress, MAX_KIT_LEVEL } from "../../lib/characterProgress";
 import { CHARACTER_KITS, PlayableCharacterKit, CharacterCombatContext } from "../../lib/characterKit";
 import {
@@ -220,9 +221,9 @@ function computeRaidBossStats(
   const bossHp  = Math.floor(totalPower * 2.2 * 28 * 0.80 * 1.35 * 1.37);
 
   // ── ATK ─────────────────────────────────────────────────────────────────────
-  // Each AoE round should drain ~12–18% of a player's HP after their DEF.
-  // With more players the boss attacks proportionally more per round (one attack
-  // per player turn, so damage-per-player stays constant; no extra scaling needed).
+  // Each AoE response should drain ~12–18% of a player's HP after their DEF.
+  // Normal raids retain one response per player action; Alpha Raids use the same
+  // response once after every living participant has had one action.
   // Baseline: boss ATK that deals ~15% avgHp against avgDef ≈ avgHp / 7 defense.
   // calcEnemyDamage → dmg = base * (1 - def / (def + 250))
   // Solve: 0.15 * avgHp = baseAtk * 0.6  →  baseAtk ≈ avgHp * 0.25
@@ -355,6 +356,7 @@ interface ActiveRaid {
   participants:  RaidParticipant[];
   currentIdx:    number;
   turn:          number;
+  alphaRound?:   AlphaRoundState;
   channelId:     string;
   guildId:       string;
   organizerId:   string;
@@ -609,6 +611,19 @@ function nextParticipant(raid: ActiveRaid): RaidParticipant | null {
   }
   raid.currentIdx = idx;
   return raid.participants[idx];
+}
+
+function finishPlayerActionState(
+  raid: ActiveRaid,
+  current: RaidParticipant,
+  forcedCritActive: boolean,
+  isSwapAction: boolean,
+): void {
+  if (current.skillCd > 0) current.skillCd--;
+  if (current.echoSkillCd > 0) current.echoSkillCd--;
+  if (raid.isDevGuild && current.attunementDoubleTurnsLeft > 0) current.attunementDoubleTurnsLeft--;
+  if (raid.isDevGuild && current.forteEmpoweredTurnsLeft > 0) current.forteEmpoweredTurnsLeft--;
+  if (forcedCritActive && !isSwapAction) current.nextCritArmed = false;
 }
 
 // Milestone 3d Task 3: folds together Attunement/Wellspring/Forte contributions
@@ -1086,6 +1101,10 @@ async function launchRaid(
   raid.phase      = "FIGHTING";
   raid.participants.sort((a, b) => b.spd - a.spd); // higher SPD acts earlier each round
   raid.currentIdx = 0;
+  if (alphaOptions) {
+    raid.alphaRound = beginAlphaRound(raid.participants, raid.currentIdx);
+    raid.currentIdx = raid.alphaRound.currentIndex;
+  }
 
   // ── Scale boss stats to this party ──────────────────────────────────────────
   const scaled     = computeRaidBossStats(boss, raid.participants);
@@ -1280,11 +1299,374 @@ async function launchRaid(
   };
 
   // ── Turn loop ─────────────────────────────────────────────────────────────
+  // The existing boss response is kept in one helper so Alpha timeouts can
+  // close a round through the exact same counter path as a real action.
+  const resolveBossCounter = async (
+    current: RaidParticipant,
+    moveLine: string,
+    forcedCritActive: boolean,
+    isSwapAction: boolean,
+  ): Promise<void> => {
+      // ── Boss counter-attack (AoE vs all living players) ──────────────────────
+      nextParticipant(raid);   // advance pointer (side effect: sets raid.currentIdx)
+
+      // Milestone 3d: debuffs tick down at the START of resolving the boss's
+      // turn — mirrors boss.ts's Milestone 3b Task 3 timing, so any WEAKENED
+      // applied by the AoE below isn't touched until NEXT round's tick. Alpha
+      // resolves one boss turn per party round, so every living participant's
+      // debuffs tick here; normal raids keep their existing current-player tick.
+      if (raid.isDevGuild) {
+        const debuffTargets = alphaOptions
+          ? raid.participants.filter(p => !p.isDefeated)
+          : [current];
+        for (const participant of debuffTargets) {
+          const tickResult = tickDebuffs(participant.playerDebuffs);
+          participant.playerDebuffs = tickResult.state;
+        }
+      }
+
+      if (raid.shatterLeft > 0) {
+        raid.shatterLeft--;
+        if (raid.shatterLeft === 0) {
+          raid.isShattered = false;
+          raid.bossVib     = raid.bossVibMax;
+          moveLine += "\n◇ Boss recovers from Shatter. Vibration bar reset.";
+        } else {
+          moveLine += `\n◇ Boss stunned (${raid.shatterLeft} turn${raid.shatterLeft > 1 ? "s" : ""} left).`;
+        }
+      } else {
+        const enraged = !!alphaOptions && raid.bossHp / raid.bossHpMax <= 0.4;
+        // Alpha Raid Phase 3 cadence: enrage -> real Ultimate, cooldown-ready
+        // -> real Skill, else Basic (flavor-name-only, unchanged from Phase 2).
+        // Normal /raid bosses (alphaOptions absent) keep Phase 2's fully
+        // random tier pick, since they never had real-kit moves to gate.
+        const moveIdx = !alphaOptions
+          ? Math.floor(Math.random() * boss.moves.length)
+          : enraged ? 2 : (raid.bossSkillCdTurns === 0 ? 1 : 0);
+        const move = boss.moves[moveIdx]!;
+        const enrageAtkMult = enraged ? 1.6 : 1;
+        const bossWeakenActive = raid.bossWeakenTurnsLeft > 0;
+        const feyraBossWeakenActive = raid.feyraBossWeakenTurnsLeft > 0;
+        const alphaAtkBuffActive = !!alphaOptions && raid.bossAtkBuffTurnsLeft > 0;
+        const alive   = raid.participants.filter(p => !p.isDefeated);
+        if (enraged && alphaOptions) moveLine += `\n🔥 **${boss.name}** enrages, striking with everything it has!`;
+        const dmgLines: string[] = [];
+
+        // Alpha Raid Phase 3: run the real kit call for Skill/Ultimate tiers,
+        // applying ONLY the generic base-interface fields — damageMult,
+        // mechanic-state, and healResult.actions via applyAllyAction(). Never
+        // reads a character-specific extension field (hpCost, enemy-facing
+        // weaken, etc.) — that's the whole point: a brand-new character's
+        // kit works here with zero new code, the same day it's added to
+        // CHARACTER_KITS.
+        let kitDamageMult = 1;
+        if (alphaOptions && moveIdx > 0) {
+          const bossKit = CHARACTER_KITS[alphaOptions.characterId];
+          if (bossKit) {
+            const ctx: CharacterCombatContext = {
+              playerHp: raid.bossHp, playerHpMax: raid.bossHpMax,
+              allyHp:   raid.bossHp, allyHpMax:   raid.bossHpMax,
+              turn: raid.turn, isShattered: false,
+              mechanicState: raid.bossMechanicState,
+            };
+            const kitLevels = {
+              basicLevel: MAX_KIT_LEVEL, skillLevel: MAX_KIT_LEVEL, ultimateLevel: MAX_KIT_LEVEL,
+              introLevel: MAX_KIT_LEVEL, forteLevel: MAX_KIT_LEVEL,
+            };
+            const healActions: AllyAction[] = [];
+            if (moveIdx === 2) {
+              const ult = bossKit.onUltimate(ctx, kitLevels, 0);
+              raid.bossMechanicState = ult.newMechanicState;
+              if (ult.moveLabel) moveLine += `\n⚡ ${ult.moveLabel}`;
+              healActions.push(...ult.healResult.actions);
+            } else {
+              const sk = bossKit.onSkill(ctx, kitLevels, 0);
+              raid.bossMechanicState = sk.newMechanicState;
+              kitDamageMult = sk.damageMult;
+              raid.bossSkillCdTurns = bossKit.skillCooldownTurns;
+              if (sk.moveLabel) moveLine += `\n✦ ${sk.moveLabel}`;
+            }
+            for (const action of healActions) {
+              const result = applyAllyAction(action, { hp: raid.bossHp, hpMax: raid.bossHpMax });
+              if (result.hpDelta > 0) {
+                raid.bossHp = Math.min(raid.bossHpMax, raid.bossHp + result.hpDelta);
+                moveLine += `\n💚 **${boss.name}** heals for ${result.hpDelta}!`;
+              }
+              if (result.shieldDelta > 0) {
+                raid.bossShieldHp = result.shieldDelta;
+                raid.bossShieldTurnsLeft = 3;
+                moveLine += `\n🛡 **${boss.name}** shields itself for ${result.shieldDelta}!`;
+              }
+              if (result.atkBuffPct > 0) {
+                raid.bossAtkBuffPct = result.atkBuffPct;
+                raid.bossAtkBuffTurnsLeft = 3;
+                moveLine += `\n💢 **${boss.name}**'s ATK rises!`;
+              }
+              // critRateBuffPct/cleanseCount: no boss-side analog (bosses don't
+              // crit-roll their own attacks, and take no debuffs today) —
+              // intentional no-op, not a missing branch.
+            }
+          }
+        }
+
+        // aoeBase is computed AFTER the real-kit call above so kitDamageMult
+        // (only known once a Skill cast resolves) can fold in — move.damage
+        // stays the Phase 2 baseline (1.0/1.3/1.6 by tier), kitDamageMult
+        // multiplies on top, defaulting to 1 for Basic/Ultimate/non-Alpha bosses.
+        const aoeBase = Math.floor(raid.bossAtk * move.damage * kitDamageMult * 0.6 * enrageAtkMult * (alphaAtkBuffActive ? (1 + raid.bossAtkBuffPct) : 1) * (bossWeakenActive ? (1 - raid.bossWeakenPct) : 1) * (feyraBossWeakenActive ? (1 - raid.feyraBossWeakenPct) : 1)); // AoE = 60% of single-target
+        // Milestone 3d: party-wide DEF bonuses (Attunement DEF-mode/Wellspring/
+        // Forte) from whoever currently has their Solace active apply to
+        // EVERY living participant's damage taken, not just the owner's.
+        const party = raid.isDevGuild ? partyWideTeamBonuses(raid) : { atkMult: 1, critBonus: 0, defMult: 1 };
+
+        for (const p of alive) {
+          if (alphaOptions && move.effect === "ALPHA_SKILL_DEBUFF") {
+            p.playerDebuffs = applyDebuff(p.playerDebuffs, "VULNERABLE", 0.15, 2);
+          } else if (alphaOptions && move.effect === "ALPHA_ULT_DEBUFF") {
+            p.playerDebuffs = applyDebuff(p.playerDebuffs, "WEAKENED", 0.25, 2);
+          }
+
+          // Milestone 3.5b: while this participant's Solace is defending,
+          // damage reduction uses HER OWN DEF, not the player's own.
+          const pDefendingWithAlly = raid.isDevGuild && p.activeUnit === "ally" && p.allySolaceStats !== null;
+          const pActiveDef = pDefendingWithAlly ? p.allySolaceStats!.def : p.def;
+          const pActiveBonuses = (p.activeUnit === "ally" && p.allyBonuses) ? p.allyBonuses : p.bonuses;
+          const pRiloDefBuffMult = p.riloDefBuffTurnsLeft > 0 ? (1 + p.riloDefBuffPct) : 1;
+          let bossDmg    = calcEnemyDamage(aoeBase, pActiveDef * party.defMult * pRiloDefBuffMult, 1.0);
+          const shield   = elemFrostShield(pActiveBonuses.elementPassive, bossDmg);
+          bossDmg        = shield.dmg;
+
+          // Milestone 3d: while a participant's own Solace is active, AoE
+          // damage routes into her ally HP pool instead of the participant's
+          // own HP — depleting it is NOT a defeat, just a forced swap back.
+          const hitsAlly = raid.isDevGuild && p.activeUnit === "ally";
+          // Bug fix (2026-09-18): radRegen was previously computed off
+          // p.hpMax unconditionally, even for an active ally with a
+          // completely different (often much smaller) allyHpMax — inflating
+          // the regen fraction whenever the player's own HP pool was larger
+          // than their ally's. Worse, it was applied unconditionally right
+          // after the damage subtraction, in the SAME block, before any KO
+          // check ran — so a lethal hit that dropped HP to 0 got silently
+          // revived by regen before the game ever noticed the unit had died.
+          // A Spectro-passive (RADIANCE) unit — Solace herself included —
+          // was therefore functionally unkillable via this AoE regardless of
+          // level, exactly as reported: "level 1 Solace not even dying to a
+          // raid boss... other person['s] Solace also not dying."
+          const radRegen = elemRadianceRegen(pActiveBonuses.elementPassive, hitsAlly ? p.allyHpMax : p.hpMax);
+          if (hitsAlly && p.activeAllyCharacterId === "rilo") {
+            const rState = p.allyMechanicState as RiloMechanicState;
+            const hitResult = riloOnHitTaken(rState, bossDmg, p.allyHp, p.allyHpMax, p.solaceConstellation);
+            p.allyMechanicState = hitResult.newMechanicState;
+            bossDmg = hitResult.actualDamageTaken;
+            if (hitResult.forteGain > 0) p.solaceForte = addForteCharge(p.solaceForte, RILO_FORTE_CONFIG, hitResult.forteGain);
+          }
+          if (hitsAlly) {
+            const hpBeforeDamage = p.allyHp;
+            p.allyHp = Math.max(0, p.allyHp - bossDmg);
+            recordDamageTaken(p.combatStats, hpBeforeDamage, p.allyHp);
+            if (radRegen > 0 && p.allyHp > 0) {
+              const hpBeforeRegen = p.allyHp;
+              p.allyHp = Math.min(p.allyHpMax, p.allyHp + radRegen);
+              recordDirectHeal(p.combatStats, hpBeforeRegen, p.allyHp);
+            }
+          } else {
+            const hpBeforeDamage = p.hp;
+            p.hp = Math.max(0, p.hp - bossDmg);
+            recordDamageTaken(p.combatStats, hpBeforeDamage, p.hp);
+            if (radRegen > 0 && p.hp > 0) {
+              const hpBeforeRegen = p.hp;
+              p.hp = Math.min(p.hpMax, p.hp + radRegen);
+              recordDirectHeal(p.combatStats, hpBeforeRegen, p.hp);
+            }
+          }
+
+          const pSetId = pActiveBonuses.activeNamedSetId;
+          if (pSetId === "SMOLDERING_SOVEREIGN") smolderingSovereignOnDamageTaken(p.namedState);
+          if (pSetId === "WINDSTRIDERS_LEGACY") windstridersLegacyOnBigHitTaken(p.namedState, bossDmg, p.hpMax);
+          if (pSetId === "VOIDBORN_REMNANT" && p.hp > 0) {
+            const frenzy = voidbornRemnantCheckFrenzy(p.namedState, p.hp, p.hpMax);
+            if (frenzy.triggered) {
+              p.havocFrenzyAtkMult = frenzy.atkMult; p.havocFrenzyLifesteal = frenzy.lifesteal; p.havocFrenzyDefIgnore = frenzy.defIgnorePct;
+              dmgLines.push(`${p.name} 🌑Frenzy!`);
+            }
+          }
+          if (pSetId === "RADIANT_CONVERGENCE" && p.hp > 0) {
+            radiantConvergenceOnHitTaken(p.namedState, bossDmg, p.hpMax);
+            const burst = radiantConvergenceCheckBurstHeal(p.namedState, p.hp, p.hpMax, pActiveBonuses.healingBonus);
+            if (burst > 0) {
+              const hpBefore = p.hp;
+              p.hp = Math.min(p.hpMax, p.hp + burst);
+              recordDirectHeal(p.combatStats, hpBefore, p.hp);
+              dmgLines.push(`${p.name} +${burst}✨Fracture`);
+            }
+          }
+          if (pSetId === "FROSTVEIL_BASTION" && p.hp > 0) {
+            const counter = frostveilBastionOnHitTaken(p.namedState);
+            if (counter.counterProc) {
+              setRaidVibration(raid, p, raid.bossVib - Math.floor(raid.bossVibMax * counter.vibDrain));
+              dmgLines.push(`${p.name} ❄️Counter-Frost`);
+            }
+            const panic = frostveilBastionCheckPanicShield(p.namedState, p.hp, p.hpMax);
+            if (panic.triggered) {
+              const hpBefore = p.hp;
+              p.hp = Math.min(p.hpMax, p.hp + panic.shieldAmount);
+              recordDirectHeal(p.combatStats, hpBefore, p.hp);
+              p.glacioShieldTurnsLeft = panic.turnsLeft + 1;
+              p.glacioShieldElemBonus = panic.elemDmgBonus;
+              dmgLines.push(`${p.name} +${panic.shieldAmount}❄️Shield`);
+            }
+          }
+
+          if (hitsAlly) {
+            // Active ally HP hitting 0 falls back to the next alive position
+            // in 1->2->3->1 order (not always the player) — this is NOT a
+            // defeat unless every filled position is exhausted, at which
+            // point the participant is genuinely out of the raid (matters for
+            // rosters where the player has fully benched themselves, in which
+            // case p.hp never takes damage on its own and would otherwise
+            // never reach the isDefeated branch below).
+            if (p.allyHp <= 0) {
+              p.allyHp = 0;
+              const koLabel = p.allyKit?.label ?? "ally";
+              const fallback = nextAliveFallback(p.roster, p.activePosition, pos => raidPositionHp(p, pos));
+              if (fallback === null) {
+                p.isDefeated = true;
+                dmgLines.push(`${p.name}'s ${koLabel} -${bossDmg} — team wiped, 💀 defeated!`);
+              } else {
+                const bundle = positionValue(p.roster, fallback) === "self" ? null : (p.allyBundles[fallback] ?? null);
+                p.activePosition = fallback;
+                p.activeUnit = bundle ? "ally" : "player";
+                p.activeAllyCharacterId = bundle?.characterId ?? null;
+                p.allyKit = bundle?.kit ?? null;
+                p.allyHp = bundle?.hp ?? 0;
+                p.allyHpMax = bundle?.hpMax ?? 0;
+                p.allyMechanicState = bundle?.mechanicState ?? null;
+                p.solaceBasicLevel = bundle?.basicLevel ?? 1;
+                p.solaceSkillLevel = bundle?.skillLevel ?? 1;
+                p.solaceUltimateLevel = bundle?.ultimateLevel ?? 1;
+                p.solaceIntroLevel = bundle?.introLevel ?? 1;
+                p.solaceForteLevel = bundle?.forteLevel ?? 1;
+                p.solaceConstellation = bundle?.constellation ?? 0;
+                p.allySolaceStats = bundle?.solaceStats ?? null;
+                p.allyBonuses = bundle?.bonuses ?? null;
+                const fallbackLabel = bundle ? bundle.kit.label : p.name;
+                dmgLines.push(`${p.name}'s ${koLabel} -${bossDmg} — falls back to **${fallbackLabel}**!`);
+              }
+            } else {
+              const suffix = shield.blocked ? " 🛡" : radRegen > 0 ? ` +${radRegen}✨` : "";
+              dmgLines.push(`${p.name}'s ${p.allyKit?.label ?? "ally"} -${bossDmg}${suffix}`);
+            }
+          } else if (p.hp <= 0) {
+            if (compositeHasSecondWind(p.bonuses.abilityEffects) && !p.secondWindUsed) {
+              p.secondWindUsed = true; p.hp = 1;
+              dmgLines.push(`${p.name} -${bossDmg} ✦UNDYING`);
+            } else {
+              p.hp = 0;
+              // Same fallback the hitsAlly branch above already does — dying
+              // while playing as yourself should check for an alive ally in
+              // reserve before declaring defeat, exactly like dying while an
+              // ally is active checks for the player (or another ally).
+              // Previously this branch skipped straight to isDefeated, so a
+              // player with a fully-healthy benched ally still got wiped.
+              const fallback = nextAliveFallback(p.roster, p.activePosition, pos => raidPositionHp(p, pos));
+              if (fallback === null) {
+                p.isDefeated = true;
+                dmgLines.push(`${p.name} -${bossDmg} — team wiped, 💀 defeated!`);
+              } else {
+                const bundle = positionValue(p.roster, fallback) === "self" ? null : (p.allyBundles[fallback] ?? null);
+                p.activePosition = fallback;
+                p.activeUnit = bundle ? "ally" : "player";
+                p.activeAllyCharacterId = bundle?.characterId ?? null;
+                p.allyKit = bundle?.kit ?? null;
+                p.allyHp = bundle?.hp ?? 0;
+                p.allyHpMax = bundle?.hpMax ?? 0;
+                p.allyMechanicState = bundle?.mechanicState ?? null;
+                p.solaceBasicLevel = bundle?.basicLevel ?? 1;
+                p.solaceSkillLevel = bundle?.skillLevel ?? 1;
+                p.solaceUltimateLevel = bundle?.ultimateLevel ?? 1;
+                p.solaceIntroLevel = bundle?.introLevel ?? 1;
+                p.solaceForteLevel = bundle?.forteLevel ?? 1;
+                p.solaceConstellation = bundle?.constellation ?? 0;
+                p.allySolaceStats = bundle?.solaceStats ?? null;
+                p.allyBonuses = bundle?.bonuses ?? null;
+                const fallbackLabel = bundle ? bundle.kit.label : p.name;
+                dmgLines.push(`${p.name} -${bossDmg} — falls back to **${fallbackLabel}**!`);
+              }
+            }
+          } else {
+            const suffix = shield.blocked ? " 🛡" : radRegen > 0 ? ` +${radRegen}✨` : "";
+            dmgLines.push(`${p.name} -${bossDmg}${suffix}`);
+          }
+
+          // Milestone 3d: WEAKENED — independent 25% roll per participant hit
+          // by the AoE (not one shared roll for the whole AoE), matching the
+          // recommendation to treat each hit as its own chance, since the AoE
+          // already loops over every living participant individually.
+          // Milestone 3.5a fix: gated on THIS participant's own hasSolace, not
+          // raid.isDevGuild — a participant who never opted into team
+          // mechanics via /team shouldn't be affected.
+          if (p.hasSolace && !p.isDefeated && Math.random() < 0.25) {
+            p.playerDebuffs = applyDebuff(p.playerDebuffs, "WEAKENED", 0.2, 2);
+            dmgLines.push(`${p.name} WEAKENED`);
+          }
+
+          if (p.glacioShieldTurnsLeft > 0) p.glacioShieldTurnsLeft--;
+          if (p.riloDefBuffTurnsLeft > 0) p.riloDefBuffTurnsLeft--;
+          if (p.brenLingerTurnsLeft > 0) p.brenLingerTurnsLeft--;
+          if (p.stormBuffTurnsLeft > 0) p.stormBuffTurnsLeft--;
+          if (p.namedState.spectroFractureTurnsLeft > 0) p.namedState.spectroFractureTurnsLeft--;
+        }
+        moveLine += `\n◇ **${boss.name}** ${move.effect} (AoE) — ${dmgLines.join("  ·  ")}`;
+        current.energy = Math.min(100, current.energy + 15);
+      }
+
+      finishPlayerActionState(raid, current, forcedCritActive, isSwapAction);
+      if (raid.bossDefShredTurnsLeft > 0) raid.bossDefShredTurnsLeft--;
+      if (raid.bossWeakenTurnsLeft > 0) raid.bossWeakenTurnsLeft--;
+      if (raid.feyraBossWeakenTurnsLeft > 0) raid.feyraBossWeakenTurnsLeft--;
+      if (raid.bossSkillCdTurns > 0) raid.bossSkillCdTurns--;
+      if (raid.bossShieldTurnsLeft > 0) { raid.bossShieldTurnsLeft--; if (raid.bossShieldTurnsLeft === 0) raid.bossShieldHp = 0; }
+      if (raid.bossAtkBuffTurnsLeft > 0) { raid.bossAtkBuffTurnsLeft--; if (raid.bossAtkBuffTurnsLeft === 0) raid.bossAtkBuffPct = 0; }
+
+      // All defeated?
+      if (raid.participants.every(p => p.isDefeated)) {
+        await battleMsg.edit({ embeds: [raidEmbed(raid, boss, moveLine)], components: [] });
+        await finishRaid(false);
+        return;
+      }
+
+      if (alphaOptions) {
+        raid.alphaRound = beginAlphaRound(raid.participants, raid.currentIdx);
+        raid.currentIdx = raid.alphaRound.currentIndex;
+      }
+
+      raid.turn++;
+      const nextP    = raid.participants[raid.currentIdx];
+      const newMsg   = await thread.send({
+        embeds:     [raidEmbed(raid, boss, moveLine)],
+        components: nextP ? buildRaidButtons(nextP, raid.isDevGuild) : [],
+      });
+      await battleMsg.edit({ components: [] }).catch(() => {});
+      battleMsg = newMsg;
+      runRaidTurn();
+  };
   const runRaidTurn = () => {
-    const current = raid.participants[raid.currentIdx];
+    if (alphaOptions && !raid.alphaRound) {
+      raid.alphaRound = beginAlphaRound(raid.participants, raid.currentIdx);
+      raid.currentIdx = raid.alphaRound.currentIndex;
+    }
+
+    let current = raid.participants[raid.currentIdx];
     if (!current || current.isDefeated) {
-      const next = nextParticipant(raid);
+      const next = alphaOptions
+        ? (() => {
+            raid.alphaRound = beginAlphaRound(raid.participants, raid.currentIdx);
+            raid.currentIdx = raid.alphaRound.currentIndex;
+            return raid.participants[raid.currentIdx] ?? null;
+          })()
+        : nextParticipant(raid);
       if (!next) { finishRaid(false); return; }
+      current = next;
       runRaidTurn();
       return;
     }
@@ -2278,346 +2660,56 @@ async function launchRaid(
         return;
       }
 
-      // ── Boss counter-attack (AoE vs all living players) ──────────────────────
-      nextParticipant(raid);   // advance pointer (side effect: sets raid.currentIdx)
-
-      // Milestone 3d: debuffs tick down at the START of resolving the boss's
-      // turn — mirrors boss.ts's Milestone 3b Task 3 timing, so any WEAKENED
-      // applied by the AoE below isn't touched until NEXT round's tick.
-      if (raid.isDevGuild) {
-        const tickResult = tickDebuffs(current.playerDebuffs);
-        current.playerDebuffs = tickResult.state;
+      if (alphaOptions && raid.alphaRound) {
+        raid.alphaRound = recordAlphaAction(raid.alphaRound, raid.participants, current.userId);
+        if (!raid.alphaRound.roundComplete) {
+          // Preserve the existing per-player energy/cooldown progression while
+          // deferring only the boss response until every living player acts.
+          current.energy = Math.min(100, current.energy + 15);
+          finishPlayerActionState(raid, current, forcedCritActive, isSwapAction);
+          raid.turn++;
+          raid.currentIdx = raid.alphaRound.currentIndex;
+          const nextP = raid.participants[raid.currentIdx];
+          const newMsg = await thread.send({
+            embeds: [raidEmbed(raid, boss, moveLine)],
+            components: nextP ? buildRaidButtons(nextP, raid.isDevGuild) : [],
+          });
+          await battleMsg.edit({ components: [] }).catch(() => {});
+          battleMsg = newMsg;
+          runRaidTurn();
+          return;
+        }
       }
 
-      if (raid.shatterLeft > 0) {
-        raid.shatterLeft--;
-        if (raid.shatterLeft === 0) {
-          raid.isShattered = false;
-          raid.bossVib     = raid.bossVibMax;
-          moveLine += "\n◇ Boss recovers from Shatter. Vibration bar reset.";
-        } else {
-          moveLine += `\n◇ Boss stunned (${raid.shatterLeft} turn${raid.shatterLeft > 1 ? "s" : ""} left).`;
-        }
-      } else {
-        const enraged = !!alphaOptions && raid.bossHp / raid.bossHpMax <= 0.4;
-        // Alpha Raid Phase 3 cadence: enrage -> real Ultimate, cooldown-ready
-        // -> real Skill, else Basic (flavor-name-only, unchanged from Phase 2).
-        // Normal /raid bosses (alphaOptions absent) keep Phase 2's fully
-        // random tier pick, since they never had real-kit moves to gate.
-        const moveIdx = !alphaOptions
-          ? Math.floor(Math.random() * boss.moves.length)
-          : enraged ? 2 : (raid.bossSkillCdTurns === 0 ? 1 : 0);
-        const move = boss.moves[moveIdx]!;
-        const enrageAtkMult = enraged ? 1.6 : 1;
-        const bossWeakenActive = raid.bossWeakenTurnsLeft > 0;
-        const feyraBossWeakenActive = raid.feyraBossWeakenTurnsLeft > 0;
-        const alphaAtkBuffActive = !!alphaOptions && raid.bossAtkBuffTurnsLeft > 0;
-        const alive   = raid.participants.filter(p => !p.isDefeated);
-        if (enraged && alphaOptions) moveLine += `\n🔥 **${boss.name}** enrages, striking with everything it has!`;
-        const dmgLines: string[] = [];
-
-        // Alpha Raid Phase 3: run the real kit call for Skill/Ultimate tiers,
-        // applying ONLY the generic base-interface fields — damageMult,
-        // mechanic-state, and healResult.actions via applyAllyAction(). Never
-        // reads a character-specific extension field (hpCost, enemy-facing
-        // weaken, etc.) — that's the whole point: a brand-new character's
-        // kit works here with zero new code, the same day it's added to
-        // CHARACTER_KITS.
-        let kitDamageMult = 1;
-        if (alphaOptions && moveIdx > 0) {
-          const bossKit = CHARACTER_KITS[alphaOptions.characterId];
-          if (bossKit) {
-            const ctx: CharacterCombatContext = {
-              playerHp: raid.bossHp, playerHpMax: raid.bossHpMax,
-              allyHp:   raid.bossHp, allyHpMax:   raid.bossHpMax,
-              turn: raid.turn, isShattered: false,
-              mechanicState: raid.bossMechanicState,
-            };
-            const kitLevels = {
-              basicLevel: MAX_KIT_LEVEL, skillLevel: MAX_KIT_LEVEL, ultimateLevel: MAX_KIT_LEVEL,
-              introLevel: MAX_KIT_LEVEL, forteLevel: MAX_KIT_LEVEL,
-            };
-            const healActions: AllyAction[] = [];
-            if (moveIdx === 2) {
-              const ult = bossKit.onUltimate(ctx, kitLevels, 0);
-              raid.bossMechanicState = ult.newMechanicState;
-              if (ult.moveLabel) moveLine += `\n⚡ ${ult.moveLabel}`;
-              healActions.push(...ult.healResult.actions);
-            } else {
-              const sk = bossKit.onSkill(ctx, kitLevels, 0);
-              raid.bossMechanicState = sk.newMechanicState;
-              kitDamageMult = sk.damageMult;
-              raid.bossSkillCdTurns = bossKit.skillCooldownTurns;
-              if (sk.moveLabel) moveLine += `\n✦ ${sk.moveLabel}`;
-            }
-            for (const action of healActions) {
-              const result = applyAllyAction(action, { hp: raid.bossHp, hpMax: raid.bossHpMax });
-              if (result.hpDelta > 0) {
-                raid.bossHp = Math.min(raid.bossHpMax, raid.bossHp + result.hpDelta);
-                moveLine += `\n💚 **${boss.name}** heals for ${result.hpDelta}!`;
-              }
-              if (result.shieldDelta > 0) {
-                raid.bossShieldHp = result.shieldDelta;
-                raid.bossShieldTurnsLeft = 3;
-                moveLine += `\n🛡 **${boss.name}** shields itself for ${result.shieldDelta}!`;
-              }
-              if (result.atkBuffPct > 0) {
-                raid.bossAtkBuffPct = result.atkBuffPct;
-                raid.bossAtkBuffTurnsLeft = 3;
-                moveLine += `\n💢 **${boss.name}**'s ATK rises!`;
-              }
-              // critRateBuffPct/cleanseCount: no boss-side analog (bosses don't
-              // crit-roll their own attacks, and take no debuffs today) —
-              // intentional no-op, not a missing branch.
-            }
-          }
-        }
-
-        // aoeBase is computed AFTER the real-kit call above so kitDamageMult
-        // (only known once a Skill cast resolves) can fold in — move.damage
-        // stays the Phase 2 baseline (1.0/1.3/1.6 by tier), kitDamageMult
-        // multiplies on top, defaulting to 1 for Basic/Ultimate/non-Alpha bosses.
-        const aoeBase = Math.floor(raid.bossAtk * move.damage * kitDamageMult * 0.6 * enrageAtkMult * (alphaAtkBuffActive ? (1 + raid.bossAtkBuffPct) : 1) * (bossWeakenActive ? (1 - raid.bossWeakenPct) : 1) * (feyraBossWeakenActive ? (1 - raid.feyraBossWeakenPct) : 1)); // AoE = 60% of single-target
-        // Milestone 3d: party-wide DEF bonuses (Attunement DEF-mode/Wellspring/
-        // Forte) from whoever currently has their Solace active apply to
-        // EVERY living participant's damage taken, not just the owner's.
-        const party = raid.isDevGuild ? partyWideTeamBonuses(raid) : { atkMult: 1, critBonus: 0, defMult: 1 };
-
-        for (const p of alive) {
-          if (alphaOptions && move.effect === "ALPHA_SKILL_DEBUFF") {
-            p.playerDebuffs = applyDebuff(p.playerDebuffs, "VULNERABLE", 0.15, 2);
-          } else if (alphaOptions && move.effect === "ALPHA_ULT_DEBUFF") {
-            p.playerDebuffs = applyDebuff(p.playerDebuffs, "WEAKENED", 0.25, 2);
-          }
-
-          // Milestone 3.5b: while this participant's Solace is defending,
-          // damage reduction uses HER OWN DEF, not the player's own.
-          const pDefendingWithAlly = raid.isDevGuild && p.activeUnit === "ally" && p.allySolaceStats !== null;
-          const pActiveDef = pDefendingWithAlly ? p.allySolaceStats!.def : p.def;
-          const pActiveBonuses = (p.activeUnit === "ally" && p.allyBonuses) ? p.allyBonuses : p.bonuses;
-          const pRiloDefBuffMult = p.riloDefBuffTurnsLeft > 0 ? (1 + p.riloDefBuffPct) : 1;
-          let bossDmg    = calcEnemyDamage(aoeBase, pActiveDef * party.defMult * pRiloDefBuffMult, 1.0);
-          const shield   = elemFrostShield(pActiveBonuses.elementPassive, bossDmg);
-          bossDmg        = shield.dmg;
-
-          // Milestone 3d: while a participant's own Solace is active, AoE
-          // damage routes into her ally HP pool instead of the participant's
-          // own HP — depleting it is NOT a defeat, just a forced swap back.
-          const hitsAlly = raid.isDevGuild && p.activeUnit === "ally";
-          // Bug fix (2026-09-18): radRegen was previously computed off
-          // p.hpMax unconditionally, even for an active ally with a
-          // completely different (often much smaller) allyHpMax — inflating
-          // the regen fraction whenever the player's own HP pool was larger
-          // than their ally's. Worse, it was applied unconditionally right
-          // after the damage subtraction, in the SAME block, before any KO
-          // check ran — so a lethal hit that dropped HP to 0 got silently
-          // revived by regen before the game ever noticed the unit had died.
-          // A Spectro-passive (RADIANCE) unit — Solace herself included —
-          // was therefore functionally unkillable via this AoE regardless of
-          // level, exactly as reported: "level 1 Solace not even dying to a
-          // raid boss... other person['s] Solace also not dying."
-          const radRegen = elemRadianceRegen(pActiveBonuses.elementPassive, hitsAlly ? p.allyHpMax : p.hpMax);
-          if (hitsAlly && p.activeAllyCharacterId === "rilo") {
-            const rState = p.allyMechanicState as RiloMechanicState;
-            const hitResult = riloOnHitTaken(rState, bossDmg, p.allyHp, p.allyHpMax, p.solaceConstellation);
-            p.allyMechanicState = hitResult.newMechanicState;
-            bossDmg = hitResult.actualDamageTaken;
-            if (hitResult.forteGain > 0) p.solaceForte = addForteCharge(p.solaceForte, RILO_FORTE_CONFIG, hitResult.forteGain);
-          }
-          if (hitsAlly) {
-            const hpBeforeDamage = p.allyHp;
-            p.allyHp = Math.max(0, p.allyHp - bossDmg);
-            recordDamageTaken(p.combatStats, hpBeforeDamage, p.allyHp);
-            if (radRegen > 0 && p.allyHp > 0) {
-              const hpBeforeRegen = p.allyHp;
-              p.allyHp = Math.min(p.allyHpMax, p.allyHp + radRegen);
-              recordDirectHeal(p.combatStats, hpBeforeRegen, p.allyHp);
-            }
-          } else {
-            const hpBeforeDamage = p.hp;
-            p.hp = Math.max(0, p.hp - bossDmg);
-            recordDamageTaken(p.combatStats, hpBeforeDamage, p.hp);
-            if (radRegen > 0 && p.hp > 0) {
-              const hpBeforeRegen = p.hp;
-              p.hp = Math.min(p.hpMax, p.hp + radRegen);
-              recordDirectHeal(p.combatStats, hpBeforeRegen, p.hp);
-            }
-          }
-
-          const pSetId = pActiveBonuses.activeNamedSetId;
-          if (pSetId === "SMOLDERING_SOVEREIGN") smolderingSovereignOnDamageTaken(p.namedState);
-          if (pSetId === "WINDSTRIDERS_LEGACY") windstridersLegacyOnBigHitTaken(p.namedState, bossDmg, p.hpMax);
-          if (pSetId === "VOIDBORN_REMNANT" && p.hp > 0) {
-            const frenzy = voidbornRemnantCheckFrenzy(p.namedState, p.hp, p.hpMax);
-            if (frenzy.triggered) {
-              p.havocFrenzyAtkMult = frenzy.atkMult; p.havocFrenzyLifesteal = frenzy.lifesteal; p.havocFrenzyDefIgnore = frenzy.defIgnorePct;
-              dmgLines.push(`${p.name} 🌑Frenzy!`);
-            }
-          }
-          if (pSetId === "RADIANT_CONVERGENCE" && p.hp > 0) {
-            radiantConvergenceOnHitTaken(p.namedState, bossDmg, p.hpMax);
-            const burst = radiantConvergenceCheckBurstHeal(p.namedState, p.hp, p.hpMax, pActiveBonuses.healingBonus);
-            if (burst > 0) {
-              const hpBefore = p.hp;
-              p.hp = Math.min(p.hpMax, p.hp + burst);
-              recordDirectHeal(p.combatStats, hpBefore, p.hp);
-              dmgLines.push(`${p.name} +${burst}✨Fracture`);
-            }
-          }
-          if (pSetId === "FROSTVEIL_BASTION" && p.hp > 0) {
-            const counter = frostveilBastionOnHitTaken(p.namedState);
-            if (counter.counterProc) {
-              setRaidVibration(raid, p, raid.bossVib - Math.floor(raid.bossVibMax * counter.vibDrain));
-              dmgLines.push(`${p.name} ❄️Counter-Frost`);
-            }
-            const panic = frostveilBastionCheckPanicShield(p.namedState, p.hp, p.hpMax);
-            if (panic.triggered) {
-              const hpBefore = p.hp;
-              p.hp = Math.min(p.hpMax, p.hp + panic.shieldAmount);
-              recordDirectHeal(p.combatStats, hpBefore, p.hp);
-              p.glacioShieldTurnsLeft = panic.turnsLeft + 1;
-              p.glacioShieldElemBonus = panic.elemDmgBonus;
-              dmgLines.push(`${p.name} +${panic.shieldAmount}❄️Shield`);
-            }
-          }
-
-          if (hitsAlly) {
-            // Active ally HP hitting 0 falls back to the next alive position
-            // in 1->2->3->1 order (not always the player) — this is NOT a
-            // defeat unless every filled position is exhausted, at which
-            // point the participant is genuinely out of the raid (matters for
-            // rosters where the player has fully benched themselves, in which
-            // case p.hp never takes damage on its own and would otherwise
-            // never reach the isDefeated branch below).
-            if (p.allyHp <= 0) {
-              p.allyHp = 0;
-              const koLabel = p.allyKit?.label ?? "ally";
-              const fallback = nextAliveFallback(p.roster, p.activePosition, pos => raidPositionHp(p, pos));
-              if (fallback === null) {
-                p.isDefeated = true;
-                dmgLines.push(`${p.name}'s ${koLabel} -${bossDmg} — team wiped, 💀 defeated!`);
-              } else {
-                const bundle = positionValue(p.roster, fallback) === "self" ? null : (p.allyBundles[fallback] ?? null);
-                p.activePosition = fallback;
-                p.activeUnit = bundle ? "ally" : "player";
-                p.activeAllyCharacterId = bundle?.characterId ?? null;
-                p.allyKit = bundle?.kit ?? null;
-                p.allyHp = bundle?.hp ?? 0;
-                p.allyHpMax = bundle?.hpMax ?? 0;
-                p.allyMechanicState = bundle?.mechanicState ?? null;
-                p.solaceBasicLevel = bundle?.basicLevel ?? 1;
-                p.solaceSkillLevel = bundle?.skillLevel ?? 1;
-                p.solaceUltimateLevel = bundle?.ultimateLevel ?? 1;
-                p.solaceIntroLevel = bundle?.introLevel ?? 1;
-                p.solaceForteLevel = bundle?.forteLevel ?? 1;
-                p.solaceConstellation = bundle?.constellation ?? 0;
-                p.allySolaceStats = bundle?.solaceStats ?? null;
-                p.allyBonuses = bundle?.bonuses ?? null;
-                const fallbackLabel = bundle ? bundle.kit.label : p.name;
-                dmgLines.push(`${p.name}'s ${koLabel} -${bossDmg} — falls back to **${fallbackLabel}**!`);
-              }
-            } else {
-              const suffix = shield.blocked ? " 🛡" : radRegen > 0 ? ` +${radRegen}✨` : "";
-              dmgLines.push(`${p.name}'s ${p.allyKit?.label ?? "ally"} -${bossDmg}${suffix}`);
-            }
-          } else if (p.hp <= 0) {
-            if (compositeHasSecondWind(p.bonuses.abilityEffects) && !p.secondWindUsed) {
-              p.secondWindUsed = true; p.hp = 1;
-              dmgLines.push(`${p.name} -${bossDmg} ✦UNDYING`);
-            } else {
-              p.hp = 0;
-              // Same fallback the hitsAlly branch above already does — dying
-              // while playing as yourself should check for an alive ally in
-              // reserve before declaring defeat, exactly like dying while an
-              // ally is active checks for the player (or another ally).
-              // Previously this branch skipped straight to isDefeated, so a
-              // player with a fully-healthy benched ally still got wiped.
-              const fallback = nextAliveFallback(p.roster, p.activePosition, pos => raidPositionHp(p, pos));
-              if (fallback === null) {
-                p.isDefeated = true;
-                dmgLines.push(`${p.name} -${bossDmg} — team wiped, 💀 defeated!`);
-              } else {
-                const bundle = positionValue(p.roster, fallback) === "self" ? null : (p.allyBundles[fallback] ?? null);
-                p.activePosition = fallback;
-                p.activeUnit = bundle ? "ally" : "player";
-                p.activeAllyCharacterId = bundle?.characterId ?? null;
-                p.allyKit = bundle?.kit ?? null;
-                p.allyHp = bundle?.hp ?? 0;
-                p.allyHpMax = bundle?.hpMax ?? 0;
-                p.allyMechanicState = bundle?.mechanicState ?? null;
-                p.solaceBasicLevel = bundle?.basicLevel ?? 1;
-                p.solaceSkillLevel = bundle?.skillLevel ?? 1;
-                p.solaceUltimateLevel = bundle?.ultimateLevel ?? 1;
-                p.solaceIntroLevel = bundle?.introLevel ?? 1;
-                p.solaceForteLevel = bundle?.forteLevel ?? 1;
-                p.solaceConstellation = bundle?.constellation ?? 0;
-                p.allySolaceStats = bundle?.solaceStats ?? null;
-                p.allyBonuses = bundle?.bonuses ?? null;
-                const fallbackLabel = bundle ? bundle.kit.label : p.name;
-                dmgLines.push(`${p.name} -${bossDmg} — falls back to **${fallbackLabel}**!`);
-              }
-            }
-          } else {
-            const suffix = shield.blocked ? " 🛡" : radRegen > 0 ? ` +${radRegen}✨` : "";
-            dmgLines.push(`${p.name} -${bossDmg}${suffix}`);
-          }
-
-          // Milestone 3d: WEAKENED — independent 25% roll per participant hit
-          // by the AoE (not one shared roll for the whole AoE), matching the
-          // recommendation to treat each hit as its own chance, since the AoE
-          // already loops over every living participant individually.
-          // Milestone 3.5a fix: gated on THIS participant's own hasSolace, not
-          // raid.isDevGuild — a participant who never opted into team
-          // mechanics via /team shouldn't be affected.
-          if (p.hasSolace && !p.isDefeated && Math.random() < 0.25) {
-            p.playerDebuffs = applyDebuff(p.playerDebuffs, "WEAKENED", 0.2, 2);
-            dmgLines.push(`${p.name} WEAKENED`);
-          }
-
-          if (p.glacioShieldTurnsLeft > 0) p.glacioShieldTurnsLeft--;
-          if (p.riloDefBuffTurnsLeft > 0) p.riloDefBuffTurnsLeft--;
-          if (p.brenLingerTurnsLeft > 0) p.brenLingerTurnsLeft--;
-          if (p.stormBuffTurnsLeft > 0) p.stormBuffTurnsLeft--;
-          if (p.namedState.spectroFractureTurnsLeft > 0) p.namedState.spectroFractureTurnsLeft--;
-        }
-        moveLine += `\n◇ **${boss.name}** ${move.effect} (AoE) — ${dmgLines.join("  ·  ")}`;
-        current.energy = Math.min(100, current.energy + 15);
-      }
-
-      if (current.skillCd > 0) current.skillCd--;
-      if (current.echoSkillCd > 0) current.echoSkillCd--;
-      if (raid.isDevGuild && current.attunementDoubleTurnsLeft > 0) current.attunementDoubleTurnsLeft--;
-      if (raid.isDevGuild && current.forteEmpoweredTurnsLeft > 0) current.forteEmpoweredTurnsLeft--;
-      if (raid.bossDefShredTurnsLeft > 0) raid.bossDefShredTurnsLeft--;
-      if (raid.bossWeakenTurnsLeft > 0) raid.bossWeakenTurnsLeft--;
-      if (raid.feyraBossWeakenTurnsLeft > 0) raid.feyraBossWeakenTurnsLeft--;
-      if (raid.bossSkillCdTurns > 0) raid.bossSkillCdTurns--;
-      if (raid.bossShieldTurnsLeft > 0) { raid.bossShieldTurnsLeft--; if (raid.bossShieldTurnsLeft === 0) raid.bossShieldHp = 0; }
-      if (raid.bossAtkBuffTurnsLeft > 0) { raid.bossAtkBuffTurnsLeft--; if (raid.bossAtkBuffTurnsLeft === 0) raid.bossAtkBuffPct = 0; }
-      if (forcedCritActive && !isSwapAction) current.nextCritArmed = false;
-
-      // All defeated?
-      if (raid.participants.every(p => p.isDefeated)) {
-        await battleMsg.edit({ embeds: [raidEmbed(raid, boss, moveLine)], components: [] });
-        await finishRaid(false);
-        return;
-      }
-
-      raid.turn++;
-      const nextP    = raid.participants[raid.currentIdx];
-      const newMsg   = await thread.send({
-        embeds:     [raidEmbed(raid, boss, moveLine)],
-        components: nextP ? buildRaidButtons(nextP, raid.isDevGuild) : [],
-      });
-      await battleMsg.edit({ components: [] }).catch(() => {});
-      battleMsg = newMsg;
-      runRaidTurn();
+      await resolveBossCounter(current, moveLine, forcedCritActive, isSwapAction);
     });
 
     collector.on("end", async (_, reason) => {
       if (reason !== "time") return;
-      current.skillCd = Math.max(0, current.skillCd - 1);
       const skip  = `⏱ ${current.name} took too long — turn skipped.`;
+
+      if (alphaOptions && raid.alphaRound) {
+        current.skillCd = Math.max(0, current.skillCd - 1);
+        raid.alphaRound = recordAlphaAction(raid.alphaRound, raid.participants, current.userId);
+        if (!raid.alphaRound.roundComplete) {
+          raid.turn++;
+          raid.currentIdx = raid.alphaRound.currentIndex;
+          const nextP = raid.participants[raid.currentIdx];
+          const newMsg = await thread.send({
+            embeds: [raidEmbed(raid, boss, skip)],
+            components: nextP ? buildRaidButtons(nextP, raid.isDevGuild) : [],
+          });
+          await battleMsg.edit({ components: [] }).catch(() => {});
+          battleMsg = newMsg;
+          runRaidTurn();
+          return;
+        }
+
+        await resolveBossCounter(current, skip, false, false);
+        return;
+      }
+
+      current.skillCd = Math.max(0, current.skillCd - 1);
       const nextP = raid.participants[raid.currentIdx];
       raid.turn++;
       const newMsg = await thread.send({
