@@ -327,6 +327,8 @@ const command: Command = {
                       : fb.id === "null_ravager"         ? "  ✦ drops Umbral Shards"
                       : fb.id === "voltaic_aberrant"     ? "  ✦ drops Voltaic Shards"
                       : fb.id === "permafrost_sovereign" ? "  ✦ drops Glacial Shards"
+                      : fb.id === "tempest_ancient"      ? "  ✦ drops Tempest Shards"
+                      : fb.id === "ignis_behemoth"        ? "  ✦ drops Ember Shards"
                       : "";
       return {
         label:       locked ? `🔒 ${fb.name}  (WL${fb.unlockWorldLevel} required)` : `${elemEmoji}  ${fb.name}`,

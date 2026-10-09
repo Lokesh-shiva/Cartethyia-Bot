@@ -3,6 +3,7 @@ import { loadCachedImage } from "./canvas";
 import { loadAvatarImage } from "./canvasUtil";
 import path from "path";
 import { User } from "@prisma/client";
+import { CHARACTER_SHARD_INVENTORY_ENTRIES } from "./characterShardCurrency";
 
 try { try { (GlobalFonts as any).loadSystemFonts(); } catch {}
 GlobalFonts.registerFromPath(path.join(process.cwd(), "assets", "fonts", "Rajdhani-Bold.ttf"), "Rajdhani"); } catch { /* fallback */ }
@@ -22,10 +23,7 @@ const CURRENCIES = [
   { key: "fractonite",     file: "Fractonite.png",     label: "Fractonite",     color: "#6366F1", desc: "100 = 1 FK"           },
   { key: "auraPrisms",     file: "Aura Prism.png",     label: "Aura Prisms",    color: "#38BDF8", desc: "Restores 3 ◈ Aura"    },
   { key: "radiantKeys",    file: "Radiant Key.png",    label: "Radiant Keys",   color: "#FCD34D", desc: "Limited wish pulls"   },
-  { key: "starfallShards", file: "Starfall Shard.png", label: "Starfall Shards",color: "#EAB308", desc: "Solace ascension"     },
-  { key: "umbralShards",   file: "Umbral Shard.png",   label: "Umbral Shards",  color: "#7C3AED", desc: "Kaelith ascension"    },
-  { key: "voltaicShards",  file: "Voltaic Shard.png",  label: "Voltaic Shards", color: "#A855F7", desc: "Vesper ascension"     },
-  { key: "glacialShards",  file: "Glacial Shard.png",  label: "Glacial Shards", color: "#38BDF8", desc: "Rilo ascension"       },
+  ...CHARACTER_SHARD_INVENTORY_ENTRIES,
 ];
 
 const ELEMENT_COLORS: Record<string, string> = {

@@ -30,6 +30,7 @@ import { Element } from "@prisma/client";
 import fs from "fs";
 import path from "path";
 import { pageSlice, pageCount, buildPageNavRow } from "../../lib/pagination";
+import { CHARACTER_SHARD_SELECT, shardInfo } from "../../lib/characterShardCurrency";
 
 // Derived directly from CHARACTER_KITS — adding a character to the kit
 // registry automatically makes it selectable here, no separate catalog to
@@ -40,27 +41,6 @@ const CHARACTERS: Record<string, { label: string; emoji: string; element: string
       id, { label: kit.label, emoji: kit.emoji, element: kit.element, rarity: kit.rarity, portraitPath: kit.portraitPath },
     ]),
   );
-
-// Ascension's "shard" currency differs per character (Solace: Starfall
-// Shards, Kaelith: Umbral Shards) — PlayableCharacterKit.ascensionCost's
-// return type is currently hardcoded to a `starfallShards` field for every
-// character (a known interface limitation from when Kaelith's kit was
-// built), so kits report their REAL shard cost under an extra, kit-specific
-// property alongside a `starfallShards: 0` filler. This map tells the UI
-// which property + currency/label to actually read and spend per character.
-type ShardDbField = "starfallShards" | "umbralShards" | "voltaicShards" | "glacialShards" | "tempestShards" | "emberShards";
-const ASCENSION_SHARD_CURRENCY: Record<string, { field: string; dbField: ShardDbField; label: string }> = {
-  solace:  { field: "starfallShards", dbField: "starfallShards", label: "Starfall Shards" },
-  kaelith: { field: "umbralShards",   dbField: "umbralShards",   label: "Umbral Shards"   },
-  vesper:  { field: "voltaicShards",  dbField: "voltaicShards",  label: "Voltaic Shards"  },
-  rilo:    { field: "glacialShards",  dbField: "glacialShards",  label: "Glacial Shards"  },
-  rhoven:  { field: "tempestShards",  dbField: "tempestShards",  label: "Tempest Shards"  },
-  bren:    { field: "emberShards",    dbField: "emberShards",    label: "Ember Shards"    },
-  feyra:   { field: "glacialShards",  dbField: "glacialShards",  label: "Glacial Shards"  },
-};
-function shardInfo(characterId: string) {
-  return ASCENSION_SHARD_CURRENCY[characterId] ?? ASCENSION_SHARD_CURRENCY.solace;
-}
 
 // Same lookup as gridCard.ts/canvas.ts/echoCard.ts — deliberately duplicated
 // rather than shared, per this project's existing convention for these art
@@ -205,7 +185,7 @@ async function buildStatsView(userId: string, characterId: string): Promise<Page
     kit.resolveStats(userId),
     prisma.user.findUnique({
       where: { id: userId },
-      select: { resonanceRecords: true, credits: true, forgingOres: true, paradoxCores: true, starfallShards: true, umbralShards: true, voltaicShards: true, glacialShards: true },
+      select: { resonanceRecords: true, credits: true, forgingOres: true, paradoxCores: true, ...CHARACTER_SHARD_SELECT },
     }),
   ]);
   const cap = currentLevelCap(progress.ascensionPhase);
@@ -568,7 +548,7 @@ const command: Command = {
             const costShards = ((cost as any)[shard.field] ?? 0) as number;
             const dbUser2 = await prisma.user.findUnique({
               where: { id: interaction.user.id },
-              select: { credits: true, forgingOres: true, paradoxCores: true, starfallShards: true, umbralShards: true, voltaicShards: true, glacialShards: true },
+              select: { credits: true, forgingOres: true, paradoxCores: true, ...CHARACTER_SHARD_SELECT },
             });
             const haveShards = ((dbUser2 as any)?.[shard.dbField] ?? 0) as number;
             if (!dbUser2 || dbUser2.credits < cost.credits || dbUser2.forgingOres < cost.forgingOres ||

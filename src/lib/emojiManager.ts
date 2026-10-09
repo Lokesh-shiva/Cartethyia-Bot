@@ -206,6 +206,8 @@ const CURRENCY_EMOJI_MAP: Record<string, string> = {
   umbralShards:     "cc_umbral",
   voltaicShards:    "cc_voltaic",
   glacialShards:    "cc_glacial",
+  tempestShards:    "cc_tempest",
+  emberShards:      "cc_ember",
 };
 
 // ── Load / create APPLICATION emojis on startup ───────────────────────────────
