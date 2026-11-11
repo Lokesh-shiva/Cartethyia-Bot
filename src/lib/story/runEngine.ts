@@ -1,6 +1,6 @@
 import type { ChapterDefinition, Difficulty, EventOption, RunState } from "./types";
 
-const MIN_HP = 0.01;
+export const MIN_HP = 0.01;
 
 export type CustomIdKind = "next" | "opt" | "resume" | "pause" | "pz" | "hint";
 const KINDS: readonly CustomIdKind[] = ["next", "opt", "resume", "pause", "pz", "hint"];
