@@ -8,6 +8,7 @@
     "start": "tsx src/index.ts",
     "start:prod": "node dist/index.js",
     "build": "tsc",
+    "test": "tsx --env-file=.env --test src/lib/story/*.test.ts",
     "deploy": "npx tsx src/deploy-commands.ts",
     "db:push": "prisma db push",
     "db:studio": "prisma studio",
