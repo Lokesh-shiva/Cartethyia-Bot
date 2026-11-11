@@ -66,7 +66,7 @@ import {
 
 // One roster position's full combat state. Mutated in place across waves so
 // ally HP/mechanic state carries over exactly like the player's own HP does.
-interface AllyBundle {
+export interface AllyBundle {
   characterId: string; kit: PlayableCharacterKit;
   hp: number; hpMax: number; mechanicState: unknown;
   basicLevel: number; skillLevel: number; ultimateLevel: number; introLevel: number; forteLevel: number;
@@ -316,57 +316,120 @@ export async function execute(interaction: ChatInputCommandInteraction) {
 }
 
 // ── Core dungeon runner ───────────────────────────────────────────────────────
-type DungeonUser = { level: number; worldLevel: number; element: string; baseHp: number; baseAtk: number; baseDef: number; critRate: number; critDmg: number };
+export type DungeonUser = { level: number; worldLevel: number; element: string; baseHp: number; baseAtk: number; baseDef: number; critRate: number; critDmg: number };
+
+export interface WaveSession {
+  stats:       ResolvedStats;
+  bonuses:     PlayerBonuses;
+  ws:          WaveState;
+  dbUser:      DungeonUser;
+  displayName: string;
+}
+
+// Builds everything a fight needs: resolved bonuses/stats, the 3-position roster
+// with each ally's bundle, and the initial per-fight state. Pass `roster` +
+// `allyBundles` to skip the ownership lookups (rechallenge reuse, story loaners).
+// NOTE: `isDevGuild` is a legacy name kept to avoid touching the many downstream
+// usages — it no longer means "in the dev guild", it means "has an active ally".
+export async function createWaveSession(args: {
+  userId:       string;
+  dbUser:       DungeonUser;
+  displayName:  string;
+  roster?:      ResolvedRoster;
+  allyBundles?: Partial<Record<PositionIndex, AllyBundle>>;
+}): Promise<WaveSession> {
+  const { userId, dbUser, displayName } = args;
+  let roster = args.roster;
+  let allyBundles = args.allyBundles;
+
+  if (!roster || !allyBundles) {
+    const teamRow = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { teamPosition1: true, teamPosition2: true, teamPosition3: true },
+    });
+    // CRITICAL: real read-only ownership lookups, NOT getOrCreateCharacterProgress
+    // — that helper CREATES a row if missing, which would silently re-grant
+    // ownership to anyone whose roster names a character they don't own,
+    // bypassing the gacha entirely.
+    roster = resolveRoster(teamRow ?? { teamPosition1: "self", teamPosition2: null, teamPosition3: null });
+    allyBundles = {};
+    for (const pos of [1, 2, 3] as PositionIndex[]) {
+      const val = pos === 1 ? roster.position1 : pos === 2 ? roster.position2 : roster.position3;
+      if (val === null || val === "self") continue;
+      const kit = CHARACTER_KITS[val];
+      if (!kit) continue;
+      const progress = await prisma.characterProgress.findUnique({ where: { userId_characterId: { userId, characterId: val } } });
+      if (!progress) continue;
+      const solaceStats = await kit.resolveStats(userId);
+      // Ally's own equipped grid's full bonus set — elemDmgBonus/lifesteal/
+      // elementPassive/echoSkill/named-set mechanics, NOT the player's. Cheap:
+      // resolvePlayerBonuses caches per (userId, characterId) for 30s and
+      // kit.resolveStats() already calls it internally for the stat numbers.
+      const allyBonuses = await resolvePlayerBonuses(userId, val);
+      // Use the ally's own gear/level-resolved HP, not the fixed level-90 base.
+      const hpMax = solaceStats.hp;
+      allyBundles[pos] = {
+        characterId: val, kit, hp: hpMax, hpMax, mechanicState: kit.createInitialMechanicState(),
+        basicLevel: progress.basicLevel, skillLevel: progress.skillLevel, ultimateLevel: progress.ultimateLevel,
+        introLevel: progress.introLevel, forteLevel: progress.forteLevel, constellation: progress.constellation,
+        solaceStats, bonuses: allyBonuses,
+      };
+    }
+  }
+  // Legacy names — now mean "roster has ≥1 non-self filled position".
+  const hasSolace = Object.keys(allyBundles).length > 0;
+  const isDevGuild = hasSolace;
+
+  const bonuses = await resolvePlayerBonuses(userId);
+  const stats   = applyBonuses(dbUser, bonuses);
+
+  const ws: WaveState = {
+    playerHp: stats.hp, playerHpMax: stats.hp, playerEnergy: 0, skillCooldown: 0,
+    firstActionDone: false, firstSkillUsed: false, v2Stacks: 0,
+    namedState: initNamedSetState(),
+    glacioShieldTurnsLeft: 0, glacioShieldElemBonus: 0, riloDefBuffTurnsLeft: 0, riloDefBuffPct: 0,
+    rhovenBossWeakenTurnsLeft: 0, rhovenBossWeakenPct: 0, brenLingerTurnsLeft: 0, brenLingerBonus: 0,
+    feyraBossWeakenTurnsLeft: 0, feyraBossWeakenPct: 0, stormBuffTurnsLeft: 0, stormBuffCritBonus: 0,
+    havocFrenzyAtkMult: 1.0, havocFrenzyLifesteal: 0, havocFrenzyDefIgnore: 0,
+    quickStrikeUsed: false, // SPD-driven bonus action — once per dungeon run, not per wave
+    echoSkillCooldown: 0, enemyDefShredTurnsLeft: 0, enemyDefShredPct: 0, nextAttackCritArmed: false,
+    combatStats: emptyCombatStats(),
+    isDevGuild, hasSolace, activeUnit: 1, concertoEnergy: 0, playerDebuffs: [],
+    attunement: { mode: null }, attunementDoubleTurnsLeft: 0,
+    solaceForte: { phase: 0, charge: 0 }, forteEmpoweredTurnsLeft: 0,
+    roster, allyBundles, displayName,
+  };
+
+  return { stats, bonuses, ws, dbUser, displayName };
+}
+
+// State handed to the next wave: HP/energy/buffs carry over as-is; anything
+// cooldown-shaped loses one turn for the wave transition. allyBundles is
+// mutated in place by runWave, so ally HP/mechanic state carries automatically.
+export function carryOverWaveState(result: WaveResult): WaveState {
+  const { survived: _survived, ...state } = result;
+  return {
+    ...state,
+    skillCooldown: Math.max(0, result.skillCooldown - 1),
+    attunementDoubleTurnsLeft: Math.max(0, result.attunementDoubleTurnsLeft - 1),
+    forteEmpoweredTurnsLeft: Math.max(0, result.forteEmpoweredTurnsLeft - 1),
+  };
+}
 
 async function runDungeon(
   interaction: ChatInputCommandInteraction,
   dungeon:     DungeonDefinition,
   dbUser:      DungeonUser,
 ) {
-  // Requires the player to actually own + have picked Solace via /team.
-  // NOTE: `isDevGuild` is a legacy name kept to avoid touching the many
-  // downstream usages below — it no longer means "in the dev guild", it
-  // means "has an active Solace ally". Was hard-gated to the dev guild only
-  // during development; that gate is exactly the bug that blocked Solace
-  // everywhere after launch.
-  const teamRow = await prisma.user.findUnique({
-    where: { id: interaction.user.id },
-    select: { teamPosition1: true, teamPosition2: true, teamPosition3: true },
-  });
-  // CRITICAL: real read-only ownership lookups, NOT getOrCreateCharacterProgress
-  // — that helper CREATES a row if missing, which would silently re-grant
-  // ownership to anyone whose roster names a character they don't own,
-  // bypassing the gacha entirely.
-  const roster: ResolvedRoster = resolveRoster(teamRow ?? { teamPosition1: "self", teamPosition2: null, teamPosition3: null });
-  const allyBundles: Partial<Record<PositionIndex, AllyBundle>> = {};
-  for (const pos of [1, 2, 3] as PositionIndex[]) {
-    const val = pos === 1 ? roster.position1 : pos === 2 ? roster.position2 : roster.position3;
-    if (val === null || val === "self") continue;
-    const kit = CHARACTER_KITS[val];
-    if (!kit) continue;
-    const progress = await prisma.characterProgress.findUnique({ where: { userId_characterId: { userId: interaction.user.id, characterId: val } } });
-    if (!progress) continue;
-    const solaceStats = await kit.resolveStats(interaction.user.id);
-    // Ally's own equipped grid's full bonus set — elemDmgBonus/lifesteal/
-    // elementPassive/echoSkill/named-set mechanics, NOT the player's. Cheap:
-    // resolvePlayerBonuses caches per (userId, characterId) for 30s and
-    // kit.resolveStats() already calls it internally for the stat numbers.
-    const allyBonuses = await resolvePlayerBonuses(interaction.user.id, val);
-    // Use the ally's own gear/level-resolved HP, not the fixed level-90 base.
-    const hpMax = solaceStats.hp;
-    allyBundles[pos] = {
-      characterId: val, kit, hp: hpMax, hpMax, mechanicState: kit.createInitialMechanicState(),
-      basicLevel: progress.basicLevel, skillLevel: progress.skillLevel, ultimateLevel: progress.ultimateLevel,
-      introLevel: progress.introLevel, forteLevel: progress.forteLevel, constellation: progress.constellation,
-      solaceStats, bonuses: allyBonuses,
-    };
-  }
-  // Legacy names — now mean "roster has ≥1 non-self filled position".
-  const hasSolace = Object.keys(allyBundles).length > 0;
-  const isDevGuild = hasSolace;
 
   const displayName = interaction.guild?.members.cache.get(interaction.user.id)?.displayName
     ?? interaction.user.displayName;
+
+  // Built before the thread exists so a lookup failure fails exactly where it used to
+  // (before any thread or fight is created). Rechallenges reuse the same roster/bundles.
+  let pendingSession: WaveSession | null = await createWaveSession({ userId: interaction.user.id, dbUser, displayName });
+  let carriedRoster: ResolvedRoster | undefined;
+  let carriedBundles: Partial<Record<PositionIndex, AllyBundle>> | undefined;
 
   // Create private thread (reused across rechallenges — no new thread per run)
   let thread;
@@ -390,8 +453,16 @@ async function runDungeon(
 
   while (true) {
     // Resolve bonuses/stats fresh each run — level or gear may have changed since the last clear
-    const bonuses = await resolvePlayerBonuses(interaction.user.id);
-    const stats   = applyBonuses(currentDbUser, bonuses);
+    const session = pendingSession ?? await createWaveSession({
+      userId: interaction.user.id, dbUser: currentDbUser, displayName,
+      roster: carriedRoster, allyBundles: carriedBundles,
+    });
+    pendingSession = null;
+    carriedRoster  = session.ws.roster;
+    carriedBundles = session.ws.allyBundles;
+    const { stats, bonuses } = session;
+    let ws = session.ws;
+    const combatStats = ws.combatStats;
 
     await thread.send({
       embeds: [new EmbedBuilder()
@@ -401,64 +472,10 @@ async function runDungeon(
         .setFooter({ text: "CARTETHYIA  ·  Dungeon" })],
     });
 
-    // Track player HP across waves (shared)
-    let playerHp    = stats.hp;
-    const playerHpMax = stats.hp;
-    let playerEnergy = 0;
-    let skillCooldown = 0;
-    let firstActionDone = false;
-    let firstSkillUsed  = false;
-    let v2Stacks        = 0;
-    const namedState = initNamedSetState();
-    let glacioShieldTurnsLeft = 0;
-    let glacioShieldElemBonus = 0;
-    let riloDefBuffTurnsLeft  = 0;
-    let riloDefBuffPct        = 0;
-    let rhovenBossWeakenTurnsLeft = 0;
-    let rhovenBossWeakenPct       = 0;
-    let brenLingerTurnsLeft = 0;
-    let brenLingerBonus     = 0;
-    let feyraBossWeakenTurnsLeft = 0;
-    let feyraBossWeakenPct       = 0;
-    let stormBuffTurnsLeft    = 0;
-    let stormBuffCritBonus    = 0;
-    let havocFrenzyAtkMult    = 1.0;
-    let havocFrenzyLifesteal  = 0;
-    let havocFrenzyDefIgnore  = 0;
-    let quickStrikeUsed       = false; // SPD-driven bonus action — once per dungeon run, not per wave
-    let echoSkillCooldown      = 0;
-    let enemyDefShredTurnsLeft = 0;
-    let enemyDefShredPct       = 0;
-    let nextAttackCritArmed    = false;
-    const combatStats = emptyCombatStats();
-    let survivedAll            = true;
-
-    // ── Milestone 3a: team state (dev guild only), carried across waves the
-    // same way playerHp/skillCooldown/etc. already are above. ────────────────
-    let activeUnit: PositionIndex = 1;
-    let concertoEnergy: number = 0;
-    let playerDebuffs: DebuffState = [];
-    let attunement: AttunementState = { mode: null };
-    let attunementDoubleTurnsLeft = 0;
-    let solaceForte: ForteState = { phase: 0, charge: 0 };
-    let forteEmpoweredTurnsLeft = 0;
+    let survivedAll = true;
 
     for (let waveIdx = 0; waveIdx < dungeon.waves.length; waveIdx++) {
-      const result = await runWave(
-        thread, interaction.user.id, dungeon, waveIdx, currentDbUser, stats, bonuses,
-        {
-          playerHp, playerHpMax, playerEnergy, skillCooldown, firstActionDone, firstSkillUsed, v2Stacks,
-          namedState, glacioShieldTurnsLeft, glacioShieldElemBonus, riloDefBuffTurnsLeft, riloDefBuffPct, rhovenBossWeakenTurnsLeft, rhovenBossWeakenPct, brenLingerTurnsLeft, brenLingerBonus, feyraBossWeakenTurnsLeft, feyraBossWeakenPct, stormBuffTurnsLeft, stormBuffCritBonus,
-          havocFrenzyAtkMult, havocFrenzyLifesteal, havocFrenzyDefIgnore, quickStrikeUsed,
-          echoSkillCooldown, enemyDefShredTurnsLeft, enemyDefShredPct, nextAttackCritArmed,
-          combatStats,
-          isDevGuild, hasSolace, activeUnit, concertoEnergy, playerDebuffs, attunement,
-          attunementDoubleTurnsLeft, solaceForte, forteEmpoweredTurnsLeft,
-          roster, allyBundles,
-          displayName,
-        },
-        displayName,
-      );
+      const result = await runWave(thread, interaction.user.id, dungeon, waveIdx, currentDbUser, stats, bonuses, ws, displayName);
 
       if (!result.survived) {
         // Died — no reward
@@ -478,48 +495,7 @@ async function runDungeon(
         break;
       }
 
-      // Carry HP/energy between waves
-      playerHp       = result.playerHp;
-      playerEnergy   = result.playerEnergy;
-      skillCooldown  = Math.max(0, result.skillCooldown - 1);
-      firstActionDone = result.firstActionDone;
-      firstSkillUsed  = result.firstSkillUsed;
-      v2Stacks        = result.v2Stacks;
-      glacioShieldTurnsLeft = result.glacioShieldTurnsLeft;
-      glacioShieldElemBonus = result.glacioShieldElemBonus;
-      riloDefBuffTurnsLeft  = result.riloDefBuffTurnsLeft;
-      riloDefBuffPct        = result.riloDefBuffPct;
-      rhovenBossWeakenTurnsLeft = result.rhovenBossWeakenTurnsLeft;
-      rhovenBossWeakenPct       = result.rhovenBossWeakenPct;
-      brenLingerTurnsLeft = result.brenLingerTurnsLeft;
-      brenLingerBonus     = result.brenLingerBonus;
-      feyraBossWeakenTurnsLeft = result.feyraBossWeakenTurnsLeft;
-      feyraBossWeakenPct       = result.feyraBossWeakenPct;
-      stormBuffTurnsLeft    = result.stormBuffTurnsLeft;
-      stormBuffCritBonus    = result.stormBuffCritBonus;
-      havocFrenzyAtkMult    = result.havocFrenzyAtkMult;
-      havocFrenzyLifesteal  = result.havocFrenzyLifesteal;
-      havocFrenzyDefIgnore  = result.havocFrenzyDefIgnore;
-      quickStrikeUsed       = result.quickStrikeUsed;
-      echoSkillCooldown       = result.echoSkillCooldown;
-      enemyDefShredTurnsLeft  = result.enemyDefShredTurnsLeft;
-      enemyDefShredPct        = result.enemyDefShredPct;
-      nextAttackCritArmed     = result.nextAttackCritArmed;
-
-      // Milestone 3a: carry team state between waves too, same mechanism.
-      // attunementDoubleTurnsLeft/forteEmpoweredTurnsLeft get the same
-      // between-wave decrement skillCooldown already gets above — a wave
-      // transition is treated as consuming a turn-equivalent for any
-      // cooldown-shaped state, per design spec §2.
-      activeUnit    = result.activeUnit;
-      concertoEnergy = result.concertoEnergy;
-      playerDebuffs = result.playerDebuffs;
-      attunement    = result.attunement;
-      attunementDoubleTurnsLeft = Math.max(0, result.attunementDoubleTurnsLeft - 1);
-      solaceForte   = result.solaceForte;
-      forteEmpoweredTurnsLeft = Math.max(0, result.forteEmpoweredTurnsLeft - 1);
-      // allyBundles is mutated in place by runWave — HP/mechanicState carry
-      // across waves automatically, no reassignment needed.
+      ws = carryOverWaveState(result);
 
       if (waveIdx < dungeon.waves.length - 1) {
         await thread.send({
@@ -607,7 +583,7 @@ async function runDungeon(
 }
 
 // ── Single wave fight ─────────────────────────────────────────────────────────
-interface WaveState {
+export interface WaveState {
   playerHp:        number;
   playerHpMax:     number;
   playerEnergy:    number;
@@ -660,11 +636,11 @@ interface WaveState {
   displayName: string;
 }
 
-interface WaveResult extends WaveState {
+export interface WaveResult extends WaveState {
   survived: boolean;
 }
 
-async function runWave(
+export async function runWave(
   thread:      any,
   userId:      string,
   dungeon:     DungeonDefinition,

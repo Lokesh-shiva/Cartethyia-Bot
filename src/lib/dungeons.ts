@@ -9,6 +9,8 @@ export interface WaveDefinition {
   hpMult:     number;   // multiplier on base enemy HP
   atkMult:    number;
   defMult:    number;
+  /** Story-only enemy that is not in ECHO_DEFINITIONS; when set it replaces the name lookup. */
+  customEnemy?: EchoDefinition;
 }
 
 export interface DungeonRewards {
@@ -426,7 +428,7 @@ export function getScaledWaveEnemy(
   worldLevel: number,
 ): { def: EchoDefinition; hp: number; atk: number; def_: number } {
   const waveDef = dungeon.waves[waveIdx];
-  const base    = getEnemy(waveDef.enemyName);
+  const base    = waveDef.customEnemy ?? getEnemy(waveDef.enemyName);
   // Exponential WL scaling so enemies stay threatening at higher world levels:
   // WL0=1.0×  WL1=1.45×  WL2=2.1×  WL3=3.0×  WL4=4.4×
   // WL5=6.4×  WL6=9.2×   WL7=13.4× WL8=19.4×
