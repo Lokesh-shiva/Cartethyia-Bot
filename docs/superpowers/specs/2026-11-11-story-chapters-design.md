@@ -13,6 +13,7 @@ This project gives the game a reason to return every month: a **story chapter** 
 - Reuse existing pieces (dungeon/boss combat, weapon system, sweep pattern, owner-command pattern) instead of building a new engine.
 - Give the level-capped players a reason to level: each chapter raises the player level cap by one step.
 - Give post-story players something to repeat so they are not idle between releases.
+- Include real puzzles (button-only, no typing) so a chapter is not only fights and choices.
 
 ## Non-goals
 
@@ -34,13 +35,14 @@ This project gives the game a reason to return every month: a **story chapter** 
 - **Player level cap only** rises per chapter, via the `WORLD_LEVEL_CAPS` table in `src/lib/progression.ts` (WL9 is the current ceiling at 90; each chapter adds the next WL entry). Characters and weapons keep their Lv90 ceiling for now.
 - **New weapons are not pullable on banners.** A chapter's weapon is a **direct reward** for clearing it (not a forge blueprint). 4★ weapons along the way, one new 5★ at the finale. They are new entries alongside the existing wish weapons (4★: Dawnbreaker, Gravemaw, Scatter Hex, Ether Codex; 5★: Oathbreaker's Edge, Ruin Sovereign, Null Fangs, Abyssal Tome, plus Wellspring).
 - **Pause, continue and autosave.** A run autosaves at every node boundary and shows "Autosaved" with its node. A player can pause between nodes with a Pause button and continue later with `/story play` from any channel. A run left idle for 30 minutes is paused automatically (never while a fight is in progress). Pausing never costs progress; leaving mid-fight replays that fight from the start of its node, with HP as saved.
+- **Three puzzles in chapter 1**, each tied to a scene: the **Ember Sequence** (shrine: watch a flashing order of four embers, then repeat it), **Light the Lanterns** (pool: a 3x3 grid where pressing a lantern also flips its neighbors, goal all lit, random each run), and **The Scar Count** (the Stranger: a riddle whose answer is the sum of three numbers mentioned in earlier nodes). Every puzzle has a limit on mistakes, a paid hint that costs HP, and a reward (some HP back plus a flag); failing never ends the run, it only costs HP. The shrine also keeps the Bren-style bargain: take the relic by force for 20% HP instead of solving. The relic's effect is non-combat (my call): it restores 25% HP when the boss fight starts.
 - **Echoes are out of scope.**
 - **Chapter 1 is told from Bren's POV (a 4★ character), chosen because his HP-as-resource kit suits an attrition run.** Two modes inside the chapter: for most nodes the player plays as themselves with Bren as a story companion; at a few scripted moments (one or two nodes in chapter 1) the player controls Bren himself. In those segments the player controls a fixed **"story Bren"** at set stats that every player gets, regardless of whether they own him, so chapter 1 never requires owning Bren and everyone plays the same segment. The builder must verify that the team-position system (`resolveRoster` in `src/lib/teamPositions.ts`) can place Bren in the lead slot, since combat currently assumes the human's own character leads.
 
 ## The owner's guesses (marked as guesses, not decisions)
 
 - Each chapter is one region plus one character's POV; seven playable characters (Solace, Kaelith, Vesper, Rilo, Rhoven, Bren, Feyra) could cover seven months.
-- Inside a chapter: a branching run of about 6-8 nodes (fights, story-choice events, rest stops, treasure, then a region boss). Run progress is saved in the database.
+- Inside a chapter: a branching run of about 6-8 nodes (fights, puzzles, story choices, rest stops, then a region boss). Run progress is saved in the database.
 - A replayable harder or weekly mode after the story, so players are not idle.
 - The cap steps up by about +5 per chapter.
 
