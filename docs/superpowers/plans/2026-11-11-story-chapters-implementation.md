@@ -210,6 +210,22 @@
 
 ---
 
+### Task 12 (polish, after Task 11 works with static cards): animated moments
+
+**Files:**
+- Create: `assets/story/ch1/anim/title.gif`, `boss-intro.gif`, `flashback.gif`, `victory.gif` (made outside the bot from the generated art with the motion-graphics tooling: slow parallax/zoom, ember particles; each about 5 MB or less)
+- Modify: `src/lib/story/storyFlow.ts` (send the matching GIF at the chapter intro, boss node start, flashback node start and victory)
+- Test: `src/lib/story/anim.test.ts`
+
+**Interfaces:**
+- Produces (`src/lib/story/anim.ts`): `animPathFor(moment: "title" | "boss-intro" | "flashback" | "victory", artDir?: string): string | null` (returns the GIF path only if the file exists, else `null` so the flow sends the static card instead).
+
+- [ ] **Step 1: Write failing tests**: `animPathFor("title", "<temp dir without the file>")` is `null`; with a temp GIF written to the dir it returns that path.
+- [ ] **Step 2: Run** `npm test`. Expected: FAIL.
+- [ ] **Step 3: Implement** `anim.ts` and use it in `storyFlow.ts` with an `AttachmentBuilder` as `/wish` does.
+- [ ] **Step 4: Verify** `npm test`, `npx tsc --noEmit`, and a live run showing the GIFs, then a run with one GIF removed to confirm the static fallback.
+- [ ] **Step 5: Commit** `feat(story): optional animated moments with static fallback`.
+
 ## Spec coverage
 
 Monthly scheduler and owner command: Task 10. Cap step: Task 5. Run/node system with DB persistence: Tasks 2, 6, 9. Combat reuse: Task 3. Story Bren: Tasks 4, 9. Chapter 1 content: Task 8. Visuals and art fallback: Task 7. Weapon off banners, direct reward: Tasks 5, 6. Replay (HARD) mode: Tasks 1, 6, 9. Chapters 2 to 4 and weekly rotation: out of scope by design.

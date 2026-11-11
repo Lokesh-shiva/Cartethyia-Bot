@@ -55,7 +55,7 @@ Chapters should be image-led, using the existing canvas card pipeline (`@napi-rs
 - a **region backdrop** and a chapter title card;
 - an illustration per story event and the region boss's art.
 
-Limits: the owner supplies the art (one backdrop plus node icons and event images for chapter 1); static backgrounds should be rendered once and cached, with only the changing parts redrawn, because the VM has about 1 GB of RAM and shared CPU; canvas text must stay ASCII (the Rajdhani font lacks unicode symbols); images are static, no animation.
+Limits: the owner supplies the art (one backdrop plus node icons and event images for chapter 1); static backgrounds should be rendered once and cached, with only the changing parts redrawn, because the VM has about 1 GB of RAM and shared CPU; canvas text must stay ASCII (the Rajdhani font lacks unicode symbols); the bot cannot animate anything live, but it can send pre-rendered GIFs the way `/wish` does (`assets/*_star animation.gif`), so a few key moments (chapter title reveal, boss intro, flashback transition, victory) may be short pre-rendered animations built outside the bot from the generated art (parallax, zoom, ember particles) with a static-image fallback when a file is missing. Keep each GIF small (about 5 MB or less) and treat animation as polish after the chapter works with static cards. (Corrected: an earlier draft wrongly said Discord images could not be animated.)
 
 ## Content production (owner decisions)
 
