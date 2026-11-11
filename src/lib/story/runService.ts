@@ -124,3 +124,8 @@ export async function completeRun(runId: string, chapter: ChapterDefinition): Pr
   auditAward(run.userId, { credits: result.plan.currencies.credits, fractonite: result.plan.currencies.fractonite }, "story").catch(() => {});
   return { firstClear: result.firstClear, alreadyCompleted: false, plan: result.plan };
 }
+
+/** Point a run at a new thread (the old one was deleted or can no longer be reopened). */
+export async function setRunThread(runId: string, threadId: string, guildId: string): Promise<void> {
+  await prisma.storyRun.update({ where: { id: runId }, data: { threadId, guildId } });
+}

@@ -14,7 +14,7 @@ const FONT = "Rajdhani, Arial, sans-serif";
 export const DEFAULT_ART_DIR = path.join("assets", "story", "ch1");
 
 // Design system (docs/story/ch1-design-system.md). PUZZLE nodes use the Event color.
-const NODE_COLOR: Record<NodeKind, string> = {
+export const NODE_COLOR: Record<NodeKind, string> = {
   FIGHT: "#e0523a", EVENT: "#d9a441", PUZZLE: "#d9a441", REST: "#4aa3df",
   STORY_BREN_FIGHT: "#b48cf0", BOSS: "#ff3b30",
 };

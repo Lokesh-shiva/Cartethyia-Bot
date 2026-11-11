@@ -21,6 +21,8 @@ export interface PuzzleDefinition {
   hintCostFraction: number;
   success: { hpGainFraction: number; setsFlag?: string };
   forceOption?: { label: string; hpCostFraction: number; setsFlag?: string };
+  /** SCAR_COUNT only: the numbers the player collected; the answer is their sum. */
+  clues?: number[];
 }
 
 export interface PuzzleState {
@@ -35,6 +37,8 @@ export interface NodeDefinition {
   kind: NodeKind;
   title: string;
   intro: string;
+  /** Scene image file name (without .png) under the chapter art folder. */
+  art?: string;
   /** Text posted after the node is cleared (clues for the Scar Count live here). */
   resultText?: string;
   waves?: WaveDefinition[];

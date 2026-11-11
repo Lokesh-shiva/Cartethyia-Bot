@@ -29,7 +29,7 @@ export function chapterNodeDungeon(chapter: ChapterDefinition, nodeIndex: number
   return {
     id: `story_${chapter.id}_${nodeIndex}`,
     name: node.title,
-    emoji: "",
+    emoji: "🔥",
     type: "ECHO",
     description: node.intro,
     flavor: "",

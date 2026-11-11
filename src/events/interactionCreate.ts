@@ -9,6 +9,7 @@ import { buildAlphaRaidRecruitEmbed, buildAlphaRaidRecruitRow } from "../lib/alp
 import { isOwner } from "../lib/owner";
 import { startAlphaRaidFight } from "../commands/rpg/raid";
 import { buildAlphaRaidBoss, alphaRaidBossArtPath } from "../lib/alphaRaidBoss";
+import { handleStoryButton } from "../lib/story/storyHandlers";
 import prisma from "../lib/prisma";
 
 export const name = Events.InteractionCreate;
@@ -50,6 +51,11 @@ export async function execute(interaction: Interaction) {
   // ── Button interactions ────────────────────────────────────────────────────
   if (interaction.isButton()) {
     const { customId } = interaction;
+
+    if (customId.startsWith("story_")) {
+      await handleStoryButton(interaction).catch(err => console.error("[Story] button failed:", err));
+      return;
+    }
 
     if (customId === "encounter_fight") {
       await handleEncounterFight(interaction).catch((e: any) => {
