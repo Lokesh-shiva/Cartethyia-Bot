@@ -129,7 +129,33 @@ export const WELLSPRING_WEAPON: WishWeapon = {
   lore: "Drawn from a spring that never runs dry — every note played near it returns clearer than before.",
 };
 
-export const ALL_WISH_WEAPONS = [...WISH_WEAPONS_4STAR, ...WISH_WEAPONS_5STAR, WELLSPRING_WEAPON];
+// ── Story weapons ────────────────────────────────────────────────────────────
+// Direct rewards for clearing a story chapter. Deliberately NOT in
+// WISH_WEAPONS_4STAR/5STAR (or any banner pool): they are resolvable everywhere
+// weapons are looked up (via ALL_WISH_WEAPONS) but /wish can never roll them.
+// Stats are a draft for the owner to review before the chapter is released.
+export const STORY_WEAPONS: WishWeapon[] = [
+  {
+    id: "cinderheart", name: "Cinderheart", type: "BROADBLADE", rarity: 4,
+    baseAtk: 150, atkMaxMult: 4.2,
+    subStatType:  "ATK_PERCENT", subStatBase: 12, subStatScale: 2.0,
+    hiddenSub1Type: "CRIT_RATE", hiddenSub1Base: 6, hiddenSub1Scale: 2.0,
+    passive: "Deals up to +28% bonus damage as your HP drops.",
+    lore: "It was never meant to hold a flame, only to keep one from going out.",
+  },
+];
+
+export const ALL_WISH_WEAPONS = [...WISH_WEAPONS_4STAR, ...WISH_WEAPONS_5STAR, WELLSPRING_WEAPON, ...STORY_WEAPONS];
+
+export function weaponCreateData(userId: string, w: WishWeapon) {
+  return {
+    userId, weaponType: w.type, name: w.name, rarity: w.rarity as number,
+    baseAtk: w.baseAtk, subStatType: w.subStatType, subStatVal: w.subStatBase,
+    hiddenSub1Type: w.hiddenSub1Type, hiddenSub1Val: w.hiddenSub1Base,
+    hiddenSub2Type: w.hiddenSub2Type ?? null, hiddenSub2Val: w.hiddenSub2Base ?? null,
+    isEquipped: false,
+  };
+}
 
 export function getWishWeapon(id: string): WishWeapon | undefined {
   return ALL_WISH_WEAPONS.find(w => w.id === id);

@@ -10,7 +10,7 @@ import { replyNotStarted } from "../../lib/economy";
 import { auditSpend } from "../../lib/antiCheat";
 import {
   WISH_WEAPONS_4STAR, WISH_WEAPONS_5STAR, WELLSPRING_WEAPON,
-  WishWeapon, calcWishAtk, calcWishSubStat,
+  WishWeapon, calcWishAtk, calcWishSubStat, weaponCreateData,
 } from "../../lib/wishWeapons";
 import { getWeaponImagePath } from "../../lib/weapons";
 import { CE, getEmojiResolvable } from "../../lib/emojiManager";
@@ -324,16 +324,6 @@ function resolveKeySpend(radiantKeys: number, fractonite: number, amount: number
     shortMessage: `You have **${radiantKeys}** Radiant Key${radiantKeys !== 1 ? "s" : ""} and **${fractonite}** Fractonite — ` +
       `need **${amount}** total (${shortfall} more, costing ${fractoniteNeeded} Fractonite at ${FRACTONITE_PER_RADIANT_KEY}:1). ` +
       `Earn more Fractonite from **/vote**, boss/dungeon/raid wins, or Patreon.`,
-  };
-}
-
-function weaponCreateData(userId: string, w: WishWeapon) {
-  return {
-    userId, weaponType: w.type, name: w.name, rarity: w.rarity as number,
-    baseAtk: w.baseAtk, subStatType: w.subStatType, subStatVal: w.subStatBase,
-    hiddenSub1Type: w.hiddenSub1Type, hiddenSub1Val: w.hiddenSub1Base,
-    hiddenSub2Type: w.hiddenSub2Type ?? null, hiddenSub2Val: w.hiddenSub2Base ?? null,
-    isEquipped: false,
   };
 }
 

@@ -198,6 +198,8 @@ export const WEAPON_PASSIVES: Record<string, WeaponPassive> = {
   // ── Wish weapons (4★) ─────────────────────────────────────────────────────
   "Dawnbreaker":       { effects: [{ type: "CRIT_MOMENTUM", value: 18 }, { type: "SKILL_POWER",  value: 0.18 }] },
   "Gravemaw":          { effects: [{ type: "BERSERK",       value: 0.32 }, { type: "HEAL_ON_CRIT", value: 0.08 }] },
+  // ── Story weapons (direct chapter rewards, never on a banner) ──────────────
+  "Cinderheart":       { effects: [{ type: "BERSERK",       value: 0.28 }] },
   "Scatter Hex":       { effects: [{ type: "ESCALATION",    value: 0.09 }, { type: "VIB_BREAKER",  value: 0.35 }] },
   "Ether Codex":       { elemDmg: 0.08, effects: [{ type: "ESCALATION", value: 0.07 }] },
 
