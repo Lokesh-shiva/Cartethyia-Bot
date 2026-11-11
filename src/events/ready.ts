@@ -9,6 +9,7 @@ import prisma from "../lib/prisma";
 import { refundAura } from "../lib/aura";
 import { startTournamentSweep } from "../lib/tournamentSweep";
 import { startAlphaRaidSweep } from "../lib/alphaRaidSweep";
+import { startStorySweep } from "../lib/story/storySweep";
 
 export const name = Events.ClientReady;
 export const once = true;
@@ -108,6 +109,7 @@ export async function execute(client: Client) {
   // forfeits, round advance, reward distribution — all driven from here.
   startTournamentSweep(client);
   startAlphaRaidSweep(client);
+  startStorySweep(client);
 
   client.user?.setPresence({
     activities: [

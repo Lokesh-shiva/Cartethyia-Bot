@@ -39,3 +39,23 @@ export function pickChapterToPlay(chapters: ChapterDefinition[], clearedChapterI
   if (next) return next;
   return ordered[ordered.length - 1]!;
 }
+
+/** Chapter ids whose release time has passed and that have not been announced yet. */
+export function selectAnnouncements(rows: { chapterId: number; releaseAt: Date; announcedAt: Date | null }[], now: Date): number[] {
+  return rows.filter(r => r.releaseAt.getTime() <= now.getTime() && !r.announcedAt).map(r => r.chapterId);
+}
+
+/** A release can be (re)scheduled only while it has not already gone live. */
+export function canReschedule(row: { releaseAt: Date } | null, now: Date): boolean {
+  return !row || row.releaseAt.getTime() > now.getTime();
+}
+
+/** ACTIVE runs idle longer than idleMs whose owner is not mid-fight. */
+export function selectIdleRuns(
+  runs: { id: string; userId: string; status: string; updatedAt: Date }[],
+  now: Date, idleMs: number, userIdsInFight: Set<string>,
+): string[] {
+  return runs
+    .filter(r => r.status === "ACTIVE" && now.getTime() - r.updatedAt.getTime() > idleMs && !userIdsInFight.has(r.userId))
+    .map(r => r.id);
+}
