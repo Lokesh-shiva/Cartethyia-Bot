@@ -483,6 +483,46 @@ model AlphaRaidParticipant {
   @@map("alpha_raid_participants")
 }
 
+// ─── Story chapters ─────────────────────────────────────────────────────────
+// See docs/superpowers/specs/2026-11-11-story-chapters-design.md
+model StoryRelease {
+  chapterId   Int       @id
+  releaseAt   DateTime
+  announcedAt DateTime?
+
+  @@map("story_releases")
+}
+
+model StoryRun {
+  id              String   @id @default(cuid())
+  userId          String
+  chapterId       Int
+  difficulty      String   // "NORMAL" | "HARD"
+  status          String   @default("ACTIVE") // ACTIVE | PAUSED | COMPLETE | FAILED
+  pausedAt        DateTime?
+  nodeIndex       Int      @default(0)
+  flags           String[]
+  hpFraction      Float    @default(1)
+  allyHpFractions Json     @default("{}")
+  puzzle          Json?
+  threadId        String?
+  guildId         String?
+  startedAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([userId, status])
+  @@map("story_runs")
+}
+
+model StoryProgress {
+  userId    String
+  chapterId Int
+  clearedAt DateTime @default(now())
+
+  @@id([userId, chapterId])
+  @@map("story_progress")
+}
+
 // ─── Active Encounter ────────────────────────────────────────────────────────
 
 model ActiveEncounter {
