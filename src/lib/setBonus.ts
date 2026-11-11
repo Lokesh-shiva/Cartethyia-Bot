@@ -212,6 +212,40 @@ export interface PlayerBonuses {
   equippedWeaponRefinement: number;
 }
 
+/** Zero-gear bonuses, plus the element's innate passive when an element is given. No DB access. */
+export function emptyPlayerBonuses(element?: string): PlayerBonuses {
+  const bonuses: PlayerBonuses = {
+    atkFlat: 0, hpFlat: 0, defFlat: 0, spdFlat: 0,
+    atkMult: 1.0, hpMult: 1.0, defMult: 1.0,
+    critRateBonus: 0, critDmgBonus: 0,
+    energyBonus: 0, lifesteal: 0, elemDmgBonus: 0, healingBonus: 0,
+    set4pc: null, set5pc: null,
+    activeNamedSetId: null,
+    elementPassive:  null,
+    abilityEffects:  [],
+    abilityVersion:  1,
+    v2Effects:       [],
+    activeLabels:    [],
+    echoSkill:       null,
+    equippedWeaponName: null,
+    equippedWeaponRefinement: 1,
+  };
+  const ep = element ? (ELEMENT_PASSIVES as Record<string, ElementPassive | undefined>)[element] ?? null : null;
+  bonuses.elementPassive = ep;
+  if (ep) {
+    bonuses.atkMult       *= ep.atkMult;
+    bonuses.defMult       *= ep.defMult;
+    bonuses.hpMult        *= ep.hpMult;
+    bonuses.critRateBonus += ep.critRateBonus;
+    bonuses.critDmgBonus  += ep.critDmgBonus;
+    bonuses.energyBonus   += ep.energyBonus;
+    bonuses.lifesteal     += ep.lifesteal;
+    bonuses.elemDmgBonus  += ep.elemDmgBonus;
+    bonuses.activeLabels.push(ep.statLabel, ep.hookLabel);
+  }
+  return bonuses;
+}
+
 // ── Bonus cache — 30s TTL, invalidated on any combat/equip write ──────────────
 // Keyed by `${userId}:${characterId}` — a player's own bonuses and (once
 // Milestone 3.5b wires her up) Solace's own bonuses are cached independently,
