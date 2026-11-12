@@ -82,7 +82,8 @@ export const CHAPTER_1: ChapterDefinition = {
     {
       kind: "STORY_BREN_FIGHT", title: "The First Scar", art: "flashback",
       intro: "The ash closes in and the world tilts. This is Bren's memory, not yours. Fight as they fought: alone, counting every cost.",
-      waves: [w(ASH_WRAITH, 4.5, 4.0, 3.5), w(CINDER_HOUND, 5.0, 4.5, 4.0)],
+      // Flashback fights run at world level 0 against Bren's ungeared loaner stats (see runFightNode), so these are small.
+      waves: [w(ASH_WRAITH, 6, 3, 3), w(CINDER_HOUND, 8, 3.5, 3)],
       resultText: "The memory breaks. Bren's first scar was the one they gave themselves, to keep going.",
     },
     {

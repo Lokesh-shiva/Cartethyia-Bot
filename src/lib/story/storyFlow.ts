@@ -134,7 +134,10 @@ async function runFightNode(
   });
   if (!dbRow) return { status: "BLOCKED", state };
   // Story enemies scale from the chapter's world level, not the player's.
-  const dbUser = { ...dbRow, worldLevel: chapter.enemyWorldLevel };
+  // Bren is an ungeared loaner, so his flashback scales from his own level at world level 0.
+  const dbUser = bren
+    ? { ...dbRow, level: STORY_BREN_LEVEL, worldLevel: 0 }
+    : { ...dbRow, worldLevel: chapter.enemyWorldLevel };
   const displayName = thread.guild?.members.cache.get(run.userId)?.displayName ?? "Resonator";
 
   if (!acquireLock(run.userId, "Story")) {
