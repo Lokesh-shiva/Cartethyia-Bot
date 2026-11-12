@@ -7,7 +7,7 @@ import { computeAura, consumeAura, getMaxAura, refundAura } from "../../lib/aura
 import { CHAPTERS } from "../../lib/story/chapters";
 import { decideStart, pickChapterToPlay } from "../../lib/story/release";
 import { createRun, getActiveRun, getClearedChapterIds, resumeRun, runStateFromRow } from "../../lib/story/runService";
-import { createRunThread, ensureRunThread, postMapMessage, withRunLock } from "../../lib/story/storyFlow";
+import { animAttachment, createRunThread, ensureRunThread, postMapMessage, withRunLock } from "../../lib/story/storyFlow";
 
 export const data = new SlashCommandBuilder()
   .setName("story")
@@ -128,6 +128,8 @@ export async function startOrResume(interaction: ChatInputCommandInteraction): P
     await interaction.editReply("Could not start the story. Try again in a moment.");
     return;
   }
+  const titleGif = animAttachment(chapter, "title");
+  if (titleGif) await thread.send({ files: [titleGif] }).catch(() => {});
   await postMapMessage(thread, chapter, run.id, runStateFromRow(run), {
     title: `${chapter.title}${hard ? "  (Hard replay)" : ""}`,
     description: `${chapter.blurb}\n\n*Your progress autosaves after every node. Pause anytime and return with /story play.*`,

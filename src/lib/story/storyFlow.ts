@@ -15,6 +15,7 @@ import { getWishWeapon } from "../wishWeapons";
 import { getChapter, chapterNodeDungeon } from "./chapters";
 import { buildLoanerBundle, loanerRoster, STORY_BREN_KIT_LEVEL, STORY_BREN_LEVEL } from "./loaner";
 import { generateStoryMapCard, NODE_COLOR } from "./mapCard";
+import { animPathFor, type AnimMoment } from "./anim";
 import { buildPuzzleView } from "./puzzleUi";
 import { initPuzzleState } from "./puzzleStep";
 import { advanceNode, applyRest, buildCustomId, canTakeOption, isFinalNode, MIN_HP } from "./runEngine";
@@ -43,6 +44,12 @@ function sceneFile(chapter: ChapterDefinition, node: NodeDefinition): Attachment
   if (!node.art) return null;
   const p = path.join(artDirOf(chapter), `${node.art}.png`);
   return fs.existsSync(p) ? new AttachmentBuilder(p, { name: "scene.png" }) : null;
+}
+
+/** Pre-rendered GIF for a moment as an attachment named anim.gif, or null (caller falls back to the static art). */
+export function animAttachment(chapter: ChapterDefinition, moment: AnimMoment): AttachmentBuilder | null {
+  const p = animPathFor(moment, artDirOf(chapter));
+  return p ? new AttachmentBuilder(p, { name: "anim.gif" }) : null;
 }
 
 export async function buildMapAttachment(chapter: ChapterDefinition, state: RunState): Promise<AttachmentBuilder> {
@@ -212,8 +219,9 @@ async function postVictory(thread: ThreadChannel, run: StoryRunRow, chapter: Cha
   const embed = new EmbedBuilder().setColor(hex("#ffd479")).setTitle(`${chapter.title} - Complete`)
     .setDescription(`${last.resultText ?? ""}\n\n${lines.join("\n")}`).setFooter({ text: BRAND });
   const boss = chapter.nodes.find(n => n.kind === "BOSS");
-  const scene = boss ? sceneFile(chapter, boss) : null;
-  if (scene) embed.setImage("attachment://scene.png");
+  const gif = animAttachment(chapter, "victory");
+  const scene = gif ?? (boss ? sceneFile(chapter, boss) : null);
+  if (scene) embed.setImage(gif ? "attachment://anim.gif" : "attachment://scene.png");
   await thread.send({ embeds: [embed], files: scene ? [scene] : [] });
   await checkLevelUp(run.userId).catch(() => {});
   await thread.setArchived(true).catch(() => {});
@@ -236,7 +244,10 @@ export async function continueRunLocked(client: Client, runId: string): Promise<
   const idx = state.nodeIndex;
   const node = chapter.nodes[idx];
   if (!node) return;
-  const scene = sceneFile(chapter, node);
+  const moment: AnimMoment | null = node.kind === "BOSS" ? "boss-intro" : node.kind === "STORY_BREN_FIGHT" ? "flashback" : null;
+  const gif = moment ? animAttachment(chapter, moment) : null;
+  const scene = gif ?? sceneFile(chapter, node);
+  const sceneName = gif ? "anim.gif" : "scene.png";
   const intro = () => new EmbedBuilder().setColor(hex(NODE_COLOR[node.kind])).setTitle(node.title).setDescription(node.intro).setFooter({ text: BRAND });
 
   switch (node.kind) {
@@ -285,7 +296,7 @@ export async function continueRunLocked(client: Client, runId: string): Promise<
         await saveRunState(run.id, state);
       }
       const embed = intro();
-      if (scene) embed.setImage("attachment://scene.png");
+      if (scene) embed.setImage(`attachment://${sceneName}`);
       await thread.send({ embeds: [embed], files: scene ? [scene] : [] });
       await sleep(1500);
       const res = await runFightNode(thread, run, chapter, idx, state);
