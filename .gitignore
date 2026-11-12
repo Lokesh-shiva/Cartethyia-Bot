@@ -29,3 +29,6 @@ Thumbs.db
 logs/
 
 .superpowers/
+
+# Story art contact sheets (working files)
+assets/story/**/_sheets/

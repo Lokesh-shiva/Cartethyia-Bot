@@ -288,7 +288,7 @@ const command: Command = {
       await interaction.editReply({
         embeds: [new EmbedBuilder()
           .setColor(0x334155)
-          .setDescription(`◈ World Level **${user.worldLevel}** is the current content ceiling.\nThe next Ascension Trial is being prepared — check back in a future update.`)
+          .setDescription(`◈ World Level **${user.worldLevel}** is the current content ceiling.\nThe next Ascension Trial is being prepared. Story chapters continue your journey: try **/story play**.`)
           .setFooter({ text: "CARTETHYIA  ·  Ascension System" })],
       });
       return;
