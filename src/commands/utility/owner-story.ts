@@ -52,3 +52,5 @@ export const command: Command = {
     await interaction.editReply(`Chapter ${chapterId} will release <t:${Math.floor(releaseAt.getTime() / 1000)}:F>.`);
   },
 };
+
+export default command;
