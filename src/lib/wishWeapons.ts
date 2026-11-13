@@ -140,7 +140,7 @@ export const STORY_WEAPONS: WishWeapon[] = [
     baseAtk: 150, atkMaxMult: 4.2,
     subStatType:  "ATK_PERCENT", subStatBase: 12, subStatScale: 2.0,
     hiddenSub1Type: "CRIT_RATE", hiddenSub1Base: 6, hiddenSub1Scale: 2.0,
-    passive: "Deals up to +28% bonus damage as your HP drops.",
+    passive: "Embers build every turn (+10% DMG per stack, up to 5), burn hotter as your HP drops (up to +34% DMG), and mend you on a crit. +20% Elemental DMG.",
     lore: "It was never meant to hold a flame, only to keep one from going out.",
   },
 ];

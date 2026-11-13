@@ -199,7 +199,7 @@ export const WEAPON_PASSIVES: Record<string, WeaponPassive> = {
   "Dawnbreaker":       { effects: [{ type: "CRIT_MOMENTUM", value: 18 }, { type: "SKILL_POWER",  value: 0.18 }] },
   "Gravemaw":          { effects: [{ type: "BERSERK",       value: 0.32 }, { type: "HEAL_ON_CRIT", value: 0.08 }] },
   // ── Story weapons (direct chapter rewards, never on a banner) ──────────────
-  "Cinderheart":       { effects: [{ type: "BERSERK",       value: 0.28 }] },
+  "Cinderheart":       { elemDmg: 0.20, effects: [{ type: "BERSERK", value: 0.34 }, { type: "ESCALATION", value: 0.10 }, { type: "HEAL_ON_CRIT", value: 0.05 }] },
   "Scatter Hex":       { effects: [{ type: "ESCALATION",    value: 0.09 }, { type: "VIB_BREAKER",  value: 0.35 }] },
   "Ether Codex":       { elemDmg: 0.08, effects: [{ type: "ESCALATION", value: 0.07 }] },
 

@@ -26,10 +26,11 @@ test("WORLD_LEVEL_CAPS keeps WL9 at 90 and adds WL10 at 95", () => {
   assert.equal(WORLD_LEVEL_CAPS[10], 95);
 });
 
-test("Cinderheart's passive is registered by name with the +28% low-HP damage effect", () => {
+test("Cinderheart's passive stacks damage, scales with low HP, adds elemental damage and heals on crit", () => {
   const passive = WEAPON_PASSIVES["Cinderheart"];
   assert.ok(passive);
-  assert.deepEqual(passive!.effects?.map(e => [e.type, e.value]), [["BERSERK", 0.28]]);
+  assert.equal(passive!.elemDmg, 0.2);
+  assert.deepEqual(passive!.effects?.map(e => [e.type, e.value]), [["BERSERK", 0.34], ["ESCALATION", 0.1], ["HEAL_ON_CRIT", 0.05]]);
 });
 
 test("weaponCreateData builds an unequipped weapon row for a user", () => {
