@@ -3,7 +3,7 @@ import prisma from "../prisma";
 import { auditAward } from "../antiCheat";
 import { getWishWeapon, weaponCreateData } from "../wishWeapons";
 import { newRunState } from "./runEngine";
-import { planClearRewards, type ClearRewardPlan } from "./rewards";
+import { needsWeaponCopy, planClearRewards, type ClearRewardPlan } from "./rewards";
 import type { ChapterDefinition, Difficulty, PuzzleState, RunState } from "./types";
 
 export type StoryRunRow = NonNullable<Awaited<ReturnType<typeof prisma.storyRun.findFirst>>>;
@@ -74,6 +74,8 @@ export interface CompleteResult {
   /** True when this run had already been completed (a double click or retry): nothing was paid again. */
   alreadyCompleted: boolean;
   plan: ClearRewardPlan | null;
+  /** True when a Hard replay actually added a weapon copy (false once the player has R5 worth). */
+  copyGranted: boolean;
 }
 
 /**
@@ -83,7 +85,7 @@ export interface CompleteResult {
  */
 export async function completeRun(runId: string, chapter: ChapterDefinition): Promise<CompleteResult> {
   const run = await prisma.storyRun.findUnique({ where: { id: runId } });
-  if (!run) return { firstClear: false, alreadyCompleted: true, plan: null };
+  if (!run) return { firstClear: false, alreadyCompleted: true, plan: null, copyGranted: false };
   const difficulty = run.difficulty as Difficulty;
 
   const result = await prisma.$transaction(async (tx) => {
@@ -108,6 +110,17 @@ export async function completeRun(runId: string, chapter: ChapterDefinition): Pr
       const weapon = getWishWeapon(plan.grantWeaponId);
       if (weapon) await tx.weapon.create({ data: weaponCreateData(run.userId, weapon) });
     }
+    let copyGranted = false;
+    if (plan.grantWeaponCopyId) {
+      const weapon = getWishWeapon(plan.grantWeaponCopyId);
+      if (weapon) {
+        const owned = await tx.weapon.findMany({ where: { userId: run.userId, name: weapon.name }, select: { refinement: true } });
+        if (needsWeaponCopy(owned.map(o => o.refinement))) {
+          await tx.weapon.create({ data: weaponCreateData(run.userId, weapon) });
+          copyGranted = true;
+        }
+      }
+    }
     await tx.user.update({
       where: { id: run.userId },
       data: {
@@ -116,13 +129,13 @@ export async function completeRun(runId: string, chapter: ChapterDefinition): Pr
         emberShards: { increment: plan.currencies.emberShards },
       },
     });
-    return { firstClear, plan };
+    return { firstClear, plan, copyGranted };
   });
 
-  if (!result) return { firstClear: false, alreadyCompleted: true, plan: null };
+  if (!result) return { firstClear: false, alreadyCompleted: true, plan: null, copyGranted: false };
 
   auditAward(run.userId, { credits: result.plan.currencies.credits, fractonite: result.plan.currencies.fractonite }, "story").catch(() => {});
-  return { firstClear: result.firstClear, alreadyCompleted: false, plan: result.plan };
+  return { firstClear: result.firstClear, alreadyCompleted: false, plan: result.plan, copyGranted: result.copyGranted };
 }
 
 /** Point a run at a new thread (the old one was deleted or can no longer be reopened). */

@@ -215,7 +215,8 @@ async function postVictory(thread: ThreadChannel, run: StoryRunRow, chapter: Cha
   ];
   if (plan.advanceWorldLevelTo) lines.push(`**World Level raised to ${plan.advanceWorldLevelTo}.**`);
   if (plan.grantWeaponId) lines.push(`**New weapon:** ${getWishWeapon(plan.grantWeaponId)?.name ?? plan.grantWeaponId}`);
-  if (state.difficulty === "HARD") lines.push("*Replay rewards. World Level and the weapon are first-clear only.*");
+  if (done.copyGranted && plan.grantWeaponCopyId) lines.push(`**Weapon copy:** ${getWishWeapon(plan.grantWeaponCopyId)?.name ?? plan.grantWeaponCopyId} (merge it with /weapon-refine)`);
+  if (state.difficulty === "HARD") lines.push(done.copyGranted ? "*Hard replay rewards. World Level is first-clear only.*" : "*Hard replay rewards. Your weapon is already at max refinement worth of copies.*");
   const embed = new EmbedBuilder().setColor(hex("#ffd479")).setTitle(`${chapter.title} - Complete`)
     .setDescription(`${last.resultText ?? ""}\n\n${lines.join("\n")}`).setFooter({ text: BRAND });
   const boss = chapter.nodes.find(n => n.kind === "BOSS");
