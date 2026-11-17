@@ -10,11 +10,27 @@ const awardHistory = new Map<string, number[]>();
 const RATE_WINDOW_MS           = 30_000;  // 30 second window
 const RATE_LIMIT               = 12;      // max awards in window
 const BASE_CREDITS_THRESHOLD   = 6_000;   // WL0 baseline — scales with WL
-const BALANCE_CREDITS_THRESHOLD = 600_000; // flag users whose total exceeds this
+// The periodic sweep (not every award) reports accounts above this. Long daily-streak players legitimately pass 1M+.
+const BALANCE_CREDITS_THRESHOLD = Number(process.env.BALANCE_CREDITS_THRESHOLD ?? 3_000_000);
+// Sources with fixed, designed payouts that can exceed the per-award threshold by design.
+const FIXED_PAYOUT_SOURCES = new Set(["story"]);
 
 // Same multiplier used in dungeon/boss/ascend reward scaling
 function wlThreshold(worldLevel: number): number {
   return Math.floor(BASE_CREDITS_THRESHOLD * (1 + worldLevel * 0.4));
+}
+
+/** Flags for one award. Pure so it can be tested; total balance is checked by the sweep, not per award. */
+export function computeAwardFlags(input: {
+  rewards: Record<string, number>; source: string; worldLevel: number; recentAwardCount: number;
+}): string[] {
+  const flags: string[] = [];
+  if (input.recentAwardCount > RATE_LIMIT) flags.push(`rate: ${input.recentAwardCount} awards in ${RATE_WINDOW_MS / 1000}s`);
+  const threshold = wlThreshold(input.worldLevel);
+  if (!FIXED_PAYOUT_SOURCES.has(input.source) && (input.rewards.credits ?? 0) > threshold) {
+    flags.push(`large single award: ${input.rewards.credits} credits (WL${input.worldLevel} threshold: ${threshold})`);
+  }
+  return flags;
 }
 
 export function auditSpend(
@@ -54,25 +70,12 @@ export async function auditAward(
   hist.push(now);
   awardHistory.set(userId, hist);
 
-  const flags: string[] = [];
-
-  if (hist.length > RATE_LIMIT) {
-    flags.push(`rate: ${hist.length} awards in ${RATE_WINDOW_MS / 1000}s`);
-  }
-
   const user = await prisma.user.findUnique({
     where:  { id: userId },
-    select: { credits: true, username: true, worldLevel: true },
+    select: { username: true, worldLevel: true },
   }).catch(() => null);
 
-  const threshold = wlThreshold(user?.worldLevel ?? 0);
-  if ((rewards.credits ?? 0) > threshold) {
-    flags.push(`large single award: ${rewards.credits} credits (WL${user?.worldLevel ?? 0} threshold: ${threshold})`);
-  }
-
-  if (user?.credits && user.credits > BALANCE_CREDITS_THRESHOLD) {
-    flags.push(`total balance: ${user.credits.toLocaleString()} credits`);
-  }
+  const flags = computeAwardFlags({ rewards, source, worldLevel: user?.worldLevel ?? 0, recentAwardCount: hist.length });
 
   if (flags.length === 0) return;
 
